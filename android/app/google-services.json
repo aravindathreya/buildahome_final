@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "640173190652",
+    "firebase_url": "https://buildahome-1533208496586.firebaseio.com",
+    "project_id": "buildahome-1533208496586",
+    "storage_bucket": "buildahome-1533208496586.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:640173190652:android:d9509afea21083a8ae1679",
+        "android_client_info": {
+          "package_name": "buildahome.buildahome"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "640173190652-bmlii256f9u6bffvev94b7m77gfl1te2.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "buildahome.buildahome",
+            "certificate_hash": "c420feeb652e1a86a069338f6e933adb18616b67"
+          }
+        },
+        {
+          "client_id": "640173190652-m3i86d1ocp4veiifhh1oiccp1391eup5.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBkGRtDEvmOhOZGHBtDGmC95i6ND3dlPRU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "640173190652-m3i86d1ocp4veiifhh1oiccp1391eup5.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
