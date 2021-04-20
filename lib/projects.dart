@@ -20,7 +20,7 @@ class ProjectsModal extends StatelessWidget{
 
       content:
       FutureBuilder(
-        future: http.get("https://www.buildahome.in/api/projects_access.php?id=${this.id.toString()}",),
+        future: http.get("https://app.buildahome.in/api/projects_access.php?id=${this.id.toString()}",),
 
         builder: (context, snapshot) {
           switch (snapshot.connectionState) {

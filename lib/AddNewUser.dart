@@ -24,7 +24,7 @@ class UsersState extends State<Users> {
 
   var projects =[];
   call() async {
-    var url = 'https://www.buildahome.in/api/view_all_users.php';
+    var url = 'https://app.buildahome.in/api/view_all_users.php';
     var response = await http.get(url);
     print(response.body);
     setState(() {
@@ -321,7 +321,7 @@ class UsersState extends State<Users> {
                                       true);
                                 });
                             var url =
-                                'https://www.buildahome.in/api/add_new_user.php';
+                                'https://app.buildahome.in/api/add_new_user.php';
                             var response = await http.post(url, body: {
                               "email": email.text,
                               "name": name.text,

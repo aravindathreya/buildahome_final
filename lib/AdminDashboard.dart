@@ -73,7 +73,7 @@ class DashboardState extends State<Dashboard> {
     var id = prefs.getString('project_id');
     user_id = prefs.getString('user_id');
     var response = await http
-        .get("https://www.buildahome.in/api/projects_access.php?id=${user_id}");
+        .get("https://app.buildahome.in/api/projects_access.php?id=${user_id}");
 
     setState(() {
       data = jsonDecode(response.body);

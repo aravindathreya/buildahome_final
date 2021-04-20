@@ -243,10 +243,10 @@ class LoginFormState extends State<LoginForm> {
                             return Loader();
                           });
 
-                      var url = 'https://www.buildahome.in/api/login.php';
+                      var url = 'https://app.buildahome.in/api/login.php';
                       var response = await http.post(url, body: {'username': username.text , 'password' :password.text });
-                      Map<String, dynamic> user = jsonDecode(response.body);
                       print(response.body);
+                      Map<String, dynamic> user = jsonDecode(response.body);
                        if(user['message'].toString()=="Access denied") {
                          Navigator.of(context, rootNavigator: true).pop('dialog');
                         _login(user['message']);

@@ -132,7 +132,7 @@ class GalleryState extends State<GalleryForm> {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     pr_id = prefs.getString('project_id');
 
-    var url = 'https://www.buildahome.in/api/get_gallery_data.php?id=$pr_id';
+    var url = 'https://app.buildahome.in/api/get_gallery_data.php?id=$pr_id';
 
     var response = await http.get(url);
     entries = jsonDecode(response.body);
@@ -224,7 +224,7 @@ class GalleryState extends State<GalleryForm> {
                                     this.con,
                                     MaterialPageRoute(
                                         builder: (context) => FullScreenImage(
-                                            "https://buildahome.in/api/images/${entries[i]['image']}"
+                                            "https://app.buildahome.in/api/images/${entries[i]['image']}"
                                         )),
                                   );
                                 },
@@ -239,7 +239,7 @@ class GalleryState extends State<GalleryForm> {
                                         ),
                                         
                                     imageUrl:
-                                        "https://buildahome.in/api/images/${entries[i]['image']}",
+                                        "https://app.buildahome.in/api/images/${entries[i]['image']}",
                                   ),)
                           )
                   ],

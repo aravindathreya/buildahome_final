@@ -29,7 +29,7 @@ class ChatboxState extends State<Chatbox> {
       }
     });
     var username = prefs.getString('username');
-    var url = 'https://www.buildahome.in/api/get_messages.php?username=${username}';
+    var url = 'https://app.buildahome.in/api/get_messages.php?username=${username}';
     var response = await http.get(url);
     var a = jsonDecode(response.body);
 
@@ -67,7 +67,7 @@ class ChatboxState extends State<Chatbox> {
       SharedPreferences prefs = await SharedPreferences.getInstance();
 
 
-      var url = 'https://www.buildahome.in/api/chatbox.php';
+      var url = 'https://app.buildahome.in/api/chatbox.php';
       var response = await http.post(url, body: {
         "msg": message.text,
         "sent_from_role": prefs.getString('role'),

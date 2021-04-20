@@ -7,7 +7,6 @@ import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'NavMenu.dart';
 import 'package:intl/intl.dart';
-import 'package:http/http.dart' as http;
 import 'dart:async';
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -25,12 +24,12 @@ class AdminChatboxState extends State<AdminChatbox> {
   var projects;
   var records;
   getInfo() async{
-    var response = await http.get("https://www.buildahome.in/api/view_all_projects.php");
+    var response = await http.get("https://app.buildahome.in/api/view_all_projects.php");
       var prs = {};
       records = jsonDecode(response.body);
       for(int i=0; i<records.length; i++){
         var name = records[i]['name'];
-        var url = "https://www.buildahome.in/api/get_latest_chat.php?username=$name";
+        var url = "https://app.buildahome.in/api/get_latest_chat.php?username=$name";
         print(url);
         var lastmessage = await http.get(url);
         print(lastmessage.body.toString());

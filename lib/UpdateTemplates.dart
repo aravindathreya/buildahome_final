@@ -17,7 +17,7 @@ class UpdateTemplates extends StatelessWidget{
 
         content:
         FutureBuilder(
-            future: http.get("https://www.buildahome.in/api/update_templates.php",),
+            future: http.get("https://app.buildahome.in/api/update_templates.php",),
             builder: (context, snapshot) {
               switch (snapshot.connectionState) {
                 case ConnectionState.none:

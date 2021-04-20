@@ -381,7 +381,7 @@ class TaskScreen extends State<TaskScreenClass> {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     var id = prefs.getString('project_id');
 
-    var url = 'https://www.buildahome.in/api/get_all_tasks.php?project_id=$id ';
+    var url = 'https://app.buildahome.in/api/get_all_tasks.php?project_id=$id ';
     var response = await http.get(url);
     setState(() {
       body = jsonDecode(response.body);

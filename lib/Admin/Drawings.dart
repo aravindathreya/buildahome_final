@@ -91,8 +91,13 @@ class DocumentObjectState extends State<DocumentObject> {
                 for(int x=0;x<this.children.length;x++)
                   InkWell(
                     onTap: () => {
-                      showDialog(context: context,child: AlertDialog(content: Text("Loading..."))),
-                      _launchURL("https://www.buildahome.in/team/Drawings/"+children[x].toString()),
+                      showDialog(
+                          context: context,
+                          builder: (BuildContext ctx) {
+                            AlertDialog(content: Text("Loading..."));
+                          }
+                      ),
+                      _launchURL("https://app.buildahome.in/team/Drawings/"+children[x].toString()),
                     },
                     child: Container(
                     alignment: Alignment.centerLeft,
@@ -133,7 +138,7 @@ class DocumentsState extends State<Documents> {
     set_project_id(this.id);
     SharedPreferences prefs = await SharedPreferences.getInstance();
     var id = prefs.getString('project_id');
-    var url = 'https://www.buildahome.in/api/view_all_documents.php?id=$id';
+    var url = 'https://app.buildahome.in/api/view_all_documents.php?id=$id';
     var response = await http.get(url);
     
 

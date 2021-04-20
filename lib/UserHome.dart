@@ -145,7 +145,7 @@ class LatestUpdateState extends State<LatestUpdate> {
     
     _messaging.subscribeToTopic(username);
     
-    var url = 'https://www.buildahome.in/api/latest_update.php?id=${id}';
+    var url = 'https://app.buildahome.in/api/latest_update.php?id=${id}';
     var response = await http.get(url);
     if (response.body.trim() != "No updates") {
       body = jsonDecode(response.body);

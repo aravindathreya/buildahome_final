@@ -453,7 +453,7 @@ class TaskScreen extends State<TaskScreenClass> {
     var p_id = prefs.getString('project_id');
 
     if (p_id != null) {
-      var url = 'https://www.buildahome.in/api/get_all_tasks.php?project_id=$p_id&nt_toggle=0';
+      var url = 'https://app.buildahome.in/api/get_all_tasks.php?project_id=$p_id&nt_toggle=0';
       print(url);
       var response = await http.get(url);
       setState(() {

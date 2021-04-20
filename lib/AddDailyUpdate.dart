@@ -124,7 +124,7 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
 
   postImage(image) async{
 
-    var uri = Uri.parse("https://buildahome.in/api/upload_image.php");
+    var uri = Uri.parse("https://app.buildahome.in/api/upload_image.php");
     var request = new http.MultipartRequest("POST", uri);
 
     var pic = await http.MultipartFile.fromPath("image", image.path);
@@ -500,7 +500,7 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
                                 });
 
                             var url =
-                                'https://www.buildahome.in/api/add_daily_update.php';
+                                'https://app.buildahome.in/api/add_daily_update.php';
                             for(int x=0;x<update_pictures.length;x++) {
                               var response = await http.post(url, body: {
                                 'pr_id': project_id.toString(),
