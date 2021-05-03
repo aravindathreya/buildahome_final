@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CLIENT_ID</key>
+	<string>640173190652-78t6hetei1m6hde4o3o85j2o8b1ldncm.apps.googleusercontent.com</string>
+	<key>REVERSED_CLIENT_ID</key>
+	<string>com.googleusercontent.apps.640173190652-78t6hetei1m6hde4o3o85j2o8b1ldncm</string>
+	<key>ANDROID_CLIENT_ID</key>
+	<string>640173190652-bmlii256f9u6bffvev94b7m77gfl1te2.apps.googleusercontent.com</string>
+	<key>API_KEY</key>
+	<string>AIzaSyCyO13xKffO0EAx2_cdR1Q5Hpdfi1Otn9c</string>
+	<key>GCM_SENDER_ID</key>
+	<string>640173190652</string>
+	<key>PLIST_VERSION</key>
+	<string>1</string>
+	<key>BUNDLE_ID</key>
+	<string>buildahome.buildahome</string>
+	<key>PROJECT_ID</key>
+	<string>buildahome-1533208496586</string>
+	<key>STORAGE_BUCKET</key>
+	<string>buildahome-1533208496586.appspot.com</string>
+	<key>IS_ADS_ENABLED</key>
+	<false></false>
+	<key>IS_ANALYTICS_ENABLED</key>
+	<false></false>
+	<key>IS_APPINVITE_ENABLED</key>
+	<true></true>
+	<key>IS_GCM_ENABLED</key>
+	<true></true>
+	<key>IS_SIGNIN_ENABLED</key>
+	<true></true>
+	<key>GOOGLE_APP_ID</key>
+	<string>1:640173190652:ios:fa21335e9c5f3f04ae1679</string>
+	<key>DATABASE_URL</key>
+	<string>https://buildahome-1533208496586.firebaseio.com</string>
+</dict>
+</plist>
