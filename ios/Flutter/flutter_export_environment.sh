@@ -4,7 +4,11 @@ export "FLUTTER_ROOT=/Users/linus/Documents/flutter"
 export "FLUTTER_APPLICATION_PATH=/Users/linus/Documents/buildahome_final"
 export "FLUTTER_TARGET=lib/main.dart"
 export "FLUTTER_BUILD_DIR=build"
+<<<<<<< Updated upstream
 export "SYMROOT=${SOURCE_ROOT}/../build/ios"
+=======
+export "SYMROOT=${SOURCE_ROOT}/../build\ios"
+>>>>>>> Stashed changes
 export "FLUTTER_BUILD_NAME=1.0.6"
 export "FLUTTER_BUILD_NUMBER=6"
 export "DART_OBFUSCATION=false"

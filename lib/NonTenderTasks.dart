@@ -12,7 +12,7 @@ class NonTenderTaskWidget extends StatelessWidget {
     final appTitle = 'buildAhome';
 
     final GlobalKey<ScaffoldState> _scaffoldKey =
-    new GlobalKey<ScaffoldState>();
+        new GlobalKey<ScaffoldState>();
     return MaterialApp(
       title: appTitle,
       theme: ThemeData(fontFamily: MyApp().fontName),
@@ -33,16 +33,16 @@ class NonTenderTaskWidget extends StatelessWidget {
           backgroundColor: Color(0xFF000055),
         ),
         drawer: NavMenuWidget(),
-        body: PaymentTasksClass(),
+        body: NTPaymentTasksClass(),
       ),
     );
   }
 }
 
-class PaymentTasksClass extends StatefulWidget {
+class NTPaymentTasksClass extends StatefulWidget {
   @override
-  PaymentTasks createState() {
-    return PaymentTasks();
+  NTPaymentTasks createState() {
+    return NTPaymentTasks();
   }
 }
 
@@ -61,12 +61,20 @@ class TaskItem extends StatefulWidget {
 
   @override
   TaskItemWidget createState() {
-    return TaskItemWidget(this._Task_name, this._icon, this._start_date,
-        this._end_date, this._color, this._height, this._payment_percentage, this.status);
+    return TaskItemWidget(
+        this._Task_name,
+        this._icon,
+        this._start_date,
+        this._end_date,
+        this._color,
+        this._height,
+        this._payment_percentage,
+        this.status);
   }
 }
 
-class TaskItemWidget extends State<TaskItem> with SingleTickerProviderStateMixin {
+class TaskItemWidget extends State<TaskItem>
+    with SingleTickerProviderStateMixin {
   String _Task_name;
   var _icon = Icons.home;
   var _start_date;
@@ -79,7 +87,7 @@ class TaskItemWidget extends State<TaskItem> with SingleTickerProviderStateMixin
   var spr_radius = 1.0;
   var pad = 10.0;
   var value_str;
-  var value =0;
+  var value = 0;
   var status;
   var amt;
 
@@ -88,31 +96,27 @@ class TaskItemWidget extends State<TaskItem> with SingleTickerProviderStateMixin
     super.initState();
     _set_value();
     _progress();
-
   }
 
-  _set_value() async{
+  _set_value() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     value_str = prefs.getString('project_value');
+    if (value_str == null) value_str = '0';
     value = int.parse(value_str);
     setState(() {
-      amt = ((int.parse(this._payment_percentage))/100 ) * value;
-
+      amt = ((int.parse(this._payment_percentage)) / 100) * value;
     });
   }
-  _progress() {
 
-    if (this.status=='not due')
-    {
+  _progress() {
+    if (this.status == 'not due') {
       this._color = Colors.white;
       this._text_color = Colors.black;
-    }
-    else if (this.status=='paid'){
-      this._color = Colors.green;
+    } else if (this.status == 'paid') {
+      this._color = Color(0xff009900);
       this._text_color = Colors.white;
-    }
-    else{
-      this._color = Colors.deepOrange;
+    } else {
+      this._color = Color(0xFF7b0909);
       this._text_color = Colors.white;
     }
   }
@@ -142,76 +146,78 @@ class TaskItemWidget extends State<TaskItem> with SingleTickerProviderStateMixin
       children: <Widget>[
         Container(
             child: AnimatedContainer(
-              duration: Duration(milliseconds: 500),
-              decoration: BoxDecoration(
-                  color: this._color,
-                  boxShadow: [
-                    new BoxShadow(
-                        color: Colors.grey[400],
-                        blurRadius: 10,
-                        spreadRadius: this.spr_radius,
-                        offset: Offset(0.0, 10.0))
-                  ],
-                  border: Border.all(color: Colors.black, width: 2.0)),
-              padding: EdgeInsets.all(this.pad),
-              child: Container(
-                decoration: BoxDecoration(
-                  color: this._color,
-                ),
-                child: Column(children: <Widget>[
-                  AnimatedContainer(
-                    duration: Duration(milliseconds: 900),
-                    padding: EdgeInsets.only(left: 7),
-                    child: Row(
-                      children: <Widget>[
-                        InkWell(
-                          onTap: _expand_collapse,
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: <Widget>[
-                              Container(
-                                width: MediaQuery.of(context).size.width * .8,
-                                child: Text(
-                                  this._Task_name,
-                                  textAlign: TextAlign.left,
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    color: this._text_color,
-                                  ),
-                                ),
+          margin: EdgeInsets.all(10),
+          duration: Duration(milliseconds: 500),
+          decoration: BoxDecoration(
+              color: this._color,
+              borderRadius: BorderRadius.circular(5),
+              boxShadow: [
+                new BoxShadow(
+                    color: Colors.grey[400],
+                    blurRadius: 10,
+                    spreadRadius: this.spr_radius,
+                    offset: Offset(0.0, 10.0))
+              ],
+              border: Border.all(color: Colors.black, width: 0.1)),
+          padding: EdgeInsets.all(this.pad),
+          child: Container(
+            decoration: BoxDecoration(
+              color: this._color,
+            ),
+            child: Column(children: <Widget>[
+              AnimatedContainer(
+                duration: Duration(milliseconds: 900),
+                padding: EdgeInsets.only(left: 7),
+                child: Row(
+                  children: <Widget>[
+                    InkWell(
+                      onTap: _expand_collapse,
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: <Widget>[
+                          Container(
+                            width: MediaQuery.of(context).size.width * .8,
+                            child: Text(
+                              this._Task_name,
+                              textAlign: TextAlign.left,
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: this._text_color,
                               ),
-                              new Icon(view, color: this._text_color),
-                            ],
+                            ),
                           ),
-                        ),
-                      ],
+                          new Icon(view, color: this._text_color),
+                        ],
+                      ),
                     ),
-                  ),
-                  Visibility(
-                      visible: this.vis,
-                      child: Container(
-                          padding: EdgeInsets.all(10),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: <Widget>[
-                              Text(
-                                "₹  "+this._payment_percentage.toString(),
-                                style: TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.bold,
-                                    color: this._text_color),
-                              )
-                            ],
-                          ))),
-                ]),
+                  ],
+                ),
               ),
-            )),
+              Visibility(
+                  visible: this.vis,
+                  child: Container(
+                      padding: EdgeInsets.all(10),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: <Widget>[
+                          Text(
+                            "₹  " + this._payment_percentage.toString(),
+                            style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                color: this._text_color),
+                          )
+                        ],
+                      ))),
+            ]),
+          ),
+        )),
       ],
     );
   }
 }
 
-class PaymentTasks extends State<PaymentTasksClass> {
+class NTPaymentTasks extends State<NTPaymentTasksClass> {
   var body;
   var outstanding = '';
   var total_paid = '';
@@ -228,7 +234,8 @@ class PaymentTasks extends State<PaymentTasksClass> {
   call() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     var id = prefs.getString('project_id');
-    var url = 'https://app.buildahome.in/api/get_all_non_tender.php?project_id=$id ';
+    var url =
+        'https://app.buildahome.in/api/get_all_non_tender.php?project_id=$id ';
     var response = await http.get(url);
     print(response.body);
     var url1 = 'https://app.buildahome.in/api/get_payment.php?project_id=$id ';
@@ -249,34 +256,40 @@ class PaymentTasks extends State<PaymentTasksClass> {
   Widget build(BuildContext context) {
     return ListView(children: <Widget>[
       Container(
-          padding: EdgeInsets.only(top: 20, left: 10, bottom: 10),
-          decoration: BoxDecoration(
-              border: Border(
-                bottom: BorderSide(width: 6.0, color: Colors.indigo[900]),
-              )),
+          margin: EdgeInsets.only(top: 20, left: 10, bottom: 10),
           child: Text("Non Tender Payments",
               style: TextStyle(
                 fontSize: 20,
               ))),
       Container(
+        height: 2,
+        color: Colors.indigo[900],
+        width: 200,
+        margin: EdgeInsets.only(left: 10, right: 100),
+      ),
+      Container(
         padding: EdgeInsets.all(10),
-        child: Column(
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: <Widget>[
             Container(
+              padding: EdgeInsets.only(top: 15),
               child: Row(
                 children: <Widget>[
                   Container(
                     padding: EdgeInsets.only(right: 10),
-                    height: 10,
-                    width: 10,
+                    height: 20,
+                    width: 20,
                     decoration: BoxDecoration(
-                        color: Colors.deepOrange,
-                        border: Border.all()
-                    ),
+                        color: Colors.deepOrange[700],
+                        borderRadius: BorderRadius.circular(5)),
                   ),
                   Container(
                       padding: EdgeInsets.only(left: 5),
-                      child: Text("Due")),
+                      child: Text(
+                        "Due",
+                        style: TextStyle(fontSize: 16),
+                      )),
                 ],
               ),
             ),
@@ -286,17 +299,18 @@ class PaymentTasks extends State<PaymentTasksClass> {
                 children: <Widget>[
                   Container(
                     padding: EdgeInsets.only(right: 10),
-                    height: 10,
-                    width: 10,
+                    height: 20,
+                    width: 20,
                     decoration: BoxDecoration(
-                        border: Border.all(),
-                        color: Colors.green
-                    ),
+                        borderRadius: BorderRadius.circular(5),
+                        color: Colors.green[400]),
                   ),
                   Container(
                       padding: EdgeInsets.only(left: 5),
-                      child: Text("Paid")
-                  ),
+                      child: Text(
+                        "Paid",
+                        style: TextStyle(fontSize: 16),
+                      )),
                 ],
               ),
             ),
@@ -306,16 +320,19 @@ class PaymentTasks extends State<PaymentTasksClass> {
                 children: <Widget>[
                   Container(
                     padding: EdgeInsets.only(right: 10),
-                    height: 10,
-                    width: 10,
+                    height: 20,
+                    width: 20,
                     decoration: BoxDecoration(
                         color: Colors.white70,
-                        border: Border.all()
-                    ),
+                        border: Border.all(color: Colors.grey[300]),
+                        borderRadius: BorderRadius.circular(5)),
                   ),
                   Container(
                       padding: EdgeInsets.only(left: 5),
-                      child: Text("Ongoing tasks"))
+                      child: Text(
+                        "Ongoing tasks",
+                        style: TextStyle(fontSize: 16),
+                      ))
                 ],
               ),
             ),
@@ -330,63 +347,44 @@ class PaymentTasks extends State<PaymentTasksClass> {
           borderRadius: BorderRadius.circular(5),
         ),
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
             Container(
-              padding: EdgeInsets.symmetric(vertical: 5),
-              child: Row(
-                children: <Widget>[
-                Container(
-                  width: 150,
-                  child: Text("Project Value :", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold))
-                ),
-                Container(
-                  child: Text("₹ "+project_value, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold))
-                )
-              ],)
-            ),
-            // Container(
-            //   padding: EdgeInsets.symmetric(vertical: 5),
-            //   child: Row(
-            //     children: <Widget>[
-            //     Container(
-            //       width: 150,
-            //       child: Text("Amount paid :", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.green))
-            //     ),
-            //     Container(
-            //       child: Text("₹ 3,00,000", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.green))
-            //     )
-            //   ],)
-            // ),
+                child: Text("Project Value :", style: TextStyle(fontSize: 12))),
             Container(
-              padding: EdgeInsets.symmetric(vertical: 5),
-              child: Row(
-                children: <Widget>[
-                Container(
-                  width: 150,
-                  child: Text("Paid till date :", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.green[500]))
-                ),
-                Container(
-                  child: Text("₹ "+total_paid, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.green[500]))
-                )
-              ],)
-            ),
+                margin: EdgeInsets.only(top: 5),
+                child: Text("₹ " + project_value,
+                    style:
+                        TextStyle(fontSize: 18, fontWeight: FontWeight.bold))),
             Container(
-              padding: EdgeInsets.symmetric(vertical: 5),
-              child: Row(
-                children: <Widget>[
-                Container(
-                  width: 150,
-                  child: Text("Current Outstanding :", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.red[500]))
-                ),
-                Container(
-                  child: Text("₹ "+outstanding, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.red[500]))
-                )
-              ],)
-            )
+                margin: EdgeInsets.only(top: 15),
+                child: Text("Paid till date :",
+                    style: TextStyle(
+                      fontSize: 12,
+                    ))),
+            Container(
+                margin: EdgeInsets.only(top: 5),
+                child: Text("₹ " + total_paid,
+                    style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.green[500]))),
+            Container(
+                margin: EdgeInsets.only(top: 15),
+                child: Text("Current Outstanding :",
+                    style: TextStyle(
+                      fontSize: 12,
+                    ))),
+            Container(
+                margin: EdgeInsets.only(top: 5),
+                child: Text("₹ " + outstanding,
+                    style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.red[500]))),
           ],
         ),
       ),
-      
       new ListView.builder(
           shrinkWrap: true,
           physics: BouncingScrollPhysics(),
@@ -394,15 +392,11 @@ class PaymentTasks extends State<PaymentTasksClass> {
           itemBuilder: (BuildContext ctxt, int Index) {
             return Container(
               child: TaskItem(
-
                   body[Index]['task_name'].toString(),
                   body[Index]['start_date'].toString(),
                   body[Index]['end_date'].toString(),
                   body[Index]['payment'].toString(),
-                  body[Index]['paid'].toString()
-              ),
-
-
+                  body[Index]['paid'].toString()),
             );
           }),
     ]);

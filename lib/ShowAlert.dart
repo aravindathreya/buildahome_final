@@ -22,6 +22,7 @@ class ShowAlert extends StatelessWidget{
                 Row(children: <Widget>[
                   Icon(Icons.check_circle, color: Colors.green[800], size: 30),
                   Container(
+                    width: 200,
                     padding: EdgeInsets.only(left: 10),
                     child: Text(this.mesaage, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
                   ),

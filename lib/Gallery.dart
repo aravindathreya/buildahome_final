@@ -1,5 +1,3 @@
-
-
 import 'package:flutter/material.dart';
 import 'package:flutter/widgets.dart';
 import 'dart:convert';
@@ -17,83 +15,13 @@ import "Payments.dart";
 BuildContext context;
 var images = {};
 
-
 class Gallery extends StatelessWidget {
   @override
   Widget build(context) {
     final appTitle = 'buildAhome';
     final GlobalKey<ScaffoldState> _scaffoldKey =
         new GlobalKey<ScaffoldState>();
-    return MaterialApp(
-      title: appTitle,
-      theme: ThemeData(fontFamily: MyApp().fontName),
-      home: Scaffold(
-        key: _scaffoldKey, // ADD THIS LINE
-        drawer: NavMenuWidget(),
-        appBar: AppBar(
-          automaticallyImplyLeading: false,
-          title: Text(appTitle, style: TextStyle(fontFamily: "PatuaOne"),),
-          leading: new IconButton(
-              icon: new Icon(Icons.menu),
-              onPressed: () => _scaffoldKey.currentState.openDrawer()),
-          backgroundColor: Color(0xFF000055),
-        ),
-        body: GalleryForm(context),
-        bottomNavigationBar: BottomNavigationBar(
-          currentIndex: 3 ,
-          selectedItemColor: Colors.indigo[900],
-
-          onTap: (int index) {
-            if(index==0){
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => Home()),
-              );
-            }
-            else if(index==1){
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => TaskWidget()),
-              );
-            }
-            else if(index==2){
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => PaymentTaskWidget()),
-              );
-            }
-            else if(index==3){
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => Gallery()),
-              );
-            }
-          },
-          unselectedItemColor: Colors.grey[400],
-
-          type: BottomNavigationBarType.fixed,
-          items: [
-            BottomNavigationBarItem(
-
-              icon: Icon(Icons.home, ),
-              title: Text('Home', style: TextStyle(fontSize: 12),),
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.access_time, ),
-              title: Text('Scheduler', style: TextStyle(fontSize: 12),),
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.payment,),
-              title: Text('Payment', style: TextStyle( fontSize: 12),),
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.photo_album, ),
-              title: Text("Gallery", style: TextStyle(fontSize: 12),),
-            ),
-          ],
-        ),
-      ),
-    );
+    return GalleryForm(context);
   }
 }
 
@@ -125,10 +53,9 @@ class GalleryState extends State<GalleryForm> {
   var updates = [];
   var subset = [];
   var pr_id;
-  var dates={};
+  var dates = {};
 
   call() async {
-
     SharedPreferences prefs = await SharedPreferences.getInstance();
     pr_id = prefs.getString('project_id');
 
@@ -136,6 +63,7 @@ class GalleryState extends State<GalleryForm> {
 
     var response = await http.get(url);
     entries = jsonDecode(response.body);
+    print(entries);
     entries_count = entries.length;
     for (int i = 0; i < entries_count; i++) {
       if (subset.contains(entries[i]['date']) == false) {
@@ -146,7 +74,6 @@ class GalleryState extends State<GalleryForm> {
     }
   }
 
-
   _image_func(_image_string, update_id) {
     var stripped = _image_string
         .toString()
@@ -155,8 +82,7 @@ class GalleryState extends State<GalleryForm> {
 
     if (imageAsBytes != null) {
       var actual_image = new Image.memory(imageAsBytes);
-      if (update_id != "From list")
-        images[update_id] = _image_string;
+      if (update_id != "From list") images[update_id] = _image_string;
       Uint8List bytes = base64Decode(stripped);
       return InkWell(
           child: actual_image,
@@ -165,91 +91,90 @@ class GalleryState extends State<GalleryForm> {
               context,
               MaterialPageRoute(
                   builder: (context) => FullScreenImage(
-                    MemoryImage(bytes),
-                  )),
+                        MemoryImage(bytes),
+                      )),
             );
           });
     } else {
       return Container(
-          padding: EdgeInsets.all(30),
-          width: 100,
-          height: 100,
-          color: Colors.grey[100],
-          child: CircularProgressIndicator());
+        padding: EdgeInsets.all(30),
+        width: 100,
+        height: 100,
+        color: Colors.grey[200],
+      );
     }
   }
 
   @override
   Widget build(context) {
-    return new ListView.builder(
-        padding: EdgeInsets.all(10),
-        shrinkWrap: true,
-        itemCount: subset==null? 0: subset.length,
-        itemBuilder: (context, int Index) {
-
-          return Column(
+    return Container(
+      padding: EdgeInsets.only(bottom: 100),
+      child: new ListView.builder(
+          padding: EdgeInsets.all(10),
+          shrinkWrap: true,
+          itemCount: subset == null ? 0 : subset.length,
+          itemBuilder: (context, int Index) {
+            return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
                 Container(
-                  padding: EdgeInsets.only(bottom: 5, top:10),
-                  child: Text(subset[Index], style: TextStyle(fontWeight: FontWeight.bold)),
+                  padding: EdgeInsets.only(bottom: 15, top: 20),
+                  child: Text(subset[Index],
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 12,
+                      )),
                 ),
-
                 Wrap(
                   children: <Widget>[
-                    for(int i = 0; i < entries.length; i++)
-                      if(entries[i]['date'] == subset[Index])
-                        if(images.containsKey(entries[i]['image_id']))
+                    for (int i = 0; i < entries.length; i++)
+                      if (entries[i]['date'] == subset[Index])
+                        if (images.containsKey(entries[i]['image_id']))
                           Container(
-
-                              width: (MediaQuery.of(context).size.width-20)/3,
-                              height: (MediaQuery.of(context).size.width-20)/3,
+                              width:
+                                  (MediaQuery.of(context).size.width - 20) / 3,
+                              height:
+                                  (MediaQuery.of(context).size.width - 20) / 3,
                               decoration: BoxDecoration(
                                 border: Border.all(),
                               ),
                               child: _image_func(
-                                  images[entries[i]['image_id']], "From list")
-                          )
+                                  images[entries[i]['image_id']], "From list"))
                         else
                           Container(
-                            width: (MediaQuery.of(context).size.width - 20) / 3,
-                            height: (MediaQuery.of(context).size.width - 20) / 3,
-                            decoration: BoxDecoration(
-                              border: Border.all(),
-                            ),
-                            child: InkWell(
-                                onTap: ()  {
+                              width:
+                                  (MediaQuery.of(context).size.width - 20) / 3,
+                              height:
+                                  (MediaQuery.of(context).size.width - 20) / 3,
+                              decoration: BoxDecoration(
+                                border: Border.all(
+                                    width: 0.5, color: Colors.grey[300]),
+                              ),
+                              child: InkWell(
+                                onTap: () {
                                   Navigator.push(
-                                    
                                     this.con,
                                     MaterialPageRoute(
                                         builder: (context) => FullScreenImage(
-                                            "https://app.buildahome.in/api/images/${entries[i]['image']}"
-                                        )),
+                                            "https://app.buildahome.in/api/images/${entries[i]['image']}")),
                                   );
                                 },
                                 child: CachedNetworkImage(
-                                    progressIndicatorBuilder: (context, url, progress) =>
-                                        Container(
-                                          height: 20, 
-                                          width: 20,
-                                          child: CircularProgressIndicator(
-                                            value: progress.progress,
-                                          ),
-                                        ),
-                                        
-                                    imageUrl:
-                                        "https://app.buildahome.in/api/images/${entries[i]['image']}",
-                                  ),)
-                          )
+                                  fit: BoxFit.cover,
+                                  progressIndicatorBuilder:
+                                      (context, url, progress) => Container(
+                                    height: 20,
+                                    width: 20,
+                                  ),
+                                  imageUrl:
+                                      "https://app.buildahome.in/api/images/${entries[i]['image']}",
+                                ),
+                              ))
                   ],
                 )
               ],
             );
-
-
-
-        });
-
+          }),
+    );
   }
 }

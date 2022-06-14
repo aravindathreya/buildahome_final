@@ -1,3 +1,4 @@
+import 'package:buildahome/UserHome.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'dart:convert';
@@ -6,7 +7,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'NavMenu.dart';
 import 'package:flutter_spinkit/flutter_spinkit.dart';
 import 'main.dart';
-import 'Admin/Dpr.dart';
 
 class AdminDashboard extends StatelessWidget {
   final GlobalKey<ScaffoldState> _scaffoldKey = new GlobalKey<ScaffoldState>();
@@ -76,6 +76,7 @@ class DashboardState extends State<Dashboard> {
         .get("https://app.buildahome.in/api/projects_access.php?id=${user_id}");
 
     setState(() {
+      print(data);
       data = jsonDecode(response.body);
       search_data = data;
       value = prefs.getString('project_value');
@@ -86,7 +87,6 @@ class DashboardState extends State<Dashboard> {
 
   Widget build(BuildContext context) {
     return Container(
-//        padding: EdgeInsets.all(20),
         child: ListView(
       padding: EdgeInsets.all(25),
       children: <Widget>[
@@ -141,77 +141,117 @@ class DashboardState extends State<Dashboard> {
               BoxDecoration(border: Border(bottom: BorderSide(width: 3))),
         ),
         Container(
-          margin: EdgeInsets.only(bottom: 10, top: 10),
-          color: Colors.white,
-          child: TextFormField(
-            onChanged: (text) {
-              setState(() {
-                search_data= [];
-                for(int i=0;i<data.length; i++){
-                  if(text.trim()==""){
-                    search_data.add(data[i]);
-                  } else if(data[i]['name'].toLowerCase().contains(text)){
-                    search_data.add(data[i]);
+            margin: EdgeInsets.only(bottom: 10, top: 10),
+            color: Colors.white,
+            child: TextFormField(
+              onChanged: (text) {
+                setState(() {
+                  search_data = [];
+                  for (int i = 0; i < data.length; i++) {
+                    if (text.toLowerCase().trim() == "") {
+                      search_data.add(data[i]);
+                    } else if (data[i]['name'].toLowerCase().contains(text)) {
+                      search_data.add(data[i]);
+                    }
                   }
-                }
-              });
-            },
-            decoration: InputDecoration(
-              border: OutlineInputBorder(),
-              suffixIcon: InkWell(
-                child: Icon(Icons.search)  
+                });
+              },
+              decoration: InputDecoration(
+                hintText: 'Search project',
+                contentPadding: EdgeInsets.all(10),
+                suffixIcon: InkWell(child: Icon(Icons.search)),
               ),
-              
-            ),
-          )
-        ),
+            )),
+        if (search_data == null)
+          ListView.builder(
+              shrinkWrap: true,
+              physics: new BouncingScrollPhysics(),
+              scrollDirection: Axis.vertical,
+              itemCount: 10,
+              itemBuilder: (BuildContext ctxt, int Index) {
+                return Container(
+                    padding: EdgeInsets.all(15),
+                    margin: EdgeInsets.only(bottom: 10),
+                    decoration: BoxDecoration(
+                      color: Colors.grey[200],
+                      shape: BoxShape.rectangle,
+                      border: Border(
+                        bottom: BorderSide(width: 1.0, color: Colors.grey[300]),
+                      ),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        SpinKitRing(
+                          color: Color(0xFF03045E),
+                          size: 20,
+                          lineWidth: 2,
+                        ),
+                        Container(
+                            width: 60,
+                            child: Text('',
+                                style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold))),
+                        Container(
+                            child: Text('',
+                                style: TextStyle(
+                                    fontSize: 18, fontWeight: FontWeight.bold)))
+                      ],
+                    ));
+              }),
         ListView.builder(
             shrinkWrap: true,
             physics: new BouncingScrollPhysics(),
             scrollDirection: Axis.vertical,
             itemCount: search_data == null ? 0 : search_data.length,
             itemBuilder: (BuildContext ctxt, int Index) {
-              return InkWell(
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                          builder: (context) => Dpr(search_data[Index]['id'])),
-                    );
-                  },
-                  child: Container(
-                      padding: EdgeInsets.all(15),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        shape: BoxShape.rectangle,
-                        border: Border(
-                          bottom: BorderSide(width: 1.0, color: Colors.black54),
-                        ),
-                        boxShadow: [
-                          new BoxShadow(
-                            color: Colors.black12,
-                            blurRadius: 15,
-                            spreadRadius: 2,
-                          )
-                        ],
-                      ),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: <Widget>[
-                          Container(
-                            width: 60,
-                            child: Text((Index+1).toString()+".",
-                                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)
-                            )
+              return search_data[Index]['name'].trim().length > 0
+                  ? InkWell(
+                      onTap: () async {
+                        SharedPreferences prefs =
+                            await SharedPreferences.getInstance();
+                        await prefs.setString(
+                            "project_id", search_data[Index]['id'].toString());
+                        await prefs.setString("client_name",
+                            search_data[Index]['name'].toString());
+
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (context) => Home()),
+                        );
+                      },
+                      child: Container(
+                          padding: EdgeInsets.symmetric(
+                              horizontal: 15, vertical: 20),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            shape: BoxShape.rectangle,
+                            border: Border(
+                              bottom: BorderSide(
+                                  width: 1.0, color: Colors.grey[300]),
+                            ),
                           ),
-                          Container(
-                            child: Text(search_data[Index]['name'].trim(),
-                                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)
-                            )
-                          )
-                        ],
-                      )
-                      ));
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: <Widget>[
+                              Container(
+                                  width: 40,
+                                  child: Text((Index + 1).toString() + ".",
+                                      style: TextStyle(
+                                          fontSize: 18,
+                                          fontWeight: FontWeight.w500))),
+                              Container(
+                                  width:
+                                      MediaQuery.of(context).size.width * 0.65,
+                                  child: Text(search_data[Index]['name'].trim(),
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                          fontSize: 18,
+                                          fontWeight: FontWeight.w500)))
+                            ],
+                          )))
+                  : Container();
             })
       ],
     ));

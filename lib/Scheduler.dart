@@ -1,5 +1,6 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'NavMenu.dart';
@@ -7,7 +8,7 @@ import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:percent_indicator/linear_percent_indicator.dart';
 import 'main.dart';
-
+import 'package:flutter_spinkit/flutter_spinkit.dart';
 import "UserHome.dart";
 import "Payments.dart";
 import "Gallery.dart";
@@ -23,83 +24,7 @@ class TaskWidget extends StatelessWidget {
       theme: ThemeData(fontFamily: MyApp().fontName),
       home: Scaffold(
         key: _scaffoldKey,
-        drawer: NavMenuWidget(),
-        appBar: AppBar(
-          automaticallyImplyLeading: false,
-          title: Text(appTitle),
-          leading: new IconButton(
-              icon: new Icon(Icons.menu),
-              onPressed: () => _scaffoldKey.currentState.openDrawer()),
-          backgroundColor: Color(0xFF000055),
-        ),
         body: TaskScreenClass(),
-        bottomNavigationBar: BottomNavigationBar(
-          currentIndex: 1,
-          selectedItemColor: Colors.indigo[900],
-          onTap: (int index) {
-            if (index == 0) {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => Home()),
-              );
-            } else if (index == 1) {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => TaskWidget()),
-              );
-            } else if (index == 2) {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => PaymentTaskWidget()),
-              );
-            } else if (index == 3) {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => Gallery()),
-              );
-            }
-          },
-          unselectedItemColor: Colors.grey[400],
-          type: BottomNavigationBarType.fixed,
-          items: [
-            BottomNavigationBarItem(
-              icon: Icon(
-                Icons.home,
-              ),
-              title: Text(
-                'Home',
-                style: TextStyle(fontSize: 12),
-              ),
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(
-                Icons.access_time,
-              ),
-              title: Text(
-                'Scheduler',
-                style: TextStyle(fontSize: 12),
-              ),
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(
-                Icons.payment,
-              ),
-              title: Text(
-                'Payment',
-                style: TextStyle(fontSize: 12),
-              ),
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(
-                Icons.photo_album,
-              ),
-              title: Text(
-                "Gallery",
-                style: TextStyle(fontSize: 12),
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }
@@ -134,7 +59,8 @@ class TaskItem extends StatefulWidget {
   }
 }
 
-class TaskItemWidget extends State<TaskItem> with SingleTickerProviderStateMixin {
+class TaskItemWidget extends State<TaskItem>
+    with SingleTickerProviderStateMixin {
   String _Task_name;
   var _icon = Icons.home;
   var _start_date;
@@ -145,7 +71,7 @@ class TaskItemWidget extends State<TaskItem> with SingleTickerProviderStateMixin
   var _text_color = Colors.black;
   var _height = 50.0;
   var spr_radius = 1.0;
-  var pad = 10.0;
+  var pad = 15.0;
   var _progressStr;
   var note;
   var notes;
@@ -169,8 +95,10 @@ class TaskItemWidget extends State<TaskItem> with SingleTickerProviderStateMixin
   }
 
   _progress() {
+    print('${this._sub_tasks} Subtasks, ${_progressStr}');
     var total = this._sub_tasks.split("^");
     var done = (this._progressStr.split("|"));
+    print((done.length - 1) / (total.length - 1));
     return ((done.length - 1) / (total.length - 1));
   }
 
@@ -200,20 +128,16 @@ class TaskItemWidget extends State<TaskItem> with SingleTickerProviderStateMixin
             child: AnimatedContainer(
               duration: Duration(milliseconds: 500),
               decoration: BoxDecoration(
-                  color: Colors.white,
-                  boxShadow: [
-                    new BoxShadow(
-                        color: Colors.grey[400],
-                        blurRadius: 10,
-                        spreadRadius: this.spr_radius,
-                        offset: Offset(0.0, 10.0))
-                  ],
-                  border: Border.all(color: Colors.black, width: 2.0)),
+                color: Colors.grey[200],
+                borderRadius: BorderRadius.circular(5),
+              ),
               child: Container(
                 decoration: BoxDecoration(
                   color: this._color,
+                  border: Border(
+                      bottom: BorderSide(width: 1, color: Colors.grey[300])),
                 ),
-                padding: EdgeInsets.all(this.pad),
+                padding: EdgeInsets.symmetric(horizontal: 15, vertical: 20),
                 child: Column(children: <Widget>[
                   AnimatedContainer(
                     duration: Duration(milliseconds: 900),
@@ -228,10 +152,12 @@ class TaskItemWidget extends State<TaskItem> with SingleTickerProviderStateMixin
                               Container(
                                 width: MediaQuery.of(context).size.width * .8,
                                 child: Text(
-                                  this._Task_name,
+                                  this._text_color == Colors.green[600]
+                                      ? this._Task_name + " (Completed)"
+                                      : this._Task_name,
                                   textAlign: TextAlign.left,
                                   style: TextStyle(
-                                      fontSize: 14,
+                                      fontSize: 15,
                                       color: _text_color,
                                       fontWeight: FontWeight.bold),
                                 ),
@@ -255,10 +181,12 @@ class TaskItemWidget extends State<TaskItem> with SingleTickerProviderStateMixin
                                 Container(
                                     padding: EdgeInsets.only(left: 7, top: 10),
                                     child: Text(
-                                      DateFormat("dd MMM")
-                                          .format(
-                                              DateTime.parse(this._start_date))
-                                          .toString(),
+                                      this._start_date.trim() != ""
+                                          ? DateFormat("dd MMM")
+                                              .format(DateTime.parse(
+                                                  this._start_date))
+                                              .toString()
+                                          : "",
                                       style: TextStyle(
                                         fontSize: 12,
                                         color: Colors.black,
@@ -267,10 +195,12 @@ class TaskItemWidget extends State<TaskItem> with SingleTickerProviderStateMixin
                                 Container(
                                     padding: EdgeInsets.only(right: 7, top: 10),
                                     child: Text(
-                                      DateFormat("dd MMM")
-                                          .format(
-                                              DateTime.parse(this._end_date))
-                                          .toString(),
+                                      this._end_date.trim() != ''
+                                          ? DateFormat("dd MMM")
+                                              .format(DateTime.parse(
+                                                  this._end_date))
+                                              .toString()
+                                          : "",
                                       style: TextStyle(
                                         fontSize: 12,
                                         color: Colors.black,
@@ -279,18 +209,19 @@ class TaskItemWidget extends State<TaskItem> with SingleTickerProviderStateMixin
                               ],
                             ),
                             Container(
-                              padding: EdgeInsets.only(top: 0, bottom: 10),
+                              padding: EdgeInsets.only(top: 5, bottom: 10),
                               child: LinearPercentIndicator(
                                 lineHeight: 8.0,
                                 percent: _progress(),
                                 animation: true,
                                 animationDuration: 200,
                                 backgroundColor: Colors.grey[300],
-                                progressColor: Colors.indigo[500],
+                                progressColor: Colors.indigo[800],
+                                linearStrokeCap: LinearStrokeCap.butt,
                               ),
                             ),
                             Container(
-                              padding: EdgeInsets.only(top: 15),
+                              padding: EdgeInsets.only(top: 5),
                               child: ListView.builder(
                                   shrinkWrap: true,
                                   physics: NeverScrollableScrollPhysics(),
@@ -298,54 +229,62 @@ class TaskItemWidget extends State<TaskItem> with SingleTickerProviderStateMixin
                                       this._sub_tasks.split("^").length - 1,
                                   itemBuilder: (BuildContext ctxt, int Index) {
                                     var sub_tasks = _sub_tasks.split("^");
-
                                     var each_task = sub_tasks[Index].split("|");
-                                    if(each_task[0]!="")
-                                    return Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: <Widget>[
-                                        Wrap(
-                                          children: <Widget>[
-                                            Icon(Icons.arrow_right),
-                                            Container(
-                                                width: MediaQuery
-                                                    .of(context)
-                                                    .size
-                                                    .width *
-                                                    .75,
-                                                child: Text(
-                                                  DateFormat("dd MMM")
-                                                      .format(DateTime.parse(
-                                                      each_task[1]
-                                                          .toString()))
-                                                      .toString() +
-                                                      " to " +
-                                                      DateFormat("dd MMM")
-                                                          .format(
-                                                          DateTime.parse(
-                                                              each_task[2]
-                                                                  .toString()))
-                                                          .toString() +
-                                                      " : " +
-                                                      each_task[0].toString(),
-                                                  style: TextStyle(
-                                                      color: Colors.black),
-                                                )),
-                                          ],
-                                        ),
-                                        if(notes.length>Index && notes[Index].trim()!="")
-
-                                        Container(
-                                            alignment: Alignment.centerLeft,
-                                            padding: EdgeInsets.all(5),
-                                            child: Text(
-                                              notes[Index],
-                                              style: TextStyle(
-                                                  color: Colors.black,
-                                                  fontWeight: FontWeight.bold),
-                                            ))
-                                      ],
-                                    );
+                                    if (each_task[0] != "")
+                                      return Container(
+                                          margin: EdgeInsets.only(top: 12),
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: <Widget>[
+                                              Wrap(
+                                                children: <Widget>[
+                                                  Container(
+                                                      padding: EdgeInsets.only(
+                                                          left: 5),
+                                                      width:
+                                                          MediaQuery.of(context)
+                                                                  .size
+                                                                  .width *
+                                                              .75,
+                                                      child: Text(
+                                                        DateFormat("dd MMM")
+                                                                .format(DateTime
+                                                                    .parse(each_task[
+                                                                            1]
+                                                                        .toString()))
+                                                                .toString() +
+                                                            " to " +
+                                                            DateFormat("dd MMM")
+                                                                .format(DateTime
+                                                                    .parse(each_task[
+                                                                            2]
+                                                                        .toString()))
+                                                                .toString() +
+                                                            " : " +
+                                                            each_task[0]
+                                                                .toString(),
+                                                        style: TextStyle(
+                                                            color:
+                                                                Colors.black),
+                                                      )),
+                                                ],
+                                              ),
+                                              if (notes.length > Index &&
+                                                  notes[Index].trim() != "")
+                                                Container(
+                                                    alignment:
+                                                        Alignment.centerLeft,
+                                                    padding: EdgeInsets.all(5),
+                                                    child: Text(
+                                                      notes[Index],
+                                                      style: TextStyle(
+                                                        fontSize: 10,
+                                                        color: Colors.grey[500],
+                                                      ),
+                                                    ))
+                                            ],
+                                          ));
                                   }),
                             ),
                           ],
@@ -381,7 +320,8 @@ class TaskScreen extends State<TaskScreenClass> {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     var id = prefs.getString('project_id');
 
-    var url = 'https://app.buildahome.in/api/get_all_tasks.php?project_id=$id ';
+    var url =
+        'https://app.buildahome.in/api/get_all_tasks.php?project_id=$id&nt_toggle=1 ';
     var response = await http.get(url);
     setState(() {
       body = jsonDecode(response.body);
@@ -395,19 +335,39 @@ class TaskScreen extends State<TaskScreenClass> {
           padding: EdgeInsets.only(top: 20, left: 10, bottom: 10),
           decoration: BoxDecoration(
               border: Border(
-            bottom: BorderSide(width: 6.0, color: Colors.indigo[900]),
+            bottom: BorderSide(width: 3.0, color: Colors.indigo[900]),
           )),
           child: Text("What's done and what's not?",
               style: TextStyle(
                 fontSize: 20,
               ))),
+      if (body == null)
+        new ListView.builder(
+            shrinkWrap: true,
+            physics: BouncingScrollPhysics(),
+            itemCount: 10,
+            itemBuilder: (BuildContext ctxt, int Index) {
+              return Row(
+                mainAxisAlignment: MainAxisAlignment.start,
+                children: [
+                  Container(
+                    width: MediaQuery.of(context).size.width,
+                    alignment: Alignment.centerLeft,
+                    padding: EdgeInsets.symmetric(horizontal: 15, vertical: 25),
+                    decoration: BoxDecoration(
+                        color: Colors.grey[200],
+                        border: Border(
+                            bottom: BorderSide(color: Colors.grey[300]))),
+                  )
+                ],
+              );
+            }),
       new ListView.builder(
           shrinkWrap: true,
           physics: BouncingScrollPhysics(),
           itemCount: body == null ? 0 : body.length,
           itemBuilder: (BuildContext ctxt, int Index) {
             return Container(
-              padding: EdgeInsets.only(bottom: 12, left: 5, right: 5, top: 5),
               child: TaskItem(
                   body[Index]['task_name'].toString(),
                   body[Index]['start_date'].toString(),

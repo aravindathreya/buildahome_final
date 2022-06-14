@@ -97,7 +97,7 @@ class DocumentObjectState extends State<DocumentObject> {
                             AlertDialog(content: Text("Loading..."));
                           }
                       ),
-                      _launchURL("https://app.buildahome.in/team/Drawings/"+children[x].toString()),
+                      _launchURL("https://app.buildahome.in/team.dart/Drawings/"+children[x].toString()),
                     },
                     child: Container(
                     alignment: Alignment.centerLeft,
