@@ -11,6 +11,9 @@ import 'utilities/styles.dart';
 import 'widgets/material.dart';
 import 'widgets/material_units.dart';
 import 'package:intl/intl.dart';
+import 'package:file_picker/file_picker.dart';
+import 'dart:async';
+import 'dart:convert';
 
 class CreateIndentLayout extends StatelessWidget {
   @override
@@ -55,6 +58,8 @@ class CreateIndentState extends State<CreateIndent> {
   var purposeTextController = new TextEditingController();
   var diffCostTextController = new TextEditingController(text: '0');
   var approvalTaken = false;
+  var attached_file_name = '';
+  var attached_file;
 
   @override
   void initState() {
@@ -67,6 +72,22 @@ class CreateIndentState extends State<CreateIndent> {
     user_id = prefs.getString('user_id');
   }
 
+  void getFile() async {
+    var file = await FilePicker.getFile();
+
+    if (file != null) {
+      setState(() {
+        attached_file = file;
+        attached_file_name = 'Attached file: ' +
+            (file.path.split('/')[file.path.split('/').length - 1]);
+      });
+    } else {
+      setState(() {
+        attached_file_name = '';
+      });
+    }
+  }
+
   bool _isNumeric(String str) {
     if (str == null) {
       return false;
@@ -77,6 +98,7 @@ class CreateIndentState extends State<CreateIndent> {
   @override
   Widget build(BuildContext context) {
     return ListView(
+      padding: EdgeInsets.symmetric(horizontal: 15),
       children: [
         Container(
             margin: EdgeInsets.symmetric(horizontal: 10, vertical: 20),
@@ -110,7 +132,7 @@ class CreateIndentState extends State<CreateIndent> {
         InkWell(
           child: Container(
             padding: EdgeInsets.all(10),
-            margin: EdgeInsets.only(top: 10, bottom: 10, left: 10),
+            margin: EdgeInsets.all(10),
             decoration: get_button_decoration(),
             child: Text(material, style: get_button_text_style()),
           ),
@@ -165,7 +187,7 @@ class CreateIndentState extends State<CreateIndent> {
                 )),
             InkWell(
               child: Container(
-                width: (MediaQuery.of(context).size.width * .3) - 10,
+                width: (MediaQuery.of(context).size.width * .3) - 40,
                 padding: EdgeInsets.all(10),
                 margin: EdgeInsets.all(10),
                 alignment: Alignment.center,
@@ -193,8 +215,8 @@ class CreateIndentState extends State<CreateIndent> {
           ],
         )),
         Container(
-            margin: EdgeInsets.only(left: 10),
-            width: (MediaQuery.of(context).size.width * .7) - 20,
+            margin: EdgeInsets.only(left: 10, right: 10),
+            width: (MediaQuery.of(context).size.width * .7) - 50,
             child: TextFormField(
               controller: diffCostTextController,
               keyboardType: TextInputType.numberWithOptions(),
@@ -279,6 +301,40 @@ class CreateIndentState extends State<CreateIndent> {
                 return null;
               },
             )),
+        Container(
+            child: InkWell(
+          onTap: () async => getFile(),
+          child: Container(
+              margin: EdgeInsets.only(left: 10, right: 10),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                border: Border.all(width: 1.0, color: Colors.grey[300]),
+                borderRadius: BorderRadius.all(Radius.circular(5)),
+              ),
+              padding: EdgeInsets.all(15),
+              child: Row(
+                children: <Widget>[
+                  Container(
+                    decoration: BoxDecoration(
+                        borderRadius: BorderRadius.all(Radius.circular(50)),
+                        color: Colors.white),
+                    child: Icon(Icons.file_upload,
+                        size: 25, color: Colors.indigo[900]),
+                  ),
+                  Container(
+                      padding: EdgeInsets.only(left: 10),
+                      child: Text('Add attachment (Optional)',
+                          style: TextStyle(fontSize: 16)))
+                ],
+              )),
+        )),
+        Container(
+          margin: EdgeInsets.only(left: 15, bottom: 10, top: 10),
+          child: Text(
+            attached_file_name,
+            style: TextStyle(fontWeight: FontWeight.w600),
+          ),
+        ),
         InkWell(
           child: Container(
             alignment: Alignment.center,
@@ -443,6 +499,23 @@ class CreateIndentState extends State<CreateIndent> {
               'timestamp': formattedDate,
             });
             print(response.body);
+            var responseBody = jsonDecode(response.body);
+            var indent_id = responseBody['indent_id'];
+            if (attached_file_name != '') {
+              var uri = Uri.parse(
+                  "https://app.buildahome.in/erp/API/indent_file_uplpoad");
+              var request = new http.MultipartRequest("POST", uri);
+
+              var pic =
+                  await http.MultipartFile.fromPath("file", attached_file.path);
+
+              request.files.add(pic);
+              request.fields['indent_id'] = indent_id.toString();
+              var fileResponse = await request.send();
+              var responseData = await fileResponse.stream.toBytes();
+              var responseString = String.fromCharCodes(responseData);
+              print(responseString);
+            }
             Navigator.of(context, rootNavigator: true).pop();
             showDialog(
                 context: context,
@@ -459,6 +532,7 @@ class CreateIndentState extends State<CreateIndent> {
               purposeTextController.text = '';
               diffCostTextController.text = '0';
               approvalTaken = false;
+              attached_file_name = '';
             });
 
             //set_response_text(response.body);
