@@ -233,11 +233,6 @@ class NavMenuWidgetState extends State<NavMenuWidget> {
               child: NavMenuItem(
                   "My Notifications", Icons.notifications_on, Notifications()),
             ),
-            if (role == 'Client')
-              Container(
-                child: NavMenuItem("Notes and comments",
-                    Icons.chat_bubble_outline, NotesAndComments()),
-              ),
             Container(
               child: NavMenuItem("Log out", Icons.backspace, MyApp()),
             ),
