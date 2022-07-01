@@ -7,6 +7,7 @@ import 'NavMenu.dart';
 import 'package:percent_indicator/linear_percent_indicator.dart';
 import 'package:intl/intl.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'UserHome.dart';
 
 class UserDashboardScreen extends StatefulWidget {
   @override
@@ -22,11 +23,30 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
   var value = " ";
   var completed = "0";
   var updateResponseBody;
+  var blocked = false;
+  var block_reason = '';
 
   @override
   void initState() {
     super.initState();
+    set_project_status();
+
     call();
+  }
+
+  set_project_status() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    var id = prefs.getString('project_id');
+    var status_url =
+        'https://app.buildahome.in/erp/API/get_project_block_status?project_id=${id}';
+    var status_response = await http.get(status_url);
+    var status_response_body = jsonDecode(status_response.body);
+    if (status_response_body['status'] == 'blocked') {
+      setState(() {
+        blocked = true;
+        block_reason = status_response_body['reason'];
+      });
+    }
   }
 
   call() async {
@@ -122,15 +142,19 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
                 child: Stack(
                   alignment: Alignment.bottomRight,
                   children: [
-                    Container(
-                      width: MediaQuery.of(context).size.width - 40,
-                      height: MediaQuery.of(context).size.width - 40,
-                      decoration: BoxDecoration(
-                          color: Colors.grey[200],
-                          border: Border.all(width: 1, color: Colors.grey[200]),
-                          borderRadius: BorderRadius.circular(5)),
-                      child: Image.network(
-                          "https://app.buildahome.in/erp/static/files/mobile_banner.png"),
+                    Opacity(
+                      opacity: blocked ? 0.5 : 1,
+                      child: Container(
+                        width: MediaQuery.of(context).size.width - 40,
+                        height: MediaQuery.of(context).size.width - 40,
+                        decoration: BoxDecoration(
+                            color: Colors.grey[200],
+                            border:
+                                Border.all(width: 1, color: Colors.grey[200]),
+                            borderRadius: BorderRadius.circular(5)),
+                        child: Image.network(
+                            "https://app.buildahome.in/erp/static/files/mobile_banner.png"),
+                      ),
                     ),
                     Opacity(
                         opacity: 0.7,
@@ -146,6 +170,26 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
                   ],
                 ),
               ),
+              if (blocked == true)
+                Column(
+                  children: [
+                    Container(
+                        alignment: Alignment.centerLeft,
+                        child: Text("Project blocked",
+                            style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.red))),
+                    Container(
+                        alignment: Alignment.centerLeft,
+                        margin: EdgeInsets.only(bottom: 15),
+                        child: Text("Reason : " + block_reason.toString(),
+                            style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.red))),
+                  ],
+                ),
               Container(
                   alignment: Alignment.centerLeft,
                   child: Text("Here is how much is done",

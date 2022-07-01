@@ -135,6 +135,18 @@ class UserHomeScreenState extends State<UserHomeScreen> {
     "Payments",
     "Non tender payments",
   ];
+  var widgetList = [
+    UserDashboardScreen(),
+    TaskScreenClass(),
+    Gallery(),
+    Documents(),
+    NotesAndComments(),
+    PaymentTasksClass(),
+    NTPaymentTasksClass()
+  ];
+  var blocked = false;
+  var block_reason = '';
+
   var activeDecoration = BoxDecoration(
       color: Color(0xFF000055), borderRadius: BorderRadius.circular(20));
 
@@ -152,11 +164,44 @@ class UserHomeScreenState extends State<UserHomeScreen> {
           "Documents",
           "Notes and comments",
         ];
+        widgetList = [
+          Documents(),
+          NotesAndComments(),
+        ];
       });
     }
+
     if (role != 'Client') {
       setState(() {
         tabsList.add("PO and bills");
+        widgetList.add(POAndBills());
+      });
+    }
+  }
+
+  set_project_status() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    var id = prefs.getString('project_id');
+    var status_url =
+        'https://app.buildahome.in/erp/API/get_project_block_status?project_id=${id}';
+    var status_response = await http.get(status_url);
+    var status_response_body = jsonDecode(status_response.body);
+    if (status_response_body['status'] == 'blocked') {
+      setState(() {
+        blocked = true;
+        block_reason = status_response_body['reason'];
+        if (role == 'Client') {
+          tabsList = [
+            'My Home',
+            "Payments",
+            "Non tender payments",
+          ];
+          widgetList = [
+            UserDashboardScreen(),
+            PaymentTasksClass(),
+            NTPaymentTasksClass()
+          ];
+        }
       });
     }
   }
@@ -165,6 +210,7 @@ class UserHomeScreenState extends State<UserHomeScreen> {
   void initState() {
     super.initState();
     setUserRole();
+    set_project_status();
   }
 
   Widget build(BuildContext context) {
@@ -224,28 +270,7 @@ class UserHomeScreenState extends State<UserHomeScreen> {
               allowImplicitScrolling: false,
               physics: new NeverScrollableScrollPhysics(),
               children: [
-                if (role != 'Architect' && role != 'Senior Architect')
-                  UserDashboardScreen(),
-                if (role != 'Architect' && role != 'Senior Architect')
-                  TaskScreenClass(),
-                if (role != 'Architect' && role != 'Senior Architect')
-                  Gallery(),
-                Documents(),
-                NotesAndComments(),
-                if (role != '' &&
-                    role != 'Site Engineer' &&
-                    role != 'Architect' &&
-                    role != 'Senior Architect')
-                  PaymentTasksClass(),
-                if (role != '' &&
-                    role != 'Site Engineer' &&
-                    role != 'Architect' &&
-                    role != 'Senior Architect')
-                  NTPaymentTasksClass(),
-                if (role != 'Client' &&
-                    role != 'Architect' &&
-                    role != 'Senior Architect')
-                  POAndBills()
+                for (var i = 0; i < widgetList.length; i++) widgetList[i]
               ],
             )),
       ],

@@ -11,6 +11,8 @@ import 'utilities/styles.dart';
 import 'widgets/material.dart';
 import 'widgets/material_units.dart';
 import 'package:intl/intl.dart';
+import 'dart:async';
+import 'dart:convert';
 
 class EditIndentLayout extends StatelessWidget {
   var indent;
@@ -296,6 +298,17 @@ class EditIndentState extends State<EditIndent> {
                   '${quantityTextController.text} ${unit} ${material} Indent for project ${projectName} has been edited and approved by ${current_user_name}',
               'timestamp': formattedDate,
             });
+            var responseBody = jsonDecode(response.body);
+            if (responseBody['message'] == 'failure') {
+              Navigator.of(context, rootNavigator: true).pop();
+              showDialog(
+                  context: context,
+                  builder: (BuildContext context) {
+                    return ShowAlert(
+                        "Indent failed. " + responseBody['reason'], false);
+                  });
+              return;
+            }
 
             Navigator.of(context, rootNavigator: true).pop();
             showDialog(

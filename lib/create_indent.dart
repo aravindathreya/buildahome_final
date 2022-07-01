@@ -500,6 +500,16 @@ class CreateIndentState extends State<CreateIndent> {
             });
             print(response.body);
             var responseBody = jsonDecode(response.body);
+            if (responseBody['message'] == 'failure') {
+              Navigator.of(context, rootNavigator: true).pop();
+              showDialog(
+                  context: context,
+                  builder: (BuildContext context) {
+                    return ShowAlert(
+                        "Indent failed. " + responseBody['reason'], false);
+                  });
+              return;
+            }
             var indent_id = responseBody['indent_id'];
             if (attached_file_name != '') {
               var uri = Uri.parse(
