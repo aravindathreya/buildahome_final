@@ -67,6 +67,7 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
 
     var url = 'https://app.buildahome.in/api/latest_update.php?id=${id}';
     var response = await http.get(url);
+    print(response.body);
     if (response.body.trim() != "No updates") {
       updateResponseBody = jsonDecode(response.body);
     }

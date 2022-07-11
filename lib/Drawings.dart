@@ -36,11 +36,7 @@ class DocumentObjectState extends State<DocumentObject> {
   DocumentObjectState(this.parent, this.children, this.drawing_id);
 
   _launchURL(url) async {
-    if (await canLaunch(url)) {
-      await launch(url);
-    } else {
-      throw 'Could not launch $url';
-    }
+    await launch(url);
   }
 
   @override
