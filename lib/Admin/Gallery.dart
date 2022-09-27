@@ -15,6 +15,7 @@ import "Drawings.dart";
 import 'newRoute.dart';
 
 var images = {};
+
 class FullScreenImage extends StatefulWidget {
   var id;
 
@@ -29,32 +30,28 @@ class FullScreenImage1 extends State<FullScreenImage> {
 
   FullScreenImage1(this.image);
 
-  
-
   @override
   Widget build(BuildContext context) {
-      return Container(
-          decoration: BoxDecoration(border: Border.all(color: Colors.black)),
-          child: PhotoView(
-            imageProvider:  CachedNetworkImageProvider(
-                                       this.image,
-                                  ),)
-          );
-    }
+    return Container(
+        decoration: BoxDecoration(border: Border.all(color: Colors.black)),
+        child: PhotoView(
+          imageProvider: CachedNetworkImageProvider(
+            this.image,
+          ),
+        ));
+  }
 }
 
-class Gallery extends StatelessWidget{
-  
+class Gallery extends StatelessWidget {
   var id;
   Gallery(this.id);
 
   @override
   Widget build(BuildContext context) {
-      return MaterialApp(
+    return MaterialApp(
       title: "buildAhome",
-      theme: ThemeData(fontFamily: MyApp().fontName),
+      theme: ThemeData(fontFamily: App().fontName),
       home: Scaffold(
-        
         drawer: NavMenuWidget(),
         appBar: AppBar(
           automaticallyImplyLeading: false,
@@ -87,14 +84,15 @@ class Gallery extends StatelessWidget{
                 MaterialPageRoute(builder: (context) => Gallery(this.id)),
               );
             } else if (index == 3) {
-                Navigator.pushReplacement(
-                  context,
-                  MaterialPageRoute(builder: (context) => TaskWidget(this.id)),
-                );
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(builder: (context) => TaskWidget(this.id)),
+              );
             } else if (index == 4) {
               Navigator.pushReplacement(
                 context,
-                MaterialPageRoute(builder: (context) => PaymentTaskWidget(this.id)),
+                MaterialPageRoute(
+                    builder: (context) => PaymentTaskWidget(this.id)),
               );
             }
           },
@@ -127,17 +125,13 @@ class Gallery extends StatelessWidget{
                 "Gallery",
                 style: TextStyle(fontSize: 12),
               ),
-            ),          
+            ),
           ],
         ),
-        
       ),
     );
-  
   }
-  
 }
-
 
 class GalleryForm extends StatefulWidget {
   var id;
@@ -190,6 +184,7 @@ class GalleryState extends State<GalleryForm> {
       }
     }
   }
+
   _image_func(_image_string, update_id) {
     var stripped = _image_string
         .toString()
@@ -202,7 +197,7 @@ class GalleryState extends State<GalleryForm> {
       Uint8List bytes = base64Decode(stripped);
       return InkWell(
           child: actual_image,
-          onTap: ()  {
+          onTap: () {
             BuildContext context2;
             Navigator.push(
               context2,
@@ -211,7 +206,6 @@ class GalleryState extends State<GalleryForm> {
                         MemoryImage(bytes),
                       )),
             );
-            
           });
     } else {
       return Container(
@@ -254,142 +248,149 @@ class GalleryState extends State<GalleryForm> {
                                 images[entries[i]['image_id']], "From list"))
                       else
                         Container(
-                          width: (MediaQuery.of(context).size.width - 20) / 3,
-                          height: (MediaQuery.of(context).size.width - 20) / 3,
-                          decoration: BoxDecoration(
-                            border: Border.all(),
-                          ),
-                          child: InkWell(
+                            width: (MediaQuery.of(context).size.width - 20) / 3,
+                            height:
+                                (MediaQuery.of(context).size.width - 20) / 3,
+                            decoration: BoxDecoration(
+                              border: Border.all(),
+                            ),
+                            child: InkWell(
                               onLongPress: () {
                                 showDialog(
                                     context: context,
                                     builder: (BuildContext ctx) {
-                                        return AlertDialog(
-                                                                                       content: Container(
-                                                                                           height: 120,
-                                                                                           child: Column(
-                                                                                             children: <Widget>[
-                                                                                               Container(
-                                                                                                 child: Text(
-                                                                                                     "Are you sure you want to delete this image?",
-                                                                                                     style: TextStyle(
-                                                                                                         fontSize: 18)),
-                                                                                               ),
-                                                                                               Container(
-                                                                                                   alignment:
-                                                                                                       Alignment.bottomRight,
-                                                                                                   margin: EdgeInsets.only(
-                                                                                                       top: 15),
-                                                                                                   child: Row(
-                                                                                                     mainAxisAlignment:
-                                                                                                         MainAxisAlignment.end,
-                                                                                                     children: <Widget>[
-                                                                                                       InkWell(
-                                                                                                         onTap: () {
-                                                                                                           Navigator.of(context, rootNavigator: true).pop('dialog');
-                                                                                                         },
-                                                                                                           child: Container(
-                                                                                                               padding:
-                                                                                                                   EdgeInsets
-                                                                                                                       .all(
-                                                                                                                           10),
-                                                                                                               margin: EdgeInsets
-                                                                                                                   .only(
-                                                                                                                       left:
-                                                                                                                           15),
-                                                                                                               decoration: BoxDecoration(
-                                                                                                                   color: Colors
-                                                                                                                       .white24,
-                                                                                                                   borderRadius:
-                                                                                                                       BorderRadius
-                                                                                                                           .circular(
-                                                                                                                               5),
-                                                                                                                   border: Border
-                                                                                                                       .all()),
-                                                                                                               child: Text(
-                                                                                                                 "Cancel",
-                                                                                                                 style:
-                                                                                                                     TextStyle(),
-                                                                                                               ))),
-                                                                                                       InkWell(
-                                                                                                           onTap: () async {
-                                                                                                             var id = entries[
-                                                                                                                     i]
-                                                                                                                 ['image_id'];
-                                                                                                             var url =
-                                                                                                                 'https://app.buildahome.in/api/delete_image.php?id=${id}';
-                                                                                                             var response =
-                                                                                                                 await http
-                                                                                                                     .get(url);
+                                      return AlertDialog(
+                                          content: Container(
+                                              height: 120,
+                                              child: Column(
+                                                children: <Widget>[
+                                                  Container(
+                                                    child: Text(
+                                                        "Are you sure you want to delete this image?",
+                                                        style: TextStyle(
+                                                            fontSize: 18)),
+                                                  ),
+                                                  Container(
+                                                      alignment:
+                                                          Alignment.bottomRight,
+                                                      margin: EdgeInsets.only(
+                                                          top: 15),
+                                                      child: Row(
+                                                        mainAxisAlignment:
+                                                            MainAxisAlignment
+                                                                .end,
+                                                        children: <Widget>[
+                                                          InkWell(
+                                                              onTap: () {
+                                                                Navigator.of(
+                                                                        context,
+                                                                        rootNavigator:
+                                                                            true)
+                                                                    .pop(
+                                                                        'dialog');
+                                                              },
+                                                              child: Container(
+                                                                  padding:
+                                                                      EdgeInsets
+                                                                          .all(
+                                                                              10),
+                                                                  margin:
+                                                                      EdgeInsets.only(
+                                                                          left:
+                                                                              15),
+                                                                  decoration: BoxDecoration(
+                                                                      color: Colors
+                                                                          .white24,
+                                                                      borderRadius:
+                                                                          BorderRadius.circular(
+                                                                              5),
+                                                                      border: Border
+                                                                          .all()),
+                                                                  child: Text(
+                                                                    "Cancel",
+                                                                    style:
+                                                                        TextStyle(),
+                                                                  ))),
+                                                          InkWell(
+                                                              onTap: () async {
+                                                                var id = entries[
+                                                                        i][
+                                                                    'image_id'];
+                                                                var url =
+                                                                    'https://app.buildahome.in/api/delete_image.php?id=${id}';
+                                                                var response =
+                                                                    await http
+                                                                        .get(
+                                                                            url);
 
-                                                                                                             setState(() {
-                                                                                                               Navigator.of(context, rootNavigator: true).pop('dialog');
-                                                                                                               Navigator
-                                                                                                                   .pushReplacement(
-                                                                                                                 context,
-                                                                                                                 MaterialPageRoute(
-                                                                                                                     builder: (context) =>
-                                                                                                                         Gallery(
-                                                                                                                             this.id)),
-                                                                                                               );
-                                                                                                             });
-                                                                                                           },
-                                                                                                           child: Container(
-                                                                                                               margin: EdgeInsets
-                                                                                                                   .only(
-                                                                                                                       left:
-                                                                                                                           15),
-                                                                                                               padding:
-                                                                                                                   EdgeInsets
-                                                                                                                       .all(
-                                                                                                                           10),
-                                                                                                               decoration:
-                                                                                                                   BoxDecoration(
-                                                                                                                 color: Colors
-                                                                                                                         .indigo[
-                                                                                                                     900],
-                                                                                                                 borderRadius:
-                                                                                                                     BorderRadius
-                                                                                                                         .circular(
-                                                                                                                             5),
-                                                                                                               ),
-                                                                                                               child: Text(
-                                                                                                                 "Yes, Delete",
-                                                                                                                 style: TextStyle(
-                                                                                                                     color: Colors
-                                                                                                                         .white),
-                                                                                                               ))),
-                                                                                                     ],
-                                                                                                   ))
-                                                                                             ],
-                                                                                           )));
-                                    }
-                                );
+                                                                setState(() {
+                                                                  Navigator.of(
+                                                                          context,
+                                                                          rootNavigator:
+                                                                              true)
+                                                                      .pop(
+                                                                          'dialog');
+                                                                  Navigator
+                                                                      .pushReplacement(
+                                                                    context,
+                                                                    MaterialPageRoute(
+                                                                        builder:
+                                                                            (context) =>
+                                                                                Gallery(this.id)),
+                                                                  );
+                                                                });
+                                                              },
+                                                              child: Container(
+                                                                  margin: EdgeInsets
+                                                                      .only(
+                                                                          left:
+                                                                              15),
+                                                                  padding:
+                                                                      EdgeInsets
+                                                                          .all(
+                                                                              10),
+                                                                  decoration:
+                                                                      BoxDecoration(
+                                                                    color: Colors
+                                                                            .indigo[
+                                                                        900],
+                                                                    borderRadius:
+                                                                        BorderRadius
+                                                                            .circular(5),
+                                                                  ),
+                                                                  child: Text(
+                                                                    "Yes, Delete",
+                                                                    style: TextStyle(
+                                                                        color: Colors
+                                                                            .white),
+                                                                  ))),
+                                                        ],
+                                                      ))
+                                                ],
+                                              )));
+                                    });
                               },
-                              onTap: ()  {
+                              onTap: () {
                                 Navigator.push(
                                   this.con,
                                   MaterialPageRoute(
-                                        builder: (context) => FullScreenImage(
-                                            "https://app.buildahome.in/api/images/${entries[i]['image']}"
-                                        )),
+                                      builder: (context) => FullScreenImage(
+                                          "https://app.buildahome.in/api/images/${entries[i]['image']}")),
                                 );
                               },
                               child: CachedNetworkImage(
-                                    progressIndicatorBuilder: (context, url, progress) =>
-                                        Container(
-                                          height: 20, 
-                                          width: 20,
-                                          child: CircularProgressIndicator(
-                                            value: progress.progress,
-                                            
-                                          ),
-                                        ),
-                                        
-                                    imageUrl:
-                                        "https://app.buildahome.in/api/images/${entries[i]['image']}",
-                                  ),)
-                        )
+                                progressIndicatorBuilder:
+                                    (context, url, progress) => Container(
+                                  height: 20,
+                                  width: 20,
+                                  child: CircularProgressIndicator(
+                                    value: progress.progress,
+                                  ),
+                                ),
+                                imageUrl:
+                                    "https://app.buildahome.in/api/images/${entries[i]['image']}",
+                              ),
+                            ))
                 ],
               )
             ],

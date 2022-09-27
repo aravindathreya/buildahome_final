@@ -37,11 +37,8 @@ class POAndBillObjectState extends State<POAndBillObject> {
   POAndBillObjectState(this.parent, this.children, this.drawing_id);
 
   _launchURL(url) async {
-    if (await canLaunch(url)) {
-      await launch(url);
-    } else {
-      throw 'Could not launch $url';
-    }
+    print(url);
+    await launch(url);
   }
 
   @override
@@ -203,11 +200,7 @@ class POAndBillsState extends State<POAndBills> {
                   onTap: () async {
                     var url =
                         'https://app.buildahome.in/erp/files/${purchase_orders[Index][4]}';
-                    if (await canLaunch(url)) {
-                      await launch(url);
-                    } else {
-                      throw 'Could not launch $url';
-                    }
+                    await launch(url);
                   },
                 );
               },
@@ -245,11 +238,7 @@ class POAndBillsState extends State<POAndBills> {
                   onTap: () async {
                     var url =
                         'https://app.buildahome.in/erp/files/work_order_${work_orders[Index][0]}.pdf';
-                    if (await canLaunch(url)) {
-                      await launch(url);
-                    } else {
-                      throw 'Could not launch $url';
-                    }
+                    await launch(url);
                   },
                 );
               },

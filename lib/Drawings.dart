@@ -88,7 +88,7 @@ class DocumentObjectState extends State<DocumentObject> {
                                     .pop(),
                                 _launchURL(
                                     "https://app.buildahome.in/team/Drawings/" +
-                                        children[x].toString()),
+                                        children[x].toString())
                               },
                           child: Container(
                             padding:

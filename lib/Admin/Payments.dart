@@ -12,7 +12,6 @@ import "Gallery.dart";
 import "Drawings.dart";
 
 class PaymentTaskWidget extends StatelessWidget {
-
   var id;
   PaymentTaskWidget(this.id);
 
@@ -23,7 +22,7 @@ class PaymentTaskWidget extends StatelessWidget {
         new GlobalKey<ScaffoldState>();
     return MaterialApp(
       title: appTitle,
-      theme: ThemeData(fontFamily: MyApp().fontName),
+      theme: ThemeData(fontFamily: App().fontName),
       home: Scaffold(
         key: _scaffoldKey, // ADD THIS LINE
         drawer: NavMenuWidget(),
@@ -33,8 +32,8 @@ class PaymentTaskWidget extends StatelessWidget {
           leading: new IconButton(
               icon: new Icon(Icons.arrow_back_ios),
               onPressed: () => {
-                Navigator.pop(context),
-              }),
+                    Navigator.pop(context),
+                  }),
           backgroundColor: Color(0xFF000055),
         ),
         body: PaymentTasksClass(this.id),
@@ -58,14 +57,15 @@ class PaymentTaskWidget extends StatelessWidget {
                 MaterialPageRoute(builder: (context) => Gallery(this.id)),
               );
             } else if (index == 3) {
-                Navigator.pushReplacement(
-                  context,
-                  MaterialPageRoute(builder: (context) => TaskWidget(this.id)),
-                );
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(builder: (context) => TaskWidget(this.id)),
+              );
             } else if (index == 4) {
               Navigator.pushReplacement(
                 context,
-                MaterialPageRoute(builder: (context) => PaymentTaskWidget(this.id)),
+                MaterialPageRoute(
+                    builder: (context) => PaymentTaskWidget(this.id)),
               );
             }
           },
@@ -99,32 +99,31 @@ class PaymentTaskWidget extends StatelessWidget {
                 style: TextStyle(fontSize: 12),
               ),
             ),
-              BottomNavigationBarItem(
-                icon: Icon(
-                  Icons.access_time,
-                ),
-                title: Text(
-                  'Scheduler',
-                  style: TextStyle(fontSize: 12),
-                ),
-              ),
             BottomNavigationBarItem(
-                icon: Icon(
-                  Icons.payment,
-                ),
-                title: Text(
-                  'Payment',
-                  style: TextStyle(fontSize: 12),
-                ),
+              icon: Icon(
+                Icons.access_time,
               ),
-              
+              title: Text(
+                'Scheduler',
+                style: TextStyle(fontSize: 12),
+              ),
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(
+                Icons.payment,
+              ),
+              title: Text(
+                'Payment',
+                style: TextStyle(fontSize: 12),
+              ),
+            ),
           ],
         ),
-        
       ),
     );
   }
 }
+
 class TaskItem extends StatefulWidget {
   String _Task_name;
   var _icon = Icons.home;
@@ -141,12 +140,21 @@ class TaskItem extends StatefulWidget {
 
   @override
   TaskItemWidget createState() {
-    return TaskItemWidget(this._Task_name, this._icon, this._start_date,
-        this._end_date, this._color, this._height, this._payment_percentage, this.status, this.note);
+    return TaskItemWidget(
+        this._Task_name,
+        this._icon,
+        this._start_date,
+        this._end_date,
+        this._color,
+        this._height,
+        this._payment_percentage,
+        this.status,
+        this.note);
   }
 }
 
-class TaskItemWidget extends State<TaskItem> with SingleTickerProviderStateMixin {
+class TaskItemWidget extends State<TaskItem>
+    with SingleTickerProviderStateMixin {
   String _Task_name;
   var _icon = Icons.home;
   var _start_date;
@@ -159,7 +167,7 @@ class TaskItemWidget extends State<TaskItem> with SingleTickerProviderStateMixin
   var spr_radius = 1.0;
   var pad = 10.0;
   var value_str;
-  var value =0;
+  var value = 0;
   var status;
   var amt;
   var note;
@@ -170,22 +178,19 @@ class TaskItemWidget extends State<TaskItem> with SingleTickerProviderStateMixin
     super.initState();
     _set_value();
     _progress();
-
   }
 
-  _set_value() async{
+  _set_value() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     value_str = prefs.getString("pr_value");
     value = int.parse(value_str);
     setState(() {
-      amt = ((int.parse(this._payment_percentage))/100 ) * value;
-
+      amt = ((int.parse(this._payment_percentage)) / 100) * value;
     });
   }
-  _progress() {
 
-    if (this.status=='not due')
-    {
+  _progress() {
+    if (this.status == 'not due') {
       this._color = Colors.white;
       this._text_color = Colors.black;
       this.gradient = LinearGradient(
@@ -202,8 +207,7 @@ class TaskItemWidget extends State<TaskItem> with SingleTickerProviderStateMixin
           Colors.white,
         ],
       );
-    }
-    else if (this.status=='paid'){
+    } else if (this.status == 'paid') {
       this._color = Colors.green;
       this._text_color = Colors.white;
       this.gradient = LinearGradient(
@@ -221,8 +225,7 @@ class TaskItemWidget extends State<TaskItem> with SingleTickerProviderStateMixin
           Colors.green[700],
         ],
       );
-    }
-    else{
+    } else {
       this._color = Colors.deepOrange;
       this._text_color = Colors.white;
       this.gradient = LinearGradient(
@@ -259,8 +262,16 @@ class TaskItemWidget extends State<TaskItem> with SingleTickerProviderStateMixin
     });
   }
 
-  TaskItemWidget(this._Task_name, this._icon, this._start_date, this._end_date,
-      this._color, this._height, this._payment_percentage, this.status, this.note);
+  TaskItemWidget(
+      this._Task_name,
+      this._icon,
+      this._start_date,
+      this._end_date,
+      this._color,
+      this._height,
+      this._payment_percentage,
+      this.status,
+      this.note);
 
   @override
   Widget build(BuildContext context) {
@@ -268,83 +279,82 @@ class TaskItemWidget extends State<TaskItem> with SingleTickerProviderStateMixin
       children: <Widget>[
         Container(
             child: AnimatedContainer(
-              duration: Duration(milliseconds: 500),
-              decoration: BoxDecoration(
-                  color: this._color,
-                  gradient: this.gradient,
-                  boxShadow: [
-                    new BoxShadow(
-                        color: Colors.grey[400],
-                        blurRadius: 10,
-                        spreadRadius: this.spr_radius,
-                        offset: Offset(0.0, 10.0))
+          duration: Duration(milliseconds: 500),
+          decoration: BoxDecoration(
+              color: this._color,
+              gradient: this.gradient,
+              boxShadow: [
+                new BoxShadow(
+                    color: Colors.grey[400],
+                    blurRadius: 10,
+                    spreadRadius: this.spr_radius,
+                    offset: Offset(0.0, 10.0))
+              ],
+              border: Border.all(color: Colors.black, width: 2.0)),
+          padding: EdgeInsets.all(this.pad),
+          child: Container(
+            child: Column(children: <Widget>[
+              AnimatedContainer(
+                duration: Duration(milliseconds: 900),
+                padding: EdgeInsets.only(left: 7),
+                child: Row(
+                  children: <Widget>[
+                    InkWell(
+                      onTap: _expand_collapse,
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: <Widget>[
+                          Container(
+                            width: MediaQuery.of(context).size.width * .8,
+                            child: Text(
+                              this._Task_name,
+                              textAlign: TextAlign.left,
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: this._text_color,
+                              ),
+                            ),
+                          ),
+                          new Icon(view, color: this._text_color),
+                        ],
+                      ),
+                    ),
                   ],
-                  border: Border.all(color: Colors.black, width: 2.0)),
-              padding: EdgeInsets.all(this.pad),
-              child: Container(
-
-                child: Column(children: <Widget>[
-                  AnimatedContainer(
-                    duration: Duration(milliseconds: 900),
-                    padding: EdgeInsets.only(left: 7),
-                    child: Row(
-                      children: <Widget>[
-                        InkWell(
-                          onTap: _expand_collapse,
+                ),
+              ),
+              Visibility(
+                  visible: this.vis,
+                  child: Column(
+                    children: <Widget>[
+                      Container(
+                          padding: EdgeInsets.all(10),
                           child: Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: <Widget>[
-                              Container(
-                                width: MediaQuery.of(context).size.width * .8,
-                                child: Text(
-                                  this._Task_name,
-                                  textAlign: TextAlign.left,
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    color: this._text_color,
-                                  ),
-                                ),
-                              ),
-                              new Icon(view, color: this._text_color),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Visibility(
-                      visible: this.vis,
-                      child: Column(
-                        children: <Widget>[
-                          Container(
-                              padding: EdgeInsets.all(10),
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: <Widget>[
-                                  Text(
-                                    this._payment_percentage + "%     ₹ "+amt.toString(),
-                                    style: TextStyle(
-                                        fontSize: 18,
-                                        fontWeight: FontWeight.bold,
-                                        color: this._text_color),
-                                  )
-                                ],
+                              Text(
+                                this._payment_percentage +
+                                    "%     ₹ " +
+                                    amt.toString(),
+                                style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                    color: this._text_color),
                               )
-                          ),
-                          Container(
-                              alignment: Alignment.centerLeft,
-                              child: Text(this.note, style: TextStyle(color: this._text_color, fontWeight: FontWeight.bold),)
-                          )
-
-                        ],
-                      )
-
-
-                  ),
-
-                ]),
-              ),
-            )),
+                            ],
+                          )),
+                      Container(
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            this.note,
+                            style: TextStyle(
+                                color: this._text_color,
+                                fontWeight: FontWeight.bold),
+                          ))
+                    ],
+                  )),
+            ]),
+          ),
+        )),
       ],
     );
   }
@@ -366,7 +376,7 @@ class PaymentTasks extends State<PaymentTasksClass> {
   var id;
   var outstanding = "";
   var total_paid = "";
-  var project_value="";
+  var project_value = "";
 
   PaymentTasks(this.id);
   ScrollController _controller = new ScrollController();
@@ -377,25 +387,23 @@ class PaymentTasks extends State<PaymentTasksClass> {
     call();
   }
 
-
   call() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     id = prefs.getString('project_id');
-    var url = 'https://app.buildahome.in/api/get_all_tasks.php?project_id=$id&nt_toggle=1  ';
+    var url =
+        'https://app.buildahome.in/api/get_all_tasks.php?project_id=$id&nt_toggle=1  ';
     var response = await http.get(url);
     var url1 = 'https://app.buildahome.in/api/get_payment.php?project_id=$id ';
     var response1 = await http.get(url1);
     var details = jsonDecode(response1.body);
-    prefs.setString("pr_value",details[0]['value']);
+    prefs.setString("pr_value", details[0]['value']);
     setState(() {
-    outstanding = details[0]['outstanding'];
-    total_paid = details[0]['total_paid'];
-        project_value = details[0]['value'];
-        body = jsonDecode(response.body);
+      outstanding = details[0]['outstanding'];
+      total_paid = details[0]['total_paid'];
+      project_value = details[0]['value'];
+      body = jsonDecode(response.body);
     });
-
   }
-
 
   @override
   Widget build(BuildContext context) {
@@ -413,75 +421,69 @@ class PaymentTasks extends State<PaymentTasksClass> {
       Container(
         padding: EdgeInsets.all(10),
         child: Container(
-        padding: EdgeInsets.all(10),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: <Widget>[
-            Container(
-              padding: EdgeInsets.only(top: 15),
-              child: Row(
-                children: <Widget>[
-                  Container(
+          padding: EdgeInsets.all(10),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: <Widget>[
+              Container(
+                padding: EdgeInsets.only(top: 15),
+                child: Row(
+                  children: <Widget>[
+                    Container(
                       padding: EdgeInsets.only(right: 10),
                       height: 10,
                       width: 10,
                       decoration: BoxDecoration(
-                        color: Colors.deepOrange,
-                        border: Border.all(color: Colors.grey[300]),
-                        borderRadius: BorderRadius.circular(3)
-                      ),
-                      ),
-                  Container(
-                      padding: EdgeInsets.only(left: 5),
-                      child: Text("Due")),
-                ],
+                          color: Colors.deepOrange,
+                          border: Border.all(color: Colors.grey[300]),
+                          borderRadius: BorderRadius.circular(3)),
+                    ),
+                    Container(
+                        padding: EdgeInsets.only(left: 5), child: Text("Due")),
+                  ],
+                ),
               ),
-            ),
-            Container(
-              padding: EdgeInsets.only(top: 15),
-              child: Row(
-                children: <Widget>[
-                  Container(
+              Container(
+                padding: EdgeInsets.only(top: 15),
+                child: Row(
+                  children: <Widget>[
+                    Container(
                       padding: EdgeInsets.only(right: 10),
                       height: 10,
                       width: 10,
                       decoration: BoxDecoration(
                           border: Border.all(color: Colors.grey[300]),
                           borderRadius: BorderRadius.circular(3),
-                          color: Colors.green
-                      ),
+                          color: Colors.green),
                     ),
-                  Container(
-                      padding: EdgeInsets.only(left: 5),
-                      child: Text("Paid")
-                  ),
-                ],
+                    Container(
+                        padding: EdgeInsets.only(left: 5), child: Text("Paid")),
+                  ],
+                ),
               ),
-            ),
-            Container(
-              padding: EdgeInsets.only(top: 15),
-              child: Row(
-                children: <Widget>[
-                  Container(
+              Container(
+                padding: EdgeInsets.only(top: 15),
+                child: Row(
+                  children: <Widget>[
+                    Container(
                       padding: EdgeInsets.only(right: 10),
                       height: 10,
                       width: 10,
                       decoration: BoxDecoration(
                           color: Colors.white70,
                           border: Border.all(color: Colors.grey[300]),
-                          borderRadius: BorderRadius.circular(3)
-                      ),
+                          borderRadius: BorderRadius.circular(3)),
                     ),
-                  Container(
-                      padding: EdgeInsets.only(left: 5),
-                      child: Text("Ongoing tasks"))
-                ],
+                    Container(
+                        padding: EdgeInsets.only(left: 5),
+                        child: Text("Ongoing tasks"))
+                  ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
-      ),),
-      
+      ),
       Container(
         margin: EdgeInsets.symmetric(vertical: 20, horizontal: 10),
         padding: EdgeInsets.all(10),
@@ -492,18 +494,20 @@ class PaymentTasks extends State<PaymentTasksClass> {
         child: Column(
           children: <Widget>[
             Container(
-              padding: EdgeInsets.symmetric(vertical: 5),
-              child: Row(
-                children: <Widget>[
-                Container(
-                  width: 150,
-                  child: Text("Project Value :", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold))
-                ),
-                Container(
-                  child: Text("₹ "+project_value, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold))
-                )
-              ],)
-            ),
+                padding: EdgeInsets.symmetric(vertical: 5),
+                child: Row(
+                  children: <Widget>[
+                    Container(
+                        width: 150,
+                        child: Text("Project Value :",
+                            style: TextStyle(
+                                fontSize: 16, fontWeight: FontWeight.bold))),
+                    Container(
+                        child: Text("₹ " + project_value,
+                            style: TextStyle(
+                                fontSize: 16, fontWeight: FontWeight.bold)))
+                  ],
+                )),
             // Container(
             //   padding: EdgeInsets.symmetric(vertical: 5),
             //   child: Row(
@@ -518,35 +522,46 @@ class PaymentTasks extends State<PaymentTasksClass> {
             //   ],)
             // ),
             Container(
-              padding: EdgeInsets.symmetric(vertical: 5),
-              child: Row(
-                children: <Widget>[
-                Container(
-                  width: 150,
-                  child: Text("Paid till date :", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.green[500]))
-                ),
-                Container(
-                  child: Text("₹ "+total_paid, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.green[500]))
-                )
-              ],)
-            ),
+                padding: EdgeInsets.symmetric(vertical: 5),
+                child: Row(
+                  children: <Widget>[
+                    Container(
+                        width: 150,
+                        child: Text("Paid till date :",
+                            style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.green[500]))),
+                    Container(
+                        child: Text("₹ " + total_paid,
+                            style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.green[500])))
+                  ],
+                )),
             Container(
-              padding: EdgeInsets.symmetric(vertical: 5),
-              child: Row(
-                children: <Widget>[
-                Container(
-                  width: 150,
-                  child: Text("Current Outstanding :", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.red[500]))
-                ),
-                Container(
-                  child: Text("₹ "+outstanding, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.red[500]))
-                )
-              ],)
-            )
+                padding: EdgeInsets.symmetric(vertical: 5),
+                child: Row(
+                  children: <Widget>[
+                    Container(
+                        width: 150,
+                        child: Text("Current Outstanding :",
+                            style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.red[500]))),
+                    Container(
+                        child: Text("₹ " + outstanding,
+                            style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.red[500])))
+                  ],
+                ))
           ],
         ),
       ),
-      
       new ListView.builder(
           shrinkWrap: true,
           physics: BouncingScrollPhysics(),
@@ -554,16 +569,13 @@ class PaymentTasks extends State<PaymentTasksClass> {
           itemBuilder: (BuildContext ctxt, int Index) {
             return Container(
               child: TaskItem(
-
-                  body[Index]['task_name'].toString(),
-                  body[Index]['start_date'].toString(),
-                  body[Index]['end_date'].toString(),
-                  body[Index]['payment'].toString(),
-                  body[Index]['paid'].toString(),
-                  body[Index]['p_note'].toString(),
+                body[Index]['task_name'].toString(),
+                body[Index]['start_date'].toString(),
+                body[Index]['end_date'].toString(),
+                body[Index]['payment'].toString(),
+                body[Index]['paid'].toString(),
+                body[Index]['p_note'].toString(),
               ),
-
-
             );
           }),
     ]);

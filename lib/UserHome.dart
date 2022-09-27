@@ -10,7 +10,6 @@ import 'NavMenu.dart';
 import 'package:percent_indicator/linear_percent_indicator.dart';
 import 'package:intl/intl.dart';
 import 'main.dart';
-import 'package:firebase_messaging/firebase_messaging.dart';
 import 'UserDashboard.dart';
 import 'Drawings.dart';
 import 'NonTenderTasks.dart';
@@ -25,7 +24,7 @@ class Home extends StatelessWidget {
     final appTitle = 'buildAhome';
     return MaterialApp(
       title: appTitle,
-      theme: ThemeData(fontFamily: MyApp().fontName),
+      theme: ThemeData(fontFamily: App().fontName),
       home: Scaffold(
         key: _scaffoldKey,
         drawer: NavMenuWidget(),

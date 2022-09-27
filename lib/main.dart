@@ -1,18 +1,22 @@
-import 'package:buildahome/ShowAlert.dart';
+// Built in packages
 import 'package:flutter/material.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import 'UserHome.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+// Custom dart files
+import 'UserHome.dart';
 import "AdminDashboard.dart";
 import "Loader.dart";
-import 'package:firebase_messaging/firebase_messaging.dart';
 import 'notifcations.dart';
 
-void main() => runApp(MyApp());
+void main() => runApp(App());
 
-class MyApp extends StatelessWidget {
+class App extends StatelessWidget {
   final fontName = 'Mulish-Regular';
+
+  // Used globally for client logins
   var project_id;
   BuildContext mainContext;
 
@@ -30,7 +34,6 @@ class MyApp extends StatelessWidget {
   }
 }
 
-// Create a Form widget.
 class LoginForm extends StatefulWidget {
   @override
   LoginFormState createState() {
@@ -39,39 +42,20 @@ class LoginForm extends StatefulWidget {
 }
 
 class LoginFormState extends State<LoginForm> {
-  String _response = "";
-  var role;
-  var splash = false;
-
-  void _login(String response) {
-    setState(() {
-      _response = response;
-    });
-  }
-
-  //
-  final _formKey = GlobalKey<FormState>();
-
-  set_persistence(username, role, project_id, project_value, completed, id,
-      location) async {
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    prefs.setString("username", username.toString());
-    prefs.setString("role", role.toString());
-    prefs.setString("user_id", id.toString());
-    final FirebaseMessaging _messaging = FirebaseMessaging();
-    _messaging.subscribeToTopic(id.toString());
-
-    if (role.toString() == 'Client') {
-      prefs.setString("project_id", project_id.toString());
-      prefs.setString("project_value", project_value.toString());
-      prefs.setString("completed", completed.toString());
-      prefs.setString("location", location.toString());
-    }
-  }
+  String loginAPIResponse = "";
+  String role;
+  bool showLoginForm = false;
+  final username = TextEditingController();
+  final password = TextEditingController();
 
   void initState() {
     super.initState();
-    call();
+
+    checkIfAlreadyLoggedIn();
+    initFirebase();
+  }
+
+  initFirebase() {
     final FirebaseMessaging _messaging = FirebaseMessaging();
 
     _messaging.configure(
@@ -96,20 +80,19 @@ class LoginFormState extends State<LoginForm> {
         }
       },
     );
-    _messaging.subscribeToTopic('Testing1');
     _messaging.getToken().then((token) {
       print(token);
     });
   }
 
-  call() async {
+  checkIfAlreadyLoggedIn() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     var username = prefs.getString('username');
     role = prefs.getString('role');
 
     setState(() {
-      splash = false;
       if (username != null) {
+        showLoginForm = false;
         if (role == "Client") {
           Navigator.pushReplacement(
             context,
@@ -121,182 +104,235 @@ class LoginFormState extends State<LoginForm> {
             MaterialPageRoute(builder: (context) => AdminDashboard()),
           );
         }
+      } else {
+        showLoginForm = true;
       }
     });
   }
 
+  subscribeToFirebaseTopic(topic) {
+    final FirebaseMessaging _messaging = FirebaseMessaging();
+    _messaging.subscribeToTopic(topic.toString());
+  }
+
+  setSharedPrefs(username, role, projectId, projectValue, completed, userId,
+      location, apiToken) async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    prefs.setString("username", username.toString());
+    prefs.setString("role", role.toString());
+    prefs.setString("user_id", userId.toString());
+    prefs.setString("api_token", apiToken.toString());
+
+    if (role.toString() == 'Client') {
+      prefs.setString("project_id", projectId.toString());
+      prefs.setString("project_value", projectValue.toString());
+      prefs.setString("completed", completed.toString());
+      prefs.setString("location", location.toString());
+    }
+  }
+
+  validateLoginForm() {
+    if (username.text.trim() == '') {
+      return 'Please enter username to continue';
+    } else if (password.text.trim() == '') {
+      return 'Please enter password to continue';
+    } else
+      return true;
+  }
+
+  showFormFieldsInvalid(context, validationMessage) {
+    showDialog(
+        context: context,
+        builder: (BuildContext context) {
+          return AlertDialog(
+            content: Container(
+                height: 130,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      margin: EdgeInsets.only(bottom: 20),
+                      child: Icon(Icons.warning_amber_rounded,
+                          size: 50, color: Colors.orange),
+                    ),
+                    Container(
+                      margin: EdgeInsets.only(left: 5),
+                      child: Text(
+                        validationMessage,
+                      ),
+                    )
+                  ],
+                )),
+          );
+        });
+  }
+
+  loginUser() async {
+    // Show loader
+    showDialog(
+        context: context,
+        builder: (BuildContext context) {
+          return Loader();
+        });
+
+    var url = 'https://app.buildahome.in/erp/API/login';
+    var response = await http.post(url,
+        body: {'username': username.text, 'password': password.text});
+    Map<String, dynamic> jsonDecodedResponse = jsonDecode(response.body);
+    Navigator.of(context, rootNavigator: true).pop('dialog');
+
+    if (jsonDecodedResponse['message'].toString() != "success") {
+      setState(() {
+        loginAPIResponse = jsonDecodedResponse['message'];
+      });
+    } else {
+      if (jsonDecodedResponse['role'] == 'Client') {
+        setSharedPrefs(
+            username.text,
+            jsonDecodedResponse['role'],
+            jsonDecodedResponse['project_id'],
+            jsonDecodedResponse['project_value'],
+            jsonDecodedResponse['completed_percentage'],
+            jsonDecodedResponse['user_id'],
+            jsonDecodedResponse['location'],
+            jsonDecodedResponse['api_token']);
+
+        subscribeToFirebaseTopic(jsonDecodedResponse['user_id']);
+
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => Home()),
+        );
+      } else {
+        setSharedPrefs(
+            username.text,
+            jsonDecodedResponse['role'],
+            '',
+            '',
+            '',
+            jsonDecodedResponse["user_id"],
+            '',
+            jsonDecodedResponse['api_token']);
+        subscribeToFirebaseTopic(jsonDecodedResponse['user_id']);
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => AdminDashboard()),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final username = TextEditingController();
-    final password = TextEditingController();
+    return ListView(
+      children: <Widget>[
+        // Logo container
+        Container(
+            padding: EdgeInsets.only(top: 40),
+            width: MediaQuery.of(context).size.width,
+            color: Colors.white,
+            height: MediaQuery.of(context).size.height * 0.4,
+            alignment: Alignment.center,
+            child: Image(
+              image: AssetImage('assets/images/logo-big.png'),
+              fit: BoxFit.fill,
+              height: 150,
+            )),
 
-    return Form(
-      key: _formKey,
-      child: Container(
-        color: Colors.white,
-        height: MediaQuery.of(context).size.height,
-        alignment: Alignment.center,
-        child: ListView(
-          children: <Widget>[
-            Container(
-                padding: EdgeInsets.only(top: 40),
-                width: MediaQuery.of(context).size.width * 0.4,
-                height: MediaQuery.of(context).size.height * 0.4,
-                alignment: Alignment.center,
-                child: Image(
-                  image: AssetImage('assets/images/logo-big.png'),
-                  fit: BoxFit.contain,
-                )),
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: .0, horizontal: 30),
-              child: Text(
-                _response,
-                style: TextStyle(fontSize: 20, color: Colors.red[500]),
-              ),
+        // Response from api
+        if (loginAPIResponse != '')
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 30),
+            child: Text(
+              loginAPIResponse,
+              style: TextStyle(fontSize: 16, color: Colors.red[500]),
             ),
-            Container(
-              padding:
-                  EdgeInsets.only(left: 30, right: 30, bottom: 30, top: 15),
-              alignment: Alignment.center,
-              child: TextFormField(
+          ),
+
+        // Username text field
+        if (showLoginForm)
+          Container(
+            padding: EdgeInsets.only(left: 30, right: 30, bottom: 30, top: 15),
+            alignment: Alignment.center,
+            color: Colors.white,
+            child: TextFormField(
                 controller: username,
                 scrollPadding: EdgeInsets.all(1),
                 style: TextStyle(fontSize: 16.0),
                 decoration: InputDecoration(
-                  labelText: 'Username',
-                  contentPadding: EdgeInsets.only(bottom: 5),
-                  labelStyle: TextStyle(fontSize: 16.0),
-                ),
-                validator: (value) {
-                  if (value.isEmpty) {
-                    return 'This field cannot be empty';
-                  }
-                  return null;
-                },
+                    labelText: 'Username',
+                    contentPadding: EdgeInsets.only(bottom: 5),
+                    labelStyle: TextStyle(fontSize: 16.0),
+                    fillColor: Colors.indigo)),
+          ),
+
+        // Password field
+        if (showLoginForm)
+          Container(
+            padding: EdgeInsets.only(left: 30, right: 30),
+            alignment: Alignment.center,
+            color: Colors.white,
+            child: TextFormField(
+              controller: password,
+              keyboardType: TextInputType.phone,
+              style: TextStyle(fontSize: 16.0),
+              obscureText: true,
+              decoration: InputDecoration(
+                labelText: 'Password',
+                contentPadding: EdgeInsets.only(bottom: 5),
+                errorStyle: TextStyle(color: Colors.indigo[800]),
+                labelStyle: TextStyle(fontSize: 16.0),
               ),
             ),
-            Container(
-              padding: EdgeInsets.only(left: 30, right: 30),
-              alignment: Alignment.center,
-              child: TextFormField(
-                controller: password,
-                keyboardType: TextInputType.phone,
-                style: TextStyle(fontSize: 16.0),
-                decoration: InputDecoration(
-                  labelText: 'Phone',
-                  contentPadding: EdgeInsets.only(bottom: 5),
-                  errorStyle: TextStyle(color: Colors.indigo[800]),
-                  labelStyle: TextStyle(fontSize: 16.0),
-                ),
-                validator: (value) {
-                  if (value.isEmpty) {
-                    return 'This field cannot be empty';
-                  }
-                  return null;
-                },
-              ),
-            ),
-            Container(
-              padding:
-                  const EdgeInsets.symmetric(vertical: 40.0, horizontal: 30),
-              child: InkWell(
-                  child: Container(
-                    alignment: Alignment.center,
-                    padding: EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      boxShadow: [
-                        new BoxShadow(
-                          color: Colors.grey[600],
-                          blurRadius: 5,
-                          spreadRadius: 1,
-                        )
-                      ],
-                      gradient: LinearGradient(
-                        // Where the linear gradient begins and ends
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
+          ),
 
-                        // Add one stop for each color. Stops should increase from 0 to 1
-                        stops: [0.2, 0.5, 0.8],
-                        colors: [
-                          // Colors are easy thanks to Flutter's Colors class.
-
-                          //Colors.blue,
-                          Colors.indigo[900],
-                          Colors.indigo[700],
-                          //Colors.indigo[700],
-                          Colors.indigo[900],
-                        ],
-                      ),
-                      border: Border.all(color: Colors.black, width: 1),
-                      borderRadius: BorderRadius.all(Radius.circular(5)),
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: <Widget>[
-                        Text(
-                          "Step in ",
-                          style: TextStyle(
-                              fontSize: 18,
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold),
-                        ),
-                        Icon(Icons.vpn_key, color: Colors.white),
+        // Button to login
+        if (showLoginForm)
+          Container(
+            padding: const EdgeInsets.symmetric(vertical: 40.0, horizontal: 30),
+            color: Colors.white,
+            child: InkWell(
+                child: Container(
+                  alignment: Alignment.center,
+                  padding: EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      stops: [0.2, 0.5, 0.8],
+                      colors: [
+                        Colors.indigo[900],
+                        Colors.indigo[700],
+                        Colors.indigo[900],
                       ],
                     ),
+                    border: Border.all(color: Colors.black, width: 1),
+                    borderRadius: BorderRadius.all(Radius.circular(5)),
                   ),
-                  onTap: () async {
-                    if (_formKey.currentState.validate()) {
-                      var result = showDialog(
-                          context: context,
-                          builder: (BuildContext context) {
-                            return Loader();
-                          });
-
-                      var url = 'https://app.buildahome.in/api/login.php';
-                      var response = await http.post(url, body: {
-                        'username': username.text,
-                        'password': password.text
-                      });
-                      print(response.statusCode);
-                      Map<String, dynamic> user = jsonDecode(response.body);
-                      if (user['message'].toString() == "Access denied") {
-                        Navigator.of(context, rootNavigator: true)
-                            .pop('dialog');
-                        _login(user['message']);
-                      } else {
-                        Navigator.of(context, rootNavigator: true)
-                            .pop('dialog');
-                        if (user['role'] == 'Client') {
-                          set_persistence(
-                              username.text,
-                              user['role'],
-                              user['project_id'],
-                              user['project_value'],
-                              user['completed_percentage'],
-                              user["id"],
-                              user['location']);
-
-                          Navigator.pushReplacement(
-                            context,
-                            MaterialPageRoute(builder: (context) => Home()),
-                          );
-                        } else {
-                          set_persistence(username.text, user['role'], 'Hi',
-                              "Admin", "admin", user["id"], "Bengaluru");
-                          Navigator.pushReplacement(
-                            context,
-                            MaterialPageRoute(
-                                builder: (context) => AdminDashboard()),
-                          );
-                        }
-                      }
-                    }
-                  }),
-            ),
-          ],
-        ),
-      ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: <Widget>[
+                      Text(
+                        "Step in ",
+                        style: TextStyle(
+                            fontSize: 18,
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold),
+                      ),
+                      Icon(Icons.vpn_key, color: Colors.white),
+                    ],
+                  ),
+                ),
+                onTap: () {
+                  var validationMessage = validateLoginForm();
+                  if (validationMessage != true) {
+                    showFormFieldsInvalid(context, validationMessage);
+                  } else {
+                    loginUser();
+                  }
+                }),
+          ),
+      ],
     );
   }
 }

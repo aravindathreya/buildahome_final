@@ -23,7 +23,7 @@ class CreateIndentLayout extends StatelessWidget {
         new GlobalKey<ScaffoldState>();
     return MaterialApp(
       title: appTitle,
-      theme: ThemeData(fontFamily: MyApp().fontName),
+      theme: ThemeData(fontFamily: App().fontName),
       home: Scaffold(
         key: _scaffoldKey, // ADD THIS LINE
         appBar: AppBar(
@@ -73,8 +73,8 @@ class CreateIndentState extends State<CreateIndent> {
   }
 
   void getFile() async {
-    var file = await FilePicker.getFile();
-
+    var res = await FilePicker.platform.pickFiles(allowMultiple: false);
+    var file = res.files.first;
     if (file != null) {
       setState(() {
         attached_file = file;

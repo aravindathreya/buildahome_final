@@ -49,7 +49,8 @@ class NotesAndCommentsState extends State<NotesAndComments> {
   }
 
   void getFile() async {
-    var file = await FilePicker.getFile();
+    var res = await FilePicker.platform.pickFiles(allowMultiple: false);
+    var file = res.files.first;
 
     if (file != null) {
       setState(() {

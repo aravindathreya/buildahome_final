@@ -42,7 +42,7 @@ class AddDailyUpdate extends StatelessWidget {
         new GlobalKey<ScaffoldState>();
     return MaterialApp(
       title: appTitle,
-      theme: ThemeData(fontFamily: MyApp().fontName),
+      theme: ThemeData(fontFamily: App().fontName),
       home: Scaffold(
         key: _scaffoldKey, // ADD THIS LINE
         appBar: AppBar(
@@ -253,7 +253,7 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
                               Container(
                                   padding: EdgeInsets.only(left: 10),
                                   child: Text(addPictureBtnText,
-                                      style: TextStyle(fontSize: 18)))
+                                      style: TextStyle(fontSize: 14)))
                             ],
                           )),
                     )),
@@ -351,8 +351,7 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
                                     padding: EdgeInsets.symmetric(
                                         horizontal: 10, vertical: 13),
                                     width: (MediaQuery.of(context).size.width *
-                                            .7) -
-                                        20,
+                                        .5),
                                     margin: EdgeInsets.only(
                                         right: 10, bottom: 10, top: 10),
                                     alignment: Alignment.center,
@@ -458,6 +457,7 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
                                     child: TextFormField(
                                       textAlign: TextAlign.center,
                                       controller: nos[Index],
+                                      style: TextStyle(fontSize: 14),
                                       keyboardType:
                                           TextInputType.numberWithOptions(),
                                       decoration: InputDecoration(
@@ -477,6 +477,18 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
                                         hintText: 'Nos',
                                       ),
                                     )),
+                                if (Index != 0)
+                                  InkWell(
+                                      onTap: () {
+                                        setState(() {
+                                          tradesmen.removeAt(Index);
+                                          nos.removeAt(Index);
+                                        });
+                                      },
+                                      child: Container(
+                                          margin: EdgeInsets.only(left: 10),
+                                          child: Icon(Icons.close,
+                                              color: Colors.red)))
                               ],
                             );
                           })),

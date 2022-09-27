@@ -234,7 +234,7 @@ class NavMenuWidgetState extends State<NavMenuWidget> {
                   "My Notifications", Icons.notifications_on, Notifications()),
             ),
             Container(
-              child: NavMenuItem("Log out", Icons.backspace, MyApp()),
+              child: NavMenuItem("Log out", Icons.backspace, App()),
             ),
           ]),
     );

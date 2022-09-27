@@ -13,13 +13,12 @@ import "Payments.dart";
 import "Gallery.dart";
 import 'Drawings.dart';
 
-class TaskWidget extends StatefulWidget{
+class TaskWidget extends StatefulWidget {
   var id;
   TaskWidget(this.id);
 
   @override
   State<TaskWidget> createState() => TaskWidget1(this.id);
-
 }
 
 class TaskWidget1 extends State<TaskWidget> {
@@ -27,7 +26,7 @@ class TaskWidget1 extends State<TaskWidget> {
   var role = "";
   TaskWidget1(this.id);
 
-  call() async{
+  call() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     setState(() {
       role = prefs.getString("role");
@@ -43,14 +42,12 @@ class TaskWidget1 extends State<TaskWidget> {
 
   @override
   Widget build(BuildContext context) {
-
-
     final appTitle = 'buildAhome';
     final GlobalKey<ScaffoldState> _scaffoldKey =
-    new GlobalKey<ScaffoldState>();
+        new GlobalKey<ScaffoldState>();
     return MaterialApp(
       title: appTitle,
-      theme: ThemeData(fontFamily: MyApp().fontName),
+      theme: ThemeData(fontFamily: App().fontName),
       home: Scaffold(
         key: _scaffoldKey,
         drawer: NavMenuWidget(),
@@ -59,10 +56,9 @@ class TaskWidget1 extends State<TaskWidget> {
           title: Text(appTitle),
           leading: new IconButton(
               icon: new Icon(Icons.arrow_back_ios),
-              onPressed: () =>
-              {
-                Navigator.pop(context),
-              }),
+              onPressed: () => {
+                    Navigator.pop(context),
+                  }),
           backgroundColor: Color(0xFF000055),
         ),
         body: TaskScreenClass(this.id),
@@ -86,14 +82,15 @@ class TaskWidget1 extends State<TaskWidget> {
                 MaterialPageRoute(builder: (context) => Gallery(this.id)),
               );
             } else if (index == 3) {
-                Navigator.pushReplacement(
-                  context,
-                  MaterialPageRoute(builder: (context) => TaskWidget(this.id)),
-                );
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(builder: (context) => TaskWidget(this.id)),
+              );
             } else if (index == 4) {
               Navigator.pushReplacement(
                 context,
-                MaterialPageRoute(builder: (context) => PaymentTaskWidget(this.id)),
+                MaterialPageRoute(
+                    builder: (context) => PaymentTaskWidget(this.id)),
               );
             }
           },
@@ -127,7 +124,9 @@ class TaskWidget1 extends State<TaskWidget> {
                 style: TextStyle(fontSize: 12),
               ),
             ),
-            if (role == 'Site Engineer' || role == "Admin" || role == 'Project Coordinator')
+            if (role == 'Site Engineer' ||
+                role == "Admin" ||
+                role == 'Project Coordinator')
               BottomNavigationBarItem(
                 icon: Icon(
                   Icons.access_time,
@@ -147,10 +146,8 @@ class TaskWidget1 extends State<TaskWidget> {
                   style: TextStyle(fontSize: 12),
                 ),
               ),
-              
           ],
         ),
-        
       ),
     );
   }
@@ -279,10 +276,7 @@ class TaskItemWidget extends State<TaskItem>
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: <Widget>[
                               Container(
-                                width: MediaQuery
-                                    .of(context)
-                                    .size
-                                    .width * .8,
+                                width: MediaQuery.of(context).size.width * .8,
                                 child: Text(
                                   this._Task_name,
                                   textAlign: TextAlign.left,
@@ -302,22 +296,18 @@ class TaskItemWidget extends State<TaskItem>
                   Visibility(
                     visible: this.vis,
                     child: Container(
-                        width: MediaQuery
-                            .of(context)
-                            .size
-                            .width,
+                        width: MediaQuery.of(context).size.width,
                         child: Column(
                           children: <Widget>[
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: <Widget>[
-
                                 Container(
                                     padding: EdgeInsets.only(left: 7, top: 10),
                                     child: Text(
                                       DateFormat("dd MMM")
                                           .format(
-                                          DateTime.parse(this._start_date))
+                                              DateTime.parse(this._start_date))
                                           .toString(),
                                       style: TextStyle(
                                         fontSize: 12,
@@ -329,7 +319,7 @@ class TaskItemWidget extends State<TaskItem>
                                     child: Text(
                                       DateFormat("dd MMM")
                                           .format(
-                                          DateTime.parse(this._end_date))
+                                              DateTime.parse(this._end_date))
                                           .toString(),
                                       style: TextStyle(
                                         fontSize: 12,
@@ -355,59 +345,59 @@ class TaskItemWidget extends State<TaskItem>
                                   shrinkWrap: true,
                                   physics: NeverScrollableScrollPhysics(),
                                   itemCount:
-                                  this._sub_tasks
-                                      .split("^")
-                                      .length - 1,
+                                      this._sub_tasks.split("^").length - 1,
                                   itemBuilder: (BuildContext ctxt, int Index) {
                                     var sub_tasks = _sub_tasks.split("^");
 
                                     var each_task = sub_tasks[Index].split("|");
-                                    if(each_task[0]!="")
-                                    return Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: <Widget>[
-                                        Wrap(
-                                          children: <Widget>[
-                                            Icon(Icons.arrow_right),
+                                    if (each_task[0] != "")
+                                      return Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: <Widget>[
+                                          Wrap(
+                                            children: <Widget>[
+                                              Icon(Icons.arrow_right),
+                                              Container(
+                                                  width: MediaQuery.of(context)
+                                                          .size
+                                                          .width *
+                                                      .75,
+                                                  child: Text(
+                                                    DateFormat("dd MMM")
+                                                            .format(DateTime
+                                                                .parse(each_task[
+                                                                        1]
+                                                                    .toString()))
+                                                            .toString() +
+                                                        " to " +
+                                                        DateFormat("dd MMM")
+                                                            .format(DateTime
+                                                                .parse(each_task[
+                                                                        2]
+                                                                    .toString()))
+                                                            .toString() +
+                                                        " : " +
+                                                        each_task[0].toString(),
+                                                    style: TextStyle(
+                                                        color: Colors.black),
+                                                  )),
+                                            ],
+                                          ),
+                                          if (notes.length > Index &&
+                                              notes[Index].trim() != "")
                                             Container(
-                                                width: MediaQuery
-                                                    .of(context)
-                                                    .size
-                                                    .width *
-                                                    .75,
+                                                alignment: Alignment.centerLeft,
+                                                padding: EdgeInsets.all(5),
                                                 child: Text(
-                                                  DateFormat("dd MMM")
-                                                      .format(DateTime.parse(
-                                                      each_task[1]
-                                                          .toString()))
-                                                      .toString() +
-                                                      " to " +
-                                                      DateFormat("dd MMM")
-                                                          .format(
-                                                          DateTime.parse(
-                                                              each_task[2]
-                                                                  .toString()))
-                                                          .toString() +
-                                                      " : " +
-                                                      each_task[0].toString(),
+                                                  notes[Index],
                                                   style: TextStyle(
-                                                      color: Colors.black),
-                                                )),
-                                          ],
-                                        ),
-                                        if(notes.length>Index && notes[Index].trim()!="")
-
-                                        Container(
-                                            alignment: Alignment.centerLeft,
-                                            padding: EdgeInsets.all(5),
-                                            child: Text(
-                                              notes[Index],
-                                              style: TextStyle(
-                                                  color: Colors.black,
-                                                  fontWeight: FontWeight.bold),
-                                            ))
-                                      ],
-                                    );
+                                                      color: Colors.black,
+                                                      fontWeight:
+                                                          FontWeight.bold),
+                                                ))
+                                        ],
+                                      );
                                   }),
                             ),
                           ],
@@ -422,7 +412,6 @@ class TaskItemWidget extends State<TaskItem>
 }
 
 class TaskScreenClass extends StatefulWidget {
-
   var id;
 
   TaskScreenClass(this.id);
@@ -453,7 +442,8 @@ class TaskScreen extends State<TaskScreenClass> {
     var p_id = prefs.getString('project_id');
 
     if (p_id != null) {
-      var url = 'https://app.buildahome.in/api/get_all_tasks.php?project_id=$p_id&nt_toggle=0';
+      var url =
+          'https://app.buildahome.in/api/get_all_tasks.php?project_id=$p_id&nt_toggle=0';
       print(url);
       var response = await http.get(url);
       setState(() {
@@ -469,8 +459,8 @@ class TaskScreen extends State<TaskScreenClass> {
           padding: EdgeInsets.only(top: 20, left: 10, bottom: 10),
           decoration: BoxDecoration(
               border: Border(
-                bottom: BorderSide(width: 6.0, color: Colors.indigo[900]),
-              )),
+            bottom: BorderSide(width: 6.0, color: Colors.indigo[900]),
+          )),
           child: Text("What's done and what's not?",
               style: TextStyle(
                 fontSize: 20,

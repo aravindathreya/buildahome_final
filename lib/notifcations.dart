@@ -18,7 +18,7 @@ class Notifications extends StatelessWidget {
     final appTitle = 'buildAhome';
     return MaterialApp(
       title: appTitle,
-      theme: ThemeData(fontFamily: MyApp().fontName),
+      theme: ThemeData(fontFamily: App().fontName),
       home: Scaffold(
         key: _scaffoldKey,
         drawer: NavMenuWidget(),

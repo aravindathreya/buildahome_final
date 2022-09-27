@@ -77,7 +77,7 @@ class DprState extends State<Dpr> {
         new GlobalKey<ScaffoldState>();
     return MaterialApp(
       title: appTitle,
-      theme: ThemeData(fontFamily: MyApp().fontName),
+      theme: ThemeData(fontFamily: App().fontName),
       home: Scaffold(
         key: _scaffoldKey,
         appBar: AppBar(
@@ -111,14 +111,15 @@ class DprState extends State<Dpr> {
                 MaterialPageRoute(builder: (context) => Gallery(this.id)),
               );
             } else if (index == 3) {
-                Navigator.pushReplacement(
-                  context,
-                  MaterialPageRoute(builder: (context) => TaskWidget(this.id)),
-                );
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(builder: (context) => TaskWidget(this.id)),
+              );
             } else if (index == 4) {
               Navigator.pushReplacement(
                 context,
-                MaterialPageRoute(builder: (context) => PaymentTaskWidget(this.id)),
+                MaterialPageRoute(
+                    builder: (context) => PaymentTaskWidget(this.id)),
               );
             }
           },
@@ -152,7 +153,9 @@ class DprState extends State<Dpr> {
                 style: TextStyle(fontSize: 12),
               ),
             ),
-            if (role == 'Site Engineer' || role == "Admin" || role == 'Project Coordinator')
+            if (role == 'Site Engineer' ||
+                role == "Admin" ||
+                role == 'Project Coordinator')
               BottomNavigationBarItem(
                 icon: Icon(
                   Icons.access_time,
@@ -172,7 +175,6 @@ class DprState extends State<Dpr> {
                   style: TextStyle(fontSize: 12),
                 ),
               ),
-              
           ],
         ),
         body: ListView.builder(
@@ -182,8 +184,7 @@ class DprState extends State<Dpr> {
                 child: Container(
                     padding: EdgeInsets.all(15),
                     margin: EdgeInsets.only(top: 10),
-                    decoration:
-                        BoxDecoration(color: Colors.grey[200]),
+                    decoration: BoxDecoration(color: Colors.grey[200]),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: <Widget>[
@@ -191,7 +192,8 @@ class DprState extends State<Dpr> {
                           children: <Widget>[
                             Icon(Icons.calendar_today, color: Colors.black),
                             Container(
-                                padding: EdgeInsets.only(top: 10, left: 5, bottom: 10),
+                                padding: EdgeInsets.only(
+                                    top: 10, left: 5, bottom: 10),
                                 child: Text(list_of_dates[Index]))
                           ],
                         ),

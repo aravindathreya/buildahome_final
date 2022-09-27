@@ -1,12 +1,13 @@
-import 'package:buildahome/UserHome.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
-import 'NavMenu.dart';
 import 'package:flutter_spinkit/flutter_spinkit.dart';
+
+import 'NavMenu.dart';
 import 'main.dart';
+import 'package:buildahome/UserHome.dart';
 
 class AdminDashboard extends StatelessWidget {
   final GlobalKey<ScaffoldState> _scaffoldKey = new GlobalKey<ScaffoldState>();
@@ -17,7 +18,7 @@ class AdminDashboard extends StatelessWidget {
 
     return MaterialApp(
       title: appTitle,
-      theme: ThemeData(fontFamily: MyApp().fontName),
+      theme: ThemeData(fontFamily: App().fontName),
       home: Scaffold(
         key: _scaffoldKey, // ADD THIS LINE
         drawer: NavMenuWidget(),
@@ -50,12 +51,11 @@ class Dashboard extends StatefulWidget {
 }
 
 class DashboardState extends State<Dashboard> {
-  var update = " ";
-  var username = ' ';
-  var date = " ";
+  var update = "";
+  var username = "";
+  var date = "";
   var role = "";
-  var value = " ";
-  var completed = "0";
+
   var user_id;
   var data;
   var search_data;
@@ -68,19 +68,18 @@ class DashboardState extends State<Dashboard> {
 
   call() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
-    username = prefs.getString('username');
     role = prefs.getString('role');
-    var id = prefs.getString('project_id');
     user_id = prefs.getString('user_id');
-    var response = await http
-        .get("https://app.buildahome.in/api/projects_access.php?id=${user_id}");
+    String apiToken = prefs.getString('api_token');
+    var response = await http.post(
+        "https://app.buildahome.in/erp/API/get_projects_for_user",
+        body: {"user_id": user_id, "role": role, "api_token": apiToken});
 
     setState(() {
       print(data);
       data = jsonDecode(response.body);
       search_data = data;
-      value = prefs.getString('project_value');
-      completed = prefs.getString('completed');
+
       username = prefs.getString('username');
     });
   }
@@ -90,48 +89,6 @@ class DashboardState extends State<Dashboard> {
         child: ListView(
       padding: EdgeInsets.all(25),
       children: <Widget>[
-        Container(
-          padding: EdgeInsets.only(bottom: 10),
-          margin: EdgeInsets.only(bottom: 10, right: 100),
-          child: Text("Details",
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-          decoration:
-              BoxDecoration(border: Border(bottom: BorderSide(width: 3))),
-        ),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: <Widget>[
-            Container(
-                alignment: Alignment.centerLeft,
-                width: (MediaQuery.of(context).size.width - 60) / 2,
-                margin: EdgeInsets.only(bottom: 10),
-                child: Text("Name",
-                    style: TextStyle(color: Colors.grey[600], fontSize: 18))),
-            Container(
-                alignment: Alignment.centerLeft,
-                width: (MediaQuery.of(context).size.width - 60) / 2,
-                margin: EdgeInsets.only(bottom: 10),
-                child: Text(username,
-                    style: TextStyle(color: Colors.black, fontSize: 18))),
-          ],
-        ),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: <Widget>[
-            Container(
-                alignment: Alignment.centerLeft,
-                width: (MediaQuery.of(context).size.width - 60) / 2,
-                margin: EdgeInsets.only(bottom: 30),
-                child: Text("Role",
-                    style: TextStyle(color: Colors.grey[600], fontSize: 18))),
-            Container(
-                alignment: Alignment.centerLeft,
-                width: (MediaQuery.of(context).size.width - 60) / 2,
-                margin: EdgeInsets.only(bottom: 30),
-                child: Text(role,
-                    style: TextStyle(color: Colors.black, fontSize: 18))),
-          ],
-        ),
         Container(
           padding: EdgeInsets.only(bottom: 10),
           margin: EdgeInsets.only(bottom: 10, right: 100),
