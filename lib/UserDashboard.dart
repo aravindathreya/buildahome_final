@@ -39,7 +39,7 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
     var id = prefs.getString('project_id');
     var status_url =
         'https://app.buildahome.in/erp/API/get_project_block_status?project_id=${id}';
-    var status_response = await http.get(status_url);
+    var status_response = await http.get(Uri.parse(status_url));
     var status_response_body = jsonDecode(status_response.body);
     if (status_response_body['status'] == 'blocked') {
       setState(() {
@@ -60,13 +60,13 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
     }
 
     if (role == 'Client') {
-      final FirebaseMessaging _messaging = FirebaseMessaging();
+      // final FirebaseMessaging _messaging = FirebaseMessaging();
 
-      _messaging.subscribeToTopic(username);
+      // _messaging.subscribeToTopic(username);
     }
 
     var url = 'https://app.buildahome.in/api/latest_update.php?id=${id}';
-    var response = await http.get(url);
+    var response = await http.get(Uri.parse(url));
     print(response.body);
     if (response.body.trim() != "No updates") {
       updateResponseBody = jsonDecode(response.body);
@@ -76,12 +76,12 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
       project_completion_percentage = prefs.getString('completed');
       var url =
           'https://app.buildahome.in/api/get_project_percentage.php?id=${id}';
-      var percResponse = await http.get(url);
+      var percResponse = await http.get(Uri.parse(url));
       prefs.setString('completed', percResponse.body);
     } else {
       var url =
           'https://app.buildahome.in/api/get_project_percentage.php?id=${id}';
-      var percResponse = await http.get(url);
+      var percResponse = await http.get(Uri.parse(url));
       project_completion_percentage = percResponse.body;
     }
 

@@ -24,14 +24,14 @@ class AdminChatboxState extends State<AdminChatbox> {
   var projects;
   var records;
   getInfo() async{
-    var response = await http.get("https://app.buildahome.in/api/view_all_projects.php");
+    var response = await http.get(Uri.parse("https://app.buildahome.in/api/view_all_projects.php"));
       var prs = {};
       records = jsonDecode(response.body);
       for(int i=0; i<records.length; i++){
         var name = records[i]['name'];
         var url = "https://app.buildahome.in/api/get_latest_chat.php?username=$name";
         print(url);
-        var lastmessage = await http.get(url);
+        var lastmessage = await http.get(Uri.parse(url));
         print(lastmessage.body.toString());
         if(lastmessage.body==null){
           prs[name.toString()] = "-";

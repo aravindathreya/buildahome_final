@@ -17,7 +17,7 @@ class clientsModal extends StatelessWidget{
 
         content:
         FutureBuilder(
-            future: http.get("https://app.buildahome.in/api/view_all_clients.php",),
+            future: http.get(Uri.parse("https://app.buildahome.in/api/view_all_clients.php"),),
             builder: (context, snapshot) {
               switch (snapshot.connectionState) {
                 case ConnectionState.none:

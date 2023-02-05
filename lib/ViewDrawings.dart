@@ -81,7 +81,7 @@ class VIewDrawingState extends State<VIewDrawingForm> {
 
     var url = 'https://app.buildahome.in/api/get_drawing.php?id=$pr_id';
     print(url);
-    var response = await http.get(url);
+    var response = await http.get(Uri.parse(url));
     setState(() {
       entries = jsonDecode(response.body);
     });
@@ -180,7 +180,7 @@ class VIewDrawingState extends State<VIewDrawingForm> {
                           child: Text(entries[Index]['date'])),
                       FutureBuilder(
                           future: http.post(
-                              "https://app.buildahome.in/api/get_dr_image.php",
+                              Uri.parse("https://app.buildahome.in/api/get_dr_image.php"),
                               body: {'drawing_id': id}),
                           builder: (context, snapshot) {
                             switch (snapshot.connectionState) {

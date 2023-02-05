@@ -139,7 +139,7 @@ class DocumentsState extends State<Documents> {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     var id = prefs.getString('project_id');
     var url = 'https://app.buildahome.in/api/view_all_documents.php?id=$id';
-    var response = await http.get(url);
+    var response = await http.get(Uri.parse(url));
     
 
     setState(() {
@@ -236,56 +236,42 @@ class DocumentsState extends State<Documents> {
           },
           unselectedItemColor: Colors.grey[400],
           type: BottomNavigationBarType.fixed,
-          items: [
-            BottomNavigationBarItem(
-              icon: Icon(
-                Icons.home,
-              ),
-              title: Text(
-                'Home',
-                style: TextStyle(fontSize: 12),
-              ),
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(
-                Icons.picture_as_pdf,
-              ),
-              title: Text(
-                'Drawings',
-                style: TextStyle(fontSize: 12),
-              ),
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(
-                Icons.photo_album,
-              ),
-              title: Text(
-                "Gallery",
-                style: TextStyle(fontSize: 12),
-              ),
-            ),
-            if (role == 'Site Engineer' || role == "Admin" || role == 'Project Coordinator')
+            items: [
               BottomNavigationBarItem(
-                icon: Icon(
-                  Icons.access_time,
-                ),
-                title: Text(
-                  'Scheduler',
-                  style: TextStyle(fontSize: 12),
-                ),
+                  icon: Icon(
+                    Icons.home,
+                  ),
+                  label: 'Home'
               ),
-            if (role == 'Project Coordinator' || role == "Admin")
               BottomNavigationBarItem(
-                icon: Icon(
-                  Icons.payment,
-                ),
-                title: Text(
-                  'Payment',
-                  style: TextStyle(fontSize: 12),
-                ),
+                  icon: Icon(
+                    Icons.picture_as_pdf,
+                  ),
+                  label: 'Drawings'
               ),
-              
-          ],
+              BottomNavigationBarItem(
+                  icon: Icon(
+                    Icons.photo_album,
+                  ),
+                  label: "Gallery"
+              ),
+              if (role == 'Site Engineer' ||
+                  role == "Admin" ||
+                  role == 'Project Coordinator')
+                BottomNavigationBarItem(
+                    icon: Icon(
+                      Icons.access_time,
+                    ),
+                    label: 'Scheduler'
+                ),
+              if (role == 'Project Coordinator' || role == "Admin")
+                BottomNavigationBarItem(
+                    icon: Icon(
+                      Icons.payment,
+                    ),
+                    label: 'Payment'
+                ),
+            ],
         ),
         
           body: ListView.builder(

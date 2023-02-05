@@ -269,7 +269,7 @@ class RequestDrawingState extends State<RequestDrawing> {
               style: TextStyle(fontSize: 18),
               decoration: InputDecoration(
                   focusColor: Colors.black,
-                  hasFloatingPlaceholder: false,
+                  floatingLabelBehavior: FloatingLabelBehavior.never,
                   errorBorder: OutlineInputBorder(
                     borderSide: BorderSide(color: Colors.grey[600], width: 1.0),
                   ),
@@ -391,7 +391,7 @@ class RequestDrawingState extends State<RequestDrawing> {
             String formattedDate = DateFormat('EEEE d MMMM H:m').format(now);
             var url =
                 'https://app.buildahome.in/erp/API/create_drawing_request';
-            var response = await http.post(url, body: {
+            var response = await http.post(Uri.parse(url), body: {
               'project_id': projectId,
               'category': category,
               'drawing': drawing,

@@ -31,7 +31,7 @@ class ChatboxState extends State<Chatbox> {
     var username = prefs.getString('username');
     var url =
         'https://app.buildahome.in/api/get_messages.php?username=${username}';
-    var response = await http.get(url);
+    var response = await http.get(Uri.parse(url));
     var a = jsonDecode(response.body);
 
     setState(() {
@@ -65,7 +65,7 @@ class ChatboxState extends State<Chatbox> {
       SharedPreferences prefs = await SharedPreferences.getInstance();
 
       var url = 'https://app.buildahome.in/api/chatbox.php';
-      var response = await http.post(url, body: {
+      var response = await http.post(Uri.parse(url), body: {
         "msg": message.text,
         "sent_from_role": prefs.getString('role'),
         "sent_from": prefs.getString('username'),

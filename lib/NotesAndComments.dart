@@ -38,7 +38,7 @@ class NotesAndCommentsState extends State<NotesAndComments> {
 
     var url =
         'https://app.buildahome.in/erp/API/get_notes?project_id=${_project_id}';
-    var response = await http.get(url);
+    var response = await http.get(Uri.parse(url));
     print(response.body);
     var a = jsonDecode(response.body);
 
@@ -104,7 +104,7 @@ class NotesAndCommentsState extends State<NotesAndComments> {
               style: TextStyle(fontSize: 18),
               decoration: InputDecoration(
                   focusColor: Colors.black,
-                  hasFloatingPlaceholder: false,
+                  floatingLabelBehavior: FloatingLabelBehavior.never,
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.zero,
                     borderSide: BorderSide(

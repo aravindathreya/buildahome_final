@@ -296,7 +296,7 @@ class AddProjectState extends State<AddProjectForm> {
   var projects =[];
   call() async {
     var url = 'https://app.buildahome.in/api/view_all_projects.php';
-    var response = await http.get(url);
+    var response = await http.get(Uri.parse(url));
     print(response.body);
     setState(() {
       projects = jsonDecode(response.body);
@@ -353,7 +353,7 @@ class AddProjectState extends State<AddProjectForm> {
         print(clientname.text);
 
         var url = 'https://app.buildahome.in/api/add_new_project.php';
-        var response = await http.post(url, body: {
+        var response = await http.post(Uri.parse(url), body: {
           'tasks' : jsonEncode(tasks_list),
           'project_name': projectname.text,
           'project_location': projectlocation.text,
@@ -481,7 +481,7 @@ class AddProjectState extends State<AddProjectForm> {
                       ),
                       labelText: "Project Name",
                       hintText: "Project Name",
-                      hasFloatingPlaceholder: false,
+                      floatingLabelBehavior: FloatingLabelBehavior.never,
                       contentPadding: EdgeInsets.all(12),
                       labelStyle: TextStyle(
                         fontSize: 16,
@@ -507,7 +507,7 @@ class AddProjectState extends State<AddProjectForm> {
                       contentPadding: EdgeInsets.all(12),
                       labelText: "Project Location",
                       hintText: "Project Location",
-                      hasFloatingPlaceholder: false,
+                      floatingLabelBehavior: FloatingLabelBehavior.never,
                       labelStyle: TextStyle(
                         fontSize: 16,
                       ),
@@ -532,7 +532,7 @@ class AddProjectState extends State<AddProjectForm> {
                       contentPadding: EdgeInsets.all(12),
                       labelText: "Project Incharge",
                       hintText: "Project Incharge",
-                      hasFloatingPlaceholder: false,
+                      floatingLabelBehavior: FloatingLabelBehavior.never,
                       labelStyle: TextStyle(
                         fontSize: 16,
                       ),

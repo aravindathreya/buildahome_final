@@ -8,7 +8,7 @@ update_indent_status(status, indent_id, acted_by_user, user_id, notification_bod
   String formattedDate = DateFormat('EEEE d MMMM H:m').format(now);
 
   var url = 'https://app.buildahome.in/erp/API/change_indent_status';
-  await http.post(url, body: {
+  await http.post(Uri.parse(url), body: {
     'indent_id': indent_id,
     'status': status,
     'acted_by_user': acted_by_user.toString(),

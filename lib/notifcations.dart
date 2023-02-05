@@ -51,7 +51,7 @@ class NotificationPageBodyState extends State<NotificationPageBody> {
     var user_id = prefs.get('user_id');
     var url =
         'https://app.buildahome.in/erp/API/get_notifications?recipient=${user_id}';
-    var response = await http.get(url);
+    var response = await http.get(Uri.parse(url));
     setState(() {
       notifcations = jsonDecode(response.body);
       print(notifcations);
@@ -64,7 +64,7 @@ class NotificationPageBodyState extends State<NotificationPageBody> {
     var user_id = prefs.get('user_id');
     var url =
         'https://app.buildahome.in/erp/API/mark_notifications_as_read?user_id=${user_id}';
-    await http.get(url);
+    await http.get(Uri.parse(url));
   }
 
   @override

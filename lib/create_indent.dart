@@ -164,7 +164,7 @@ class CreateIndentState extends State<CreateIndent> {
                     contentPadding:
                         EdgeInsets.symmetric(vertical: 5, horizontal: 10),
                     border: OutlineInputBorder(),
-                    hasFloatingPlaceholder: false,
+                    floatingLabelBehavior: FloatingLabelBehavior.never,
                     fillColor: Colors.white,
                     focusColor: Colors.white,
                     filled: true,
@@ -224,7 +224,7 @@ class CreateIndentState extends State<CreateIndent> {
                 contentPadding:
                     EdgeInsets.symmetric(vertical: 5, horizontal: 10),
                 border: OutlineInputBorder(),
-                hasFloatingPlaceholder: false,
+                floatingLabelBehavior: FloatingLabelBehavior.never,
                 fillColor: Colors.white,
                 focusColor: Colors.white,
                 filled: true,
@@ -276,7 +276,7 @@ class CreateIndentState extends State<CreateIndent> {
               style: TextStyle(fontSize: 18),
               decoration: InputDecoration(
                   focusColor: Colors.black,
-                  hasFloatingPlaceholder: false,
+                  floatingLabelBehavior: FloatingLabelBehavior.never,
                   errorBorder: OutlineInputBorder(
                     borderSide: BorderSide(color: Colors.grey[600], width: 1.0),
                   ),
@@ -487,7 +487,7 @@ class CreateIndentState extends State<CreateIndent> {
             DateTime now = DateTime.now();
             String formattedDate = DateFormat('EEEE d MMMM H:m').format(now);
             var url = 'https://app.buildahome.in/erp/API/create_indent';
-            var response = await http.post(url, body: {
+            var response = await http.post(Uri.parse(url), body: {
               'project_id': projectId,
               'material': material,
               'quantity': quantityTextController.text.trim(),

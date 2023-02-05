@@ -64,7 +64,7 @@ class ViewIndentsState extends State<ViewIndents> {
 
     var url =
         'https://app.buildahome.in/erp/API/get_unapproved_indents?user_id=${user_id}';
-    var response = await http.get(url);
+    var response = await http.get(Uri.parse(url));
     print(response.body);
     setState(() {
       indents = jsonDecode(response.body);

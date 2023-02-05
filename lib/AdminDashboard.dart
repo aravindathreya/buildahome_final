@@ -72,7 +72,7 @@ class DashboardState extends State<Dashboard> {
     user_id = prefs.getString('user_id');
     String apiToken = prefs.getString('api_token');
     var response = await http.post(
-        "https://app.buildahome.in/erp/API/get_projects_for_user",
+        Uri.parse("https://app.buildahome.in/erp/API/get_projects_for_user"),
         body: {"user_id": user_id, "role": role, "api_token": apiToken});
 
     setState(() {

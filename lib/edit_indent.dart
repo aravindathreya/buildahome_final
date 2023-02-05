@@ -146,7 +146,7 @@ class EditIndentState extends State<EditIndent> {
                     contentPadding:
                         EdgeInsets.symmetric(vertical: 5, horizontal: 10),
                     border: OutlineInputBorder(),
-                    hasFloatingPlaceholder: false,
+                    floatingLabelBehavior: FloatingLabelBehavior.never,
                     fillColor: Colors.white,
                     focusColor: Colors.white,
                     filled: true,
@@ -204,7 +204,7 @@ class EditIndentState extends State<EditIndent> {
               style: TextStyle(fontSize: 18),
               decoration: InputDecoration(
                   focusColor: Colors.black,
-                  hasFloatingPlaceholder: false,
+                  floatingLabelBehavior: FloatingLabelBehavior.never,
                   errorBorder: OutlineInputBorder(
                     borderSide: BorderSide(color: Colors.grey[600], width: 1.0),
                   ),
@@ -285,7 +285,7 @@ class EditIndentState extends State<EditIndent> {
 
             var url =
                 'https://app.buildahome.in/erp/API/edit_and_approve_indent';
-            var response = await http.post(url, body: {
+            var response = await http.post(Uri.parse(url), body: {
               'indent_id': this.indent['id'].toString(),
               'project_id': projectId.toString(),
               'material': material,

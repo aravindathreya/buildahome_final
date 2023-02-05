@@ -65,7 +65,7 @@ class UpdateBox extends StatelessWidget{
             height: MediaQuery.of(context).size.height * .60,
             color: Colors.blue,
             child: FutureBuilder(
-                future: http.post("http://192.168.0.105:80/bah/api/get_image.php",
+                future: http.post(Uri.parse("http://192.168.0.105:80/bah/api/get_image.php"),
 
                     body: {
                       'pr_name': "hi".toString(),

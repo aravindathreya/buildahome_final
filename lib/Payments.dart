@@ -70,37 +70,25 @@ class PaymentTaskWidget extends StatelessWidget {
               icon: Icon(
                 Icons.home,
               ),
-              title: Text(
-                'Home',
-                style: TextStyle(fontSize: 12),
-              ),
+              label: 'Home'
             ),
             BottomNavigationBarItem(
               icon: Icon(
                 Icons.access_time,
               ),
-              title: Text(
-                'Scheduler',
-                style: TextStyle(fontSize: 12),
-              ),
+              label: 'Scheduler'
             ),
             BottomNavigationBarItem(
               icon: Icon(
                 Icons.payment,
               ),
-              title: Text(
-                'Payment',
-                style: TextStyle(fontSize: 12),
-              ),
+              label: 'Payment'
             ),
             BottomNavigationBarItem(
               icon: Icon(
                 Icons.photo_album,
               ),
-              title: Text(
-                "Gallery",
-                style: TextStyle(fontSize: 12),
-              ),
+              label: "Gallery"
             ),
           ],
         ),
@@ -373,9 +361,9 @@ class PaymentTasks extends State<PaymentTasksClass> {
     var id = prefs.getString('project_id');
     var url =
         'https://app.buildahome.in/api/get_all_tasks.php?project_id=$id&nt_toggle=1 ';
-    var response = await http.get(url);
+    var response = await http.get(Uri.parse(url));
     var url1 = 'https://app.buildahome.in/api/get_payment.php?project_id=$id ';
-    var response1 = await http.get(url1);
+    var response1 = await http.get(Uri.parse(url1));
     var details = jsonDecode(response1.body);
     print(details);
     setState(() {

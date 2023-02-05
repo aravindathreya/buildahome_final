@@ -103,28 +103,19 @@ class Gallery extends StatelessWidget {
               icon: Icon(
                 Icons.home,
               ),
-              title: Text(
-                'Home',
-                style: TextStyle(fontSize: 12),
-              ),
+              label: 'Home'
             ),
             BottomNavigationBarItem(
               icon: Icon(
                 Icons.picture_as_pdf,
               ),
-              title: Text(
-                'Drawings',
-                style: TextStyle(fontSize: 12),
-              ),
+              label: 'Drawings'
             ),
             BottomNavigationBarItem(
               icon: Icon(
                 Icons.photo_album,
               ),
-              title: Text(
-                "Gallery",
-                style: TextStyle(fontSize: 12),
-              ),
+              label: "Gallery"
             ),
           ],
         ),
@@ -173,7 +164,7 @@ class GalleryState extends State<GalleryForm> {
 
     var url = 'https://app.buildahome.in/api/get_gallery_data.php?id=$pr_id';
 
-    var response = await http.get(url);
+    var response = await http.get(Uri.parse(url));
     entries = jsonDecode(response.body);
     entries_count = entries.length;
     for (int i = 0; i < entries_count; i++) {
@@ -321,7 +312,7 @@ class GalleryState extends State<GalleryForm> {
                                                                 var response =
                                                                     await http
                                                                         .get(
-                                                                            url);
+                                                                            Uri.parse(url));
 
                                                                 setState(() {
                                                                   Navigator.of(

@@ -25,7 +25,7 @@ class UsersState extends State<Users> {
   var projects =[];
   call() async {
     var url = 'https://app.buildahome.in/api/view_all_users.php';
-    var response = await http.get(url);
+    var response = await http.get(Uri.parse(url));
     print(response.body);
     setState(() {
       projects = jsonDecode(response.body);
@@ -170,7 +170,7 @@ class UsersState extends State<Users> {
                           contentPadding: EdgeInsets.all(12),
                           labelText: "Name",
                           hintText: "Name",
-                          hasFloatingPlaceholder: false,
+                          floatingLabelBehavior: FloatingLabelBehavior.never,
                           labelStyle: TextStyle(
                             fontSize: 16,
                           ),
@@ -195,7 +195,7 @@ class UsersState extends State<Users> {
                           contentPadding: EdgeInsets.all(12),
                           labelText: "Email",
                           hintText: "Email",
-                          hasFloatingPlaceholder: false,
+                          floatingLabelBehavior: FloatingLabelBehavior.never,
                           labelStyle: TextStyle(
                             fontSize: 16,
                           ),
@@ -220,7 +220,7 @@ class UsersState extends State<Users> {
                           contentPadding: EdgeInsets.all(12),
                           labelText: "Password",
                           hintText: "Password",
-                          hasFloatingPlaceholder: false,
+                          floatingLabelBehavior: FloatingLabelBehavior.never,
                           labelStyle: TextStyle(
                             fontSize: 16,
                           ),
@@ -322,7 +322,7 @@ class UsersState extends State<Users> {
                                 });
                             var url =
                                 'https://app.buildahome.in/api/add_new_user.php';
-                            var response = await http.post(url, body: {
+                            var response = await http.post(Uri.parse(url), body: {
                               "email": email.text,
                               "name": name.text,
                               "password": password.text,

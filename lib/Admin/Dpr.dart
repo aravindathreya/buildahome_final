@@ -47,7 +47,7 @@ class DprState extends State<Dpr> {
   call() async {
     set_project_id(this.id);
     var url = 'https://app.buildahome.in/api/view_all_dpr.php?id=${this.id}';
-    var response = await http.get(url);
+    var response = await http.get(Uri.parse(url));
     setState(() {
       list_of_dates = [];
       entries = jsonDecode(response.body);
@@ -130,28 +130,19 @@ class DprState extends State<Dpr> {
               icon: Icon(
                 Icons.home,
               ),
-              title: Text(
-                'Home',
-                style: TextStyle(fontSize: 12),
-              ),
+              label: 'Home'
             ),
             BottomNavigationBarItem(
               icon: Icon(
                 Icons.picture_as_pdf,
               ),
-              title: Text(
-                'Drawings',
-                style: TextStyle(fontSize: 12),
-              ),
+              label: 'Drawings'
             ),
             BottomNavigationBarItem(
               icon: Icon(
                 Icons.photo_album,
               ),
-              title: Text(
-                "Gallery",
-                style: TextStyle(fontSize: 12),
-              ),
+              label: "Gallery"
             ),
             if (role == 'Site Engineer' ||
                 role == "Admin" ||
@@ -160,20 +151,14 @@ class DprState extends State<Dpr> {
                 icon: Icon(
                   Icons.access_time,
                 ),
-                title: Text(
-                  'Scheduler',
-                  style: TextStyle(fontSize: 12),
-                ),
+                label: 'Scheduler'
               ),
             if (role == 'Project Coordinator' || role == "Admin")
               BottomNavigationBarItem(
                 icon: Icon(
                   Icons.payment,
                 ),
-                title: Text(
-                  'Payment',
-                  style: TextStyle(fontSize: 12),
-                ),
+                label: 'Payment'
               ),
           ],
         ),
@@ -215,7 +200,7 @@ class DprState extends State<Dpr> {
                                         print(update_ids[x]);
                                         var url =
                                             'https://app.buildahome.in/api/delete_update.php?id=${update_ids[x]}';
-                                        var response = await http.get(url);
+                                        var response = await http.get(Uri.parse(url));
 
                                         setState(() {
                                           showDialog(

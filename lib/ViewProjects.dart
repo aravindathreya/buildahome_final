@@ -112,7 +112,7 @@ class ViewProjectState extends State<ViewProjectForm> {
   call() async{
     print("check");
     var url = 'http://10.0.2.2:80/bah/api/view_projects.php';
-    var response = await http.get(url);
+    var response = await http.get(Uri.parse(url));
     print(response.body);
     setState(() {
       a = jsonDecode(response.body);

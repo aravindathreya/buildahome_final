@@ -61,7 +61,7 @@ class GalleryState extends State<GalleryForm> {
 
     var url = 'https://app.buildahome.in/api/get_gallery_data.php?id=$pr_id';
 
-    var response = await http.get(url);
+    var response = await http.get(Uri.parse(url));
     entries = jsonDecode(response.body);
     print(entries);
     entries_count = entries.length;

@@ -322,7 +322,7 @@ class TaskScreen extends State<TaskScreenClass> {
 
     var url =
         'https://app.buildahome.in/api/get_all_tasks.php?project_id=$id&nt_toggle=1 ';
-    var response = await http.get(url);
+    var response = await http.get(Uri.parse(url));
     setState(() {
       body = jsonDecode(response.body);
     });

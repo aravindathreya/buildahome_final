@@ -98,53 +98,38 @@ class TaskWidget1 extends State<TaskWidget> {
           type: BottomNavigationBarType.fixed,
           items: [
             BottomNavigationBarItem(
-              icon: Icon(
-                Icons.home,
-              ),
-              title: Text(
-                'Home',
-                style: TextStyle(fontSize: 12),
-              ),
+                icon: Icon(
+                  Icons.home,
+                ),
+                label: 'Home'
             ),
             BottomNavigationBarItem(
-              icon: Icon(
-                Icons.picture_as_pdf,
-              ),
-              title: Text(
-                'Drawings',
-                style: TextStyle(fontSize: 12),
-              ),
+                icon: Icon(
+                  Icons.picture_as_pdf,
+                ),
+                label: 'Drawings'
             ),
             BottomNavigationBarItem(
-              icon: Icon(
-                Icons.photo_album,
-              ),
-              title: Text(
-                "Gallery",
-                style: TextStyle(fontSize: 12),
-              ),
+                icon: Icon(
+                  Icons.photo_album,
+                ),
+                label: "Gallery"
             ),
             if (role == 'Site Engineer' ||
                 role == "Admin" ||
                 role == 'Project Coordinator')
               BottomNavigationBarItem(
-                icon: Icon(
-                  Icons.access_time,
-                ),
-                title: Text(
-                  'Scheduler',
-                  style: TextStyle(fontSize: 12),
-                ),
+                  icon: Icon(
+                    Icons.access_time,
+                  ),
+                  label: 'Scheduler'
               ),
             if (role == 'Project Coordinator' || role == "Admin")
               BottomNavigationBarItem(
-                icon: Icon(
-                  Icons.payment,
-                ),
-                title: Text(
-                  'Payment',
-                  style: TextStyle(fontSize: 12),
-                ),
+                  icon: Icon(
+                    Icons.payment,
+                  ),
+                  label: 'Payment'
               ),
           ],
         ),
@@ -445,7 +430,7 @@ class TaskScreen extends State<TaskScreenClass> {
       var url =
           'https://app.buildahome.in/api/get_all_tasks.php?project_id=$p_id&nt_toggle=0';
       print(url);
-      var response = await http.get(url);
+      var response = await http.get(Uri.parse(url));
       setState(() {
         body = jsonDecode(response.body);
       });

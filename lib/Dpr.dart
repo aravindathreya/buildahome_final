@@ -29,7 +29,7 @@ class DprState extends State<Dpr> {
 
   call() async {
     var url = 'https://app.buildahome.in/api/view_all_dpr.php?id=${this.id}';
-    var response = await http.get(url);
+    var response = await http.get(Uri.parse(url));
     setState(() {
       list_of_dates = [];
       entries = jsonDecode(response.body);
@@ -110,7 +110,7 @@ class DprState extends State<Dpr> {
                                           print(update_ids[x]);
                                           var url =
                                               'https://app.buildahome.in/api/delete_update.php?id=${update_ids[x]}';
-                                          var response = await http.get(url);
+                                          var response = await http.get(Uri.parse(url));
                                           setState(() {
                                             list_of_updates.removeAt(x);
                                             update_ids.removeAt(x);

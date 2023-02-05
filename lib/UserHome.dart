@@ -183,7 +183,7 @@ class UserHomeScreenState extends State<UserHomeScreen> {
     var id = prefs.getString('project_id');
     var status_url =
         'https://app.buildahome.in/erp/API/get_project_block_status?project_id=${id}';
-    var status_response = await http.get(status_url);
+    var status_response = await http.get(Uri.parse(status_url));
     var status_response_body = jsonDecode(status_response.body);
     if (status_response_body['status'] == 'blocked') {
       setState(() {

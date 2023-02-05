@@ -56,33 +56,33 @@ class LoginFormState extends State<LoginForm> {
   }
 
   initFirebase() {
-    final FirebaseMessaging _messaging = FirebaseMessaging();
+    // final FirebaseMessaging _messaging = FirebaseMessaging();
 
-    _messaging.configure(
-      onMessage: (Map<String, dynamic> message) async {
-        if (role != 'Client') {
-          Navigator.push(context,
-              MaterialPageRoute(builder: (context) => Notifications()));
-        }
-      },
-      onLaunch: (Map<String, dynamic> message) async {
-        print("onLaunch: $message");
-        if (role != 'Client') {
-          Navigator.push(context,
-              MaterialPageRoute(builder: (context) => Notifications()));
-        }
-      },
-      onResume: (Map<String, dynamic> message) async {
-        print("onResume: $message");
-        if (role != 'Client') {
-          Navigator.push(context,
-              MaterialPageRoute(builder: (context) => Notifications()));
-        }
-      },
-    );
-    _messaging.getToken().then((token) {
-      print(token);
-    });
+    // _messaging.configure(
+    //   onMessage: (Map<String, dynamic> message) async {
+    //     if (role != 'Client') {
+    //       Navigator.push(context,
+    //           MaterialPageRoute(builder: (context) => Notifications()));
+    //     }
+    //   },
+    //   onLaunch: (Map<String, dynamic> message) async {
+    //     print("onLaunch: $message");
+    //     if (role != 'Client') {
+    //       Navigator.push(context,
+    //           MaterialPageRoute(builder: (context) => Notifications()));
+    //     }
+    //   },
+    //   onResume: (Map<String, dynamic> message) async {
+    //     print("onResume: $message");
+    //     if (role != 'Client') {
+    //       Navigator.push(context,
+    //           MaterialPageRoute(builder: (context) => Notifications()));
+    //     }
+    //   },
+    // );
+    // _messaging.getToken().then((token) {
+    //   print(token);
+    // });
   }
 
   checkIfAlreadyLoggedIn() async {
@@ -111,8 +111,8 @@ class LoginFormState extends State<LoginForm> {
   }
 
   subscribeToFirebaseTopic(topic) {
-    final FirebaseMessaging _messaging = FirebaseMessaging();
-    _messaging.subscribeToTopic(topic.toString());
+    // final FirebaseMessaging _messaging = FirebaseMessaging();
+    // _messaging.subscribeToTopic(topic.toString());
   }
 
   setSharedPrefs(username, role, projectId, projectValue, completed, userId,
@@ -175,7 +175,7 @@ class LoginFormState extends State<LoginForm> {
           return Loader();
         });
 
-    var url = 'https://app.buildahome.in/erp/API/login';
+    var url = Uri.parse('https://app.buildahome.in/erp/API/login');
     var response = await http.post(url,
         body: {'username': username.text, 'password': password.text});
     Map<String, dynamic> jsonDecodedResponse = jsonDecode(response.body);

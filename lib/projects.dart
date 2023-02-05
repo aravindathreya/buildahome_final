@@ -29,7 +29,7 @@ class ProjectsModalBody extends State<ProjectsModal> {
   call() async {
     var url =
         "https://app.buildahome.in/api/projects_access.php?id=${this.id.toString()}";
-    var response = await http.get(url);
+    var response = await http.get(Uri.parse(url));
     setState(() {
       projects = jsonDecode(response.body);
       search_data = projects;

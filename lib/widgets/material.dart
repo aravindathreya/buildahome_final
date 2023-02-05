@@ -15,7 +15,7 @@ class MaterialState extends State<Materials> {
 
   void call() async {
     var url = "https://app.buildahome.in/erp/API/get_materials";
-    var response = await http.get(url);
+    var response = await http.get(Uri.parse(url));
     print(response.body);
     setState(() {
       var res = jsonDecode(response.body);

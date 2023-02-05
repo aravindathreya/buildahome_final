@@ -102,11 +102,11 @@ class ViewUsers extends StatelessWidget {
 
             BottomNavigationBarItem(
               icon: Icon(Icons.person_add),
-              title: Text('Add new user'),
+              label: 'Add new user',
             ),
             BottomNavigationBarItem(
               icon: Icon(Icons.view_list),
-              title: Text('View all users'),
+              label: 'View all users',
             ),
           ],
           currentIndex: 1,
@@ -133,7 +133,7 @@ class ViewUsersState extends State<ViewUsersForm> {
 
   call() async {
     var url = 'http://192.168.0.105:80/bah/api/view_all_users.php';
-    var response = await http.get(url);
+    var response = await http.get(Uri.parse(url));
     print(response.body);
     setState(() {
       a = jsonDecode(response.body);
