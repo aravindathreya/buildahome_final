@@ -1,4 +1,3 @@
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 class NewRoute extends StatelessWidget {
@@ -13,7 +12,7 @@ class NewRoute extends StatelessWidget {
 }
 
 class HomePage extends StatefulWidget {
-  
+
   @override
   _HomePageState createState() => _HomePageState();
 }
@@ -46,7 +45,7 @@ class _HomePageState extends State<HomePage> {
                   contentPadding: EdgeInsets.all(5),
                 ),
                 textAlign: TextAlign.center,
-              )              
+              )
             ),
             Container(
               margin: EdgeInsets.all(25),
@@ -62,7 +61,7 @@ class _HomePageState extends State<HomePage> {
                     color: Color(0xFFe35349),
                     borderRadius: BorderRadius.circular(20),
                     boxShadow: [new BoxShadow(
-                      color: Colors.grey[400],
+                      color: Colors.grey[400]!,
                       blurRadius: 5.0,
                       offset: Offset(0.0, 1.0)
                     ),]

@@ -1,18 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/widgets.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import 'NavMenu.dart';
 import 'dart:typed_data';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'main.dart';
 import "FullScreenImage.dart";
-import "UserHome.dart";
-import "Scheduler.dart";
 import 'package:cached_network_image/cached_network_image.dart';
-import "Payments.dart";
 
-BuildContext context;
 var images = {};
 
 class Gallery extends StatelessWidget {
@@ -148,7 +141,7 @@ class GalleryState extends State<GalleryForm> {
                                   (MediaQuery.of(context).size.width - 20) / 3,
                               decoration: BoxDecoration(
                                 border: Border.all(
-                                    width: 0.5, color: Colors.grey[300]),
+                                    width: 0.5, color: Colors.grey[300]!),
                               ),
                               child: InkWell(
                                 onTap: () {
@@ -156,7 +149,7 @@ class GalleryState extends State<GalleryForm> {
                                     this.con,
                                     MaterialPageRoute(
                                         builder: (context) => FullScreenImage(
-                                            "https://app.buildahome.in/api/images/${entries[i]['image']}")),
+                                            "https://app.buildahome.in/erp/API/images/${entries[i]['image']}")),
                                   );
                                 },
                                 child: CachedNetworkImage(
@@ -167,7 +160,7 @@ class GalleryState extends State<GalleryForm> {
                                     width: 20,
                                   ),
                                   imageUrl:
-                                      "https://app.buildahome.in/api/images/${entries[i]['image']}",
+                                      "https://app.buildahome.in/erp/API/images/${entries[i]['image']}",
                                 ),
                               ))
                   ],

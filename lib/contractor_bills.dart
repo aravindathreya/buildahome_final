@@ -3,41 +3,38 @@ import 'package:http/http.dart' as http;
 import 'NavMenu.dart';
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:url_launcher/url_launcher.dart';
-import 'main.dart';
 
 class ContractorBills extends StatefulWidget {
-  var contractor_name;
-  var contractor_code;
-  var trade;
+  final contractorName;
+  final contractorCode;
+  final trade;
 
-  ContractorBills(this.contractor_name, this.contractor_code, this.trade);
+  ContractorBills(this.contractorName, this.contractorCode, this.trade);
 
   @override
   ContractorBillsState createState() {
     return ContractorBillsState(
-        this.contractor_name, this.contractor_code, this.trade);
+        this.contractorName, this.contractorCode, this.trade);
   }
 }
 
 class ContractorBillsState extends State<ContractorBills> {
   var bills = [];
-  var contractor_name;
-  var contractor_code;
+  var contractorName;
+  var contractorCode;
   var trade;
 
-  ContractorBillsState(this.contractor_name, this.contractor_code, this.trade);
+  ContractorBillsState(this.contractorName, this.contractorCode, this.trade);
 
   call() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     var id = prefs.getString('project_id');
     var _bills;
 
-    var bills_url =
-        'https://app.buildahome.in/erp/API/view_bills?project_id=$id&trade=${this.trade}&name=${this.contractor_name}&code=${this.contractor_code}';
-    var bills_response = await http.get(Uri.parse(bills_url));
-
-    _bills = jsonDecode(bills_response.body);
+    var billsUrl =
+        'https://app.buildahome.in/erp/API/view_bills?project_id=$id&trade=${this.trade}&name=${this.contractorName}&code=${this.contractorCode}';
+    var billsResponse = await http.get(Uri.parse(billsUrl));
+    _bills = jsonDecode(billsResponse.body);
 
     setState(() {
       bills = _bills;
@@ -72,19 +69,19 @@ class ContractorBillsState extends State<ContractorBills> {
               margin: EdgeInsets.symmetric(horizontal: 20, vertical: 15),
               padding: EdgeInsets.only(bottom: 5),
               child: Text(
-                'Bills for contractor ${this.contractor_name}',
+                'Bills for contractor ${this.contractorName}',
                 style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
               ),
               decoration: BoxDecoration(
-                  border: Border(bottom: BorderSide(color: Colors.grey[300]))),
+                  border: Border(bottom: BorderSide(color: Colors.grey[300]!))),
             ),
             ListView.builder(
               shrinkWrap: true,
               physics: NeverScrollableScrollPhysics(),
               padding: EdgeInsets.all(15),
               itemCount: bills.length,
-              itemBuilder: (BuildContext ctxt, int Index) {
-                print(bills[Index]);
+              itemBuilder: (BuildContext ctxt, int index) {
+                print(bills[index]);
                 return Container(
                     margin: EdgeInsets.symmetric(vertical: 10),
                     padding: EdgeInsets.all(15),
@@ -92,9 +89,9 @@ class ContractorBillsState extends State<ContractorBills> {
                       color: Colors.grey[200],
                       border: Border(
                           left: BorderSide(
-                              color: bills[Index][3] == null
-                                  ? Colors.grey[300]
-                                  : Colors.green[400],
+                              color: bills[index][3] == null
+                                  ? Colors.grey[300]!
+                                  : Colors.green[400]!,
                               width: 5)),
                     ),
                     child: Column(
@@ -110,9 +107,7 @@ class ContractorBillsState extends State<ContractorBills> {
                         Container(
                           margin: EdgeInsets.only(bottom: 5),
                           child: Text(
-                            'Stage: ' + bills[Index][0] == null
-                                ? ''
-                                : bills[Index][0].toString(),
+                            'Stage: ' + bills[index][0].toString(),
                             style: TextStyle(fontWeight: FontWeight.w600),
                           ),
                         ),
@@ -120,9 +115,9 @@ class ContractorBillsState extends State<ContractorBills> {
                           margin: EdgeInsets.only(bottom: 5),
                           child: Text(
                             'Percentage: ' +
-                                (bills[Index][1] == null
+                                (bills[index][1] == null
                                     ? "0"
-                                    : bills[Index][1].toString()) +
+                                    : bills[index][1].toString()) +
                                 '%',
                           ),
                         ),
@@ -130,27 +125,27 @@ class ContractorBillsState extends State<ContractorBills> {
                           margin: EdgeInsets.only(bottom: 5),
                           child: Text(
                             'Total payable: ' +
-                                (bills[Index][2] == null
+                                (bills[index][2] == null
                                     ? '0'
-                                    : bills[Index][2].toString()),
+                                    : bills[index][2].toString()),
                           ),
                         ),
                         Container(
                           margin: EdgeInsets.only(bottom: 5),
                           child: Text(
                             'Amoount: ' +
-                                (bills[Index][3] == null
+                                (bills[index][3] == null
                                     ? '0'
-                                    : bills[Index][3].toString()),
+                                    : bills[index][3].toString()),
                           ),
                         ),
                         Container(
                           margin: EdgeInsets.only(bottom: 5),
                           child: Text(
                             'Created on: ' +
-                                (bills[Index][5] == null
+                                (bills[index][5] == null
                                     ? ''
-                                    : bills[Index][5].toString()),
+                                    : bills[index][5].toString()),
                           ),
                         ),
                       ],

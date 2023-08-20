@@ -1,12 +1,9 @@
-import 'package:buildahome/ViewAllUsers.dart';
 import 'package:flutter/material.dart';
+import 'package:grouped_buttons_ns/grouped_buttons_ns.dart';
 import 'package:http/http.dart' as http;
 import 'NavMenu.dart';
 import "ShowAlert.dart";
-import "ViewAllUsers.dart";
-import 'package:grouped_buttons/grouped_buttons.dart';
 import 'dart:convert';
-import 'dart:async';
 
 class Users extends StatefulWidget {
   @override
@@ -22,7 +19,7 @@ class UsersState extends State<Users> {
   var password = TextEditingController();
   var role = TextEditingController();
 
-  var projects =[];
+  var projects = [];
   call() async {
     var url = 'https://app.buildahome.in/api/view_all_users.php';
     var response = await http.get(Uri.parse(url));
@@ -39,17 +36,7 @@ class UsersState extends State<Users> {
   }
   @override
   Widget build(BuildContext context) {
-    void _onItemTapped(int index) {
-      print(index);
-      if (index == 1) {
-        Navigator.pop(context);
-
-        Navigator.push(
-          context,
-          MaterialPageRoute(builder: (context) => ViewUsers()),
-        );
-      }
-    }
+    
 
     final appTitle = 'BuildAhome';
     final _formKey = GlobalKey<FormState>();
@@ -66,8 +53,8 @@ class UsersState extends State<Users> {
           title: Text(appTitle),
           leading: new IconButton(
               icon: new Icon(Icons.menu),
-              onPressed: () => _scaffoldKey.currentState.openDrawer()),
-          backgroundColor: Colors.indigo[900],
+              onPressed: () => _scaffoldKey.currentState?.openDrawer()),
+          backgroundColor: Colors.indigo[900]!,
         ),
         drawer: NavMenuWidget(),
 
@@ -96,7 +83,7 @@ class UsersState extends State<Users> {
                   physics: new BouncingScrollPhysics(),
                   scrollDirection: Axis.vertical,
                   itemCount: projects.length,
-                  itemBuilder: (BuildContext ctxt, int Index) {
+                  itemBuilder: (BuildContext ctxt, int index) {
                     return Container(
                         padding: EdgeInsets.only(top: 20, left: 5, right: 5),
 
@@ -107,7 +94,7 @@ class UsersState extends State<Users> {
                               borderRadius: BorderRadius.all(Radius.circular(5)),
                               boxShadow: [
                                 new BoxShadow(
-                                  color: Colors.grey[500],
+                                  color: Colors.grey[500]!,
                                   blurRadius: 15,
                                   spreadRadius: 2,
 
@@ -119,16 +106,16 @@ class UsersState extends State<Users> {
                               children: <Widget>[
                                 Container(
                                     padding: EdgeInsets.all(10),
-                                    child: Text(projects[Index]['name'], style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold))
+                                    child: Text(projects[index]['name'], style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold))
                                 ),
                                 Container(
                                     padding: EdgeInsets.only(top: 5, left: 10),
-                                    child: Text("Email: "+ projects[Index]['email'], style: TextStyle(fontSize: 14))
+                                    child: Text("Email: "+ projects[index]['email'], style: TextStyle(fontSize: 14))
                                 ),
 
                                 Container(
                                     padding: EdgeInsets.all(10),
-                                    child: Text("Role: "+projects[Index]['role'], style: TextStyle(fontSize: 14))
+                                    child: Text("Role: "+projects[index]['role'], style: TextStyle(fontSize: 14))
                                 ),
 
                               ],
@@ -177,7 +164,7 @@ class UsersState extends State<Users> {
                         ),
                         style: TextStyle(fontSize: 16),
                         validator: (value) {
-                          if (value.isEmpty) {
+                          if (value!.isEmpty) {
                             return 'This field cannot be empty';
                           }
                           return null;
@@ -202,7 +189,7 @@ class UsersState extends State<Users> {
                         ),
                         style: TextStyle(fontSize: 16),
                         validator: (value) {
-                          if (value.isEmpty) {
+                          if (value!.isEmpty) {
                             return 'This field cannot be empty';
                           }
                           return null;
@@ -227,7 +214,7 @@ class UsersState extends State<Users> {
                         ),
                         style: TextStyle(fontSize: 16),
                         validator: (value) {
-                          if (value.isEmpty) {
+                          if (value!.isEmpty) {
                             return 'This field cannot be empty';
                           }
                           return null;
@@ -260,7 +247,7 @@ class UsersState extends State<Users> {
                                   "Super Admin",
                                   "Client"
                                 ],
-                                activeColor: Colors.indigo[900],
+                                activeColor: Colors.indigo[900]!,
                                 onSelected: (String label) => role.text = label,
                                 labelStyle:
                                 TextStyle(fontSize: 16, color: Colors.black87),
@@ -278,7 +265,7 @@ class UsersState extends State<Users> {
                           decoration: BoxDecoration(
                             boxShadow: [
                               new BoxShadow(
-                                color: Colors.grey[600],
+                                color: Colors.grey[600]!,
                                 blurRadius: 5,
                                 spreadRadius: 1,
                               )
@@ -294,10 +281,10 @@ class UsersState extends State<Users> {
                                 // Colors are easy thanks to Flutter's Colors class.
 
                                 //Colors.blue,
-                                Colors.indigo[900],
-                                Colors.indigo[700],
-                                //Colors.indigo[700],
-                                Colors.indigo[900],
+                                Colors.indigo[900]!,
+                                Colors.indigo[700]!,
+                                //Colors.indigo[700]!,
+                                Colors.indigo[900]!,
                               ],
                             ),
                             border: Border.all(color: Colors.black, width: 1),
@@ -312,7 +299,7 @@ class UsersState extends State<Users> {
                           ),
                         ),
                         onTap: () async {
-                          if (_formKey.currentState.validate()) {
+                          if (_formKey.currentState!.validate()) {
                             showDialog(
                                 context: context,
                                 builder: (BuildContext context) {
@@ -333,7 +320,7 @@ class UsersState extends State<Users> {
                             showDialog(
                                 context: context,
                                 builder: (BuildContext context) {
-                                  return ShowAlert("User added sucessfully", false);
+                                  return ShowAlert("User added successfully", false);
                                 });
 
                             print('Response body: ${response.body}');

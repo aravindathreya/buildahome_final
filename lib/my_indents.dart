@@ -28,7 +28,7 @@ class MyIndentsLayout extends StatelessWidget {
           title: Text(appTitle),
           leading: new IconButton(
               icon: new Icon(Icons.menu),
-              onPressed: () => _scaffoldKey.currentState.openDrawer()),
+              onPressed: () => _scaffoldKey.currentState?.openDrawer()),
           backgroundColor: Color(0xFF000055),
         ),
         drawer: NavMenuWidget(),
@@ -104,12 +104,12 @@ class MyIndentsState extends State<MyIndents> {
                         margin: EdgeInsets.only(bottom: 30),
                         padding: EdgeInsets.all(10),
                         decoration: BoxDecoration(
-                          border: Border.all(color: Colors.grey[500]),
+                          border: Border.all(color: Colors.grey[500]!),
                           borderRadius: BorderRadius.circular(8),
                           color: Colors.grey[100],
                           boxShadow: [
                             new BoxShadow(
-                              color: Colors.grey[400],
+                              color: Colors.grey[400]!,
                               blurRadius: 15,
                               spreadRadius: 3,
                             )

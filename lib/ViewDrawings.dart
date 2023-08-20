@@ -3,6 +3,7 @@ import 'package:flutter/widgets.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:http/http.dart';
 import 'NavMenu.dart';
 import 'package:photo_view/photo_view.dart';
 import 'Update.dart';
@@ -48,7 +49,7 @@ class VIewDrawing extends StatelessWidget {
           title: Text(appTitle, style: TextStyle(fontFamily: "PatuaOne"),),
           leading: new IconButton(
               icon: new Icon(Icons.menu),
-              onPressed: () => _scaffoldKey.currentState.openDrawer()),
+              onPressed: () => _scaffoldKey.currentState!.openDrawer()),
           backgroundColor: Color(0xFF000055),
         ),
         drawer: NavMenuWidget(),
@@ -178,43 +179,49 @@ class VIewDrawingState extends State<VIewDrawingForm> {
                           alignment: Alignment.centerLeft,
                           padding: EdgeInsets.only(left: 15, bottom: 5),
                           child: Text(entries[Index]['date'])),
-                      FutureBuilder(
-                          future: http.post(
-                              Uri.parse("https://app.buildahome.in/api/get_dr_image.php"),
-                              body: {'drawing_id': id}),
-                          builder: (context, snapshot) {
-                            switch (snapshot.connectionState) {
-                              case ConnectionState.none:
-                              case ConnectionState.active:
-                                return Container(
-                                    padding: EdgeInsets.all(30),
-                                    height: 100,
-                                    width: 100,
-                                    child: CircularProgressIndicator());
-                              case ConnectionState.waiting:
-                                return Container(
-                                    padding: EdgeInsets.all(100),
-                                    width: MediaQuery.of(context).size.width * .80,
-                                    height: MediaQuery.of(context).size.width * .80,
-                                    color: Colors.grey[100],
-                                    child: CircularProgressIndicator());
+                  FutureBuilder<Response>(
+                    future: http.post(
+                      Uri.parse("https://app.buildahome.in/erp/API/get_dr_image.php"),
+                      body: {'drawing_id': id},
+                    ),
+                    builder: (context, snapshot) {
+                      switch (snapshot.connectionState) {
+                        case ConnectionState.none:
+                        case ConnectionState.active:
+                          return Container(
+                            padding: EdgeInsets.all(30),
+                            height: 100,
+                            width: 100,
+                            child: CircularProgressIndicator(),
+                          );
+                        case ConnectionState.waiting:
+                          return Container(
+                            padding: EdgeInsets.all(100),
+                            width: MediaQuery.of(context).size.width * .80,
+                            height: MediaQuery.of(context).size.width * .80,
+                            color: Colors.grey[100],
+                            child: CircularProgressIndicator(),
+                          );
+                        case ConnectionState.done:
+                          if (snapshot.hasError) {
+                            return Container(
+                              width: MediaQuery.of(context).size.width * .80,
+                              height: MediaQuery.of(context).size.width * .80,
+                              color: Colors.grey[100],
+                            );
+                          }
 
-                              case ConnectionState.done:
-                                if (snapshot.hasError)
-                                  return Container(
-                                    width: MediaQuery.of(context).size.width * .80,
-                                    height: MediaQuery.of(context).size.width * .80,
-                                    color: Colors.grey[100],
-                                  );
-                                if (snapshot.data.body.toString() != '')
-                                  return _image_func(
-                                      snapshot.data.body, entries[Index]["id"]);
-                                else
-                                  return Container(
-                                      width: 1, height: 1, color: Colors.grey);
-                            }
-                          }),
-                      Container(
+                          // Check if snapshot.data.body is not null and not an empty string
+                          if (snapshot.data != null && snapshot.data?.body.isNotEmpty == true) {
+                            return _image_func(snapshot.data?.body, entries[Index]["id"]);
+                          } else {
+                            return Container(width: 1, height: 1, color: Colors.grey);
+                          }
+                      }
+                    },
+                  ),
+
+                  Container(
                           alignment: Alignment.center,
                           padding: EdgeInsets.only(top: 10, bottom: 10),
                           child: Text(

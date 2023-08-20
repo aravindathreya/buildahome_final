@@ -3,6 +3,7 @@ import 'package:http/http.dart' as http;
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart';
 import "NavMenu.dart";
 
 image_func(image_bytes) {
@@ -35,7 +36,7 @@ class Update extends StatelessWidget {
           title: Text(appTitle),
           leading: new IconButton(
               icon: new Icon(Icons.menu),
-              onPressed: () => _scaffoldKey.currentState.openDrawer()),
+              onPressed: () => _scaffoldKey.currentState!.openDrawer()),
           backgroundColor: Colors.indigo[900],
         ),
 
@@ -64,35 +65,32 @@ class UpdateBox extends StatelessWidget{
           Container(
             height: MediaQuery.of(context).size.height * .60,
             color: Colors.blue,
-            child: FutureBuilder(
-                future: http.post(Uri.parse("http://192.168.0.105:80/bah/api/get_image.php"),
-
-                    body: {
-                      'pr_name': "hi".toString(),
-                      'update': update.toString(),
-                      'date': date.toString()
-                    }),
-                builder: (context, snapshot) {
-                  switch (snapshot.connectionState) {
-                    case ConnectionState.none:
-                      return Text(
-                          'Press button to start.');
-                    case ConnectionState.active:
-                    case ConnectionState.waiting:
-                      return Text('Awaiting result...');
-                    case ConnectionState.done:
-                      if (snapshot.hasError)
-                        return Text('Error: ${snapshot.error}');
-                      var a = snapshot.data.body;
-                      print(a);
-                      final stripped = a.toString().replaceFirst(RegExp(r'data:image/jpeg;base64,'), '');
-                      var data = base64.decode(stripped);
-                      return image_func(data);
-
-                  }
+            child: FutureBuilder<Response>(
+              future: http.post(Uri.parse("http://192.168.0.105:80/bah/api/get_image.php"),
+                  body: {
+                    'pr_name': "hi",
+                    'update': update.toString(),
+                    'date': date.toString(),
+                  }),
+              builder: (context, snapshot) {
+                switch (snapshot.connectionState) {
+                  case ConnectionState.none:
+                    return Text('Press button to start.');
+                  case ConnectionState.active:
+                  case ConnectionState.waiting:
+                    return Text('Awaiting result...');
+                  case ConnectionState.done:
+                    if (snapshot.hasError) return Text('Error: ${snapshot.error}');
+                    var response = snapshot.data!;
+                    var a = response.body;
+                    print(a);
+                    final stripped = a.toString().replaceFirst(RegExp(r'data:image/jpeg;base64,'), '');
+                    var data = base64.decode(stripped);
+                    return image_func(data);
                 }
-
+              },
             )
+
 
           )
         ],

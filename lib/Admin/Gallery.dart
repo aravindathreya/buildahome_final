@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/widgets.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../NavMenu.dart';
@@ -12,12 +11,11 @@ import "Dpr.dart";
 import "Scheduler.dart";
 import "Payments.dart";
 import "Drawings.dart";
-import 'newRoute.dart';
 
 var images = {};
 
 class FullScreenImage extends StatefulWidget {
-  var id;
+  final id;
 
   FullScreenImage(this.id);
 
@@ -43,7 +41,8 @@ class FullScreenImage1 extends State<FullScreenImage> {
 }
 
 class Gallery extends StatelessWidget {
-  var id;
+  final id;
+
   Gallery(this.id);
 
   @override
@@ -91,8 +90,7 @@ class Gallery extends StatelessWidget {
             } else if (index == 4) {
               Navigator.pushReplacement(
                 context,
-                MaterialPageRoute(
-                    builder: (context) => PaymentTaskWidget(this.id)),
+                MaterialPageRoute(builder: (context) => PaymentTaskWidget(this.id)),
               );
             }
           },
@@ -100,23 +98,20 @@ class Gallery extends StatelessWidget {
           type: BottomNavigationBarType.fixed,
           items: [
             BottomNavigationBarItem(
-              icon: Icon(
-                Icons.home,
-              ),
-              label: 'Home'
-            ),
+                icon: Icon(
+                  Icons.home,
+                ),
+                label: 'Home'),
             BottomNavigationBarItem(
-              icon: Icon(
-                Icons.picture_as_pdf,
-              ),
-              label: 'Drawings'
-            ),
+                icon: Icon(
+                  Icons.picture_as_pdf,
+                ),
+                label: 'Drawings'),
             BottomNavigationBarItem(
-              icon: Icon(
-                Icons.photo_album,
-              ),
-              label: "Gallery"
-            ),
+                icon: Icon(
+                  Icons.photo_album,
+                ),
+                label: "Gallery"),
           ],
         ),
       ),
@@ -125,8 +120,8 @@ class Gallery extends StatelessWidget {
 }
 
 class GalleryForm extends StatefulWidget {
-  var id;
-  var con;
+  final id;
+  final con;
 
   GalleryForm(this.id, this.con);
 
@@ -148,26 +143,26 @@ class GalleryState extends State<GalleryForm> {
     call();
   }
 
-  var entries_count = 0;
+  var entriesCount = 0;
   var data = [];
   var entries;
   var a;
   var bytes;
   var updates = [];
   var subset = [];
-  var pr_id;
+  var prId;
   var dates = {};
 
   call() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
-    pr_id = prefs.getString('project_id');
+    prId = prefs.getString('project_id');
 
-    var url = 'https://app.buildahome.in/api/get_gallery_data.php?id=$pr_id';
+    var url = 'https://app.buildahome.in/api/get_gallery_data.php?id=$prId';
 
     var response = await http.get(Uri.parse(url));
     entries = jsonDecode(response.body);
-    entries_count = entries.length;
-    for (int i = 0; i < entries_count; i++) {
+    entriesCount = entries.length;
+    for (int i = 0; i < entriesCount; i++) {
       if (subset.contains(entries[i]['date']) == false) {
         setState(() {
           subset.add(entries[i]['date']);
@@ -176,24 +171,21 @@ class GalleryState extends State<GalleryForm> {
     }
   }
 
-  _image_func(_image_string, update_id) {
-    var stripped = _image_string
-        .toString()
-        .replaceFirst(RegExp(r'data:image/jpeg;base64,'), '');
+  _imageFunction(_imageString, updateId, context) {
+    var stripped = _imageString.toString().replaceFirst(RegExp(r'data:image/jpeg;base64,'), '');
     var imageAsBytes = base64.decode(stripped);
 
-    if (imageAsBytes != null) {
-      var actual_image = new Image.memory(imageAsBytes);
-      if (update_id != "From list") images[update_id] = _image_string;
+    if (imageAsBytes.isNotEmpty) {
+      var actualImage = new Image.memory(imageAsBytes);
+      if (updateId != "From list") images[updateId] = _imageString;
       Uint8List bytes = base64Decode(stripped);
       return InkWell(
-          child: actual_image,
+          child: actualImage,
           onTap: () {
-            BuildContext context2;
             Navigator.push(
-              context2,
+              context,
               MaterialPageRoute(
-                  builder: (context2) => FullScreenImage(
+                  builder: (context) => FullScreenImage(
                         MemoryImage(bytes),
                       )),
             );
@@ -213,35 +205,31 @@ class GalleryState extends State<GalleryForm> {
     return new ListView.builder(
         padding: EdgeInsets.all(10),
         shrinkWrap: true,
-        itemCount: subset == null ? 0 : subset.length,
-        itemBuilder: (BuildContext ctxt, int Index) {
+        itemCount: subset.length,
+        itemBuilder: (BuildContext ctxt, int index) {
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
               Container(
                 padding: EdgeInsets.only(bottom: 5, top: 10),
-                child: Text(subset[Index],
-                    style: TextStyle(fontWeight: FontWeight.bold)),
+                child: Text(subset[index], style: TextStyle(fontWeight: FontWeight.bold)),
               ),
               Wrap(
                 children: <Widget>[
                   for (int i = 0; i < entries.length; i++)
-                    if (entries[i]['date'] == subset[Index])
+                    if (entries[i]['date'] == subset[index])
                       if (images.containsKey(entries[i]['image_id']))
                         Container(
                             width: (MediaQuery.of(context).size.width - 20) / 3,
-                            height:
-                                (MediaQuery.of(context).size.width - 20) / 3,
+                            height: (MediaQuery.of(context).size.width - 20) / 3,
                             decoration: BoxDecoration(
                               border: Border.all(),
                             ),
-                            child: _image_func(
-                                images[entries[i]['image_id']], "From list"))
+                            child: _imageFunction(images[entries[i]['image_id']], "From list", context))
                       else
                         Container(
                             width: (MediaQuery.of(context).size.width - 20) / 3,
-                            height:
-                                (MediaQuery.of(context).size.width - 20) / 3,
+                            height: (MediaQuery.of(context).size.width - 20) / 3,
                             decoration: BoxDecoration(
                               border: Border.all(),
                             ),
@@ -256,104 +244,58 @@ class GalleryState extends State<GalleryForm> {
                                               child: Column(
                                                 children: <Widget>[
                                                   Container(
-                                                    child: Text(
-                                                        "Are you sure you want to delete this image?",
-                                                        style: TextStyle(
-                                                            fontSize: 18)),
+                                                    child: Text("Are you sure you want to delete this image?",
+                                                        style: TextStyle(fontSize: 18)),
                                                   ),
                                                   Container(
-                                                      alignment:
-                                                          Alignment.bottomRight,
-                                                      margin: EdgeInsets.only(
-                                                          top: 15),
+                                                      alignment: Alignment.bottomRight,
+                                                      margin: EdgeInsets.only(top: 15),
                                                       child: Row(
-                                                        mainAxisAlignment:
-                                                            MainAxisAlignment
-                                                                .end,
+                                                        mainAxisAlignment: MainAxisAlignment.end,
                                                         children: <Widget>[
                                                           InkWell(
                                                               onTap: () {
-                                                                Navigator.of(
-                                                                        context,
-                                                                        rootNavigator:
-                                                                            true)
-                                                                    .pop(
-                                                                        'dialog');
+                                                                Navigator.of(context, rootNavigator: true)
+                                                                    .pop('dialog');
                                                               },
                                                               child: Container(
-                                                                  padding:
-                                                                      EdgeInsets
-                                                                          .all(
-                                                                              10),
-                                                                  margin:
-                                                                      EdgeInsets.only(
-                                                                          left:
-                                                                              15),
+                                                                  padding: EdgeInsets.all(10),
+                                                                  margin: EdgeInsets.only(left: 15),
                                                                   decoration: BoxDecoration(
-                                                                      color: Colors
-                                                                          .white24,
-                                                                      borderRadius:
-                                                                          BorderRadius.circular(
-                                                                              5),
-                                                                      border: Border
-                                                                          .all()),
+                                                                      color: Colors.white24,
+                                                                      borderRadius: BorderRadius.circular(5),
+                                                                      border: Border.all()),
                                                                   child: Text(
                                                                     "Cancel",
-                                                                    style:
-                                                                        TextStyle(),
+                                                                    style: TextStyle(),
                                                                   ))),
                                                           InkWell(
                                                               onTap: () async {
-                                                                var id = entries[
-                                                                        i][
-                                                                    'image_id'];
+                                                                var id = entries[i]['image_id'];
                                                                 var url =
-                                                                    'https://app.buildahome.in/api/delete_image.php?id=${id}';
-                                                                var response =
-                                                                    await http
-                                                                        .get(
-                                                                            Uri.parse(url));
+                                                                    'https://app.buildahome.in/api/delete_image.php?id=$id';
+                                                                await http.get(Uri.parse(url));
 
                                                                 setState(() {
-                                                                  Navigator.of(
-                                                                          context,
-                                                                          rootNavigator:
-                                                                              true)
-                                                                      .pop(
-                                                                          'dialog');
-                                                                  Navigator
-                                                                      .pushReplacement(
+                                                                  Navigator.of(context, rootNavigator: true)
+                                                                      .pop('dialog');
+                                                                  Navigator.pushReplacement(
                                                                     context,
                                                                     MaterialPageRoute(
-                                                                        builder:
-                                                                            (context) =>
-                                                                                Gallery(this.id)),
+                                                                        builder: (context) => Gallery(this.id)),
                                                                   );
                                                                 });
                                                               },
                                                               child: Container(
-                                                                  margin: EdgeInsets
-                                                                      .only(
-                                                                          left:
-                                                                              15),
-                                                                  padding:
-                                                                      EdgeInsets
-                                                                          .all(
-                                                                              10),
-                                                                  decoration:
-                                                                      BoxDecoration(
-                                                                    color: Colors
-                                                                            .indigo[
-                                                                        900],
-                                                                    borderRadius:
-                                                                        BorderRadius
-                                                                            .circular(5),
+                                                                  margin: EdgeInsets.only(left: 15),
+                                                                  padding: EdgeInsets.all(10),
+                                                                  decoration: BoxDecoration(
+                                                                    color: Colors.indigo[900],
+                                                                    borderRadius: BorderRadius.circular(5),
                                                                   ),
                                                                   child: Text(
                                                                     "Yes, Delete",
-                                                                    style: TextStyle(
-                                                                        color: Colors
-                                                                            .white),
+                                                                    style: TextStyle(color: Colors.white),
                                                                   ))),
                                                         ],
                                                       ))
@@ -366,20 +308,18 @@ class GalleryState extends State<GalleryForm> {
                                   this.con,
                                   MaterialPageRoute(
                                       builder: (context) => FullScreenImage(
-                                          "https://app.buildahome.in/api/images/${entries[i]['image']}")),
+                                          "https://app.buildahome.in/erp/API/images/${entries[i]['image']}")),
                                 );
                               },
                               child: CachedNetworkImage(
-                                progressIndicatorBuilder:
-                                    (context, url, progress) => Container(
+                                progressIndicatorBuilder: (context, url, progress) => Container(
                                   height: 20,
                                   width: 20,
                                   child: CircularProgressIndicator(
                                     value: progress.progress,
                                   ),
                                 ),
-                                imageUrl:
-                                    "https://app.buildahome.in/api/images/${entries[i]['image']}",
+                                imageUrl: "https://app.buildahome.in/erp/API/images/${entries[i]['image']}",
                               ),
                             ))
                 ],

@@ -34,7 +34,7 @@ class NotesAndCommentsState extends State<NotesAndComments> {
       }
     });
     var _project_id = prefs.getString('project_id');
-    user_id = prefs.getString('user_id');
+    user_id = prefs.getString('user_id')!;
 
     var url =
         'https://app.buildahome.in/erp/API/get_notes?project_id=${_project_id}';
@@ -50,13 +50,16 @@ class NotesAndCommentsState extends State<NotesAndComments> {
 
   void getFile() async {
     var res = await FilePicker.platform.pickFiles(allowMultiple: false);
-    var file = res.files.first;
+    var file = res?.files.first;
 
     if (file != null) {
       setState(() {
-        attached_file = file;
-        attached_file_name = 'Attached file: ' +
-            (file.path.split('/')[file.path.split('/').length - 1]);
+        setState(() {
+          var fileSplit = file.path?.split('/');
+          attached_file = file;
+          attached_file_name = 'Attached file: ' +
+              (fileSplit![fileSplit.length - 1]);
+        });
       });
     } else {
       setState(() {
@@ -108,7 +111,7 @@ class NotesAndCommentsState extends State<NotesAndComments> {
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.zero,
                     borderSide: BorderSide(
-                      color: Colors.grey[300],
+                      color: Colors.grey[300]!,
                       width: 1.0,
                     ),
                   ),
@@ -200,15 +203,13 @@ class NotesAndCommentsState extends State<NotesAndComments> {
                     var fileResponse = await request.send();
                     var responseData = await fileResponse.stream.toBytes();
                     var responseString = String.fromCharCodes(responseData);
-                    print(responseString);
                   }
 
-                  await Navigator.of(context, rootNavigator: true)
-                      .pop('dialog');
+                 Navigator.pop(context);
                   await showDialog(
                       context: context,
                       builder: (BuildContext context) {
-                        return ShowAlert("Note added succesfully", false);
+                        return ShowAlert("Note added successfully", false);
                       });
 
                   getNotes();
@@ -243,8 +244,6 @@ class NotesAndCommentsState extends State<NotesAndComments> {
                         children: [
                           Container(
                             padding: EdgeInsets.only(bottom: 5),
-                            width:
-                                10 + notes[Index][2].toString().length * 10.0,
                             decoration: BoxDecoration(
                                 border: Border(
                                     bottom: BorderSide(
@@ -264,11 +263,13 @@ class NotesAndCommentsState extends State<NotesAndComments> {
                           ),
                           Container(
                             margin: EdgeInsets.only(top: 5, left: 2),
-                            child: Text(
-                              notes[Index][0].toString(),
-                              style: TextStyle(
-                                  fontSize: 15, color: Colors.indigo[900]),
-                            ),
+                            child: Expanded(
+                              child: Text(
+                                notes[Index][0].toString(),
+                                style: TextStyle(
+                                    fontSize: 15, color: Colors.indigo[900]),
+                              ),
+                            )
                           ),
                           if (notes[Index][4].toString() != '0')
                             InkWell(
@@ -282,7 +283,7 @@ class NotesAndCommentsState extends State<NotesAndComments> {
                                       Navigator.of(context, rootNavigator: true)
                                           .pop(),
                                       _launchURL(
-                                          "https://app.buildahome.in/erp/files/" +
+                                          "https://app.buildahome.in/files/" +
                                               notes[Index][4].toString()),
                                     },
                                 child: Container(
@@ -290,7 +291,7 @@ class NotesAndCommentsState extends State<NotesAndComments> {
                                     padding: EdgeInsets.all(10),
                                     decoration: BoxDecoration(
                                         border:
-                                            Border.all(color: Colors.grey[500]),
+                                            Border.all(color: Colors.grey[500]!),
                                         color: Colors.grey[100],
                                         borderRadius: BorderRadius.circular(5)),
                                     width: 150,

@@ -1,4 +1,3 @@
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
@@ -10,7 +9,6 @@ class Materials extends StatefulWidget {
 }
 
 class MaterialState extends State<Materials> {
-  String mesaage;
   var materials = [];
 
   void call() async {
@@ -42,7 +40,7 @@ class MaterialState extends State<Materials> {
               width: MediaQuery.of(context).size.width - 20,
               child: materials.length == 0
                   ? SpinKitRing(
-                      color: Colors.indigo[900],
+                      color: Colors.indigo[900]!,
                       lineWidth: 2,
                     )
                   : ListView.builder(
@@ -50,7 +48,7 @@ class MaterialState extends State<Materials> {
                       physics: new BouncingScrollPhysics(),
                       scrollDirection: Axis.vertical,
                       itemCount: materials.length,
-                      itemBuilder: (BuildContext ctxt, int Index) {
+                      itemBuilder: (BuildContext ctxt, int index) {
                         return Container(
                             padding: EdgeInsets.all(15),
                             margin: EdgeInsets.only(bottom: 15),
@@ -59,15 +57,15 @@ class MaterialState extends State<Materials> {
                               shape: BoxShape.rectangle,
                               border: Border(
                                 bottom: BorderSide(
-                                    width: 1.0, color: Colors.grey[300]),
+                                    width: 1.0, color: Colors.grey[300]!),
                               ),
                             ),
                             child: InkWell(
                                 onTap: () {
-                                  print(materials[Index]);
-                                  Navigator.pop(context, materials[Index]);
+                                  print(materials[index]);
+                                  Navigator.pop(context, materials[index]);
                                 },
-                                child: Text(materials[Index],
+                                child: Text(materials[index],
                                     style: TextStyle(
                                         fontSize: 18,
                                         fontWeight: FontWeight.bold))));

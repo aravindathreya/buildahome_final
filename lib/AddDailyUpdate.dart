@@ -1,3 +1,6 @@
+import 'dart:typed_data';
+
+import 'package:buildahome/AdminDashboard.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'NavMenu.dart';
@@ -14,10 +17,11 @@ import 'package:path_provider/path_provider.dart';
 import 'dart:async';
 import 'dart:io';
 
-
 class FullScreenImage extends StatefulWidget {
   final id;
+
   FullScreenImage(this.id);
+
   @override
   State<FullScreenImage> createState() => FullScreenFlutterImage(this.id);
 }
@@ -38,17 +42,21 @@ class FullScreenFlutterImage extends State<FullScreenImage> {
           leading: new IconButton(icon: new Icon(Icons.chevron_left), onPressed: () => {Navigator.pop(context)}),
           backgroundColor: Color(0xFF000055),
         ),
-        body: imageOnly(this.image),
+        body: ImageOnly(this.image),
       ),
     );
   }
 }
 
-class imageOnly extends StatelessWidget {
+class ImageOnly extends StatelessWidget {
   final image;
-  imageOnly(this.image);
+
+  ImageOnly(this.image);
+
   Widget build(BuildContext context) {
-    return Container(decoration: BoxDecoration(border: Border.all(color: Colors.black)), child: PhotoView(minScale: PhotoViewComputedScale.contained, imageProvider: this.image));
+    return Container(
+        decoration: BoxDecoration(border: Border.all(color: Colors.black)),
+        child: PhotoView(minScale: PhotoViewComputedScale.contained, imageProvider: this.image));
   }
 }
 
@@ -61,12 +69,22 @@ class AddDailyUpdate extends StatelessWidget {
       title: appTitle,
       theme: ThemeData(fontFamily: App().fontName),
       home: Scaffold(
-        key: _scaffoldKey, // ADD THIS LINE
+        key: _scaffoldKey,
+        // ADD THIS LINE
+        backgroundColor: Colors.white,
         appBar: AppBar(
           automaticallyImplyLeading: false,
-          title: Text(appTitle),
-          leading: new IconButton(icon: new Icon(Icons.menu), onPressed: () => _scaffoldKey.currentState.openDrawer()),
-          backgroundColor: Color(0xFF000055),
+          title: Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [],
+          ),
+          shadowColor: Colors.grey[100]!,
+          leading: new IconButton(
+              icon: new Icon(Icons.menu, color: Colors.black),
+              onPressed: () async {
+                _scaffoldKey.currentState?.openDrawer();
+              }),
+          backgroundColor: Colors.white,
         ),
         drawer: NavMenuWidget(),
         body: AddDailyUpdateForm(),
@@ -83,6 +101,7 @@ class AddDailyUpdateForm extends StatefulWidget {
 }
 
 class AddDailyUpdateState extends State<AddDailyUpdateForm> {
+  var textFieldFocused = false;
   var attachPictureButtonText = 'Add picture from phone';
   var dailyUpdateTextController = new TextEditingController();
   var quantityTextController = new TextEditingController();
@@ -99,7 +118,20 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
 
   var userId;
   var successfulImageUploadCount = 0;
-  var availableResources = ['Mason', 'Helper', 'Carpenter', 'Bar bender', 'Painter', 'Electrician', 'Plumber', 'Tile mason', 'Granite mason', 'Fabricator', 'Other workers', 'Interior carpenter'];
+  var availableResources = [
+    'Mason',
+    'Helper',
+    'Carpenter',
+    'Bar bender',
+    'Painter',
+    'Electrician',
+    'Plumber',
+    'Tile mason',
+    'Granite mason',
+    'Fabricator',
+    'Other workers',
+    'Interior carpenter'
+  ];
   var tradesmenTextControllers = [new TextEditingController()];
   var tradesmenCountTextControllers = [new TextEditingController()];
 
@@ -128,7 +160,8 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
   Future<File> getImageFileFromAssets(Asset asset) async {
     final byteData = await asset.getByteData(quality: 50);
     final tempFile = File("${(await getTemporaryDirectory()).path}/${asset.name}");
-    final file = await tempFile.writeAsBytes(byteData.buffer.asUint8List(byteData.offsetInBytes, byteData.lengthInBytes));
+    final file =
+        await tempFile.writeAsBytes(byteData.buffer.asUint8List(byteData.offsetInBytes, byteData.lengthInBytes));
     return file;
   }
 
@@ -136,17 +169,25 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
     var imageAsFileObject = await getImageFileFromAssets(picture);
     var flutterImageObject = FlutterImage.decodeImage(imageAsFileObject.readAsBytesSync().toList());
 
-    var actualWidth = flutterImageObject.width;
-    var actualHeight = flutterImageObject.height;
-    while (actualWidth > maxImageWidth || actualHeight > maxImageHeight) {
+    var actualWidth = flutterImageObject?.width;
+    var actualHeight = flutterImageObject?.height;
+    while (actualWidth! > maxImageWidth || actualHeight! > maxImageHeight) {
       actualWidth -= (actualWidth / 10).round();
-      actualHeight -= (actualHeight / 10).round();
+      if (actualHeight != null) {
+        actualHeight -= (actualHeight / 10).round();
+      }
     }
 
-    var imageAfterResizing = FlutterImage.copyResize(flutterImageObject, width: actualWidth, height: actualHeight);
+    var imageAfterResizing = FlutterImage.copyResize(flutterImageObject!, width: actualWidth, height: actualHeight);
     var imageFilename = imageAsFileObject.path.split('/')[imageAsFileObject.path.split('/').length - 1].toString();
 
-    selectedPictures.insert(0, MemoryImage(FlutterImage.encodeNamedImage(imageAfterResizing, imageFilename)));
+    List<int>? imageData = FlutterImage.encodeNamedImage(imageAfterResizing, imageFilename);
+    if (imageData != null) {
+      Uint8List nonNullableImageData = Uint8List.fromList(imageData);
+      selectedPictures.insert(0, MemoryImage(nonNullableImageData));
+    }
+
+    selectedPictures.insert(0, 'x');
     selectedPictureFilenames.insert(0, imageFilename);
     selectedPictureFilePaths.add(imageAsFileObject.path);
   }
@@ -174,98 +215,143 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
       children: <Widget>[
         Column(
           children: <Widget>[
-            Container(
-                padding: EdgeInsets.only(top: 20, left: 30, right: 30),
-                child: InkWell(
-                  onTap: () async => selectPicturesFromPhone(),
-                  child: Container(
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        border: Border.all(width: 1.0, color: Colors.grey[300]),
-                        borderRadius: BorderRadius.all(Radius.circular(5)),
-                      ),
-                      padding: EdgeInsets.all(15),
-                      child: Row(
-                        children: <Widget>[
-                          Container(
-                            decoration: BoxDecoration(borderRadius: BorderRadius.all(Radius.circular(50)), color: Colors.white),
-                            child: Icon(Icons.add_a_photo, size: 25, color: Colors.indigo[900]),
-                          ),
-                          Container(padding: EdgeInsets.only(left: 10), child: Text(attachPictureButtonText, style: TextStyle(fontSize: 14)))
-                        ],
-                      )),
-                )),
+            Visibility(
+              visible: !textFieldFocused,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  InkWell(
+                    onTap: () {
+                      Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => AdminDashboard()));
+                    },
+                    child: Row(
+                      children: [
+                        Container(
+                          margin: EdgeInsets.only(left: 15),
+                          child: Icon(Icons.chevron_left),
+                        ),
+                        Container(
+                          margin: EdgeInsets.only(right: 15),
+                          child: Text('Back to dashboard', style: TextStyle(fontSize: 16)),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Container(
+                    alignment: Alignment.centerRight,
+                    child: Image(
+                      height: 120, // Set your height according to aspect ratio or fixed height
+                      width: 120,
+                      image: AssetImage('assets/images/logo-big.png'),
+                      fit: BoxFit.contain,
+                    ),
+                  )
+                ],
+              ),
+            ),
+
+            Visibility(
+              visible: !textFieldFocused,
+              child: Container(
+                  padding: EdgeInsets.only(top: 20, left: 15, right: 15),
+                  child: InkWell(
+                    onTap: () async => selectPicturesFromPhone(),
+                    child: Container(
+                        decoration: BoxDecoration(
+                          color: Colors.grey[200]!,
+                          border: Border.all(width: 1.0, color: Colors.grey[300]!),
+                          borderRadius: BorderRadius.all(Radius.circular(5)),
+                        ),
+                        padding: EdgeInsets.all(15),
+                        child: Row(
+                          children: <Widget>[
+                            Container(
+                              decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.all(Radius.circular(50)), color: Colors.white),
+                              child: Icon(Icons.add_a_photo, size: 25, color: Color.fromARGB(255, 13, 17, 65)),
+                            ),
+                            Container(
+                                padding: EdgeInsets.only(left: 10),
+                                child: Text(attachPictureButtonText, style: TextStyle(fontSize: 14)))
+                          ],
+                        )),
+                  )),
+            ),
 
             //List of images stacked horizontally
             if (selectedPictures.length != 0)
-              Container(
-                  margin: EdgeInsets.symmetric(horizontal: 30, vertical: 20),
-                  child: Container(
-                      alignment: Alignment.topLeft,
-                      height: 150,
-                      child: ListView.builder(
-                          shrinkWrap: true,
-                          scrollDirection: Axis.horizontal,
-                          itemCount: selectedPictures.length,
-                          itemBuilder: (BuildContext ctxt, int Index) {
-                            return InkWell(
-                                onTap: () async {
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                        builder: (context) => FullScreenImage(
-                                              selectedPictures[Index],
-                                            )),
-                                  );
-                                },
-                                child: Container(
-                                    margin: EdgeInsets.only(right: 10),
-                                    height: (MediaQuery.of(context).size.width - 30) / 2,
-                                    width: (MediaQuery.of(context).size.width - 30) / 2,
-                                    decoration: BoxDecoration(
-                                      image: DecorationImage(
-                                        image: selectedPictures[Index],
-                                        fit: BoxFit.cover,
+              Visibility(
+                visible: !textFieldFocused,
+                child: Container(
+                    margin: EdgeInsets.symmetric(horizontal: 15, vertical: 20),
+                    child: Container(
+                        alignment: Alignment.topLeft,
+                        height: 150,
+                        child: ListView.builder(
+                            shrinkWrap: true,
+                            scrollDirection: Axis.horizontal,
+                            itemCount: selectedPictures.length,
+                            itemBuilder: (BuildContext ctxt, int index) {
+                              return InkWell(
+                                  onTap: () async {
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                          builder: (context) => FullScreenImage(
+                                                selectedPictures[index],
+                                              )),
+                                    );
+                                  },
+                                  child: Container(
+                                      margin: EdgeInsets.only(right: 10),
+                                      height: (MediaQuery.of(context).size.width - 30) / 2,
+                                      width: (MediaQuery.of(context).size.width - 30) / 2,
+                                      decoration: BoxDecoration(
+                                        image: DecorationImage(
+                                          image: selectedPictures[index],
+                                          fit: BoxFit.cover,
+                                        ),
+                                        border: Border.all(color: Colors.grey),
+                                        borderRadius: BorderRadius.circular(13),
                                       ),
-                                      border: Border.all(color: Colors.grey),
-                                      borderRadius: BorderRadius.circular(13),
-                                    ),
-                                    alignment: Alignment.topRight,
-                                    child: InkWell(
-                                      child: Container(
-                                          height: 30,
-                                          width: 30,
-                                          decoration: BoxDecoration(
-                                            color: Colors.white,
-                                            border: Border.all(),
-                                            borderRadius: BorderRadius.circular(30),
-                                          ),
-                                          padding: EdgeInsets.all(2),
-                                          margin: EdgeInsets.all(5),
-                                          child: Icon(Icons.close, size: 15, color: Colors.black)),
-                                      onTap: () {
-                                        setState(() {
-                                          selectedPictures.removeAt(Index);
-                                          selectedPictureFilenames.removeAt(Index);
-                                          if (selectedPictures.length == 0) {
-                                            attachPictureButtonText = "Add picture from phone";
-                                          }
-                                        });
-                                      },
-                                    )));
-                          }))),
-            
+                                      alignment: Alignment.topRight,
+                                      child: InkWell(
+                                        child: Container(
+                                            height: 30,
+                                            width: 30,
+                                            decoration: BoxDecoration(
+                                              color: Colors.white,
+                                              border: Border.all(),
+                                              borderRadius: BorderRadius.circular(30),
+                                            ),
+                                            padding: EdgeInsets.all(2),
+                                            margin: EdgeInsets.all(5),
+                                            child: Icon(Icons.close, size: 15, color: Colors.black)),
+                                        onTap: () {
+                                          setState(() {
+                                            selectedPictures.removeAt(index);
+                                            selectedPictureFilenames.removeAt(index);
+                                            if (selectedPictures.length == 0) {
+                                              attachPictureButtonText = "Add picture from phone";
+                                            }
+                                          });
+                                        },
+                                      )));
+                            }))),
+              ),
+
             Container(
               child: ListView(
                 shrinkWrap: true,
                 physics: NeverScrollableScrollPhysics(),
-                padding: EdgeInsets.only(top: 15, right: 30, left: 30),
+                padding: EdgeInsets.only(top: 15, right: 15, left: 15),
                 children: <Widget>[
                   Container(
                       child: ListView.builder(
                           shrinkWrap: true,
                           itemCount: tradesmenTextControllers.length,
-                          itemBuilder: (BuildContext ctxt, int Index) {
+                          itemBuilder: (BuildContext ctxt, int index) {
                             return Row(
                               children: [
                                 InkWell(
@@ -274,8 +360,14 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
                                     width: ((MediaQuery.of(context).size.width - 70) * .5),
                                     margin: EdgeInsets.only(right: 10, bottom: 10, top: 10),
                                     alignment: Alignment.center,
-                                    decoration: BoxDecoration(color: Colors.grey[300], border: Border.all(color: Colors.grey[300], width: 1.5)),
-                                    child: Text(tradesmenTextControllers[Index].text != null && tradesmenTextControllers[Index].text != '' ? tradesmenTextControllers[Index].text : "Select tradesmen", style: get_button_text_style()),
+                                    decoration: BoxDecoration(
+                                        color: Colors.grey[300]!,
+                                        border: Border.all(color: Colors.grey[300]!, width: 1.5)),
+                                    child: Text(
+                                        tradesmenTextControllers[index].text != ''
+                                            ? tradesmenTextControllers[index].text
+                                            : "Select tradesmen",
+                                        style: get_button_text_style()),
                                   ),
                                   onTap: () async {
                                     //Get the project name to which the user wants to upload
@@ -285,7 +377,10 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
                                           return AlertDialog(
                                               contentPadding: EdgeInsets.all(10),
                                               content: Column(children: [
-                                                Container(alignment: Alignment.centerLeft, padding: EdgeInsets.all(10), child: Text("Select tradesmen")),
+                                                Container(
+                                                    alignment: Alignment.centerLeft,
+                                                    padding: EdgeInsets.all(10),
+                                                    child: Text("Select tradesmen")),
                                                 Container(
                                                     height: MediaQuery.of(context).size.height - 180,
                                                     width: MediaQuery.of(context).size.width - 20,
@@ -294,29 +389,32 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
                                                         physics: new BouncingScrollPhysics(),
                                                         scrollDirection: Axis.vertical,
                                                         itemCount: availableResources.length,
-                                                        itemBuilder: (BuildContext ctxt, int Index) {
+                                                        itemBuilder: (BuildContext ctxt, int index) {
                                                           return Container(
                                                               padding: EdgeInsets.all(20),
                                                               decoration: BoxDecoration(
                                                                 color: Colors.white,
                                                                 shape: BoxShape.rectangle,
                                                                 border: Border(
-                                                                  bottom: BorderSide(width: 1.0, color: Colors.grey[300]),
+                                                                  bottom:
+                                                                      BorderSide(width: 1.0, color: Colors.grey[300]!),
                                                                 ),
                                                               ),
                                                               child: InkWell(
                                                                   onTap: () {
-                                                                    Navigator.pop(context, availableResources[Index]);
+                                                                    Navigator.pop(context, availableResources[index]);
                                                                   },
-                                                                  child: Text(availableResources[Index], style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold))));
+                                                                  child: Text(availableResources[index],
+                                                                      style: TextStyle(
+                                                                          fontSize: 18, fontWeight: FontWeight.bold))));
                                                         }))
                                               ]));
                                         });
                                     setState(() {
                                       if (unitDetails != null)
-                                        tradesmenTextControllers[Index].text = unitDetails;
+                                        tradesmenTextControllers[index].text = unitDetails;
                                       else
-                                        tradesmenTextControllers[Index].text = null;
+                                        tradesmenTextControllers[index].text = '';
                                     });
                                   },
                                 ),
@@ -324,7 +422,7 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
                                     width: ((MediaQuery.of(context).size.width - 70) * .3),
                                     child: TextFormField(
                                       textAlign: TextAlign.center,
-                                      controller: tradesmenCountTextControllers[Index],
+                                      controller: tradesmenCountTextControllers[index],
                                       style: TextStyle(fontSize: 14),
                                       keyboardType: TextInputType.numberWithOptions(),
                                       decoration: InputDecoration(
@@ -332,7 +430,7 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
                                         border: OutlineInputBorder(
                                           borderRadius: BorderRadius.zero,
                                           borderSide: BorderSide(
-                                            color: Colors.grey[100],
+                                            color: Colors.grey[100]!,
                                             width: .5,
                                           ),
                                         ),
@@ -343,15 +441,17 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
                                         hintText: 'Nos',
                                       ),
                                     )),
-                                if (Index != 0)
+                                if (index != 0)
                                   InkWell(
                                       onTap: () {
                                         setState(() {
-                                          tradesmenTextControllers.removeAt(Index);
-                                          tradesmenCountTextControllers.removeAt(Index);
+                                          tradesmenTextControllers.removeAt(index);
+                                          tradesmenCountTextControllers.removeAt(index);
                                         });
                                       },
-                                      child: Container(margin: EdgeInsets.only(left: 10), child: Icon(Icons.close, color: Colors.red)))
+                                      child: Container(
+                                          margin: EdgeInsets.only(left: 10),
+                                          child: Icon(Icons.close, color: Colors.red)))
                               ],
                             );
                           })),
@@ -361,9 +461,14 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
                       margin: EdgeInsets.only(bottom: 10, top: 10),
                       width: 150,
                       alignment: Alignment.center,
-                      decoration: BoxDecoration(borderRadius: BorderRadius.circular(5), border: Border.all(color: Colors.grey[500], width: 1.5)),
+                      decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(5),
+                          border: Border.all(color: Colors.grey[500]!, width: 1.5)),
                       child: Row(
-                        children: [Container(margin: EdgeInsets.only(right: 15), child: Icon(Icons.add)), Text('Add tradesmen', style: get_button_text_style())],
+                        children: [
+                          Container(margin: EdgeInsets.only(right: 15), child: Icon(Icons.add)),
+                          Text('Add tradesmen', style: get_button_text_style())
+                        ],
                       ),
                     ),
                     onTap: () {
@@ -389,11 +494,11 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
                               // Colors are easy thanks to Flutter's Colors class.
 
                               //Colors.blue,
-                              Colors.indigo[900],
-                              Colors.indigo[600],
-                              Colors.indigo[600],
-                              //Colors.indigo[700],
-                              Colors.indigo[900],
+                              Color.fromARGB(255, 13, 17, 65),
+                              Colors.indigo[900]!,
+                              Colors.indigo[900]!,
+                              //Colors.indigo[700]!,
+                              Color.fromARGB(255, 13, 17, 65),
                             ],
                           ),
                           border: Border(
@@ -423,14 +528,19 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
                         textCapitalization: TextCapitalization.sentences,
                         maxLines: 8,
                         style: TextStyle(fontSize: 18),
+                        onTap: () {
+                          setState(() {
+                            this.textFieldFocused = true;
+                          });
+                        },
                         decoration: InputDecoration(
                             focusColor: Colors.black,
                             floatingLabelBehavior: FloatingLabelBehavior.never,
                             errorBorder: OutlineInputBorder(
-                              borderSide: BorderSide(color: Colors.indigo[900], width: 1.0),
+                              borderSide: BorderSide(color: Color.fromARGB(255, 13, 17, 65), width: 1.0),
                             ),
                             focusedBorder: OutlineInputBorder(
-                              borderSide: BorderSide(color: Colors.indigo[900], width: 1.0),
+                              borderSide: BorderSide(color: Color.fromARGB(255, 13, 17, 65), width: 1.0),
                             ),
                             enabledBorder: OutlineInputBorder(
                               borderSide: BorderSide(color: Colors.black, width: 1.0),
@@ -444,7 +554,7 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
                             ),
                             fillColor: Colors.white),
                         validator: (value) {
-                          if (value.isEmpty) {
+                          if (value!.isEmpty) {
                             return 'This field cannot be empty';
                           }
                           return null;
@@ -464,7 +574,7 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
                           decoration: BoxDecoration(
                             boxShadow: [
                               new BoxShadow(
-                                color: Colors.grey[600],
+                                color: Colors.grey[600]!,
                                 blurRadius: 5,
                                 spreadRadius: 1,
                               )
@@ -480,10 +590,10 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
                                 // Colors are easy thanks to Flutter's Colors class.
 
                                 //Colors.blue,
-                                Colors.indigo[900],
-                                Colors.indigo[700],
-                                //Colors.indigo[700],
-                                Colors.indigo[900],
+                                Color.fromARGB(255, 13, 17, 65),
+                                Colors.indigo[700]!,
+                                //Colors.indigo[700]!,
+                                Color.fromARGB(255, 13, 17, 65),
                               ],
                             ),
                             border: Border.all(color: Colors.black, width: 1),
@@ -498,7 +608,7 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
                           var tradesmenMap = {};
                           for (int i = 0; i < tradesmenTextControllers.length; i++) {
                             if (tradesmenTextControllers[i].text != '' || tradesmenCountTextControllers[i].text != '') {
-                              if (tradesmenTextControllers[i].text == '' || tradesmenTextControllers[i].text == null) {
+                              if (tradesmenTextControllers[i].text == '') {
                                 showDialog(
                                     context: context,
                                     builder: (BuildContext context) {
@@ -508,7 +618,7 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
                                     });
                                 return;
                               }
-                              if (tradesmenCountTextControllers[i].text == '' || tradesmenCountTextControllers[i].text == null) {
+                              if (tradesmenCountTextControllers[i].text == '') {
                                 showDialog(
                                     context: context,
                                     builder: (BuildContext context) {
@@ -538,7 +648,7 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
                                 });
                             projectName = projectName.split("|");
                             setState(() {
-                              projectNameText = projectName[0];
+                              projectNameText = projectName[0]!;
                               projectId = projectName[1];
                             });
 
@@ -550,26 +660,51 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
                                 });
 
 
-
                             var url = 'https://app.buildahome.in/api/add_daily_update.php';
-                            for (int x = 0; x < selectedPictures.length; x++) {
-                               Navigator.of(context, rootNavigator: true).pop('dialog');
-                               showDialog(
-                                barrierDismissible: false,
-                                context: context,
-                                builder: (BuildContext context) {
-                                  return ShowAlert("Uploading picture ${successfulImageUploadCount + 1} of ${selectedPictureFilePaths.length}..", false);
-                                }); 
+                              Navigator.of(context, rootNavigator: true).pop('dialog');
+                              showDialog(
+                              barrierDismissible: false,
+                              context: context,
+                              builder: (BuildContext context) {
+                                return ShowAlert("Uploading picture ${successfulImageUploadCount + 1} of ${selectedPictureFilePaths.length}..", false);
+                              }); 
 
-                              var response = await http.post(Uri.parse(url), body: {
-                                'pr_id': projectId.toString(),
-                                'date': new DateFormat('EEEE MMMM dd').format(DateTime.now()).toString(),
-                                'desc': dailyUpdateTextController.text,
-                                'image': selectedPictureFilenames[x].toString(),
-                                'tradesmenMap': tradesmenMap.toString(),
+                            var response = await http.post(Uri.parse(url), body: {
+                              'pr_id': projectId.toString(),
+                              'date': new DateFormat('EEEE MMMM dd').format(DateTime.now()).toString(),
+                              'desc': dailyUpdateTextController.text,
+                              'tradesmenMap': tradesmenMap.toString(),
+                            });
+
+                            if(response.statusCode == 200 && selectedPictures.length == 0) {
+                              Navigator.of(context, rootNavigator: true).pop('dialog');
+                              await showDialog(
+                                  context: context,
+                                  builder: (BuildContext context) {
+                                    return ShowAlert("DPR added successfully", false);
+                                  });
+                              setState(() {
+                                selectedPictures.clear();
+                                selectedPictureFilePaths.clear();
+                                dailyUpdateTextController.text = '';
+                                tradesmenTextControllers.clear();
+                                tradesmenCountTextControllers.clear();
                               });
+                            }
 
-                              var uri = Uri.parse("https://app.buildahome.in/erp/API/dpr_image_upload");
+
+                            for (int x = 0; x < selectedPictures.length; x++) {
+                              Navigator.of(context, rootNavigator: true).pop('dialog');
+                              showDialog(
+                                  barrierDismissible: false,
+                                  context: context,
+                                  builder: (BuildContext context) {
+                                    return ShowAlert(
+                                        "Uploading picture ${successfulImageUploadCount + 1} of ${selectedPictureFilePaths.length}..",
+                                        false);
+                                  });
+
+                              var uri = Uri.parse("https://app.buildahome.in/api/dpr_image_upload");
                               var request = new http.MultipartRequest("POST", uri);
 
                               var pic = await http.MultipartFile.fromPath("image", selectedPictureFilePaths[x]);
@@ -582,11 +717,11 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
                               if (responseString.trim().toString() == "success") {
                                 successfulImageUploadCount += 1;
                                 if (successfulImageUploadCount == selectedPictureFilePaths.length) {
-                                  await Navigator.of(context, rootNavigator: true).pop('dialog');
+                                  Navigator.pop(context);
                                   await showDialog(
                                       context: context,
                                       builder: (BuildContext context) {
-                                        return ShowAlert("DPR added succesfully", false);
+                                        return ShowAlert("DPR added successfully", false);
                                       });
                                   setState(() {
                                     selectedPictures.clear();

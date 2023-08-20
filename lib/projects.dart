@@ -6,7 +6,7 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class ProjectsModal extends StatefulWidget {
-  var id;
+  final String id;
   ProjectsModal(this.id);
 
   @override
@@ -14,8 +14,6 @@ class ProjectsModal extends StatefulWidget {
 }
 
 class ProjectsModalBody extends State<ProjectsModal> {
-  String mesaage;
-  bool is_Loading = false;
   var id;
   var projects = [];
   var search_data = [];
@@ -30,6 +28,7 @@ class ProjectsModalBody extends State<ProjectsModal> {
     var url =
         "https://app.buildahome.in/api/projects_access.php?id=${this.id.toString()}";
     var response = await http.get(Uri.parse(url));
+    print(response.statusCode);
     setState(() {
       projects = jsonDecode(response.body);
       search_data = projects;
@@ -79,7 +78,7 @@ class ProjectsModalBody extends State<ProjectsModal> {
                 height: 150,
                 width: MediaQuery.of(context).size.width - 20,
                 child: SpinKitRing(
-                  color: Colors.indigo[900],
+                  color: Colors.indigo[900]!,
                   lineWidth: 2,
                   size: 20,
                 ),
@@ -106,7 +105,7 @@ class ProjectsModalBody extends State<ProjectsModal> {
                                 shape: BoxShape.rectangle,
                                 border: Border(
                                   bottom: BorderSide(
-                                      width: 1.0, color: Colors.grey[300]),
+                                      width: 1.0, color: Colors.grey[300]!),
                                 ),
                               ),
                               child: InkWell(

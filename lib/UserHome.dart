@@ -1,3 +1,4 @@
+import 'package:buildahome/Admin/Dpr.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import "Scheduler.dart";
@@ -15,6 +16,7 @@ import 'Drawings.dart';
 import 'NonTenderTasks.dart';
 import 'NotesAndComments.dart';
 import 'po_bills.dart';
+import 'Dpr.dart';
 
 class Home extends StatelessWidget {
   final GlobalKey<ScaffoldState> _scaffoldKey = new GlobalKey<ScaffoldState>();
@@ -27,6 +29,7 @@ class Home extends StatelessWidget {
       theme: ThemeData(fontFamily: App().fontName),
       home: Scaffold(
         key: _scaffoldKey,
+        backgroundColor: Colors.grey[200],
         drawer: NavMenuWidget(),
         appBar: AppBar(
           automaticallyImplyLeading: false,
@@ -38,7 +41,7 @@ class Home extends StatelessWidget {
               onPressed: () async {
                 SharedPreferences prefs = await SharedPreferences.getInstance();
                 var username = prefs.getString('username');
-                _scaffoldKey.currentState.openDrawer();
+                _scaffoldKey.currentState!.openDrawer();
               }),
           backgroundColor: Color(0xFF000055),
         ),
@@ -75,7 +78,7 @@ class chipSetNavigationState extends State<chipSetNavigation> {
   );
 
   var inactiveDecoration = BoxDecoration(
-      color: Colors.grey[200], borderRadius: BorderRadius.circular(2));
+      color: Colors.white, borderRadius: BorderRadius.circular(2));
 
   @override
   Widget build(BuildContext context) {
@@ -143,19 +146,22 @@ class UserHomeScreenState extends State<UserHomeScreen> {
     PaymentTasksClass(),
     NTPaymentTasksClass()
   ];
+
+
   var blocked = false;
   var block_reason = '';
 
   var activeDecoration = BoxDecoration(
-      color: Color(0xFF000055), borderRadius: BorderRadius.circular(20));
+      color: Color(0xFF000055), borderRadius: BorderRadius.circular(5));
 
   var inactiveDecoration = BoxDecoration(
-      borderRadius: BorderRadius.circular(20),
-      border: Border.all(color: Colors.grey[600]));
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(5),
+      border: Border.all(color: Colors.grey[300]!));
 
   void setUserRole() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
-    role = prefs.getString('role');
+    role = prefs.getString('role')!;
     if (role == 'Architect' || role == 'Senior Architect') {
       setState(() {
         activeTab = 'Documents';
@@ -174,6 +180,9 @@ class UserHomeScreenState extends State<UserHomeScreen> {
       setState(() {
         tabsList.add("PO and bills");
         widgetList.add(POAndBills());
+
+        tabsList.insert(1, "DPR Updates");
+        widgetList.insert(1, DprScreen());
       });
     }
   }
@@ -181,14 +190,14 @@ class UserHomeScreenState extends State<UserHomeScreen> {
   set_project_status() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     var id = prefs.getString('project_id');
-    var status_url =
-        'https://app.buildahome.in/erp/API/get_project_block_status?project_id=${id}';
-    var status_response = await http.get(Uri.parse(status_url));
-    var status_response_body = jsonDecode(status_response.body);
-    if (status_response_body['status'] == 'blocked') {
+    var statusUrl =
+        'https://app.buildahome.in/erp/API/get_project_block_status?project_id=$id';
+    var statusResponse = await http.get(Uri.parse(statusUrl));
+    var statusResponseBody = jsonDecode(statusResponse.body);
+    if (statusResponseBody['status'] == 'blocked') {
       setState(() {
         blocked = true;
-        block_reason = status_response_body['reason'];
+        block_reason = statusResponseBody['reason'];
         if (role == 'Client') {
           tabsList = [
             'My Home',
@@ -220,13 +229,7 @@ class UserHomeScreenState extends State<UserHomeScreen> {
         Container(
             padding: EdgeInsets.all(10),
             height: 70,
-            decoration: BoxDecoration(color: Colors.white, boxShadow: [
-              new BoxShadow(
-                  color: Colors.grey[400],
-                  blurRadius: 10,
-                  spreadRadius: 1,
-                  offset: new Offset(0.0, 2.0))
-            ]),
+
             child: ListView(
               shrinkWrap: true,
               scrollDirection: Axis.horizontal,

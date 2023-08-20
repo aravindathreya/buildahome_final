@@ -28,7 +28,7 @@ class RequestDrawingLayout extends StatelessWidget {
           title: Text(appTitle),
           leading: new IconButton(
               icon: new Icon(Icons.menu),
-              onPressed: () => _scaffoldKey.currentState.openDrawer()),
+              onPressed: () => _scaffoldKey.currentState?.openDrawer()),
           backgroundColor: Color(0xFF000055),
         ),
         drawer: NavMenuWidget(),
@@ -99,6 +99,7 @@ class RequestDrawingState extends State<RequestDrawing> {
   @override
   Widget build(BuildContext context) {
     return ListView(
+      padding: EdgeInsets.all(16),
       children: [
         Container(
             margin: EdgeInsets.symmetric(horizontal: 10, vertical: 20),
@@ -132,7 +133,7 @@ class RequestDrawingState extends State<RequestDrawing> {
         InkWell(
           child: Container(
             padding: EdgeInsets.all(10),
-            margin: EdgeInsets.only(top: 10, bottom: 10, left: 10),
+            margin: EdgeInsets.only(top: 10, bottom: 10, left: 10, right: 10),
             decoration: get_button_decoration(),
             child: Text(category, style: get_button_text_style()),
           ),
@@ -165,7 +166,7 @@ class RequestDrawingState extends State<RequestDrawing> {
                                         border: Border(
                                           bottom: BorderSide(
                                               width: 1.0,
-                                              color: Colors.grey[300]),
+                                              color: Colors.grey[300]!),
                                         ),
                                       ),
                                       child: InkWell(
@@ -221,7 +222,7 @@ class RequestDrawingState extends State<RequestDrawing> {
                                   shrinkWrap: true,
                                   physics: new BouncingScrollPhysics(),
                                   scrollDirection: Axis.vertical,
-                                  itemCount: drawingsSet[category].length,
+                                  itemCount: drawingsSet[category]?.length,
                                   itemBuilder: (BuildContext ctxt, int Index) {
                                     return Container(
                                         padding: EdgeInsets.all(20),
@@ -231,16 +232,16 @@ class RequestDrawingState extends State<RequestDrawing> {
                                           border: Border(
                                             bottom: BorderSide(
                                                 width: 1.0,
-                                                color: Colors.grey[300]),
+                                                color: Colors.grey[300]!),
                                           ),
                                         ),
                                         child: InkWell(
                                             onTap: () {
                                               Navigator.pop(context,
-                                                  drawingsSet[category][Index]);
+                                                  drawingsSet[category]?[Index]);
                                             },
                                             child: Text(
-                                                drawingsSet[category][Index],
+                                                drawingsSet[category]![Index],
                                                 style: TextStyle(
                                                     fontSize: 18,
                                                     fontWeight:
@@ -271,13 +272,13 @@ class RequestDrawingState extends State<RequestDrawing> {
                   focusColor: Colors.black,
                   floatingLabelBehavior: FloatingLabelBehavior.never,
                   errorBorder: OutlineInputBorder(
-                    borderSide: BorderSide(color: Colors.grey[600], width: 1.0),
+                    borderSide: BorderSide(color: Colors.grey[600]!, width: 1.0),
                   ),
                   focusedBorder: OutlineInputBorder(
-                    borderSide: BorderSide(color: Colors.grey[600], width: 1.0),
+                    borderSide: BorderSide(color: Colors.grey[600]!, width: 1.0),
                   ),
                   enabledBorder: OutlineInputBorder(
-                    borderSide: BorderSide(color: Colors.grey[300], width: 1.0),
+                    borderSide: BorderSide(color: Colors.grey[300]!, width: 1.0),
                   ),
                   filled: true,
                   hintText: "Comments",
@@ -288,7 +289,7 @@ class RequestDrawingState extends State<RequestDrawing> {
                   ),
                   fillColor: Colors.white),
               validator: (value) {
-                if (value.isEmpty) {
+                if (value!.isEmpty) {
                   return 'This field cannot be empty';
                 }
                 return null;
@@ -302,7 +303,7 @@ class RequestDrawingState extends State<RequestDrawing> {
             decoration: BoxDecoration(
               boxShadow: [
                 new BoxShadow(
-                  color: Colors.grey[600],
+                  color: Colors.grey[600]!,
                   blurRadius: 5,
                   spreadRadius: 1,
                 )
@@ -318,10 +319,9 @@ class RequestDrawingState extends State<RequestDrawing> {
                   // Colors are easy thanks to Flutter's Colors class.
 
                   //Colors.blue,
-                  Colors.indigo[900],
-                  Colors.indigo[700],
-                  //Colors.indigo[700],
-                  Colors.indigo[900],
+                  Colors.indigo[900]!,
+                  Colors.indigo[700]!,
+                  Colors.indigo[900]!,
                 ],
               ),
               border: Border.all(color: Colors.black, width: 1),

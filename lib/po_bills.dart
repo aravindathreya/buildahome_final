@@ -171,7 +171,7 @@ class POAndBillsState extends State<POAndBills> {
                 style: TextStyle(fontSize: 16),
               ),
               decoration: BoxDecoration(
-                  border: Border(bottom: BorderSide(color: Colors.grey[300]))),
+                  border: Border(bottom: BorderSide(color: Colors.grey[300]!))),
             ),
             ListView.builder(
               shrinkWrap: true,
@@ -213,7 +213,7 @@ class POAndBillsState extends State<POAndBills> {
                 style: TextStyle(fontSize: 16),
               ),
               decoration: BoxDecoration(
-                  border: Border(bottom: BorderSide(color: Colors.grey[300]))),
+                  border: Border(bottom: BorderSide(color: Colors.grey[300]!))),
             ),
             ListView.builder(
               shrinkWrap: true,
@@ -251,7 +251,7 @@ class POAndBillsState extends State<POAndBills> {
                 style: TextStyle(fontSize: 16),
               ),
               decoration: BoxDecoration(
-                  border: Border(bottom: BorderSide(color: Colors.grey[300]))),
+                  border: Border(bottom: BorderSide(color: Colors.grey[300]!))),
             ),
             ListView.builder(
               shrinkWrap: true,
@@ -294,7 +294,7 @@ class POAndBillsState extends State<POAndBills> {
                 style: TextStyle(fontSize: 16),
               ),
               decoration: BoxDecoration(
-                  border: Border(bottom: BorderSide(color: Colors.grey[300]))),
+                  border: Border(bottom: BorderSide(color: Colors.grey[300]!))),
             ),
             ListView.builder(
               shrinkWrap: true,
@@ -341,14 +341,14 @@ class POAndBillsState extends State<POAndBills> {
                             )
                           ],
                         ),
+                        SizedBox(height: 10,),
                         Row(
                           children: [
                             Container(
                               margin: EdgeInsets.only(right: 10, top: 10),
                               child: Text('Description :'),
                             ),
-                            Container(
-                              margin: EdgeInsets.only(right: 10, top: 10),
+                            Expanded(
                               child: Text(
                                 nt_nmr_bills[Index][3],
                                 style: TextStyle(fontWeight: FontWeight.w600),
@@ -356,6 +356,7 @@ class POAndBillsState extends State<POAndBills> {
                             )
                           ],
                         ),
+                        SizedBox(height: 10,),
                         Row(
                           children: [
                             Container(

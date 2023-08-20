@@ -11,9 +11,9 @@ class ProjectCard extends StatelessWidget{
   String pr_name = "";
   String client_name = "";
   String pr_location = "";
-  String pr_start_date = "";
+  String pr_startDate = "";
 
-  ProjectCard(this.pr_name, this.pr_location, this.pr_start_date, this.client_name);
+  ProjectCard(this.pr_name, this.pr_location, this.pr_startDate, this.client_name);
 
   @override
   Widget build(BuildContext context) {
@@ -33,8 +33,8 @@ class ProjectCard extends StatelessWidget{
             stops: [0.3, 0.7],
             colors: [
               // Colors are easy thanks to Flutter's Colors class.
-              Colors.grey[300],
-              Colors.grey[100],
+              Colors.grey[300]!,
+              Colors.grey[100]!,
             ],
           ),
           border: Border.all(),
@@ -53,7 +53,7 @@ class ProjectCard extends StatelessWidget{
             ),
             Container(
               padding: EdgeInsets.only(top:20),
-              child: Text("Start Date ${pr_start_date}", style: TextStyle(fontSize: 20,),),
+              child: Text("Start Date ${pr_startDate}", style: TextStyle(fontSize: 20,),),
             ),Container(
               padding: EdgeInsets.only(top:20),
               child: Text("Client name ${client_name}", style: TextStyle(fontSize: 20,),),
@@ -84,7 +84,7 @@ class ViewProject extends StatelessWidget {
           automaticallyImplyLeading: false,
           title:  Text(appTitle),
           leading: new IconButton(icon: new Icon(Icons.menu),
-              onPressed: () => _scaffoldKey.currentState.openDrawer()),
+              onPressed: () => _scaffoldKey.currentState!.openDrawer()),
           backgroundColor: Colors.indigo[900],
 
         ),
@@ -129,7 +129,7 @@ class ViewProjectState extends State<ViewProjectForm> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
 
-                  ProjectCard(a[Index]['pr_name'].toString(),a[Index]['pr_location'].toString(),a[Index]['pr_start_date'].toString(),a[Index]['pr_client'].toString(),)
+                  ProjectCard(a[Index]['pr_name'].toString(),a[Index]['pr_location'].toString(),a[Index]['pr_startDate'].toString(),a[Index]['pr_client'].toString(),)
                 ],
               );
             },

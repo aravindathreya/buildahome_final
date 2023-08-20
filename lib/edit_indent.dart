@@ -15,7 +15,7 @@ import 'dart:async';
 import 'dart:convert';
 
 class EditIndentLayout extends StatelessWidget {
-  var indent;
+  final indent;
   EditIndentLayout(this.indent);
 
   @override
@@ -152,15 +152,15 @@ class EditIndentState extends State<EditIndent> {
                     filled: true,
                     errorBorder: OutlineInputBorder(
                       borderSide:
-                          BorderSide(color: Colors.grey[600], width: 1.0),
+                          BorderSide(color: Colors.grey[600]!, width: 1.0),
                     ),
                     focusedBorder: OutlineInputBorder(
                       borderSide:
-                          BorderSide(color: Colors.grey[600], width: 1.0),
+                          BorderSide(color: Colors.grey[600]!, width: 1.0),
                     ),
                     enabledBorder: OutlineInputBorder(
                       borderSide:
-                          BorderSide(color: Colors.grey[300], width: 1.0),
+                          BorderSide(color: Colors.grey[300]!, width: 1.0),
                     ),
                     hintText: "Quantity",
                     alignLabelWithHint: true,
@@ -174,8 +174,8 @@ class EditIndentState extends State<EditIndent> {
                 margin: EdgeInsets.all(10),
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
-                    color: Colors.grey[300],
-                    border: Border.all(color: Colors.grey[300], width: 1.5)),
+                    color: Colors.grey[300]!,
+                    border: Border.all(color: Colors.grey[300]!, width: 1.5)),
                 child: Text(unit, style: get_button_text_style()),
               ),
               onTap: () async {
@@ -206,13 +206,13 @@ class EditIndentState extends State<EditIndent> {
                   focusColor: Colors.black,
                   floatingLabelBehavior: FloatingLabelBehavior.never,
                   errorBorder: OutlineInputBorder(
-                    borderSide: BorderSide(color: Colors.grey[600], width: 1.0),
+                    borderSide: BorderSide(color: Colors.grey[600]!, width: 1.0),
                   ),
                   focusedBorder: OutlineInputBorder(
-                    borderSide: BorderSide(color: Colors.grey[600], width: 1.0),
+                    borderSide: BorderSide(color: Colors.grey[600]!, width: 1.0),
                   ),
                   enabledBorder: OutlineInputBorder(
-                    borderSide: BorderSide(color: Colors.grey[300], width: 1.0),
+                    borderSide: BorderSide(color: Colors.grey[300]!, width: 1.0),
                   ),
                   filled: true,
                   hintText: "Purpose for indent",
@@ -223,7 +223,7 @@ class EditIndentState extends State<EditIndent> {
                   ),
                   fillColor: Colors.white),
               validator: (value) {
-                if (value.isEmpty) {
+                if (value!.isEmpty) {
                   return 'This field cannot be empty';
                 }
                 return null;
@@ -237,7 +237,7 @@ class EditIndentState extends State<EditIndent> {
             decoration: BoxDecoration(
               boxShadow: [
                 new BoxShadow(
-                  color: Colors.grey[600],
+                  color: Colors.grey[600]!,
                   blurRadius: 5,
                   spreadRadius: 1,
                 )
@@ -253,10 +253,10 @@ class EditIndentState extends State<EditIndent> {
                   // Colors are easy thanks to Flutter's Colors class.
 
                   //Colors.blue,
-                  Colors.indigo[900],
-                  Colors.indigo[700],
-                  //Colors.indigo[700],
-                  Colors.indigo[900],
+                  Colors.indigo[900]!,
+                  Colors.indigo[700]!,
+                  //Colors.indigo[700]!,
+                  Colors.indigo[900]!,
                 ],
               ),
               border: Border.all(color: Colors.black, width: 1),

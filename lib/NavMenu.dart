@@ -4,7 +4,6 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'UserHome.dart';
 import 'AddDailyUpdate.dart';
-import 'ChatBox.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'create_indent.dart';
 import 'view_open_indents.dart';
@@ -12,6 +11,8 @@ import 'notifcations.dart';
 import 'RequestDrawing.dart';
 import 'NotesAndComments.dart';
 import 'my_indents.dart';
+import 'stock_report.dart';
+import 'checklist_categories.dart';
 
 class NavMenuItem extends StatelessWidget {
   String _route;
@@ -204,6 +205,15 @@ class NavMenuWidgetState extends State<NavMenuWidget> {
               Container(
                 child: NavMenuItem(
                     "Create Indent", Icons.request_quote, CreateIndentLayout()),
+              ),
+            if (role != 'Client')
+              Container(
+                child: NavMenuItem(
+                    "Stock report", Icons.inventory, StockReportLayout()),
+              ),
+            if (role == 'Client')
+              Container(
+                child: NavMenuItem("Checklist", Icons.list, ChecklistCategoriesLayout()),
               ),
             if (role == 'Admin' ||
                 role == 'Project Coordinator' ||

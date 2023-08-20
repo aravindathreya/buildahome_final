@@ -1,6 +1,5 @@
 import 'package:buildahome/widgets/material_units.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
 import 'package:http/http.dart' as http;
 import 'NavMenu.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -9,10 +8,8 @@ import 'projects.dart';
 import 'main.dart';
 import 'utilities/styles.dart';
 import 'widgets/material.dart';
-import 'widgets/material_units.dart';
 import 'package:intl/intl.dart';
 import 'package:file_picker/file_picker.dart';
-import 'dart:async';
 import 'dart:convert';
 
 class CreateIndentLayout extends StatelessWidget {
@@ -31,7 +28,7 @@ class CreateIndentLayout extends StatelessWidget {
           title: Text(appTitle),
           leading: new IconButton(
               icon: new Icon(Icons.menu),
-              onPressed: () => _scaffoldKey.currentState.openDrawer()),
+              onPressed: () => _scaffoldKey.currentState?.openDrawer()),
           backgroundColor: Color(0xFF000055),
         ),
         drawer: NavMenuWidget(),
@@ -58,8 +55,8 @@ class CreateIndentState extends State<CreateIndent> {
   var purposeTextController = new TextEditingController();
   var diffCostTextController = new TextEditingController(text: '0');
   var approvalTaken = false;
-  var attached_file_name = '';
-  var attached_file;
+  var attachedFileName = '';
+  var attachedFile;
 
   @override
   void initState() {
@@ -74,24 +71,22 @@ class CreateIndentState extends State<CreateIndent> {
 
   void getFile() async {
     var res = await FilePicker.platform.pickFiles(allowMultiple: false);
-    var file = res.files.first;
+    var file = res?.files.first;
     if (file != null) {
       setState(() {
-        attached_file = file;
-        attached_file_name = 'Attached file: ' +
-            (file.path.split('/')[file.path.split('/').length - 1]);
+        var fileSplit = file.path?.split('/');
+        attachedFile = file;
+        attachedFileName = 'Attached file: ' +
+            (fileSplit![fileSplit.length - 1]);
       });
     } else {
       setState(() {
-        attached_file_name = '';
+        attachedFileName = '';
       });
     }
   }
 
   bool _isNumeric(String str) {
-    if (str == null) {
-      return false;
-    }
     return double.tryParse(str) != null;
   }
 
@@ -170,15 +165,15 @@ class CreateIndentState extends State<CreateIndent> {
                     filled: true,
                     errorBorder: OutlineInputBorder(
                       borderSide:
-                          BorderSide(color: Colors.grey[600], width: 1.0),
+                          BorderSide(color: Colors.grey[600]!, width: 1.0),
                     ),
                     focusedBorder: OutlineInputBorder(
                       borderSide:
-                          BorderSide(color: Colors.grey[600], width: 1.0),
+                          BorderSide(color: Colors.grey[600]!, width: 1.0),
                     ),
                     enabledBorder: OutlineInputBorder(
                       borderSide:
-                          BorderSide(color: Colors.grey[300], width: 1.0),
+                          BorderSide(color: Colors.grey[300]!, width: 1.0),
                     ),
                     hintText: "Quantity",
                     alignLabelWithHint: true,
@@ -193,7 +188,7 @@ class CreateIndentState extends State<CreateIndent> {
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
                     color: Colors.grey[300],
-                    border: Border.all(color: Colors.grey[300], width: 1.5)),
+                    border: Border.all(color: Colors.grey[300]!, width: 1.5)),
                 child: Text(unit, style: get_button_text_style()),
               ),
               onTap: () async {
@@ -229,13 +224,13 @@ class CreateIndentState extends State<CreateIndent> {
                 focusColor: Colors.white,
                 filled: true,
                 errorBorder: OutlineInputBorder(
-                  borderSide: BorderSide(color: Colors.grey[600], width: 1.0),
+                  borderSide: BorderSide(color: Colors.grey[600]!, width: 1.0),
                 ),
                 focusedBorder: OutlineInputBorder(
-                  borderSide: BorderSide(color: Colors.grey[600], width: 1.0),
+                  borderSide: BorderSide(color: Colors.grey[600]!, width: 1.0),
                 ),
                 enabledBorder: OutlineInputBorder(
-                  borderSide: BorderSide(color: Colors.grey[300], width: 1.0),
+                  borderSide: BorderSide(color: Colors.grey[300]!, width: 1.0),
                 ),
                 hintText: "Difference cost",
                 alignLabelWithHint: true,
@@ -249,9 +244,9 @@ class CreateIndentState extends State<CreateIndent> {
               Checkbox(
                 activeColor: Colors.indigo[900],
                 value: approvalTaken,
-                onChanged: (bool value) {
+                onChanged: (value) {
                   setState(() {
-                    approvalTaken = value;
+                    approvalTaken = value!;
                   });
                 },
               ),
@@ -278,13 +273,13 @@ class CreateIndentState extends State<CreateIndent> {
                   focusColor: Colors.black,
                   floatingLabelBehavior: FloatingLabelBehavior.never,
                   errorBorder: OutlineInputBorder(
-                    borderSide: BorderSide(color: Colors.grey[600], width: 1.0),
+                    borderSide: BorderSide(color: Colors.grey[600]!, width: 1.0),
                   ),
                   focusedBorder: OutlineInputBorder(
-                    borderSide: BorderSide(color: Colors.grey[600], width: 1.0),
+                    borderSide: BorderSide(color: Colors.grey[600]!, width: 1.0),
                   ),
                   enabledBorder: OutlineInputBorder(
-                    borderSide: BorderSide(color: Colors.grey[300], width: 1.0),
+                    borderSide: BorderSide(color: Colors.grey[300]!, width: 1.0),
                   ),
                   filled: true,
                   hintText: "Purpose for indent",
@@ -295,7 +290,7 @@ class CreateIndentState extends State<CreateIndent> {
                   ),
                   fillColor: Colors.white),
               validator: (value) {
-                if (value.isEmpty) {
+                if (value!.isEmpty) {
                   return 'This field cannot be empty';
                 }
                 return null;
@@ -308,7 +303,7 @@ class CreateIndentState extends State<CreateIndent> {
               margin: EdgeInsets.only(left: 10, right: 10),
               decoration: BoxDecoration(
                 color: Colors.white,
-                border: Border.all(width: 1.0, color: Colors.grey[300]),
+                border: Border.all(width: 1.0, color: Colors.grey[300]!),
                 borderRadius: BorderRadius.all(Radius.circular(5)),
               ),
               padding: EdgeInsets.all(15),
@@ -331,7 +326,7 @@ class CreateIndentState extends State<CreateIndent> {
         Container(
           margin: EdgeInsets.only(left: 15, bottom: 10, top: 10),
           child: Text(
-            attached_file_name,
+            attachedFileName,
             style: TextStyle(fontWeight: FontWeight.w600),
           ),
         ),
@@ -343,7 +338,7 @@ class CreateIndentState extends State<CreateIndent> {
             decoration: BoxDecoration(
               boxShadow: [
                 new BoxShadow(
-                  color: Colors.grey[600],
+                  color: Colors.grey[600]!,
                   blurRadius: 5,
                   spreadRadius: 1,
                 )
@@ -359,10 +354,9 @@ class CreateIndentState extends State<CreateIndent> {
                   // Colors are easy thanks to Flutter's Colors class.
 
                   //Colors.blue,
-                  Colors.indigo[900],
-                  Colors.indigo[700],
-                  //Colors.indigo[700],
-                  Colors.indigo[900],
+                  Colors.indigo[900]!,
+                  Colors.indigo[700]!,
+                  Colors.indigo[900]!,
                 ],
               ),
               border: Border.all(color: Colors.black, width: 1),
@@ -510,17 +504,17 @@ class CreateIndentState extends State<CreateIndent> {
                   });
               return;
             }
-            var indent_id = responseBody['indent_id'];
-            if (attached_file_name != '') {
+            var indentId = responseBody['indent_id'];
+            if (attachedFileName != '') {
               var uri = Uri.parse(
                   "https://app.buildahome.in/erp/API/indent_file_uplpoad");
               var request = new http.MultipartRequest("POST", uri);
 
               var pic =
-                  await http.MultipartFile.fromPath("file", attached_file.path);
+                  await http.MultipartFile.fromPath("file", attachedFile.path);
 
               request.files.add(pic);
-              request.fields['indent_id'] = indent_id.toString();
+              request.fields['indent_id'] = indentId.toString();
               var fileResponse = await request.send();
               var responseData = await fileResponse.stream.toBytes();
               var responseString = String.fromCharCodes(responseData);
@@ -542,7 +536,7 @@ class CreateIndentState extends State<CreateIndent> {
               purposeTextController.text = '';
               diffCostTextController.text = '0';
               approvalTaken = false;
-              attached_file_name = '';
+              attachedFileName = '';
             });
 
             //set_response_text(response.body);

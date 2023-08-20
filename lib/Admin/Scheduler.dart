@@ -1,4 +1,3 @@
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
@@ -14,7 +13,7 @@ import "Gallery.dart";
 import 'Drawings.dart';
 
 class TaskWidget extends StatefulWidget {
-  var id;
+  final id;
   TaskWidget(this.id);
 
   @override
@@ -29,7 +28,7 @@ class TaskWidget1 extends State<TaskWidget> {
   call() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     setState(() {
-      role = prefs.getString("role");
+      role = prefs.getString("role")!;
     });
   }
 
@@ -139,46 +138,46 @@ class TaskWidget1 extends State<TaskWidget> {
 }
 
 class TaskItem extends StatefulWidget {
-  String _Task_name;
-  var _icon = Icons.home;
-  var _start_date;
-  var _end_date;
-  var _height;
-  var _color = Colors.white;
-  var _sub_tasks;
-  var _progressStr;
-  var note;
+  final _taskName;
+  final _icon = Icons.home;
+  final _startDate;
+  final _endDate;
+  final _height = 0.0;
+  final _color = Colors.white;
+  final _subTasks;
+  final _progressStr;
+  final note;
 
-  TaskItem(this._Task_name, this._start_date, this._end_date, this._sub_tasks,
+  TaskItem(this._taskName, this._startDate, this._endDate, this._subTasks,
       this._progressStr, this.note);
 
   @override
   TaskItemWidget createState() {
     return TaskItemWidget(
-        this._Task_name,
+        this._taskName,
         this._icon,
-        this._start_date,
-        this._end_date,
+        this._startDate,
+        this._endDate,
         this._progressStr,
         this._color,
         this._height,
-        this._sub_tasks,
+        this._subTasks,
         this.note);
   }
 }
 
 class TaskItemWidget extends State<TaskItem>
     with SingleTickerProviderStateMixin {
-  String _Task_name;
+  String _taskName;
   var _icon = Icons.home;
-  var _start_date;
-  var _end_date;
+  var _startDate;
+  var _endDate;
   var _color;
   var vis = false;
-  var _sub_tasks;
-  var _text_color = Colors.black;
+  var _subTasks;
+  var _textColor = Colors.black;
   var _height = 50.0;
-  var spr_radius = 1.0;
+  var sprRadius = 1.0;
   var pad = 10.0;
   var _progressStr;
   var note;
@@ -192,39 +191,42 @@ class TaskItemWidget extends State<TaskItem>
   }
 
   call() {
-    var total = this._sub_tasks.split("^");
+    var total = this._subTasks.split("^");
     var done = (this._progressStr.split("|"));
     notes = (this.note.split("|"));
     print(notes);
     if (((done.length - 1) / (total.length - 1)) > 0.9) {
       setState(() {
-        this._text_color = Colors.green[600];
+        this._textColor = Colors.green[600]!;
       });
     }
   }
 
   _progress() {
-    var total = this._sub_tasks.split("^");
+    print('${this._subTasks} Subtasks, $_progressStr');
+    var total = this._subTasks.split("^");
     var done = (this._progressStr.split("|"));
-    return ((done.length - 1) / (total.length - 1));
+    var percent = (done.length - 1) / (total.length - 1);
+    if (percent > 1) return 1.0;
+    return percent;
   }
 
-  _expand_collapse() {
+  _expandCollapse() {
     setState(() {
       if (vis == false) {
         vis = true;
         view = Icons.expand_less;
-        spr_radius = 1.0;
+        sprRadius = 1.0;
       } else if (vis == true) {
         vis = false;
         view = Icons.expand_more;
-        spr_radius = 1.0;
+        sprRadius = 1.0;
       }
     });
   }
 
-  TaskItemWidget(this._Task_name, this._icon, this._start_date, this._end_date,
-      this._progressStr, this._color, this._height, this._sub_tasks, this.note);
+  TaskItemWidget(this._taskName, this._icon, this._startDate, this._endDate,
+      this._progressStr, this._color, this._height, this._subTasks, this.note);
 
   @override
   Widget build(BuildContext context) {
@@ -238,9 +240,9 @@ class TaskItemWidget extends State<TaskItem>
                   color: Colors.white,
                   boxShadow: [
                     new BoxShadow(
-                        color: Colors.grey[400],
+                        color: Colors.grey[400]!,
                         blurRadius: 10,
-                        spreadRadius: this.spr_radius,
+                        spreadRadius: this.sprRadius,
                         offset: Offset(0.0, 10.0))
                   ],
                   border: Border.all(color: Colors.black, width: 2.0)),
@@ -256,18 +258,18 @@ class TaskItemWidget extends State<TaskItem>
                     child: Row(
                       children: <Widget>[
                         InkWell(
-                          onTap: _expand_collapse,
+                          onTap: _expandCollapse,
                           child: Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: <Widget>[
                               Container(
                                 width: MediaQuery.of(context).size.width * .8,
                                 child: Text(
-                                  this._Task_name,
+                                  this._taskName,
                                   textAlign: TextAlign.left,
                                   style: TextStyle(
                                       fontSize: 14,
-                                      color: _text_color,
+                                      color: _textColor,
                                       fontWeight: FontWeight.bold),
                                 ),
                               ),
@@ -292,7 +294,7 @@ class TaskItemWidget extends State<TaskItem>
                                     child: Text(
                                       DateFormat("dd MMM")
                                           .format(
-                                              DateTime.parse(this._start_date))
+                                              DateTime.parse(this._startDate))
                                           .toString(),
                                       style: TextStyle(
                                         fontSize: 12,
@@ -304,7 +306,7 @@ class TaskItemWidget extends State<TaskItem>
                                     child: Text(
                                       DateFormat("dd MMM")
                                           .format(
-                                              DateTime.parse(this._end_date))
+                                              DateTime.parse(this._endDate))
                                           .toString(),
                                       style: TextStyle(
                                         fontSize: 12,
@@ -330,12 +332,12 @@ class TaskItemWidget extends State<TaskItem>
                                   shrinkWrap: true,
                                   physics: NeverScrollableScrollPhysics(),
                                   itemCount:
-                                      this._sub_tasks.split("^").length - 1,
-                                  itemBuilder: (BuildContext ctxt, int Index) {
-                                    var sub_tasks = _sub_tasks.split("^");
+                                      this._subTasks.split("^").length - 1,
+                                  itemBuilder: (BuildContext ctxt, int index) {
+                                    var subTasks = _subTasks.split("^");
 
-                                    var each_task = sub_tasks[Index].split("|");
-                                    if (each_task[0] != "")
+                                    var task = subTasks[index].split("|");
+                                    if (task[0] != "")
                                       return Column(
                                         crossAxisAlignment:
                                             CrossAxisAlignment.start,
@@ -351,31 +353,31 @@ class TaskItemWidget extends State<TaskItem>
                                                   child: Text(
                                                     DateFormat("dd MMM")
                                                             .format(DateTime
-                                                                .parse(each_task[
+                                                                .parse(task[
                                                                         1]
                                                                     .toString()))
                                                             .toString() +
                                                         " to " +
                                                         DateFormat("dd MMM")
                                                             .format(DateTime
-                                                                .parse(each_task[
+                                                                .parse(task[
                                                                         2]
                                                                     .toString()))
                                                             .toString() +
                                                         " : " +
-                                                        each_task[0].toString(),
+                                                        task[0].toString(),
                                                     style: TextStyle(
                                                         color: Colors.black),
                                                   )),
                                             ],
                                           ),
-                                          if (notes.length > Index &&
-                                              notes[Index].trim() != "")
+                                          if (notes.length > index &&
+                                              notes[index].trim() != "")
                                             Container(
                                                 alignment: Alignment.centerLeft,
                                                 padding: EdgeInsets.all(5),
                                                 child: Text(
-                                                  notes[Index],
+                                                  notes[index],
                                                   style: TextStyle(
                                                       color: Colors.black,
                                                       fontWeight:
@@ -397,7 +399,7 @@ class TaskItemWidget extends State<TaskItem>
 }
 
 class TaskScreenClass extends StatefulWidget {
-  var id;
+  final id;
 
   TaskScreenClass(this.id);
 
@@ -420,15 +422,14 @@ class TaskScreen extends State<TaskScreenClass> {
 
   var body;
   var tasks = [];
-  ScrollController _controller = new ScrollController();
 
   call() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
-    var p_id = prefs.getString('project_id');
+    var prId = prefs.getString('project_id');
 
-    if (p_id != null) {
+    if (prId != null) {
       var url =
-          'https://app.buildahome.in/api/get_all_tasks.php?project_id=$p_id&nt_toggle=0';
+          'https://app.buildahome.in/api/get_all_tasks.php?project_id=$prId&nt_toggle=0';
       print(url);
       var response = await http.get(Uri.parse(url));
       setState(() {
@@ -444,7 +445,7 @@ class TaskScreen extends State<TaskScreenClass> {
           padding: EdgeInsets.only(top: 20, left: 10, bottom: 10),
           decoration: BoxDecoration(
               border: Border(
-            bottom: BorderSide(width: 6.0, color: Colors.indigo[900]),
+            bottom: BorderSide(width: 6.0, color: Colors.indigo[900]!),
           )),
           child: Text("What's done and what's not?",
               style: TextStyle(
@@ -454,16 +455,16 @@ class TaskScreen extends State<TaskScreenClass> {
           shrinkWrap: true,
           physics: BouncingScrollPhysics(),
           itemCount: body == null ? 0 : body.length,
-          itemBuilder: (BuildContext ctxt, int Index) {
+          itemBuilder: (BuildContext ctxt, int index) {
             return Container(
               padding: EdgeInsets.only(bottom: 12, left: 5, right: 5, top: 5),
               child: TaskItem(
-                  body[Index]['task_name'].toString(),
-                  body[Index]['start_date'].toString(),
-                  body[Index]['end_date'].toString(),
-                  body[Index]['sub_tasks'].toString(),
-                  body[Index]['progress'].toString(),
-                  body[Index]['s_note'].toString()),
+                  body[index]['task_name'].toString(),
+                  body[index]['start_date'].toString(),
+                  body[index]['end_date'].toString(),
+                  body[index]['subTasks'].toString(),
+                  body[index]['progress'].toString(),
+                  body[index]['s_note'].toString()),
             );
           }),
     ]);

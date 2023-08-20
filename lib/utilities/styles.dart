@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 get_button_decoration() {
   return BoxDecoration(
       color: Colors.white,
-      border: Border.all(color: Colors.grey[300]),
+      border: Border.all(color: Colors.grey[300]!),
       borderRadius: BorderRadius.circular(5));
 }
 

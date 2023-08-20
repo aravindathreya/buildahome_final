@@ -27,7 +27,7 @@ class Notifications extends StatelessWidget {
           title: Text(appTitle),
           leading: new IconButton(
               icon: new Icon(Icons.menu),
-              onPressed: () => _scaffoldKey.currentState.openDrawer()),
+              onPressed: () => _scaffoldKey.currentState?.openDrawer()),
           backgroundColor: Color(0xFF000055),
         ),
         body: NotificationPageBody(),
@@ -80,7 +80,7 @@ class NotificationPageBodyState extends State<NotificationPageBody> {
         height: MediaQuery.of(context).size.height,
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Container(
-              margin: EdgeInsets.symmetric(horizontal: 10, vertical: 20),
+              margin: EdgeInsets.symmetric(horizontal: 20, vertical: 20),
               child: Text('Notifications', style: get_header_text_style())),
           Container(
               height: MediaQuery.of(context).size.height - 180,
@@ -91,7 +91,7 @@ class NotificationPageBodyState extends State<NotificationPageBody> {
                   itemBuilder: (BuildContext ctxt, int Index) {
                     return Container(
                       padding: EdgeInsets.all(10),
-                      margin: EdgeInsets.only(bottom: 10),
+                      margin: EdgeInsets.symmetric(horizontal: 10, vertical: 10),
                       decoration: BoxDecoration(
                         color: notifcations[Index]['unread'] == 1
                             ? Colors.green[100]

@@ -94,7 +94,7 @@ class ViewUsers extends StatelessWidget {
           title: Text(appTitle),
           leading: new IconButton(
               icon: new Icon(Icons.menu),
-              onPressed: () => _scaffoldKey.currentState.openDrawer()),
+              onPressed: () => _scaffoldKey.currentState!.openDrawer()),
           backgroundColor: Colors.indigo[900],
         ),
         bottomNavigationBar: BottomNavigationBar(

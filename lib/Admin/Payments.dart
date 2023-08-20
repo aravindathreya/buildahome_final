@@ -1,4 +1,3 @@
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
@@ -12,19 +11,20 @@ import "Gallery.dart";
 import "Drawings.dart";
 
 class PaymentTaskWidget extends StatelessWidget {
-  var id;
+  final id;
+
   PaymentTaskWidget(this.id);
 
   @override
   Widget build(BuildContext context) {
     final appTitle = 'buildAhome';
-    final GlobalKey<ScaffoldState> _scaffoldKey =
-        new GlobalKey<ScaffoldState>();
+    final GlobalKey<ScaffoldState> _scaffoldKey = new GlobalKey<ScaffoldState>();
     return MaterialApp(
       title: appTitle,
       theme: ThemeData(fontFamily: App().fontName),
       home: Scaffold(
-        key: _scaffoldKey, // ADD THIS LINE
+        key: _scaffoldKey,
+        // ADD THIS LINE
         drawer: NavMenuWidget(),
         appBar: AppBar(
           automaticallyImplyLeading: false,
@@ -64,8 +64,7 @@ class PaymentTaskWidget extends StatelessWidget {
             } else if (index == 4) {
               Navigator.pushReplacement(
                 context,
-                MaterialPageRoute(
-                    builder: (context) => PaymentTaskWidget(this.id)),
+                MaterialPageRoute(builder: (context) => PaymentTaskWidget(this.id)),
               );
             }
           },
@@ -73,29 +72,25 @@ class PaymentTaskWidget extends StatelessWidget {
           type: BottomNavigationBarType.fixed,
           items: [
             BottomNavigationBarItem(
-              icon: Icon(
-                Icons.home,
-              ),
-              label: 'Home'
-            ),
+                icon: Icon(
+                  Icons.home,
+                ),
+                label: 'Home'),
             BottomNavigationBarItem(
-              icon: Icon(
-                Icons.picture_as_pdf,
-              ),
-              label: 'Drawings'
-            ),
+                icon: Icon(
+                  Icons.picture_as_pdf,
+                ),
+                label: 'Drawings'),
             BottomNavigationBarItem(
-              icon: Icon(
-                Icons.photo_album,
-              ),
-              label: "Gallery"
-            ),
+                icon: Icon(
+                  Icons.photo_album,
+                ),
+                label: "Gallery"),
             BottomNavigationBarItem(
-              icon: Icon(
-                Icons.access_time,
-              ),
-              label: 'Scheduler'
-            ),
+                icon: Icon(
+                  Icons.access_time,
+                ),
+                label: 'Scheduler'),
             BottomNavigationBarItem(
               icon: Icon(
                 Icons.payment,
@@ -110,74 +105,61 @@ class PaymentTaskWidget extends StatelessWidget {
 }
 
 class TaskItem extends StatefulWidget {
-  String _Task_name;
-  var _icon = Icons.home;
-  var _start_date;
-  var _end_date;
-  var _height;
-  var _color = Colors.white;
-  var _payment_percentage;
-  var status;
-  var note;
+  final _taskName;
+  final _icon = Icons.home;
+  final _startDate;
+  final _endDate;
+  final _height = 0.0;
+  final _color = Colors.white;
+  final _paymentPercentage;
+  final status;
+  final note;
 
-  TaskItem(this._Task_name, this._start_date, this._end_date,
-      this._payment_percentage, this.status, this.note);
+  TaskItem(this._taskName, this._startDate, this._endDate, this._paymentPercentage, this.status, this.note);
 
   @override
   TaskItemWidget createState() {
-    return TaskItemWidget(
-        this._Task_name,
-        this._icon,
-        this._start_date,
-        this._end_date,
-        this._color,
-        this._height,
-        this._payment_percentage,
-        this.status,
-        this.note);
+    return TaskItemWidget(this._taskName, this._icon, this._startDate, this._endDate, this._color, this._height,
+        this._paymentPercentage, this.status, this.note);
   }
 }
 
-class TaskItemWidget extends State<TaskItem>
-    with SingleTickerProviderStateMixin {
-  String _Task_name;
-  var _icon = Icons.home;
-  var _start_date;
-  var _end_date;
+class TaskItemWidget extends State<TaskItem> with SingleTickerProviderStateMixin {
+  String _taskName;
   var _color;
   var vis = false;
-  var _payment_percentage;
-  var _text_color = Colors.black;
-  var _height = 50.0;
-  var spr_radius = 1.0;
+  var _paymentPercentage;
+  var _textColor = Colors.black;
+  var sprRadius = 1.0;
   var pad = 10.0;
-  var value_str;
+  var valueStr;
   var value = 0;
   var status;
   var amt;
   var note;
   var gradient;
+  var height;
 
   @override
   void initState() {
     super.initState();
-    _set_value();
+    _setValue();
     _progress();
   }
 
-  _set_value() async {
+  _setValue() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
-    value_str = prefs.getString("pr_value");
-    value = int.parse(value_str);
+    valueStr = prefs.getString("pr_value");
+    value = int.parse(valueStr);
     setState(() {
-      amt = ((int.parse(this._payment_percentage)) / 100) * value;
+      amt = ((int.parse(this._paymentPercentage)) / 100) * value;
     });
   }
 
   _progress() {
     if (this.status == 'not due') {
       this._color = Colors.white;
-      this._text_color = Colors.black;
+      this._textColor = Colors.black;
       this.gradient = LinearGradient(
         // Where the linear gradient begins and ends
         begin: Alignment.topCenter,
@@ -194,7 +176,7 @@ class TaskItemWidget extends State<TaskItem>
       );
     } else if (this.status == 'paid') {
       this._color = Colors.green;
-      this._text_color = Colors.white;
+      this._textColor = Colors.white;
       this.gradient = LinearGradient(
         // Where the linear gradient begins and ends
         begin: Alignment.centerLeft,
@@ -205,14 +187,14 @@ class TaskItemWidget extends State<TaskItem>
         colors: [
           // Colors are easy thanks to Flutter's Colors class.
 
-          Colors.green[700],
-          Colors.green[500],
-          Colors.green[700],
+          Colors.green[700]!,
+          Colors.green[500]!,
+          Colors.green[700]!,
         ],
       );
     } else {
       this._color = Colors.deepOrange;
-      this._text_color = Colors.white;
+      this._textColor = Colors.white;
       this.gradient = LinearGradient(
         // Where the linear gradient begins and ends
         begin: Alignment.centerLeft,
@@ -233,30 +215,21 @@ class TaskItemWidget extends State<TaskItem>
 
   var view = Icons.expand_more;
 
-  _expand_collapse() {
+  _expandCollapse() {
     setState(() {
       if (vis == false) {
         vis = true;
         view = Icons.expand_less;
-        spr_radius = 1.0;
+        sprRadius = 1.0;
       } else if (vis == true) {
         vis = false;
         view = Icons.expand_more;
-        spr_radius = 1.0;
+        sprRadius = 1.0;
       }
     });
   }
 
-  TaskItemWidget(
-      this._Task_name,
-      this._icon,
-      this._start_date,
-      this._end_date,
-      this._color,
-      this._height,
-      this._payment_percentage,
-      this.status,
-      this.note);
+  TaskItemWidget(this._taskName, _icon, _startDate, _endDate, this._color, this.height, this._paymentPercentage, this.status, this.note);
 
   @override
   Widget build(BuildContext context) {
@@ -270,10 +243,7 @@ class TaskItemWidget extends State<TaskItem>
               gradient: this.gradient,
               boxShadow: [
                 new BoxShadow(
-                    color: Colors.grey[400],
-                    blurRadius: 10,
-                    spreadRadius: this.spr_radius,
-                    offset: Offset(0.0, 10.0))
+                    color: Colors.grey[400]!, blurRadius: 10, spreadRadius: this.sprRadius, offset: Offset(0.0, 10.0))
               ],
               border: Border.all(color: Colors.black, width: 2.0)),
           padding: EdgeInsets.all(this.pad),
@@ -285,22 +255,22 @@ class TaskItemWidget extends State<TaskItem>
                 child: Row(
                   children: <Widget>[
                     InkWell(
-                      onTap: _expand_collapse,
+                      onTap: _expandCollapse,
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: <Widget>[
                           Container(
                             width: MediaQuery.of(context).size.width * .8,
                             child: Text(
-                              this._Task_name,
+                              this._taskName,
                               textAlign: TextAlign.left,
                               style: TextStyle(
                                 fontSize: 14,
-                                color: this._text_color,
+                                color: this._textColor,
                               ),
                             ),
                           ),
-                          new Icon(view, color: this._text_color),
+                          new Icon(view, color: this._textColor),
                         ],
                       ),
                     ),
@@ -317,13 +287,8 @@ class TaskItemWidget extends State<TaskItem>
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: <Widget>[
                               Text(
-                                this._payment_percentage +
-                                    "%     ₹ " +
-                                    amt.toString(),
-                                style: TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.bold,
-                                    color: this._text_color),
+                                this._paymentPercentage + "%     ₹ " + amt.toString(),
+                                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: this._textColor),
                               )
                             ],
                           )),
@@ -331,9 +296,7 @@ class TaskItemWidget extends State<TaskItem>
                           alignment: Alignment.centerLeft,
                           child: Text(
                             this.note,
-                            style: TextStyle(
-                                color: this._text_color,
-                                fontWeight: FontWeight.bold),
+                            style: TextStyle(color: this._textColor, fontWeight: FontWeight.bold),
                           ))
                     ],
                   )),
@@ -346,9 +309,9 @@ class TaskItemWidget extends State<TaskItem>
 }
 
 class PaymentTasksClass extends StatefulWidget {
-  var id;
-
+  final id;
   PaymentTasksClass(this.id);
+
   @override
   PaymentTasks createState() {
     return PaymentTasks(this.id);
@@ -360,11 +323,10 @@ class PaymentTasks extends State<PaymentTasksClass> {
   var tasks = [];
   var id;
   var outstanding = "";
-  var total_paid = "";
-  var project_value = "";
+  var totalPaid = "";
+  var projectValue = "";
 
   PaymentTasks(this.id);
-  ScrollController _controller = new ScrollController();
 
   @override
   void initState() {
@@ -375,8 +337,7 @@ class PaymentTasks extends State<PaymentTasksClass> {
   call() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     id = prefs.getString('project_id');
-    var url =
-        'https://app.buildahome.in/api/get_all_tasks.php?project_id=$id&nt_toggle=1  ';
+    var url = 'https://app.buildahome.in/api/get_all_tasks.php?project_id=$id&nt_toggle=1  ';
     var response = await http.get(Uri.parse(url));
     var url1 = 'https://app.buildahome.in/api/get_payment.php?project_id=$id ';
     var response1 = await http.get(Uri.parse(url1));
@@ -384,8 +345,8 @@ class PaymentTasks extends State<PaymentTasksClass> {
     prefs.setString("pr_value", details[0]['value']);
     setState(() {
       outstanding = details[0]['outstanding'];
-      total_paid = details[0]['total_paid'];
-      project_value = details[0]['value'];
+      totalPaid = details[0]['totalPaid'];
+      projectValue = details[0]['value'];
       body = jsonDecode(response.body);
     });
   }
@@ -397,7 +358,7 @@ class PaymentTasks extends State<PaymentTasksClass> {
           padding: EdgeInsets.only(top: 20, left: 10, bottom: 10),
           decoration: BoxDecoration(
               border: Border(
-            bottom: BorderSide(width: 6.0, color: Colors.indigo[900]),
+            bottom: BorderSide(width: 6.0, color: Colors.indigo[900]!),
           )),
           child: Text("Payments",
               style: TextStyle(
@@ -420,11 +381,10 @@ class PaymentTasks extends State<PaymentTasksClass> {
                       width: 10,
                       decoration: BoxDecoration(
                           color: Colors.deepOrange,
-                          border: Border.all(color: Colors.grey[300]),
+                          border: Border.all(color: Colors.grey[300]!),
                           borderRadius: BorderRadius.circular(3)),
                     ),
-                    Container(
-                        padding: EdgeInsets.only(left: 5), child: Text("Due")),
+                    Container(padding: EdgeInsets.only(left: 5), child: Text("Due")),
                   ],
                 ),
               ),
@@ -437,12 +397,11 @@ class PaymentTasks extends State<PaymentTasksClass> {
                       height: 10,
                       width: 10,
                       decoration: BoxDecoration(
-                          border: Border.all(color: Colors.grey[300]),
+                          border: Border.all(color: Colors.grey[300]!),
                           borderRadius: BorderRadius.circular(3),
                           color: Colors.green),
                     ),
-                    Container(
-                        padding: EdgeInsets.only(left: 5), child: Text("Paid")),
+                    Container(padding: EdgeInsets.only(left: 5), child: Text("Paid")),
                   ],
                 ),
               ),
@@ -456,12 +415,10 @@ class PaymentTasks extends State<PaymentTasksClass> {
                       width: 10,
                       decoration: BoxDecoration(
                           color: Colors.white70,
-                          border: Border.all(color: Colors.grey[300]),
+                          border: Border.all(color: Colors.grey[300]!),
                           borderRadius: BorderRadius.circular(3)),
                     ),
-                    Container(
-                        padding: EdgeInsets.only(left: 5),
-                        child: Text("Ongoing tasks"))
+                    Container(padding: EdgeInsets.only(left: 5), child: Text("Ongoing tasks"))
                   ],
                 ),
               ),
@@ -484,13 +441,9 @@ class PaymentTasks extends State<PaymentTasksClass> {
                   children: <Widget>[
                     Container(
                         width: 150,
-                        child: Text("Project Value :",
-                            style: TextStyle(
-                                fontSize: 16, fontWeight: FontWeight.bold))),
+                        child: Text("Project Value :", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold))),
                     Container(
-                        child: Text("₹ " + project_value,
-                            style: TextStyle(
-                                fontSize: 16, fontWeight: FontWeight.bold)))
+                        child: Text("₹ " + projectValue, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)))
                   ],
                 )),
             // Container(
@@ -513,16 +466,10 @@ class PaymentTasks extends State<PaymentTasksClass> {
                     Container(
                         width: 150,
                         child: Text("Paid till date :",
-                            style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.green[500]))),
+                            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.green[500]))),
                     Container(
-                        child: Text("₹ " + total_paid,
-                            style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.green[500])))
+                        child: Text("₹ " + totalPaid,
+                            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.green[500])))
                   ],
                 )),
             Container(
@@ -532,16 +479,10 @@ class PaymentTasks extends State<PaymentTasksClass> {
                     Container(
                         width: 150,
                         child: Text("Current Outstanding :",
-                            style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.red[500]))),
+                            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.red[500]))),
                     Container(
                         child: Text("₹ " + outstanding,
-                            style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.red[500])))
+                            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.red[500])))
                   ],
                 ))
           ],
@@ -551,15 +492,15 @@ class PaymentTasks extends State<PaymentTasksClass> {
           shrinkWrap: true,
           physics: BouncingScrollPhysics(),
           itemCount: body == null ? 0 : body.length,
-          itemBuilder: (BuildContext ctxt, int Index) {
+          itemBuilder: (BuildContext ctxt, int index) {
             return Container(
               child: TaskItem(
-                body[Index]['task_name'].toString(),
-                body[Index]['start_date'].toString(),
-                body[Index]['end_date'].toString(),
-                body[Index]['payment'].toString(),
-                body[Index]['paid'].toString(),
-                body[Index]['p_note'].toString(),
+                body[index]['task_name'].toString(),
+                body[index]['start_date'].toString(),
+                body[index]['end_date'].toString(),
+                body[index]['payment'].toString(),
+                body[index]['paid'].toString(),
+                body[index]['p_note'].toString(),
               ),
             );
           }),
