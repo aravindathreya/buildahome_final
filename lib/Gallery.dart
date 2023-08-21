@@ -149,7 +149,7 @@ class GalleryState extends State<GalleryForm> {
                                     this.con,
                                     MaterialPageRoute(
                                         builder: (context) => FullScreenImage(
-                                            "https://app.buildahome.in/erp/API/images/${entries[i]['image']}")),
+                                            "https://app.buildahome.in/api/images/${entries[i]['image']}")),
                                   );
                                 },
                                 child: CachedNetworkImage(
@@ -160,7 +160,7 @@ class GalleryState extends State<GalleryForm> {
                                     width: 20,
                                   ),
                                   imageUrl:
-                                      "https://app.buildahome.in/erp/API/images/${entries[i]['image']}",
+                                      "https://app.buildahome.in/api/images/${entries[i]['image']}",
                                 ),
                               ))
                   ],

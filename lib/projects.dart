@@ -85,7 +85,9 @@ class ProjectsModalBody extends State<ProjectsModal> {
               ),
             if (search_data.length != 0)
               Container(
-                  height: MediaQuery.of(context).size.height - 200,
+                  height: MediaQuery.of(context).viewInsets.bottom > 0
+                      ? MediaQuery.of(context).size.height * 0.3 // Reduce height when keyboard is active
+                      : MediaQuery.of(context).size.height - 200,
                   width: MediaQuery.of(context).size.width - 20,
                   child: ListView.builder(
                       shrinkWrap: true,

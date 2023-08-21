@@ -10,6 +10,7 @@ class Materials extends StatefulWidget {
 
 class MaterialState extends State<Materials> {
   var materials = [];
+  var search_data = [];
 
   void call() async {
     var url = "https://app.buildahome.in/erp/API/get_materials";
@@ -18,6 +19,7 @@ class MaterialState extends State<Materials> {
     setState(() {
       var res = jsonDecode(response.body);
       materials = res['materials'];
+      search_data = materials;
     });
   }
 
@@ -36,7 +38,35 @@ class MaterialState extends State<Materials> {
               padding: EdgeInsets.all(10),
               child: Text("Select material")),
           Container(
-              height: MediaQuery.of(context).size.height - 130,
+              margin: EdgeInsets.only(bottom: 10, top: 10),
+              color: Colors.white,
+              child: TextFormField(
+                onChanged: (text) {
+                  setState(() {
+                    if (text.trim() == '') {
+                      search_data = materials;
+                    } else {
+                      search_data = [];
+                      for (int i = 0; i < materials.length; i++) {
+                        if (materials[i]
+                            .toLowerCase()
+                            .contains(text.toLowerCase())) {
+                          search_data.add(materials[i]);
+                        }
+                      }
+                    }
+                  });
+                },
+                decoration: InputDecoration(
+                  hintText: 'Search material',
+                  contentPadding: EdgeInsets.all(10),
+                  suffixIcon: InkWell(child: Icon(Icons.search)),
+                ),
+              )),
+          Container(
+              height: MediaQuery.of(context).viewInsets.bottom > 0
+                  ? MediaQuery.of(context).size.height * 0.3 // Reduce height when keyboard is active
+                  : MediaQuery.of(context).size.height - 200,
               width: MediaQuery.of(context).size.width - 20,
               child: materials.length == 0
                   ? SpinKitRing(
@@ -47,7 +77,7 @@ class MaterialState extends State<Materials> {
                       shrinkWrap: true,
                       physics: new BouncingScrollPhysics(),
                       scrollDirection: Axis.vertical,
-                      itemCount: materials.length,
+                      itemCount: search_data.length,
                       itemBuilder: (BuildContext ctxt, int index) {
                         return Container(
                             padding: EdgeInsets.all(15),
@@ -62,10 +92,10 @@ class MaterialState extends State<Materials> {
                             ),
                             child: InkWell(
                                 onTap: () {
-                                  print(materials[index]);
-                                  Navigator.pop(context, materials[index]);
+                                  print(search_data[index]);
+                                  Navigator.pop(context, search_data[index]);
                                 },
-                                child: Text(materials[index],
+                                child: Text(search_data[index],
                                     style: TextStyle(
                                         fontSize: 18,
                                         fontWeight: FontWeight.bold))));

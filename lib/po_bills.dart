@@ -318,11 +318,12 @@ class POAndBillsState extends State<POAndBills> {
                               child: Text('Contractor name :'),
                             ),
                             Container(
-                              margin: EdgeInsets.only(right: 10),
-                              child: Text(
-                                nt_nmr_bills[Index][1],
-                                style: TextStyle(fontWeight: FontWeight.w600),
-                              ),
+                              child: Expanded(
+                                child:  Text(
+                                  nt_nmr_bills[Index][1],
+                                  style: TextStyle(fontWeight: FontWeight.w600),
+                                ),
+                              )
                             )
                           ],
                         ),
@@ -342,12 +343,13 @@ class POAndBillsState extends State<POAndBills> {
                           ],
                         ),
                         SizedBox(height: 10,),
-                        Row(
+                        Wrap(
                           children: [
                             Container(
                               margin: EdgeInsets.only(right: 10, top: 10),
                               child: Text('Description :'),
                             ),
+                            SizedBox(height: 5,),
                             Expanded(
                               child: Text(
                                 nt_nmr_bills[Index][3],

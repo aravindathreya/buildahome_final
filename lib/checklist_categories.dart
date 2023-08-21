@@ -66,7 +66,7 @@ class ChecklistCategoriesState extends State<ChecklistCategories> {
   @override
   Widget build(BuildContext context) {
     return ListView(
-      padding: EdgeInsets.symmetric(horizontal: 15),
+      padding: EdgeInsets.symmetric(horizontal: 15, vertical: 20),
       children: [
         Container(
             margin: EdgeInsets.symmetric(horizontal: 10, vertical: 20),
@@ -81,7 +81,13 @@ class ChecklistCategoriesState extends State<ChecklistCategories> {
                   bottom: BorderSide(color: Colors.grey[300]!)
                 )
               ),
-              child: Text(categories[i], style: TextStyle(fontSize: 16),),
+              child: Row(
+                children: [
+                  Icon(Icons.arrow_right_rounded),
+                  SizedBox(width: 5,),
+                  Expanded(child: Text(categories[i], style: TextStyle(fontSize: 16),),)
+                ],
+              )
             ),
             onTap: () {
               Navigator.push(context, MaterialPageRoute(builder: (context) => ChecklistItemsLayout(categories[i])));

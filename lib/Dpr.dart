@@ -89,7 +89,8 @@ class DprState extends State<DprScreen> {
                               mainAxisAlignment:
                               MainAxisAlignment.spaceBetween,
                               children: <Widget>[
-                                Container(child: Text(listOfUpdates[x])),
+                                Expanded(child: Text(listOfUpdates[x])),
+                                SizedBox(width: 10,),
                                 InkWell(
                                     onTap: () async {
                                       showDialog(

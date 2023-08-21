@@ -149,7 +149,7 @@ class TaskItemWidget extends State<TaskItem> with SingleTickerProviderStateMixin
 
                               ),
                               Container(
-                                width: MediaQuery.of(context).size.width * .7 - 20.0,
+                                width: MediaQuery.of(context).size.width * .7 - 30.0,
                                 child: Text(
                                   this._textColor == Colors.green[600]
                                       ? this._taskName + " (Completed)"
@@ -331,6 +331,7 @@ class TaskScreen extends State<TaskScreenClass> {
               );
             }),
       new ListView.builder(
+         padding: EdgeInsets.only(bottom: 100),
           shrinkWrap: true,
           physics: BouncingScrollPhysics(),
           itemCount: body == null ? 0 : body.length,
