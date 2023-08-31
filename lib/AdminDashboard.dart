@@ -67,6 +67,7 @@ class AdminHomeState extends State<AdminHome> {
   var currentUserRole = '';
   var projects = [];
   var projectsToShow = [];
+  bool readOnly = true;
 
   setDate() {
     var now = new DateTime.now();
@@ -84,7 +85,7 @@ class AdminHomeState extends State<AdminHome> {
   loadProjects() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     var role = prefs.getString('role');
-    var userId = prefs.getString('userId');
+    var userId = prefs.getString('userId') == null ? prefs.getString('userId') : prefs.getString('user_id');
     String? apiToken = prefs.getString('api_token');
 
     print('$role $apiToken $userId');
@@ -177,11 +178,13 @@ class AdminHomeState extends State<AdminHome> {
                   onTap: () {
                     setState(() {
                       this.showTopSection = false;
+                      this.readOnly = true;
                       Future.delayed(
                         Duration(milliseconds: 100),
                         () {
                           setState(() {
                             this.showProjects = true;
+                            this.readOnly = false;
                           });
                         },
                       );
@@ -190,6 +193,7 @@ class AdminHomeState extends State<AdminHome> {
                   onChanged: (text) {
                     setState(() {});
                   },
+                  readOnly: this.readOnly,
                   controller: searchProjectTextController,
                   focusNode: searchProjectfocusNode,
                   cursorColor: Color.fromARGB(255, 13, 17, 65),

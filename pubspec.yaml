@@ -43,6 +43,7 @@ dependencies:
   cupertino_icons: ^1.0.5
   cached_network_image: ^3.2.1
   firebase_messaging: ^14.2.1
+  permission_handler:
 
 dev_dependencies:
   flutter_test:

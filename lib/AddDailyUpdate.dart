@@ -4,7 +4,6 @@ import 'package:buildahome/AdminDashboard.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'NavMenu.dart';
-import 'package:multi_image_picker/multi_image_picker.dart';
 import 'package:image/image.dart' as FlutterImage;
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -16,6 +15,8 @@ import 'utilities/styles.dart';
 import 'package:path_provider/path_provider.dart';
 import 'dart:async';
 import 'dart:io';
+import 'package:image_picker/image_picker.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 class FullScreenImage extends StatefulWidget {
   final id;
@@ -141,6 +142,40 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
     setUserId();
   }
 
+  Future<void> checkPermissionStatus() async {
+    final PermissionStatus cameraStatus = await Permission.camera.status;
+    final PermissionStatus galleryStatus = await Permission.photos.status;
+
+    if (cameraStatus.isGranted && galleryStatus.isGranted) {
+      // Permissions are granted
+      print("Camera and gallery permission is granted.");
+    } else {
+      // Permissions are not granted
+      print("Camera and gallery permission is NOT granted.");
+
+      // Request permissions
+      await _requestPermissions();
+    }
+  }
+
+  Future<void> _requestPermissions() async {
+    final List<Permission> permissions = [
+      Permission.camera,
+      Permission.photos,
+    ];
+
+    await permissions.request();
+
+    final PermissionStatus cameraStatus = await Permission.camera.status;
+    final PermissionStatus galleryStatus = await Permission.photos.status;
+
+    if (cameraStatus.isGranted && galleryStatus.isGranted) {
+      // Permissions granted
+    } else {
+      // Permissions still not granted
+    }
+  }
+
   void showProcessingSelectedPicturesDialog() {
     showDialog(
         barrierDismissible: false,
@@ -157,50 +192,22 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
     userId = prefs.getString('user_id');
   }
 
-  Future<File> getImageFileFromAssets(Asset asset) async {
-    final byteData = await asset.getByteData(quality: 50);
-    final tempFile = File("${(await getTemporaryDirectory()).path}/${asset.name}");
-    final file =
-        await tempFile.writeAsBytes(byteData.buffer.asUint8List(byteData.offsetInBytes, byteData.lengthInBytes));
-    return file;
-  }
-
   Future processSelectedPicture(picture) async {
-    var imageAsFileObject = await getImageFileFromAssets(picture);
-    var flutterImageObject = FlutterImage.decodeImage(imageAsFileObject.readAsBytesSync().toList());
+    var imageFile = File(picture.path);
 
-    var actualWidth = flutterImageObject?.width;
-    var actualHeight = flutterImageObject?.height;
-    while (actualWidth! > maxImageWidth || actualHeight! > maxImageHeight) {
-      actualWidth -= (actualWidth / 10).round();
-      if (actualHeight != null) {
-        actualHeight -= (actualHeight / 10).round();
-      }
-    }
-
-    var imageAfterResizing = FlutterImage.copyResize(flutterImageObject!, width: actualWidth, height: actualHeight);
-    var imageFilename = imageAsFileObject.path.split('/')[imageAsFileObject.path.split('/').length - 1].toString();
-
-    List<int>? imageData = FlutterImage.encodeNamedImage(imageAfterResizing, imageFilename);
-    if (imageData != null) {
-      Uint8List nonNullableImageData = Uint8List.fromList(imageData);
-      selectedPictures.insert(0, MemoryImage(nonNullableImageData));
-    }
-
-    selectedPictures.insert(0, 'x');
-    selectedPictureFilenames.insert(0, imageFilename);
-    selectedPictureFilePaths.add(imageAsFileObject.path);
+    selectedPictures.insert(0, FileImage(imageFile));
+    selectedPictureFilenames.insert(0, picture.name);
+    selectedPictureFilePaths.add(picture.path);
   }
 
-  void selectPicturesFromPhone() async {
-    var multiImagePickerResult = await MultiImagePicker.pickImages(
-      maxImages: 10,
-      materialOptions: MaterialOptions(actionBarColor: "#000055", actionBarTitle: 'buildAhome'),
-    );
-    showProcessingSelectedPicturesDialog();
+  Future<void> selectPicturesFromPhone() async {
+    await checkPermissionStatus();
+    final picker = ImagePicker();
+    final pickedFiles = await picker.pickMultiImage();
 
-    for (var i = 0; i < multiImagePickerResult.length; i++) {
-      await processSelectedPicture(multiImagePickerResult[i]);
+    showProcessingSelectedPicturesDialog();
+    for (var i = 0; i < pickedFiles.length; i++) {
+      await processSelectedPicture(pickedFiles[i]);
     }
 
     Navigator.of(context, rootNavigator: true).pop();
@@ -659,15 +666,16 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
                                   return ShowAlert("Submitting update", false);
                                 });
 
-
                             var url = 'https://app.buildahome.in/api/add_daily_update.php';
-                              Navigator.of(context, rootNavigator: true).pop('dialog');
-                              showDialog(
-                              barrierDismissible: false,
-                              context: context,
-                              builder: (BuildContext context) {
-                                return ShowAlert("Uploading picture ${successfulImageUploadCount + 1} of ${selectedPictureFilePaths.length}..", false);
-                              }); 
+                            Navigator.of(context, rootNavigator: true).pop('dialog');
+                            showDialog(
+                                barrierDismissible: false,
+                                context: context,
+                                builder: (BuildContext context) {
+                                  return ShowAlert(
+                                      "Uploading picture ${successfulImageUploadCount + 1} of ${selectedPictureFilePaths.length}..",
+                                      false);
+                                });
 
                             var response = await http.post(Uri.parse(url), body: {
                               'pr_id': projectId.toString(),
@@ -676,7 +684,7 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
                               'tradesmenMap': tradesmenMap.toString(),
                             });
 
-                            if(response.statusCode == 200 && selectedPictures.length == 0) {
+                            if (response.statusCode == 200 && selectedPictures.length == 0) {
                               Navigator.of(context, rootNavigator: true).pop('dialog');
                               await showDialog(
                                   context: context,
@@ -691,7 +699,6 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
                                 tradesmenCountTextControllers.clear();
                               });
                             }
-
 
                             for (int x = 0; x < selectedPictures.length; x++) {
                               Navigator.of(context, rootNavigator: true).pop('dialog');

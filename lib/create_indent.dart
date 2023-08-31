@@ -11,6 +11,7 @@ import 'widgets/material.dart';
 import 'package:intl/intl.dart';
 import 'package:file_picker/file_picker.dart';
 import 'dart:convert';
+import 'package:permission_handler/permission_handler.dart';
 
 class CreateIndentLayout extends StatelessWidget {
   @override
@@ -69,7 +70,42 @@ class CreateIndentState extends State<CreateIndent> {
     user_id = prefs.getString('user_id');
   }
 
+  Future<void> checkPermissionStatus() async {
+    final PermissionStatus cameraStatus = await Permission.camera.status;
+    final PermissionStatus galleryStatus = await Permission.photos.status;
+
+    if (cameraStatus.isGranted && galleryStatus.isGranted) {
+      // Permissions are granted
+      print("Camera and gallery permission is granted.");
+    } else {
+      // Permissions are not granted
+      print("Camera and gallery permission is NOT granted.");
+
+      // Request permissions
+      await _requestPermissions();
+    }
+  }
+
+  Future<void> _requestPermissions() async {
+    final List<Permission> permissions = [
+      Permission.camera,
+      Permission.photos,
+    ];
+
+    await permissions.request();
+
+    final PermissionStatus cameraStatus = await Permission.camera.status;
+    final PermissionStatus galleryStatus = await Permission.photos.status;
+
+    if (cameraStatus.isGranted && galleryStatus.isGranted) {
+      // Permissions granted
+    } else {
+      // Permissions still not granted
+    }
+  }
+
   void getFile() async {
+    await checkPermissionStatus();
     var res = await FilePicker.platform.pickFiles(allowMultiple: false);
     var file = res?.files.first;
     if (file != null) {
