@@ -10,6 +10,7 @@ import 'NavMenu.dart';
 import 'main.dart';
 import 'package:buildahome/UserHome.dart';
 import 'package:intl/intl.dart';
+import 'my_projects.dart';
 
 class AdminDashboard extends StatelessWidget {
   final GlobalKey<ScaffoldState> _scaffoldKey = new GlobalKey<ScaffoldState>();
@@ -171,74 +172,74 @@ class AdminHomeState extends State<AdminHome> {
                     ],
                   )),
             ),
-            Container(
-                margin: EdgeInsets.only(bottom: 10, top: 10, left: 15, right: 15),
-                color: Colors.white,
-                child: TextField(
-                  onTap: () {
-                    setState(() {
-                      this.showTopSection = false;
-                      this.readOnly = true;
-                      Future.delayed(
-                        Duration(milliseconds: 100),
-                        () {
-                          setState(() {
-                            this.showProjects = true;
-                            this.readOnly = false;
-                          });
-                        },
-                      );
-                    });
-                  },
-                  onChanged: (text) {
-                    setState(() {});
-                  },
-                  readOnly: this.readOnly,
-                  controller: searchProjectTextController,
-                  focusNode: searchProjectfocusNode,
-                  cursorColor: Color.fromARGB(255, 13, 17, 65),
-                  decoration: InputDecoration(
-                    hoverColor: Color.fromARGB(255, 13, 17, 65),
-                    hintText: 'Search project',
-                    contentPadding: EdgeInsets.only(left: 10, top: 14),
-                    suffixIcon: InkWell(
-                        child: Icon(
-                      Icons.search,
-                    )),
-                    prefixIconConstraints: BoxConstraints(maxWidth: 30),
-                    prefixIcon: Visibility(
-                      visible: !showTopSection,
-                      child: InkWell(
-                        child: Container(
-                          padding: EdgeInsets.zero,
-                          child: Icon(Icons.chevron_left, size: 30),
-                        ),
-                        onTap: () {
-                          setState(() {
-                            searchProjectTextController.text = '';
-                            searchProjectfocusNode.unfocus();
-                          });
-                          this.showProjects = false;
-                          Future.delayed(
-                            Duration(milliseconds: 500),
-                            () {
-                              setState(() {
-                                this.showTopSection = true;
-                              });
-                            },
-                          );
-                        },
-                      ),
-                    ),
-                    focusColor: Color.fromARGB(255, 13, 17, 65),
-                    enabledBorder: UnderlineInputBorder(
-                      borderSide: BorderSide(color: Color.fromARGB(255, 13, 17, 65)),
-                    ),
-                    focusedBorder: UnderlineInputBorder(
-                      borderSide: BorderSide(color: Color.fromARGB(255, 13, 17, 65), width: 2),
-                    ),
-                  ),
-                )),
+            // Container(
+            //     margin: EdgeInsets.only(bottom: 10, top: 10, left: 15, right: 15),
+            //     color: Colors.white,
+            //     child: TextField(
+            //       onTap: () {
+            //         setState(() {
+            //           this.showTopSection = false;
+            //           this.readOnly = true;
+            //           Future.delayed(
+            //             Duration(milliseconds: 100),
+            //             () {
+            //               setState(() {
+            //                 this.showProjects = true;
+            //                 this.readOnly = false;
+            //               });
+            //             },
+            //           );
+            //         });
+            //       },
+            //       onChanged: (text) {
+            //         setState(() {});
+            //       },
+            //       readOnly: this.readOnly,
+            //       controller: searchProjectTextController,
+            //       focusNode: searchProjectfocusNode,
+            //       cursorColor: Color.fromARGB(255, 13, 17, 65),
+            //       decoration: InputDecoration(
+            //         hoverColor: Color.fromARGB(255, 13, 17, 65),
+            //         hintText: 'Search project',
+            //         contentPadding: EdgeInsets.only(left: 10, top: 14),
+            //         suffixIcon: InkWell(
+            //             child: Icon(
+            //           Icons.search,
+            //         )),
+            //         prefixIconConstraints: BoxConstraints(maxWidth: 30),
+            //         prefixIcon: Visibility(
+            //           visible: !showTopSection,
+            //           child: InkWell(
+            //             child: Container(
+            //               padding: EdgeInsets.zero,
+            //               child: Icon(Icons.chevron_left, size: 30),
+            //             ),
+            //             onTap: () {
+            //               setState(() {
+            //                 searchProjectTextController.text = '';
+            //                 searchProjectfocusNode.unfocus();
+            //               });
+            //               this.showProjects = false;
+            //               Future.delayed(
+            //                 Duration(milliseconds: 500),
+            //                 () {
+            //                   setState(() {
+            //                     this.showTopSection = true;
+            //                   });
+            //                 },
+            //               );
+            //             },
+            //           ),
+            //         ),
+            //         focusColor: Color.fromARGB(255, 13, 17, 65),
+            //         enabledBorder: UnderlineInputBorder(
+            //           borderSide: BorderSide(color: Color.fromARGB(255, 13, 17, 65)),
+            //         ),
+            //         focusedBorder: UnderlineInputBorder(
+            //           borderSide: BorderSide(color: Color.fromARGB(255, 13, 17, 65), width: 2),
+            //         ),
+            //       ),
+            //     )),
             Visibility(
                 visible: showProjects,
                 child: ListView.builder(
@@ -295,6 +296,31 @@ class AdminHomeState extends State<AdminHome> {
                           ),
                           child: Column(
                             children: [
+                              Icon(Icons.list, size: 30),
+                              Container(
+                                margin: EdgeInsets.only(top: 10),
+                                child: Text('Projects'),
+                              )
+                            ],
+                          )),
+                      onTap: () {
+                        Navigator.push(
+                          currentWidgetContext,
+                          MaterialPageRoute(builder: (currentWidgetContext) => MyProjects()),
+                        );
+                      },
+                    ),
+                    InkWell(
+                      child: Container(
+                          width: (MediaQuery.of(context).size.width - 40) / 2,
+                          margin: EdgeInsets.all(5),
+                          padding: EdgeInsets.all(20),
+                          decoration: BoxDecoration(
+                            color: Colors.grey[200],
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Column(
+                            children: [
                               Icon(Icons.update, size: 30),
                               Container(
                                 margin: EdgeInsets.only(top: 10),
@@ -303,7 +329,7 @@ class AdminHomeState extends State<AdminHome> {
                             ],
                           )),
                       onTap: () {
-                        Navigator.pushReplacement(
+                        Navigator.push(
                           currentWidgetContext,
                           MaterialPageRoute(builder: (currentWidgetContext) => AddDailyUpdate()),
                         );

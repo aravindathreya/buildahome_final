@@ -94,7 +94,7 @@ class chipSetNavigationState extends State<chipSetNavigation> {
               });
               print(i);
               UserHomeScreenState().pageController.animateToPage(i,
-                  duration: Duration(milliseconds: 300), curve: Curves.easeIn);
+                  duration: Duration(milliseconds: 100), curve: Curves.elasticInOut);
             },
             child: Container(
                 padding: EdgeInsets.symmetric(horizontal: 20, vertical: 10),
