@@ -286,7 +286,7 @@ class NTPaymentTasks extends State<NTPaymentTasksClass> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Container(child: Text("Project Value", style: TextStyle(fontSize: 10))),
+                  Container(child: Text("Total NT Value", style: TextStyle(fontSize: 10))),
                   Container(
                       margin: EdgeInsets.only(top: 5),
                       child: Text("₹ " + projectValue, style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold))),

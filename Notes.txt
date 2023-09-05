@@ -1,0 +1,21 @@
+Debit note to not allow value more than value for that stage
+
+Allow duplicate debit note provider amount does not exceed balance after approved for that stage
+
+Approve work order action to be put in audit log
+
+Create new users and passwords
+
+NT value to show instead of project value
+
+Vishal phone
+
+Photos not showing, 
+
+Remove points form checklist Done
+
+Google location of project Done
+
+Archived project to show
+
+Add checklist on app for admin Done

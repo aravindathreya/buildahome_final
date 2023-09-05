@@ -17,6 +17,7 @@ import 'NonTenderTasks.dart';
 import 'NotesAndComments.dart';
 import 'po_bills.dart';
 import 'Dpr.dart';
+import 'checklist_categories.dart';
 
 class Home extends StatelessWidget {
   final GlobalKey<ScaffoldState> _scaffoldKey = new GlobalKey<ScaffoldState>();
@@ -183,6 +184,9 @@ class UserHomeScreenState extends State<UserHomeScreen> {
 
         tabsList.insert(1, "DPR Updates");
         widgetList.insert(1, DprScreen());
+
+        tabsList.insert(2, "Checklist");
+        widgetList.insert(2, ChecklistCategories());
       });
     }
   }

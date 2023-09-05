@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:percent_indicator/linear_percent_indicator.dart';
 import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class UserDashboardScreen extends StatefulWidget {
   @override
@@ -21,6 +22,7 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
   var updateResponseBody;
   var blocked = false;
   var bolckReason = '';
+  var location = '';
 
   @override
   void initState() {
@@ -57,6 +59,14 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
     if (role == 'Client') {
       // final FirebaseMessaging _messaging = FirebaseMessaging();
       // _messaging.subscribeToTopic(username);
+    }
+
+    var location_url = 'https://app.buildahome.in/erp/API/get_project_location?id=${id}';
+    var loc_response = await http.get(Uri.parse(location_url));
+    if (loc_response.body.trim() != "" && loc_response.statusCode == 200) {
+      setState(() {
+        location = loc_response.body.trim();
+      });
     }
 
     var url = 'https://app.buildahome.in/api/latest_update.php?id=${id}';
@@ -97,6 +107,8 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
     });
   }
 
+
+
   Widget build(BuildContext context) {
     return Container(
         child: ListView(
@@ -109,6 +121,7 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.w500, color: Colors.black)),
           ),
         ),
+
         Container(
           margin: EdgeInsets.symmetric(horizontal: 17),
           child: Container(
@@ -116,6 +129,25 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
             child: Text("Your home construction is in safe hands!",
                 style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: Colors.grey[500])),
           ),
+        ),
+
+        Visibility(
+            visible: location.isNotEmpty,
+            child: InkWell(
+              child: Container(
+                padding: EdgeInsets.only(left: 15, bottom: 15),
+                child: Row(
+                  children: [
+                    Icon(Icons.location_on, color: Colors.red[500]),
+                    SizedBox(width: 2,),
+                    Text('Open project location in map')
+                  ],
+                ),
+              ),
+              onTap: () async {
+                await launchUrl(Uri.parse(location), mode: LaunchMode.externalApplication);
+              },
+            )
         ),
         Container(
           padding: EdgeInsets.symmetric(horizontal: 20),

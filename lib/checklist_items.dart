@@ -63,6 +63,8 @@ class ChecklistItemsState extends State<ChecklistItems> {
   var data;
   var loaded = false;
   var projectId;
+  var role;
+  var user_id;
 
   @override
   void initState() {
@@ -73,6 +75,9 @@ class ChecklistItemsState extends State<ChecklistItems> {
   call() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     projectId = prefs.getString('project_id');
+
+    role = prefs.getString('role');
+    user_id = prefs.getString('user_id');
     var url = 'https://app.buildahome.in/erp/API/get_checklist_items_for_category';
     var response = await http.post(Uri.parse(url), body: {'project_id': projectId, 'category': category});
     print(response.statusCode);
@@ -146,6 +151,64 @@ class ChecklistItemsState extends State<ChecklistItems> {
                       ],
                     ),
                     Visibility(
+                        visible: (data[i][2] != null) && role != 'Client',
+                        child:Container(
+                            alignment: Alignment.bottomRight,
+                            margin: EdgeInsets.only(top: 10),
+                            child: InkWell(
+                              child: Container(
+                                padding: EdgeInsets.all(10),
+                                margin: EdgeInsets.only(top: 15),
+                                decoration:
+                                BoxDecoration(color: Colors.green[900], borderRadius: BorderRadius.circular(5)),
+                                child: Text(
+                                  'Mark as checked',
+                                  style: TextStyle(color: Colors.white, fontSize: 12),
+                                ),
+                              ),
+                              onTap: () {
+                                showDialog(
+                                  context: context,
+                                  builder: (BuildContext context) => AlertDialog(
+                                    title: const Text('Confirmation'),
+                                    content: const Text('Are you sure you want to mark this item as checked?'),
+                                    actions: <Widget>[
+                                      TextButton(
+                                        onPressed: () {
+                                          Navigator.of(context).pop(); // Close the confirmation dialog
+                                        },
+                                        child: const Text('Cancel'),
+                                      ),
+                                      TextButton(
+                                        onPressed: () async {
+                                          Navigator.of(context).pop(); // Close the confirmation dialog
+                                            var url = 'https://app.buildahome.in/erp/API/update_project_checklist_item_api';
+                                          var response = await http.post(Uri.parse(url), body: {
+                                            'project_id': projectId,
+                                            'checklist_item_id': data[i][0].toString(),
+                                            'user_id': user_id
+                                          });
+                                          print(response.statusCode);
+                                          print(response.body);
+                                          call();
+                                          if (response.statusCode != 200) {
+                                            Navigator.of(context, rootNavigator: true).pop();
+                                            showDialog(
+                                                context: context,
+                                                builder: (BuildContext context) {
+                                                  return ShowAlert("Something went wrong", false);
+                                                });
+                                            return;
+                                          }
+                                        },
+                                        child: const Text('Yes, confirm'),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              },
+                            ))),
+                    Visibility(
                         visible: data[i][2] != null && data[i][2] != 0,
                         child: Container(
                             margin: EdgeInsets.only(top: 10),
@@ -179,7 +242,7 @@ class ChecklistItemsState extends State<ChecklistItems> {
                               ],
                             ))),
                     Visibility(
-                        visible: data[i][2] != null && data[i][2] != 0 && (data[i][3] == null || data[i][3] == 0),
+                        visible: data[i][2] != null && data[i][2] != 0 && (data[i][3] == null || data[i][3] == 0) && role == 'Client',
                         child: Container(
                             alignment: Alignment.bottomRight,
                             margin: EdgeInsets.only(top: 10),
