@@ -55,9 +55,7 @@ class ImageOnly extends StatelessWidget {
   ImageOnly(this.image);
 
   Widget build(BuildContext context) {
-    return Container(
-        decoration: BoxDecoration(border: Border.all(color: Colors.black)),
-        child: PhotoView(minScale: PhotoViewComputedScale.contained, imageProvider: this.image));
+    return Container(decoration: BoxDecoration(border: Border.all(color: Colors.black)), child: PhotoView(minScale: PhotoViewComputedScale.contained, imageProvider: this.image));
   }
 }
 
@@ -119,20 +117,7 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
 
   var userId;
   var successfulImageUploadCount = 0;
-  var availableResources = [
-    'Mason',
-    'Helper',
-    'Carpenter',
-    'Bar bender',
-    'Painter',
-    'Electrician',
-    'Plumber',
-    'Tile mason',
-    'Granite mason',
-    'Fabricator',
-    'Other workers',
-    'Interior carpenter'
-  ];
+  var availableResources = ['Mason', 'Helper', 'Carpenter', 'Bar bender', 'Painter', 'Electrician', 'Plumber', 'Tile mason', 'Granite mason', 'Fabricator', 'Other workers', 'Interior carpenter'];
   var tradesmenTextControllers = [new TextEditingController()];
   var tradesmenCountTextControllers = [new TextEditingController()];
 
@@ -274,13 +259,10 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
                         child: Row(
                           children: <Widget>[
                             Container(
-                              decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.all(Radius.circular(50)), color: Colors.white),
+                              decoration: BoxDecoration(borderRadius: BorderRadius.all(Radius.circular(50)), color: Colors.white),
                               child: Icon(Icons.add_a_photo, size: 25, color: Color.fromARGB(255, 13, 17, 65)),
                             ),
-                            Container(
-                                padding: EdgeInsets.only(left: 10),
-                                child: Text(attachPictureButtonText, style: TextStyle(fontSize: 14)))
+                            Container(padding: EdgeInsets.only(left: 10), child: Text(attachPictureButtonText, style: TextStyle(fontSize: 14)))
                           ],
                         )),
                   )),
@@ -367,14 +349,8 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
                                     width: ((MediaQuery.of(context).size.width - 70) * .5),
                                     margin: EdgeInsets.only(right: 10, bottom: 10, top: 10),
                                     alignment: Alignment.center,
-                                    decoration: BoxDecoration(
-                                        color: Colors.grey[300]!,
-                                        border: Border.all(color: Colors.grey[300]!, width: 1.5)),
-                                    child: Text(
-                                        tradesmenTextControllers[index].text != ''
-                                            ? tradesmenTextControllers[index].text
-                                            : "Select tradesmen",
-                                        style: get_button_text_style()),
+                                    decoration: BoxDecoration(color: Colors.grey[300]!, border: Border.all(color: Colors.grey[300]!, width: 1.5)),
+                                    child: Text(tradesmenTextControllers[index].text != '' ? tradesmenTextControllers[index].text : "Select tradesmen", style: get_button_text_style()),
                                   ),
                                   onTap: () async {
                                     //Get the project name to which the user wants to upload
@@ -384,10 +360,7 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
                                           return AlertDialog(
                                               contentPadding: EdgeInsets.all(10),
                                               content: Column(children: [
-                                                Container(
-                                                    alignment: Alignment.centerLeft,
-                                                    padding: EdgeInsets.all(10),
-                                                    child: Text("Select tradesmen")),
+                                                Container(alignment: Alignment.centerLeft, padding: EdgeInsets.all(10), child: Text("Select tradesmen")),
                                                 Container(
                                                     height: MediaQuery.of(context).size.height - 180,
                                                     width: MediaQuery.of(context).size.width - 20,
@@ -403,17 +376,14 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
                                                                 color: Colors.white,
                                                                 shape: BoxShape.rectangle,
                                                                 border: Border(
-                                                                  bottom:
-                                                                      BorderSide(width: 1.0, color: Colors.grey[300]!),
+                                                                  bottom: BorderSide(width: 1.0, color: Colors.grey[300]!),
                                                                 ),
                                                               ),
                                                               child: InkWell(
                                                                   onTap: () {
                                                                     Navigator.pop(context, availableResources[index]);
                                                                   },
-                                                                  child: Text(availableResources[index],
-                                                                      style: TextStyle(
-                                                                          fontSize: 18, fontWeight: FontWeight.bold))));
+                                                                  child: Text(availableResources[index], style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold))));
                                                         }))
                                               ]));
                                         });
@@ -456,9 +426,7 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
                                           tradesmenCountTextControllers.removeAt(index);
                                         });
                                       },
-                                      child: Container(
-                                          margin: EdgeInsets.only(left: 10),
-                                          child: Icon(Icons.close, color: Colors.red)))
+                                      child: Container(margin: EdgeInsets.only(left: 10), child: Icon(Icons.close, color: Colors.red)))
                               ],
                             );
                           })),
@@ -468,14 +436,9 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
                       margin: EdgeInsets.only(bottom: 10, top: 10),
                       width: 150,
                       alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(5),
-                          border: Border.all(color: Colors.grey[500]!, width: 1.5)),
+                      decoration: BoxDecoration(borderRadius: BorderRadius.circular(5), border: Border.all(color: Colors.grey[500]!, width: 1.5)),
                       child: Row(
-                        children: [
-                          Container(margin: EdgeInsets.only(right: 15), child: Icon(Icons.add)),
-                          Text('Add tradesmen', style: get_button_text_style())
-                        ],
+                        children: [Container(margin: EdgeInsets.only(right: 15), child: Icon(Icons.add)), Text('Add tradesmen', style: get_button_text_style())],
                       ),
                     ),
                     onTap: () {
@@ -535,11 +498,6 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
                         textCapitalization: TextCapitalization.sentences,
                         maxLines: 8,
                         style: TextStyle(fontSize: 18),
-                        onTap: () {
-                          setState(() {
-                            this.textFieldFocused = true;
-                          });
-                        },
                         decoration: InputDecoration(
                             focusColor: Colors.black,
                             floatingLabelBehavior: FloatingLabelBehavior.never,
@@ -659,59 +617,19 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
                               projectId = projectName[1];
                             });
 
-                            showDialog(
-                                barrierDismissible: false,
-                                context: context,
-                                builder: (BuildContext context) {
-                                  return ShowAlert("Submitting update", false);
-                                });
-
-                            var url = 'https://app.buildahome.in/api/add_daily_update.php';
-                            Navigator.of(context, rootNavigator: true).pop('dialog');
-                            showDialog(
-                                barrierDismissible: false,
-                                context: context,
-                                builder: (BuildContext context) {
-                                  return ShowAlert(
-                                      "Uploading picture ${successfulImageUploadCount + 1} of ${selectedPictureFilePaths.length}..",
-                                      false);
-                                });
-
-                            var response = await http.post(Uri.parse(url), body: {
-                              'pr_id': projectId.toString(),
-                              'date': new DateFormat('EEEE MMMM dd').format(DateTime.now()).toString(),
-                              'desc': dailyUpdateTextController.text,
-                              'tradesmenMap': tradesmenMap.toString(),
-                            });
-
-                            if (response.statusCode == 200 && selectedPictures.length == 0) {
-                              Navigator.of(context, rootNavigator: true).pop('dialog');
-                              await showDialog(
-                                  context: context,
-                                  builder: (BuildContext context) {
-                                    return ShowAlert("DPR added successfully", false);
-                                  });
-                              setState(() {
-                                selectedPictures.clear();
-                                selectedPictureFilePaths.clear();
-                                dailyUpdateTextController.text = '';
-                                tradesmenTextControllers.clear();
-                                tradesmenCountTextControllers.clear();
-                              });
-                            }
+                          
 
                             for (int x = 0; x < selectedPictures.length; x++) {
-                              Navigator.of(context, rootNavigator: true).pop('dialog');
+                             
+
                               showDialog(
                                   barrierDismissible: false,
                                   context: context,
                                   builder: (BuildContext context) {
-                                    return ShowAlert(
-                                        "Uploading picture ${successfulImageUploadCount + 1} of ${selectedPictureFilePaths.length}..",
-                                        false);
+                                    return ShowAlert("Uploading picture ${successfulImageUploadCount + 1} of ${selectedPictureFilePaths.length}..", false);
                                   });
 
-                              var uri = Uri.parse("https://app.buildahome.in/api/dpr_image_upload");
+                              var uri = Uri.parse("https://app.buildahome.in/erp/API/dpr_image_upload");
                               var request = new http.MultipartRequest("POST", uri);
 
                               var pic = await http.MultipartFile.fromPath("image", selectedPictureFilePaths[x]);
@@ -721,10 +639,41 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
                               var responseData = await fileResponse.stream.toBytes();
                               var responseString = String.fromCharCodes(responseData);
 
+                              print(responseString);
+
+                              var url = 'https://app.buildahome.in/api/add_daily_update.php';
+                              
+
+                              var response = await http.post(Uri.parse(url), body: {
+                                'pr_id': projectId.toString(),
+                                'date': new DateFormat('EEEE MMMM dd').format(DateTime.now()).toString(),
+                                'desc': dailyUpdateTextController.text,
+                                'tradesmenMap': tradesmenMap.toString(),
+                                'image': pic.filename
+                              });
+
+                              print(response.statusCode);
+
+                              if (response.statusCode == 200 && selectedPictures.length == 0) {
+                                print('Picture ${successfulImageUploadCount + 1} uploaded!');
+                                await showDialog(
+                                    context: context,
+                                    builder: (BuildContext context) {
+                                      return ShowAlert("DPR added successfully", false);
+                                    });
+                                setState(() {
+                                  selectedPictures.clear();
+                                  selectedPictureFilePaths.clear();
+                                  dailyUpdateTextController.text = '';
+                                  tradesmenTextControllers.clear();
+                                  tradesmenCountTextControllers.clear();
+                                });
+                              }
+
                               if (responseString.trim().toString() == "success") {
                                 successfulImageUploadCount += 1;
                                 if (successfulImageUploadCount == selectedPictureFilePaths.length) {
-                                  Navigator.pop(context);
+                                   Navigator.of(context, rootNavigator: true).pop('dialog');
                                   await showDialog(
                                       context: context,
                                       builder: (BuildContext context) {
