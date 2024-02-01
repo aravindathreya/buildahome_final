@@ -90,7 +90,7 @@ class AdminHomeState extends State<AdminHome> {
     String? apiToken = prefs.getString('api_token');
 
     print('$role $apiToken $userId');
-    var response = await http.post(Uri.parse("https://app.buildahome.in/erp/API/get_projects_for_user"), body: {"user_id": userId, "role": role, "api_token": apiToken});
+    var response = await http.post(Uri.parse("https://office.buildahome.in/API/get_projects_for_user"), body: {"user_id": userId, "role": role, "api_token": apiToken});
     print(response.statusCode);
     setState(() {
       try {
@@ -398,7 +398,7 @@ class DashboardState extends State<Dashboard> {
     role = prefs.getString('role')!;
     userId = prefs.getString('userId');
     String apiToken = prefs.getString('api_token')!;
-    var response = await http.post(Uri.parse("https://app.buildahome.in/erp/API/get_projects_for_user"), body: {"user_id": userId, "role": role, "api_token": apiToken});
+    var response = await http.post(Uri.parse("https://office.buildahome.in/API/get_projects_for_user"), body: {"user_id": userId, "role": role, "api_token": apiToken});
 
     setState(() {
       print(data);

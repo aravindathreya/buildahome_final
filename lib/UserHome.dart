@@ -30,7 +30,8 @@ class Home extends StatelessWidget {
       theme: ThemeData(fontFamily: App().fontName),
       home: Scaffold(
         key: _scaffoldKey,
-        backgroundColor: Colors.grey[200],
+        backgroundColor: Colors.black,
+
         drawer: NavMenuWidget(),
         appBar: AppBar(
           automaticallyImplyLeading: false,
@@ -44,7 +45,7 @@ class Home extends StatelessWidget {
                 var username = prefs.getString('username');
                 _scaffoldKey.currentState!.openDrawer();
               }),
-          backgroundColor: Color(0xFF000055),
+          backgroundColor: Colors.transparent,
         ),
         body: UserHomeScreen(),
       ),
@@ -79,7 +80,7 @@ class chipSetNavigationState extends State<chipSetNavigation> {
   );
 
   var inactiveDecoration = BoxDecoration(
-      color: Colors.white, borderRadius: BorderRadius.circular(2));
+      color: const Color.fromARGB(255, 0, 0, 0), borderRadius: BorderRadius.circular(2));
 
   @override
   Widget build(BuildContext context) {
@@ -130,7 +131,6 @@ class UserHomeScreenState extends State<UserHomeScreen> {
   var pageController = new PageController();
   var activeTab = 'My Home';
   var tabsList = [
-    'My Home',
     "Scheduler",
     "Gallery",
     "Documents",
@@ -195,7 +195,7 @@ class UserHomeScreenState extends State<UserHomeScreen> {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     var id = prefs.getString('project_id');
     var statusUrl =
-        'https://app.buildahome.in/erp/API/get_project_block_status?project_id=$id';
+        'https://office.buildahome.in/API/get_project_block_status?project_id=$id';
     var statusResponse = await http.get(Uri.parse(statusUrl));
     var statusResponseBody = jsonDecode(statusResponse.body);
     if (statusResponseBody['status'] == 'blocked') {
@@ -204,7 +204,7 @@ class UserHomeScreenState extends State<UserHomeScreen> {
         block_reason = statusResponseBody['reason'];
         if (role == 'Client') {
           tabsList = [
-            'My Home',
+            'Home',
             "Payments",
             "Non tender payments",
           ];
@@ -227,59 +227,60 @@ class UserHomeScreenState extends State<UserHomeScreen> {
 
   Widget build(BuildContext context) {
     return Container(
-        child: ListView(
-      physics: new NeverScrollableScrollPhysics(),
-      children: <Widget>[
-        Container(
-            padding: EdgeInsets.all(10),
-            height: 70,
+      height: MediaQuery.of(context).size.height,
+      width: MediaQuery.of(context).size.width,
+      child: Stack(
+        alignment: Alignment.bottomCenter,
+        children: [
+          UserDashboardScreen(),
+          Container(
+            decoration: BoxDecoration(
+              border: Border(top: BorderSide(color: const Color.fromARGB(255, 49, 49, 49))),
+              color: Colors.black
+            ),
+            padding: EdgeInsets.only(top: 15, bottom: 15),
+            child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              Container(
+                  height: 50,
+                  child: Column(children: [
+                  Icon(Icons.home_rounded, size: 30, color: Colors.white,),
+                  Text('Home', style: TextStyle(color: Colors.white),)
+                ],),
+                ),
+              InkWell(
+               onTap: () {
+                  Navigator.push(context, MaterialPageRoute(builder: (context) => TaskWidget()));
+                },
+                child: Container(
+                  height: 50,
+                  child: Column(children: [
+                  Icon(Icons.alarm, color: Colors.grey,),
+                  Text('Schedule', style: TextStyle(color: Colors.grey),)
+                ],),
+                )
+              ),
+              InkWell(
+                onTap: () {
+                  Navigator.push(context, MaterialPageRoute(builder: (context) => Gallery()));
+                },
+                child: Container(
+                  height: 50,
+                  child: Column(children: [
+                  Icon(Icons.photo_library, color: Colors.grey,),
+                  Text('Gallery', style: TextStyle(color: Colors.grey),)
+                ],),
+                )
+              ),
+            ],
+          )
+        
+          ),
+          ],
+      ),
+    );
 
-            child: ListView(
-              shrinkWrap: true,
-              scrollDirection: Axis.horizontal,
-              children: [
-                for (var i = 0; i < tabsList.length; i++)
-                  InkWell(
-                    onTap: () {
-                      setState(() {
-                        activeTab = tabsList[i];
-                      });
-                      this.pageController.animateToPage(i,
-                          duration: Duration(milliseconds: 300),
-                          curve: Curves.easeIn);
-                    },
-                    child: Container(
-                        alignment: Alignment.center,
-                        padding:
-                            EdgeInsets.symmetric(horizontal: 25, vertical: 2),
-                        margin:
-                            EdgeInsets.symmetric(horizontal: 5, vertical: 5),
-                        decoration: tabsList[i] == activeTab
-                            ? activeDecoration
-                            : inactiveDecoration,
-                        child: Text(
-                          tabsList[i],
-                          style: TextStyle(
-                            color: tabsList[i] == activeTab
-                                ? Colors.white
-                                : Colors.black,
-                            fontSize: 14,
-                          ),
-                        )),
-                  )
-              ],
-            )),
-        Container(
-            height: MediaQuery.of(context).size.height - 90,
-            child: PageView(
-              controller: pageController,
-              allowImplicitScrolling: false,
-              physics: new NeverScrollableScrollPhysics(),
-              children: [
-                for (var i = 0; i < widgetList.length; i++) widgetList[i]
-              ],
-            )),
-      ],
-    ));
+    
   }
 }

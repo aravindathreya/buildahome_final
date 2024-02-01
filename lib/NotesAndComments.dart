@@ -37,7 +37,7 @@ class NotesAndCommentsState extends State<NotesAndComments> {
     user_id = prefs.getString('user_id')!;
 
     var url =
-        'https://app.buildahome.in/erp/API/get_notes?project_id=${_project_id}';
+        'https://office.buildahome.in/API/get_notes?project_id=${_project_id}';
     var response = await http.get(Uri.parse(url));
     print(response.body);
     var a = jsonDecode(response.body);
@@ -88,9 +88,29 @@ class NotesAndCommentsState extends State<NotesAndComments> {
   @override
   Widget build(BuildContext context) {
     final appTitle = 'buildAhome';
-
-    return ListView(
+     return MaterialApp(
+      title: appTitle,
+      theme: ThemeData(fontFamily: App().fontName),
+      home: Scaffold(
+        key: _scaffoldKey,
+        backgroundColor: Colors.black,
+        drawer: NavMenuWidget(),
+        appBar: AppBar(
+          automaticallyImplyLeading: true,
+          title: Text(
+            appTitle,
+          ),
+          leading: new IconButton(
+              icon: new Icon(Icons.chevron_left),
+              onPressed: () async {
+                Navigator.pop(context);
+              }),
+          backgroundColor: Colors.transparent,
+        ),
+        body: ListView(
+          padding: EdgeInsets.only(left: 15, right: 15),
       children: [
+        Text('Notes and comments', style: TextStyle(fontSize: 20, color: Colors.white),),
         Container(
             margin: EdgeInsets.symmetric(horizontal: 15, vertical: 20),
             child: TextFormField(
@@ -182,7 +202,7 @@ class NotesAndCommentsState extends State<NotesAndComments> {
                             "Hang in there. Submitting update", true);
                       });
                   var url = Uri.parse(
-                      "https://app.buildahome.in/erp/API/post_comment");
+                      "https://office.buildahome.in/API/post_comment");
                   var response = await http.post(url, body: {
                     'project_id': project_id.toString(),
                     'user_id': user_id,
@@ -192,7 +212,7 @@ class NotesAndCommentsState extends State<NotesAndComments> {
                   var note_id = responseBody['note_id'];
                   if (attached_file_name != '') {
                     var uri = Uri.parse(
-                        "https://app.buildahome.in/erp/API/notes_picture_uplpoad");
+                        "https://office.buildahome.in/API/notes_picture_uplpoad");
                     var request = new http.MultipartRequest("POST", uri);
 
                     var pic = await http.MultipartFile.fromPath(
@@ -330,6 +350,10 @@ class NotesAndCommentsState extends State<NotesAndComments> {
                       ));
                 })),
       ],
+    ),
+      ),
     );
+
+    
   }
 }

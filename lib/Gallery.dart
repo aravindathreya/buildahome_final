@@ -5,6 +5,11 @@ import 'dart:typed_data';
 import 'package:shared_preferences/shared_preferences.dart';
 import "FullScreenImage.dart";
 import 'package:cached_network_image/cached_network_image.dart';
+import './AnimationHelper.dart';
+import 'NavMenu.dart';
+import 'main.dart';
+import 'UserHome.dart';
+import 'Scheduler.dart';
 
 var images = {};
 
@@ -12,9 +17,31 @@ class Gallery extends StatelessWidget {
   @override
   Widget build(context) {
     final appTitle = 'buildAhome';
-    final GlobalKey<ScaffoldState> _scaffoldKey =
-        new GlobalKey<ScaffoldState>();
-    return GalleryForm(context);
+    final GlobalKey<ScaffoldState> _scaffoldKey = new GlobalKey<ScaffoldState>();
+    return MaterialApp(
+      title: appTitle,
+      theme: ThemeData(fontFamily: App().fontName),
+      home: Scaffold(
+        key: _scaffoldKey,
+        backgroundColor: Colors.black,
+        drawer: NavMenuWidget(),
+        appBar: AppBar(
+          automaticallyImplyLeading: false,
+          title: Text(
+            appTitle,
+          ),
+          leading: new IconButton(
+              icon: new Icon(Icons.menu),
+              onPressed: () async {
+                SharedPreferences prefs = await SharedPreferences.getInstance();
+                var username = prefs.getString('username');
+                _scaffoldKey.currentState!.openDrawer();
+              }),
+          backgroundColor: Colors.transparent,
+        ),
+        body: GalleryForm(context),
+      ),
+    );
   }
 }
 
@@ -52,7 +79,7 @@ class GalleryState extends State<GalleryForm> {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     pr_id = prefs.getString('project_id');
 
-    var url = 'https://app.buildahome.in/api/get_gallery_data.php?id=$pr_id';
+    var url = 'https://office.buildahome.in/API/get_gallery_data?id=$pr_id';
 
     var response = await http.get(Uri.parse(url));
     entries = jsonDecode(response.body);
@@ -68,9 +95,7 @@ class GalleryState extends State<GalleryForm> {
   }
 
   _image_func(_image_string, update_id) {
-    var stripped = _image_string
-        .toString()
-        .replaceFirst(RegExp(r'data:image/jpeg;base64,'), '');
+    var stripped = _image_string.toString().replaceFirst(RegExp(r'data:image/jpeg;base64,'), '');
     var imageAsBytes = base64.decode(stripped);
 
     if (imageAsBytes != null) {
@@ -101,73 +126,222 @@ class GalleryState extends State<GalleryForm> {
   @override
   Widget build(context) {
     return Container(
-      padding: EdgeInsets.only(bottom: 100),
-      child: new ListView.builder(
-          padding: EdgeInsets.all(10),
-          shrinkWrap: true,
-          itemCount: subset == null ? 0 : subset.length,
-          itemBuilder: (context, int Index) {
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                Container(
-                  padding: EdgeInsets.only(bottom: 15, top: 20),
-                  child: Text(subset[Index],
-                      style: TextStyle(
-                        fontWeight: FontWeight.w600,
-                        fontSize: 12,
-                      )),
-                ),
-                Wrap(
-                  children: <Widget>[
-                    for (int i = 0; i < entries.length; i++)
-                      if (entries[i]['date'] == subset[Index])
-                        if (images.containsKey(entries[i]['image_id']))
+        height: MediaQuery.of(context).size.height,
+        width: MediaQuery.of(context).size.width,
+        child: Stack(alignment: Alignment.bottomCenter, children: [
+          Container(
+            padding: EdgeInsets.only(bottom: 100),
+            child: new ListView.builder(
+                padding: EdgeInsets.all(10),
+                shrinkWrap: true,
+                itemCount: subset == null ? 0 : subset.length,
+                itemBuilder: (context, int Index) {
+                  return AnimatedWidgetSlide(
+                      direction: SlideDirection.bottomToTop, // Specify the slide direction
+                      duration: Duration(milliseconds: 300),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: <Widget>[
                           Container(
-                              width:
-                                  (MediaQuery.of(context).size.width - 20) / 3,
-                              height:
-                                  (MediaQuery.of(context).size.width - 20) / 3,
-                              decoration: BoxDecoration(
-                                border: Border.all(),
-                              ),
-                              child: _image_func(
-                                  images[entries[i]['image_id']], "From list"))
-                        else
-                          Container(
-                              width:
-                                  (MediaQuery.of(context).size.width - 20) / 3,
-                              height:
-                                  (MediaQuery.of(context).size.width - 20) / 3,
-                              decoration: BoxDecoration(
-                                border: Border.all(
-                                    width: 0.5, color: Colors.grey[300]!),
-                              ),
-                              child: InkWell(
-                                onTap: () {
-                                  Navigator.push(
-                                    this.con,
-                                    MaterialPageRoute(
-                                        builder: (context) => FullScreenImage(
-                                            "https://app.buildahome.in/api/images/${entries[i]['image']}")),
-                                  );
-                                },
-                                child: CachedNetworkImage(
-                                  fit: BoxFit.cover,
-                                  progressIndicatorBuilder:
-                                      (context, url, progress) => Container(
-                                    height: 20,
-                                    width: 20,
+                              padding: EdgeInsets.only(bottom: 15, top: 25),
+                              child: Row(
+                                children: [
+                                  Icon(Icons.date_range, color: Colors.white),
+                                  SizedBox(
+                                    width: 10,
                                   ),
-                                  imageUrl:
-                                      "https://app.buildahome.in/api/images/${entries[i]['image']}",
-                                ),
-                              ))
-                  ],
-                )
-              ],
-            );
-          }),
+                                  Text(subset[Index], style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12, color: Colors.white)),
+                                ],
+                              )),
+                          Wrap(
+                            children: <Widget>[
+                              for (int i = 0; i < entries.length; i++)
+                                if (entries[i]['date'] == subset[Index])
+                                  if (images.containsKey(entries[i]['image_id']))
+                                    Container(
+                                        width: (MediaQuery.of(context).size.width - 20) / 3,
+                                        height: (MediaQuery.of(context).size.width - 20) / 3,
+                                        decoration: BoxDecoration(
+                                          border: Border.all(),
+                                        ),
+                                        child: _image_func(images[entries[i]['image_id']], "From list"))
+                                  else
+                                    Container(
+                                        width: (MediaQuery.of(context).size.width - 20) / 3,
+                                        height: (MediaQuery.of(context).size.width - 20) / 3,
+                                        decoration: BoxDecoration(
+                                          border: Border.all(width: 0.5, color: Colors.grey[300]!),
+                                        ),
+                                        child: InkWell(
+                                          onTap: () {
+                                            Navigator.push(
+                                              this.con,
+                                              MaterialPageRoute(builder: (context) => FullScreenImage("https://app.buildahome.in/api/images/${entries[i]['image']}")),
+                                            );
+                                          },
+                                          child: CachedNetworkImage(
+                                            fit: BoxFit.cover,
+                                            progressIndicatorBuilder: (context, url, progress) => Container(
+                                              height: 20,
+                                              width: 20,
+                                            ),
+                                            imageUrl: "https://app.buildahome.in/api/images/${entries[i]['image']}",
+                                          ),
+                                        ))
+                            ],
+                          )
+                        ],
+                      ));
+                }),
+          ),
+          Container(
+              decoration: BoxDecoration(border: Border(top: BorderSide(color: const Color.fromARGB(255, 49, 49, 49))), color: Colors.black),
+              padding: EdgeInsets.only(top: 15, bottom: 15),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                children: [
+                  InkWell(
+                      onTap: () {
+                        Navigator.push(context, MaterialPageRoute(builder: (context) => Home()));
+                      },
+                      child: Container(
+                        height: 50,
+                        child: Column(
+                          children: [
+                            Icon(
+                              Icons.home_rounded,
+                              size: 30,
+                              color: Colors.grey,
+                            ),
+                            Text(
+                              'Home',
+                              style: TextStyle(color: Colors.grey),
+                            )
+                          ],
+                        ),
+                      )),
+                  InkWell(
+                      onTap: () {
+                        Navigator.push(context, MaterialPageRoute(builder: (context) => TaskWidget()));
+                      },
+                      child: Container(
+                        height: 50,
+                        child: Column(
+                          children: [
+                            Icon(
+                              Icons.alarm,
+                              color: Colors.grey,
+                            ),
+                            Text(
+                              'Schedule',
+                              style: TextStyle(color: Colors.grey),
+                            )
+                          ],
+                        ),
+                      )),
+                  Container(
+                    height: 50,
+                    child: Column(
+                      children: [
+                        Icon(
+                          Icons.photo_library,
+                          color: Colors.white,
+                        ),
+                        Text(
+                          'Gallery',
+                          style: TextStyle(color: Colors.white),
+                        )
+                      ],
+                    ),
+                  ),
+                ],
+              )),
+        ]));
+  }
+}
+enum SlideDirection { leftToRight, rightToLeft, topToBottom, bottomToTop }
+
+class AnimatedWidgetSlide extends StatefulWidget {
+  final Widget child;
+  final SlideDirection direction;
+  final Duration duration;
+
+  AnimatedWidgetSlide({
+    required this.child,
+    required this.direction,
+    required this.duration,
+  });
+
+  @override
+  _AnimatedWidgetSlideState createState() => _AnimatedWidgetSlideState();
+}
+
+class _AnimatedWidgetSlideState extends State<AnimatedWidgetSlide>
+with SingleTickerProviderStateMixin {
+  late AnimationController _animationController;
+  late Animation<Offset> _slideAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _animationController = AnimationController(
+      vsync: this,
+      duration: widget.duration,
     );
+
+    switch (widget.direction) {
+      case SlideDirection.leftToRight:
+        _slideAnimation = Tween<Offset>(
+          begin: const Offset(-1.0, 0.0),
+          end: const Offset(0.0, 0.0),
+        ).animate(CurvedAnimation(
+          parent: _animationController,
+          curve: Curves.easeInSine,
+        ));
+        break;
+      case SlideDirection.rightToLeft:
+        _slideAnimation = Tween<Offset>(
+          begin: const Offset(1.0, 0.0),
+          end: const Offset(0.0, 0.0),
+        ).animate(CurvedAnimation(
+          parent: _animationController,
+          curve: Curves.easeInOut,
+        ));
+        break;
+      case SlideDirection.topToBottom:
+        _slideAnimation = Tween<Offset>(
+          begin: const Offset(0.0, -1.0),
+          end: const Offset(0.0, 0.0),
+        ).animate(CurvedAnimation(
+          parent: _animationController,
+          curve: Curves.easeInOut,
+        ));
+        break;
+      case SlideDirection.bottomToTop:
+        _slideAnimation = Tween<Offset>(
+          begin: const Offset(0.0, 1.0),
+          end: const Offset(0.0, 0.0),
+        ).animate(CurvedAnimation(
+          parent: _animationController,
+          curve: Curves.easeInOut,
+        ));
+        break;
+    }
+
+    _animationController.forward();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SlideTransition(
+      position: _slideAnimation,
+      child: widget.child,
+    );
+  }
+
+  @override
+  void dispose() {
+    _animationController.dispose();
+    super.dispose();
   }
 }

@@ -22,15 +22,21 @@ class ChecklistCategoriesLayout extends StatelessWidget {
       title: appTitle,
       theme: ThemeData(fontFamily: App().fontName),
       home: Scaffold(
+        backgroundColor: Colors.black,
         key: _scaffoldKey, // ADD THIS LINE
         appBar: AppBar(
-          automaticallyImplyLeading: false,
+          automaticallyImplyLeading: true,
           title: Text(appTitle),
-          leading: new IconButton(icon: new Icon(Icons.menu), onPressed: () => _scaffoldKey.currentState?.openDrawer()),
-          backgroundColor: Color(0xFF000055),
+          leading: new IconButton(
+              icon: new Icon(
+                Icons.chevron_left,
+                size: 30,
+              ),
+              onPressed: () => Navigator.pop(context)),
+          backgroundColor: Color.fromARGB(255, 0, 0, 0),
         ),
-        drawer: NavMenuWidget(),
-        body: ChecklistCategories(),
+
+        body: ChecklistCategories()
       ),
     );
   }
@@ -53,7 +59,7 @@ class ChecklistCategoriesState extends State<ChecklistCategories> {
   }
 
   call() async {
-    var url = 'https://app.buildahome.in/erp/API/get_checklist_categories';
+    var url = 'https://office.buildahome.in/API/get_checklist_categories';
     var response = await http.get(Uri.parse(url));
     setState(() {
       categories = jsonDecode(response.body)['categories'];
@@ -70,7 +76,7 @@ class ChecklistCategoriesState extends State<ChecklistCategories> {
       children: [
         Container(
             margin: EdgeInsets.symmetric(horizontal: 10, vertical: 20),
-            child: Text('Select category to view checklist'))
+            child: Text('Select category to view checklist', style: TextStyle(color: Color.fromARGB(255, 202, 202, 202)),))
         ,
         for(var i=0; i< categories.length; i++)
           InkWell(
@@ -78,14 +84,14 @@ class ChecklistCategoriesState extends State<ChecklistCategories> {
               padding: EdgeInsets.all(16),
               decoration: BoxDecoration(
                 border: Border(
-                  bottom: BorderSide(color: Colors.grey[300]!)
+                  bottom: BorderSide(color: Color.fromARGB(255, 65, 65, 65)!)
                 )
               ),
               child: Row(
                 children: [
-                  Icon(Icons.arrow_right_rounded),
+                  Icon(Icons.arrow_right_rounded,color: Colors.white),
                   SizedBox(width: 5,),
-                  Expanded(child: Text(categories[i], style: TextStyle(fontSize: 16),),)
+                  Expanded(child: Text(categories[i], style: TextStyle(fontSize: 16, color: Colors.white),),)
                 ],
               )
             ),

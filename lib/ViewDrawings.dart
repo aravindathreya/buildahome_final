@@ -80,7 +80,7 @@ class VIewDrawingState extends State<VIewDrawingForm> {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     pr_id = prefs.getString('project_id');
 
-    var url = 'https://app.buildahome.in/api/get_drawing.php?id=$pr_id';
+    var url = 'https://office.buildahome.in/API/get_drawing?id=$pr_id';
     print(url);
     var response = await http.get(Uri.parse(url));
     setState(() {
@@ -181,7 +181,7 @@ class VIewDrawingState extends State<VIewDrawingForm> {
                           child: Text(entries[Index]['date'])),
                   FutureBuilder<Response>(
                     future: http.post(
-                      Uri.parse("https://app.buildahome.in/erp/API/get_dr_image.php"),
+                      Uri.parse("https://office.buildahome.in/API/get_dr_image"),
                       body: {'drawing_id': id},
                     ),
                     builder: (context, snapshot) {

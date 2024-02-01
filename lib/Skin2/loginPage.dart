@@ -86,9 +86,9 @@ class LoginScreenNewState extends State<LoginScreenNew> {
   }
 
   loginUser() async {
-    var url = Uri.parse('https://app.buildahome.in/erp/API/login');
+    var url = Uri.parse('https://office.buildahome.in/API/login');
     var response =
-        await http.post(url, body: {'username': usernameTextController.text, 'password': passwordTextController.text});
+        await http.post(url, body: {'username': usernameTextController.text, 'password': passwordTextController.text},);
     print(response.body);
     Map<String, dynamic> jsonDecodedResponse;
     try {

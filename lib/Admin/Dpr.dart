@@ -43,7 +43,7 @@ class DprState extends State<Dpr> {
 
   call() async {
     setProjectId(this.id);
-    var url = 'https://app.buildahome.in/api/view_all_dpr.php?id=${this.id}';
+    var url = 'https://office.buildahome.in/API/view_all_dpr?id=${this.id}';
     var response = await http.get(Uri.parse(url));
     setState(() {
       listOfDates = [];
@@ -181,7 +181,7 @@ class DprState extends State<Dpr> {
                                   InkWell(
                                       onTap: () async {
                                         print(updateIds[x]);
-                                        var url = 'https://app.buildahome.in/api/delete_update.php?id=${updateIds[x]}';
+                                        var url = 'https://office.buildahome.in/API/delete_update?id=${updateIds[x]}';
                                         await http.get(Uri.parse(url));
 
                                         setState(() {

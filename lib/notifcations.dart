@@ -50,7 +50,7 @@ class NotificationPageBodyState extends State<NotificationPageBody> {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     var user_id = prefs.get('user_id');
     var url =
-        'https://app.buildahome.in/erp/API/get_notifications?recipient=${user_id}';
+        'https://office.buildahome.in/API/get_notifications?recipient=${user_id}';
     var response = await http.get(Uri.parse(url));
     setState(() {
       notifcations = jsonDecode(response.body);
@@ -63,7 +63,7 @@ class NotificationPageBodyState extends State<NotificationPageBody> {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     var user_id = prefs.get('user_id');
     var url =
-        'https://app.buildahome.in/erp/API/mark_notifications_as_read?user_id=${user_id}';
+        'https://office.buildahome.in/API/mark_notifications_as_read?user_id=${user_id}';
     await http.get(Uri.parse(url));
   }
 

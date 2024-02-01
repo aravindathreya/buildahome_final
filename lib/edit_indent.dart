@@ -284,7 +284,7 @@ class EditIndentState extends State<EditIndent> {
             String formattedDate = DateFormat('EEEE d MMMM H:m').format(now);
 
             var url =
-                'https://app.buildahome.in/erp/API/edit_and_approve_indent';
+                'https://office.buildahome.in/API/edit_and_approve_indent';
             var response = await http.post(Uri.parse(url), body: {
               'indent_id': this.indent['id'].toString(),
               'project_id': projectId.toString(),

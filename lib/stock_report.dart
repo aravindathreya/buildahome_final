@@ -333,7 +333,7 @@ class StockReportState extends State<StockReport> {
 
             DateTime now = DateTime.now();
             String formattedDate = DateFormat('EEEE d MMMM yyyy H:m').format(now);
-            var url = 'https://app.buildahome.in/erp/API/update_stock_report';
+            var url = 'https://office.buildahome.in/API/update_stock_report';
             var response = await http.post(Uri.parse(url), body: {
               'project_id': projectId,
               'timestamp': formattedDate,

@@ -516,7 +516,7 @@ class CreateIndentState extends State<CreateIndent> {
 
             DateTime now = DateTime.now();
             String formattedDate = DateFormat('EEEE d MMMM H:m').format(now);
-            var url = 'https://app.buildahome.in/erp/API/create_indent';
+            var url = 'https://office.buildahome.in/API/create_indent';
             var response = await http.post(Uri.parse(url), body: {
               'project_id': projectId,
               'material': material,
@@ -543,7 +543,7 @@ class CreateIndentState extends State<CreateIndent> {
             var indentId = responseBody['indent_id'];
             if (attachedFileName != '') {
               var uri = Uri.parse(
-                  "https://app.buildahome.in/erp/API/indent_file_uplpoad");
+                  "https://office.buildahome.in/API/indent_file_uplpoad");
               var request = new http.MultipartRequest("POST", uri);
 
               var pic =

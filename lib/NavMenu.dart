@@ -113,7 +113,7 @@ class NavMenuWidgetState extends State<NavMenuWidget> {
             Container(
               alignment: Alignment.center,
               decoration: BoxDecoration(
-                color: Color(0xFF000055),
+                color: Color.fromARGB(255, 0, 0, 24),
                 shape: BoxShape.rectangle,
               ),
               padding: EdgeInsets.only(top: 40, left: 20, bottom: 40),

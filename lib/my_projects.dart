@@ -60,7 +60,8 @@ class ProjectsModalBody extends State<ProjectsModal> {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     id = prefs.getString('user_id');
     var url =
-        "https://app.buildahome.in/api/projects_access.php?id=${id.toString()}";
+        "https://office.buildahome.in/API/projects_access?id=${id.toString()}";
+    print(url);
     var response = await http.get(Uri.parse(url));
     print(response.statusCode);
     setState(() {

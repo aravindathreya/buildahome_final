@@ -25,6 +25,7 @@ class ChecklistItemsLayout extends StatelessWidget {
       title: appTitle,
       theme: ThemeData(fontFamily: App().fontName),
       home: Scaffold(
+        backgroundColor: Colors.black,
         key: _scaffoldKey, // ADD THIS LINE
         appBar: AppBar(
           automaticallyImplyLeading: true,
@@ -35,7 +36,7 @@ class ChecklistItemsLayout extends StatelessWidget {
                 size: 30,
               ),
               onPressed: () => Navigator.pop(context)),
-          backgroundColor: Color(0xFF000055),
+          backgroundColor: Color.fromARGB(255, 0, 0, 0),
         ),
 
         body: ChecklistItems(category),
@@ -78,7 +79,7 @@ class ChecklistItemsState extends State<ChecklistItems> {
 
     role = prefs.getString('role');
     user_id = prefs.getString('user_id');
-    var url = 'https://app.buildahome.in/erp/API/get_checklist_items_for_category';
+    var url = 'https://office.buildahome.in/API/get_checklist_items_for_category';
     var response = await http.post(Uri.parse(url), body: {'project_id': projectId, 'category': category});
     print(response.statusCode);
     print(response.body);
@@ -95,12 +96,12 @@ class ChecklistItemsState extends State<ChecklistItems> {
       shrinkWrap: true,
       padding: EdgeInsets.symmetric(horizontal: 15),
       children: [
-        Container(margin: EdgeInsets.symmetric(horizontal: 10, vertical: 20), child: Text('Checklist for $category', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),)),
+        Container(margin: EdgeInsets.symmetric(horizontal: 10, vertical: 20), child: Text('Checklist for $category', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),)),
         if (loaded != false)
           for (var i = 0; i < data.length; i++)
             Container(
                 padding: EdgeInsets.all(10),
-                decoration: BoxDecoration(border: Border(bottom: BorderSide(color: Colors.grey[300]!))),
+                decoration: BoxDecoration(border: Border(bottom: BorderSide(color: const Color.fromARGB(255, 0, 0, 0)!))),
                 child: Wrap(
                   children: [
                     Row(
@@ -145,7 +146,7 @@ class ChecklistItemsState extends State<ChecklistItems> {
                         Expanded(
                           child: Text(
                             data[i][1],
-                            style: TextStyle(fontSize: 14),
+                            style: TextStyle(fontSize: 14, color: Colors.white),
                           ),
                         ),
                       ],
@@ -182,7 +183,7 @@ class ChecklistItemsState extends State<ChecklistItems> {
                                       TextButton(
                                         onPressed: () async {
                                           Navigator.of(context).pop(); // Close the confirmation dialog
-                                            var url = 'https://app.buildahome.in/erp/API/update_project_checklist_item_api';
+                                            var url = 'https://office.buildahome.in/API/update_project_checklist_item_api';
                                           var response = await http.post(Uri.parse(url), body: {
                                             'project_id': projectId,
                                             'checklist_item_id': data[i][0].toString(),
@@ -219,7 +220,7 @@ class ChecklistItemsState extends State<ChecklistItems> {
                                 Expanded(
                                   child: Text(
                                     'Checked by buildahome on ${data[i][4]}',
-                                    style: TextStyle(color: Colors.indigo[900], fontSize: 12),
+                                    style: TextStyle(color: const Color.fromARGB(255, 153, 153, 153), fontSize: 12),
                                   ),
                                 )
                               ],
@@ -273,7 +274,7 @@ class ChecklistItemsState extends State<ChecklistItems> {
                                       TextButton(
                                         onPressed: () async {
                                           Navigator.of(context).pop(); // Close the confirmation dialog
-                                          var url = 'https://app.buildahome.in/erp/API/update_checklist_item_by_client';
+                                          var url = 'https://office.buildahome.in/API/update_checklist_item_by_client';
                                           var response = await http.post(Uri.parse(url), body: {
                                             'project_id': projectId,
                                             'checklist_item_id': data[i][0].toString()

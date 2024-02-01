@@ -5,6 +5,10 @@ import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:percent_indicator/linear_percent_indicator.dart';
 import 'main.dart';
+import 'NavMenu.dart';
+import 'UserHome.dart';
+import 'Gallery.dart';
+import 'AnimationHelper.dart';
 
 class TaskWidget extends StatelessWidget {
   @override
@@ -16,7 +20,163 @@ class TaskWidget extends StatelessWidget {
       theme: ThemeData(fontFamily: App().fontName),
       home: Scaffold(
         key: _scaffoldKey,
+        backgroundColor: Colors.black,
+        drawer: NavMenuWidget(),
+        appBar: AppBar(
+          automaticallyImplyLeading: false,
+          title: Text(
+            appTitle,
+          ),
+          leading: new IconButton(
+              icon: new Icon(Icons.menu),
+              onPressed: () async {
+                SharedPreferences prefs = await SharedPreferences.getInstance();
+                var username = prefs.getString('username');
+                _scaffoldKey.currentState!.openDrawer();
+              }),
+          backgroundColor: Colors.transparent,
+        ),
         body: TaskScreenClass(),
+      ),
+    );
+  }
+}
+
+class TaskScreenClass extends StatefulWidget {
+  @override
+  TaskScreen createState() {
+    return TaskScreen();
+  }
+}
+
+class TaskScreen extends State<TaskScreenClass> {
+  @override
+  void initState() {
+    super.initState();
+    call();
+  }
+
+  var body;
+  var tasks = [];
+
+  call() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    var id = prefs.getString('project_id');
+
+    var url = 'https://office.buildahome.in/API/get_all_tasks?project_id=$id&nt_toggle=0';
+    var response = await http.get(Uri.parse(url));
+    setState(() {
+      body = jsonDecode(response.body);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: MediaQuery.of(context).size.height,
+      width: MediaQuery.of(context).size.width,
+      child: Stack(
+        alignment: Alignment.bottomCenter,
+        children: [
+          ListView(children: <Widget>[
+            Container(padding: EdgeInsets.only(top: 20, left: 15, bottom: 10), decoration: BoxDecoration(border: Border()), child: Text("Project Schedule", style: TextStyle(fontSize: 20, color: Colors.white))),
+            if (body == null)
+              new ListView.builder(
+                  shrinkWrap: true,
+                  physics: BouncingScrollPhysics(),
+                  itemCount: 10,
+                  itemBuilder: (BuildContext ctxt, int index) {
+                    return Row(
+                      mainAxisAlignment: MainAxisAlignment.start,
+                      children: [
+                        Container(
+                          width: MediaQuery.of(context).size.width,
+                          alignment: Alignment.centerLeft,
+                          padding: EdgeInsets.symmetric(horizontal: 15, vertical: 25),
+                          decoration: BoxDecoration(color: const Color.fromARGB(255, 0, 0, 0), border: Border(bottom: BorderSide(color: const Color.fromARGB(255, 0, 0, 0)!))),
+                        )
+                      ],
+                    );
+                  }),
+            new ListView.builder(
+                padding: EdgeInsets.only(bottom: 100),
+                shrinkWrap: true,
+                physics: BouncingScrollPhysics(),
+                itemCount: body == null ? 0 : body.length,
+                itemBuilder: (BuildContext ctxt, int index) {
+                  return AnimatedWidgetSlide(
+                            direction: index % 2 == 0 ? SlideDirection.leftToRight : SlideDirection.rightToLeft, // Specify the slide direction
+                      duration: Duration(milliseconds: 500), // Adjust the duration as needed
+
+                      child: Container(
+                        child: TaskItem(body[index]['task_name'].toString(), body[index]['start_date'].toString(), body[index]['end_date'].toString(), body[index]['sub_tasks'].toString(),
+                            body[index]['progress'].toString(), body[index]['s_note'].toString()),
+                      ));
+                }),
+          ]),
+          Container(
+              decoration: BoxDecoration(border: Border(top: BorderSide(color: const Color.fromARGB(255, 49, 49, 49))), color: Colors.black),
+              padding: EdgeInsets.only(top: 15, bottom: 15),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                children: [
+                  InkWell(
+                      onTap: () {
+                        Navigator.push(context, MaterialPageRoute(builder: (context) => Home()));
+                      },
+                      child: Container(
+                        height: 50,
+                        child: Column(
+                          children: [
+                            Icon(
+                              Icons.home_rounded,
+                              size: 30,
+                              color: Colors.grey,
+                            ),
+                            Text(
+                              'Home',
+                              style: TextStyle(color: Colors.grey),
+                            )
+                          ],
+                        ),
+                      )),
+                  Container(
+                    height: 50,
+                    child: Column(
+                      children: [
+                        Icon(
+                          Icons.alarm,
+                          color: Colors.white,
+                        ),
+                        Text(
+                          'Schedule',
+                          style: TextStyle(color: Colors.white),
+                        )
+                      ],
+                    ),
+                  ),
+                  InkWell(
+                      onTap: () {
+                        Navigator.push(context, MaterialPageRoute(builder: (context) => Gallery()));
+                      },
+                      child: Container(
+                        height: 50,
+                        child: Column(
+                          children: [
+                            Icon(
+                              Icons.photo_library,
+                              color: Colors.grey,
+                            ),
+                            Text(
+                              'Gallery',
+                              style: TextStyle(color: Colors.grey),
+                            )
+                          ],
+                        ),
+                      )),
+                ],
+              )),
+        ],
       ),
     );
   }
@@ -28,7 +188,7 @@ class TaskItem extends StatefulWidget {
   final _startDate;
   final _endDate;
   final _height = 0.0;
-  final _color = Colors.white;
+  final _color = Color.fromARGB(255, 46, 46, 46);
   final _subTasks;
   final _progressStr;
   final note;
@@ -37,8 +197,7 @@ class TaskItem extends StatefulWidget {
 
   @override
   TaskItemWidget createState() {
-    return TaskItemWidget(this._taskName, this._icon, this._startDate, this._endDate, this._progressStr, this._color,
-        this._height, this._subTasks, this.note);
+    return TaskItemWidget(this._taskName, this._icon, this._startDate, this._endDate, this._progressStr, this._color, this._height, this._subTasks, this.note);
   }
 }
 
@@ -98,8 +257,7 @@ class TaskItemWidget extends State<TaskItem> with SingleTickerProviderStateMixin
     });
   }
 
-  TaskItemWidget(this._taskName, this._icon, this._startDate, this._endDate, this._progressStr, this._color,
-      this._height, this._subTasks, this.note);
+  TaskItemWidget(this._taskName, this._icon, this._startDate, this._endDate, this._progressStr, this._color, this._height, this._subTasks, this.note);
 
   @override
   Widget build(BuildContext context) {
@@ -107,245 +265,249 @@ class TaskItemWidget extends State<TaskItem> with SingleTickerProviderStateMixin
       children: <Widget>[
         Container(
             child: AnimatedContainer(
-              duration: Duration(milliseconds: 500),
-              decoration: BoxDecoration(
-                color: Colors.grey[200],
-                borderRadius: BorderRadius.circular(5),
-              ),
-              child: Container(
-                margin: EdgeInsets.only(top: 15, left: 15, right: 15),
-                decoration: BoxDecoration(
-                  color: this._color,
-                  borderRadius: BorderRadius.circular(5),
+          duration: Duration(milliseconds: 500),
+          decoration: BoxDecoration(
+            color: const Color.fromARGB(255, 0, 0, 0),
+            borderRadius: BorderRadius.circular(5),
+          ),
+          child: Container(
+            margin: EdgeInsets.only(top: 15, left: 15, right: 15),
+            decoration: BoxDecoration(
+              color: this._color,
+              borderRadius: BorderRadius.circular(5),
+            ),
+            padding: EdgeInsets.symmetric(horizontal: 5, vertical: 20),
+            child: Column(children: <Widget>[
+              AnimatedContainer(
+                duration: Duration(milliseconds: 900),
+                child: Row(
+                  children: <Widget>[
+                    InkWell(
+                      onTap: _expandCollapse,
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: <Widget>[
+                          this._textColor == Colors.green[600]
+                              ? Container(
+                                  margin: EdgeInsets.all(10),
+                                  padding: EdgeInsets.all(8),
+                                  decoration: BoxDecoration(color: Colors.green[900], borderRadius: BorderRadius.circular(40)),
+                                  child: Icon(
+                                    Icons.check,
+                                    size: 26,
+                                    weight: 2.0,
+                                    color: Colors.white!,
+                                  ),
+                                )
+                              : Container(
+                                  margin: EdgeInsets.all(10),
+                                  padding: EdgeInsets.all(8),
+                                  decoration: BoxDecoration(color: Colors.yellow[800], borderRadius: BorderRadius.circular(40)),
+                                  child: Icon(
+                                    Icons.schedule,
+                                    size: 26,
+                                    weight: 2.0,
+                                    color: Colors.white!,
+                                  ),
+                                ),
+                          Container(
+                            width: MediaQuery.of(context).size.width * .7 - 20.0,
+                            child: Text(
+                              this._textColor == Colors.green[600] ? this._taskName + " (Completed)" : this._taskName,
+                              textAlign: TextAlign.left,
+                              style: TextStyle(fontSize: 16, fontWeight: FontWeight.normal, color: Color.fromARGB(255, 201, 201, 201)),
+                            ),
+                          ),
+                          new Icon(view, color: const Color.fromARGB(255, 255, 255, 255)),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
-                padding: EdgeInsets.symmetric(horizontal: 5, vertical: 20),
-                child: Column(children: <Widget>[
-                  AnimatedContainer(
-                    duration: Duration(milliseconds: 900),
-                    child: Row(
+              ),
+              Visibility(
+                visible: this.vis,
+                child: Container(
+                    width: MediaQuery.of(context).size.width,
+                    padding: EdgeInsets.symmetric(horizontal: 20),
+                    child: Column(
                       children: <Widget>[
-                        InkWell(
-                          onTap: _expandCollapse,
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: <Widget>[
-                              this._textColor == Colors.green[600] ? Container(
-                                margin: EdgeInsets.all(10),
-                                padding: EdgeInsets.all(6),
-                                decoration: BoxDecoration(
-                                    color: Colors.green[900],
-                                    borderRadius: BorderRadius.circular(40)
-                                ),
-                                child: Icon(Icons.check, size: 22, weight: 2.0, color: Colors.white!,),
-
-                              ) : Container(
-                                margin: EdgeInsets.all(10),
-                                padding: EdgeInsets.all(6),
-                                decoration: BoxDecoration(
-                                    color: Colors.yellow[800],
-                                    borderRadius: BorderRadius.circular(40)
-                                ),
-                                child: Icon(Icons.schedule, size: 22, weight: 2.0, color: Colors.white!,),
-
-                              ),
-                              Container(
-                                width: MediaQuery.of(context).size.width * .7 - 30.0,
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: <Widget>[
+                            Container(
+                                padding: EdgeInsets.only(top: 10),
                                 child: Text(
-                                  this._textColor == Colors.green[600]
-                                      ? this._taskName + " (Completed)"
-                                      : this._taskName,
-                                  textAlign: TextAlign.left,
-                                  style: TextStyle( fontSize:  14, fontWeight: this.vis ? FontWeight.bold : FontWeight.normal),
-                                ),
-                              ),
-                              new Icon(view, color: Colors.indigo[600]),
-                            ],
+                                  this._startDate.trim() != "" ? DateFormat("dd MMM yy").format(DateTime.parse(this._startDate)).toString() : "",
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Color.fromARGB(255, 201, 201, 201)
+                                  ),
+                                )),
+                            Container(
+                                padding: EdgeInsets.only(top: 10),
+                                child: Text(
+                                  this._endDate.trim() != '' ? DateFormat("dd MMM yy").format(DateTime.parse(this._endDate)).toString() : "",
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Color.fromARGB(255, 201, 201, 201)
+                                  ),
+                                ))
+                          ],
+                        ),
+                        Container(
+                          padding: EdgeInsets.only(top: 5, bottom: 10),
+                          child: LinearPercentIndicator(
+                            lineHeight: 8.0,
+                            percent: _progress(),
+                            animationDuration: 500,
+                            animation: true,
+                            backgroundColor: Colors.grey[300],
+                            progressColor: Color.fromARGB(255, 0, 139, 35),
+                            clipLinearGradient: true,
                           ),
                         ),
-                      ],
-                    ),
-                  ),
-                  Visibility(
-                    visible: this.vis,
-                    child: Container(
-                        width: MediaQuery.of(context).size.width,
-                        padding: EdgeInsets.symmetric(horizontal: 20),
-                        child: Column(
-                          children: <Widget>[
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: <Widget>[
-                                Container(
-                                    padding: EdgeInsets.only(top: 10),
-                                    child: Text(
-                                      this._startDate.trim() != ""
-                                          ? DateFormat("dd MMM yy").format(DateTime.parse(this._startDate)).toString()
-                                          : "",
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        color: Colors.black,
-                                      ),
-                                    )),
-                                Container(
-                                    padding: EdgeInsets.only(top: 10),
-                                    child: Text(
-                                      this._endDate.trim() != ''
-                                          ? DateFormat("dd MMM yy").format(DateTime.parse(this._endDate)).toString()
-                                          : "",
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        color: Colors.black,
-                                      ),
-                                    ))
-                              ],
-                            ),
-                            Container(
-                              padding: EdgeInsets.only(top: 5, bottom: 10),
-                              child: LinearPercentIndicator(
-                                lineHeight: 8.0,
-                                percent: _progress(),
-                                animationDuration: 200,
-                                backgroundColor: Colors.grey[300],
-                                progressColor: Colors.indigo[800],
-                              ),
-                            ),
-                            Container(
-                              padding: EdgeInsets.only(top: 5),
-                              child: ListView.builder(
-                                  shrinkWrap: true,
-                                  physics: NeverScrollableScrollPhysics(),
-                                  itemCount: this._subTasks.split("^").length - 1,
-                                  itemBuilder: (BuildContext ctxt, int index) {
-                                    var subTasks = _subTasks.split("^");
-                                    var eachTask = subTasks[index].split("|");
-                                    if (eachTask[0] != "")
-                                      return Container(
-                                          margin: EdgeInsets.only(top: 15),
-                                          child: Column(
-                                            crossAxisAlignment: CrossAxisAlignment.start,
+                        Container(
+                          padding: EdgeInsets.only(top: 5),
+                          child: ListView.builder(
+                              shrinkWrap: true,
+                              physics: NeverScrollableScrollPhysics(),
+                              itemCount: this._subTasks.split("^").length - 1,
+                              itemBuilder: (BuildContext ctxt, int index) {
+                                var subTasks = _subTasks.split("^");
+                                var eachTask = subTasks[index].split("|");
+                                if (eachTask[0] != "")
+                                  return Container(
+                                      margin: EdgeInsets.only(top: 15),
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: <Widget>[
+                                          Row(
                                             children: <Widget>[
-                                              Row(
-                                                children: <Widget>[
-                                                  Icon(Icons.arrow_right_rounded),
-                                                  SizedBox(width: 5.0,),
-                                                  Expanded(
-                                                      child: Text(
-                                                        DateFormat("dd MMM yy")
-                                                            .format(DateTime.parse(eachTask[1].toString()))
-                                                            .toString() +
-                                                            " to " +
-                                                            DateFormat("dd MMM yy")
-                                                                .format(DateTime.parse(eachTask[2].toString()))
-                                                                .toString() +
-                                                            " : " +
-                                                            eachTask[0].toString(),
-                                                        style: TextStyle(color: Colors.black54, fontSize: 14),
-                                                      )),
-                                                ],
+                                              Icon(Icons.arrow_right_rounded, color: Colors.grey[500],),
+                                              SizedBox(
+                                                width: 5.0,
                                               ),
-                                              if (notes.length > index && notes[index].trim() != "")
-                                                Container(
-                                                    alignment: Alignment.centerLeft,
-                                                    padding: EdgeInsets.only(top: 3, left: 28),
-                                                    child: Text(
-                                                      notes[index].trim(),
-                                                      style: TextStyle(
-                                                        fontSize: 10,
-                                                        color: Colors.grey[500],
-                                                      ),
-                                                    ))
+                                              Expanded(
+                                                  child: Text(
+                                                DateFormat("dd MMM yy").format(DateTime.parse(eachTask[1].toString())).toString() +
+                                                    " to " +
+                                                    DateFormat("dd MMM yy").format(DateTime.parse(eachTask[2].toString())).toString() +
+                                                    " : " +
+                                                    eachTask[0].toString(),
+                                                style: TextStyle(color: Color.fromARGB(255, 201, 201, 201), fontSize: 14),
+                                              )),
                                             ],
-                                          ));
-                                    return null;
-                                  }),
-                            ),
-                          ],
-                        )),
-                  ),
-                ]),
+                                          ),
+                                          if (notes.length > index && notes[index].trim() != "")
+                                            Container(
+                                                alignment: Alignment.centerLeft,
+                                                padding: EdgeInsets.only(top: 3, left: 28),
+                                                child: Text(
+                                                  'buildAhome: '+notes[index].trim(),
+                                                  style: TextStyle(
+                                                    fontSize: 12,
+                                                    color: Colors.grey[500],
+                                                  ),
+                                                ))
+                                        ],
+                                      ));
+                                return null;
+                              }),
+                        ),
+                      ],
+                    )),
               ),
-            )),
+            ]),
+          ),
+        )),
       ],
     );
   }
 }
 
-class TaskScreenClass extends StatefulWidget {
+enum SlideDirection { leftToRight, rightToLeft, topToBottom, bottomToTop }
+
+class AnimatedWidgetSlide extends StatefulWidget {
+  final Widget child;
+  final SlideDirection direction;
+  final Duration duration;
+
+  AnimatedWidgetSlide({
+    required this.child,
+    required this.direction,
+    required this.duration,
+  });
+
   @override
-  TaskScreen createState() {
-    return TaskScreen();
-  }
+  _AnimatedWidgetSlideState createState() => _AnimatedWidgetSlideState();
 }
 
-class TaskScreen extends State<TaskScreenClass> {
+class _AnimatedWidgetSlideState extends State<AnimatedWidgetSlide> with SingleTickerProviderStateMixin {
+  late AnimationController _animationController;
+  late Animation<Offset> _slideAnimation;
+
   @override
   void initState() {
     super.initState();
-    call();
-  }
+    _animationController = AnimationController(
+      vsync: this,
+      duration: widget.duration,
+    );
 
-  var body;
-  var tasks = [];
+    switch (widget.direction) {
+      case SlideDirection.leftToRight:
+        _slideAnimation = Tween<Offset>(
+          begin: const Offset(-1.0, 0.0),
+          end: const Offset(0.0, 0.0),
+        ).animate(CurvedAnimation(
+          parent: _animationController,
+          curve: Curves.easeInSine,
+        ));
+        break;
+      case SlideDirection.rightToLeft:
+        _slideAnimation = Tween<Offset>(
+          begin: const Offset(1.0, 0.0),
+          end: const Offset(0.0, 0.0),
+        ).animate(CurvedAnimation(
+          parent: _animationController,
+          curve: Curves.easeInOut,
+        ));
+        break;
+      case SlideDirection.topToBottom:
+        _slideAnimation = Tween<Offset>(
+          begin: const Offset(0.0, -1.0),
+          end: const Offset(0.0, 0.0),
+        ).animate(CurvedAnimation(
+          parent: _animationController,
+          curve: Curves.easeInOut,
+        ));
+        break;
+      case SlideDirection.bottomToTop:
+        _slideAnimation = Tween<Offset>(
+          begin: const Offset(0.0, 1.0),
+          end: const Offset(0.0, 0.0),
+        ).animate(CurvedAnimation(
+          parent: _animationController,
+          curve: Curves.easeInOut,
+        ));
+        break;
+    }
 
-  call() async {
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    var id = prefs.getString('project_id');
-
-    var url = 'https://app.buildahome.in/api/get_all_tasks.php?project_id=$id&nt_toggle=1 ';
-    var response = await http.get(Uri.parse(url));
-    setState(() {
-      body = jsonDecode(response.body);
-    });
+    _animationController.forward();
   }
 
   @override
   Widget build(BuildContext context) {
-    return ListView(children: <Widget>[
-      Container(
-          padding: EdgeInsets.only(top: 20, left: 10, bottom: 10),
-          decoration: BoxDecoration(
-              border: Border(
-            bottom: BorderSide(width: 3.0, color: Colors.indigo[900]!),
-          )),
-          child: Text("What's done and what's not?",
-              style: TextStyle(
-                fontSize: 20,
-              ))),
-      if (body == null)
-        new ListView.builder(
-            shrinkWrap: true,
-            physics: BouncingScrollPhysics(),
-            itemCount: 10,
-            itemBuilder: (BuildContext ctxt, int index) {
-              return Row(
-                mainAxisAlignment: MainAxisAlignment.start,
-                children: [
-                  Container(
-                    width: MediaQuery.of(context).size.width,
-                    alignment: Alignment.centerLeft,
-                    padding: EdgeInsets.symmetric(horizontal: 15, vertical: 25),
-                    decoration: BoxDecoration(
-                        color: Colors.grey[200], border: Border(bottom: BorderSide(color: Colors.grey[300]!))),
-                  )
-                ],
-              );
-            }),
-      new ListView.builder(
-         padding: EdgeInsets.only(bottom: 100),
-          shrinkWrap: true,
-          physics: BouncingScrollPhysics(),
-          itemCount: body == null ? 0 : body.length,
-          itemBuilder: (BuildContext ctxt, int index) {
-            return Container(
-              child: TaskItem(
-                  body[index]['task_name'].toString(),
-                  body[index]['start_date'].toString(),
-                  body[index]['end_date'].toString(),
-                  body[index]['sub_tasks'].toString(),
-                  body[index]['progress'].toString(),
-                  body[index]['s_note'].toString()),
-            );
-          }),
-    ]);
+    return SlideTransition(
+      position: _slideAnimation,
+      child: widget.child,
+    );
+  }
+
+  @override
+  void dispose() {
+    _animationController.dispose();
+    super.dispose();
   }
 }

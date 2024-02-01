@@ -390,7 +390,7 @@ class RequestDrawingState extends State<RequestDrawing> {
             DateTime now = DateTime.now();
             String formattedDate = DateFormat('EEEE d MMMM H:m').format(now);
             var url =
-                'https://app.buildahome.in/erp/API/create_drawing_request';
+                'https://office.buildahome.in/API/create_drawing_request';
             var response = await http.post(Uri.parse(url), body: {
               'project_id': projectId,
               'category': category,

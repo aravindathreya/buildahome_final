@@ -32,7 +32,7 @@ class ContractorBillsState extends State<ContractorBills> {
     var _bills;
 
     var billsUrl =
-        'https://app.buildahome.in/erp/API/view_bills?project_id=$id&trade=${this.trade}&name=${this.contractorName}&code=${this.contractorCode}';
+        'https://office.buildahome.in/API/view_bills?project_id=$id&trade=${this.trade}&name=${this.contractorName}&code=${this.contractorCode}';
     var billsResponse = await http.get(Uri.parse(billsUrl));
     _bills = jsonDecode(billsResponse.body);
 

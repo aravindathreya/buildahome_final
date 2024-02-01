@@ -26,9 +26,9 @@ class ProjectsModalBody extends State<ProjectsModal> {
 
   call() async {
     var url =
-        "https://app.buildahome.in/api/projects_access.php?id=${this.id.toString()}";
+        "https://office.buildahome.in/API/projects_access?id=${id.toString()}";
     var response = await http.get(Uri.parse(url));
-    print(response.statusCode);
+    print(response.body);
     setState(() {
       projects = jsonDecode(response.body);
       search_data = projects;
@@ -114,12 +114,12 @@ class ProjectsModalBody extends State<ProjectsModal> {
                                   onTap: () {
                                     print(search_data[Index]['name'] +
                                         "|" +
-                                        search_data[Index]['id']);
+                                        search_data[Index]['id'].toString());
                                     Navigator.pop(
                                         context,
                                         search_data[Index]['name'] +
                                             "|" +
-                                            search_data[Index]['id']);
+                                            (search_data[Index]['id']).toString());
                                   },
                                   child: Text(search_data[Index]['name'],
                                       style: TextStyle(

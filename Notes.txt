@@ -19,3 +19,9 @@ Google location of project Done
 Archived project to show
 
 Add checklist on app for admin Done
+
+
+
+
+Locked wo can still be used to raise bills
+Do no allow clear balance for locked work order

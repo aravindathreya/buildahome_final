@@ -157,7 +157,7 @@ class GalleryState extends State<GalleryForm> {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     prId = prefs.getString('project_id');
 
-    var url = 'https://app.buildahome.in/api/get_gallery_data.php?id=$prId';
+    var url = 'https://office.buildahome.in/API/get_gallery_data?id=$prId';
 
     var response = await http.get(Uri.parse(url));
     entries = jsonDecode(response.body);
@@ -273,7 +273,7 @@ class GalleryState extends State<GalleryForm> {
                                                               onTap: () async {
                                                                 var id = entries[i]['image_id'];
                                                                 var url =
-                                                                    'https://app.buildahome.in/api/delete_image.php?id=$id';
+                                                                    'https://office.buildahome.in/API/delete_image?id=$id';
                                                                 await http.get(Uri.parse(url));
 
                                                                 setState(() {
@@ -308,7 +308,7 @@ class GalleryState extends State<GalleryForm> {
                                   this.con,
                                   MaterialPageRoute(
                                       builder: (context) => FullScreenImage(
-                                          "https://app.buildahome.in/erp/API/images/${entries[i]['image']}")),
+                                          "https://office.buildahome.in/API/images/${entries[i]['image']}")),
                                 );
                               },
                               child: CachedNetworkImage(
@@ -319,7 +319,7 @@ class GalleryState extends State<GalleryForm> {
                                     value: progress.progress,
                                   ),
                                 ),
-                                imageUrl: "https://app.buildahome.in/erp/API/images/${entries[i]['image']}",
+                                imageUrl: "https://office.buildahome.in/API/images/${entries[i]['image']}",
                               ),
                             ))
                 ],

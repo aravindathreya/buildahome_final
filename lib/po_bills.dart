@@ -126,17 +126,17 @@ class POAndBillsState extends State<POAndBills> {
     var wos = [];
     var nt_nmrs = [];
 
-    var po_url = 'https://app.buildahome.in/erp/API/get_POs?project_id=$id';
+    var po_url = 'https://office.buildahome.in/API/get_POs?project_id=$id';
     var po_response = await http.get(Uri.parse(po_url));
     print(po_response.body);
     pos = jsonDecode(po_response.body);
 
     var wo_url =
-        'https://app.buildahome.in/erp/API/get_work_orders?project_id=$id';
+        'https://office.buildahome.in/API/get_work_orders?project_id=$id';
     var wo_response = await http.get(Uri.parse(wo_url));
     wos = jsonDecode(wo_response.body);
 
-    var nt_nmr_url = 'https://app.buildahome.in/erp/API/nt_nmr?project_id=$id';
+    var nt_nmr_url = 'https://office.buildahome.in/API/nt_nmr?project_id=$id';
     var nt_nmr_response = await http.get(Uri.parse(nt_nmr_url));
     nt_nmrs = jsonDecode(nt_nmr_response.body);
 
@@ -199,7 +199,7 @@ class POAndBillsState extends State<POAndBills> {
                   ),
                   onTap: () async {
                     var url =
-                        'https://app.buildahome.in/erp/files/${purchase_orders[Index][4]}';
+                        'https://office.buildahome.in/files/${purchase_orders[Index][4]}';
                     await launch(url);
                   },
                 );
@@ -237,7 +237,7 @@ class POAndBillsState extends State<POAndBills> {
                   ),
                   onTap: () async {
                     var url =
-                        'https://app.buildahome.in/erp/files/work_order_${work_orders[Index][0]}.pdf';
+                        'https://office.buildahome.in/files/work_order_${work_orders[Index][0]}.pdf';
                     await launch(url);
                   },
                 );

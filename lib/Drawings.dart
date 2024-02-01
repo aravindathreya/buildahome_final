@@ -121,7 +121,7 @@ class DocumentsState extends State<Documents> {
   call() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     var id = prefs.getString('project_id');
-    var url = Uri.parse('https://app.buildahome.in/api/view_all_documents.php?id=$id');
+    var url = Uri.parse('https://office.buildahome.in/API/view_all_documents?id=$id');
     var response = await http.get(url);
     var _role = prefs.getString('role');
     var pos = [];

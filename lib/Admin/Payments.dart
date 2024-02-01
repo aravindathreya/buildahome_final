@@ -337,9 +337,9 @@ class PaymentTasks extends State<PaymentTasksClass> {
   call() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     id = prefs.getString('project_id');
-    var url = 'https://app.buildahome.in/api/get_all_tasks.php?project_id=$id&nt_toggle=1  ';
+    var url = 'https://office.buildahome.in/API/get_all_tasks?project_id=$id&nt_toggle=1';
     var response = await http.get(Uri.parse(url));
-    var url1 = 'https://app.buildahome.in/api/get_payment.php?project_id=$id ';
+    var url1 = 'https://office.buildahome.in/API/get_payment?project_id=$id ';
     var response1 = await http.get(Uri.parse(url1));
     var details = jsonDecode(response1.body);
     prefs.setString("pr_value", details[0]['value']);

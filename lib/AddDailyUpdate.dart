@@ -605,6 +605,7 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
                                   );
                                 });
                           } else {
+                            print('Check');
                             //Get the project name to which the user wants to upload
                             var projectName = await showDialog(
                                 context: context,
@@ -629,7 +630,7 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
                                     return ShowAlert("Uploading picture ${successfulImageUploadCount + 1} of ${selectedPictureFilePaths.length}..", false);
                                   });
 
-                              var uri = Uri.parse("https://app.buildahome.in/erp/API/dpr_image_upload");
+                              var uri = Uri.parse("https://office.buildahome.in/API/dpr_image_upload");
                               var request = new http.MultipartRequest("POST", uri);
 
                               var pic = await http.MultipartFile.fromPath("image", selectedPictureFilePaths[x]);
@@ -641,7 +642,7 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
 
                               print(responseString);
 
-                              var url = 'https://app.buildahome.in/api/add_daily_update.php';
+                              var url = 'https://office.buildahome.in/API/add_daily_update';
                               
 
                               var response = await http.post(Uri.parse(url), body: {

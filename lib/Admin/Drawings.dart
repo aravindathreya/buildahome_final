@@ -128,7 +128,7 @@ class DocumentsState extends State<Documents> {
     setProjectId(this.id);
     SharedPreferences prefs = await SharedPreferences.getInstance();
     var id = prefs.getString('projectId');
-    var url = 'https://app.buildahome.in/api/view_all_documents.php?id=$id';
+    var url = 'https://office.buildahome.in/API/view_all_documents?id=$id';
     var response = await http.get(Uri.parse(url));
 
     setState(() {
