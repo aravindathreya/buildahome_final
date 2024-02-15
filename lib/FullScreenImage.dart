@@ -25,11 +25,14 @@ class FullScreenImage1 extends State<FullScreenImage> {
       home: Scaffold(
         appBar: AppBar(
           automaticallyImplyLeading: true,
-          title: Text('buildAhome'),
+          title: Text(
+            'buildAhome',
+            style: TextStyle(color: Color.fromARGB(255, 224, 224, 224), fontSize: 16),
+          ),
           leading: new IconButton(
               icon: new Icon(Icons.chevron_left),
               onPressed: () => {Navigator.pop(context)}),
-          backgroundColor: Color(0xFF000055),
+          backgroundColor: Color.fromARGB(255, 6, 10, 43),
         ),
         body: imageOnly(this.image),
       ),

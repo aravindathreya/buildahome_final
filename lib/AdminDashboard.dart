@@ -30,6 +30,7 @@ class AdminDashboard extends StatelessWidget {
       home: Scaffold(
         key: _scaffoldKey, // ADD THIS LINE
         drawer: NavMenuWidget(),
+          backgroundColor: Color.fromARGB(255, 233, 233, 233),
 
         appBar: AppBar(
           automaticallyImplyLeading: false,
@@ -39,11 +40,12 @@ class AdminDashboard extends StatelessWidget {
           ),
           shadowColor: Colors.grey[100],
           leading: new IconButton(
-              icon: new Icon(Icons.menu, color: Colors.black),
+              icon: new Icon(Icons.menu, color: const Color.fromARGB(255, 255, 255, 255)),
               onPressed: () async {
                 _scaffoldKey.currentState?.openDrawer();
               }),
-          backgroundColor: Colors.white,
+              backgroundColor: Color.fromARGB(255, 0, 13, 87),
+
         ),
         body: AdminHome(),
       ),
@@ -113,7 +115,7 @@ class AdminHomeState extends State<AdminHome> {
   Widget build(BuildContext context) {
     currentWidgetContext = context;
     return Container(
-        color: Colors.white,
+        color: Color.fromARGB(255, 233, 233, 233),
         height: MediaQuery.of(context).size.height,
         width: MediaQuery.of(context).size.width,
         child: ListView(
@@ -125,18 +127,10 @@ class AdminHomeState extends State<AdminHome> {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Container(
-                      margin: EdgeInsets.only(left: 15, right: 15),
+                      margin: EdgeInsets.only(left: 15, right: 15, top: 20),
                       child: Text('Welcome back!', style: TextStyle(fontWeight: FontWeight.w500, fontSize: 18)),
                     ),
-                    Container(
-                      alignment: Alignment.centerRight,
-                      child: Image(
-                        height: 120, // Set your height according to aspect ratio or fixed height
-                        width: 120,
-                        image: AssetImage('assets/images/logo-big.png'),
-                        fit: BoxFit.contain,
-                      ),
-                    )
+                    
                   ],
                 )),
             Visibility(
@@ -144,7 +138,7 @@ class AdminHomeState extends State<AdminHome> {
               child: Container(
                   margin: EdgeInsets.only(left: 15, right: 15, top: 20),
                   padding: EdgeInsets.all(10),
-                  decoration: BoxDecoration(color: Color.fromARGB(255, 216, 213, 252), borderRadius: BorderRadius.circular(10)),
+                  decoration: BoxDecoration(color: Color.fromARGB(255, 204, 207, 248), borderRadius: BorderRadius.circular(10)),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -153,7 +147,15 @@ class AdminHomeState extends State<AdminHome> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Container(
-                            margin: EdgeInsets.only(top: 120),
+                            alignment: Alignment.centerLeft,
+                            child: Image(
+                              height: 120, // Set your height according to aspect ratio or fixed height
+                              width: 120,
+                              image: AssetImage('assets/images/logo-big.png'),
+                              fit: BoxFit.contain,
+                            ),
+                          ),
+                          Container(
                             child: Text(
                               'Role: $currentUserRole',
                               style: TextStyle(fontSize: 14),
@@ -291,15 +293,15 @@ class AdminHomeState extends State<AdminHome> {
                           margin: EdgeInsets.all(5),
                           padding: EdgeInsets.all(20),
                           decoration: BoxDecoration(
-                            color: Colors.grey[200],
+                            color: Color.fromARGB(255, 204, 207, 248),
                             borderRadius: BorderRadius.circular(10),
                           ),
                           child: Column(
                             children: [
-                              Icon(Icons.list, size: 30),
+                              Icon(Icons.list, size: 30, color: Colors.black,),
                               Container(
                                 margin: EdgeInsets.only(top: 10),
-                                child: Text('Projects'),
+                                child: Text('Projects', style: TextStyle(color: Colors.black, fontSize: 16),),
                               )
                             ],
                           )),
@@ -316,15 +318,15 @@ class AdminHomeState extends State<AdminHome> {
                           margin: EdgeInsets.all(5),
                           padding: EdgeInsets.all(20),
                           decoration: BoxDecoration(
-                            color: Colors.grey[200],
+                            color: Color.fromARGB(255, 204, 207, 248),
                             borderRadius: BorderRadius.circular(10),
                           ),
                           child: Column(
                             children: [
-                              Icon(Icons.update, size: 30),
+                              Icon(Icons.update, size: 30, color: Colors.black,),
                               Container(
                                 margin: EdgeInsets.only(top: 10),
-                                child: Text('Add daily update'),
+                                child: Text('Add daily update', style: TextStyle(color: Colors.black, fontSize: 16),),
                               )
                             ],
                           )),
@@ -341,15 +343,15 @@ class AdminHomeState extends State<AdminHome> {
                           margin: EdgeInsets.all(5),
                           padding: EdgeInsets.all(20),
                           decoration: BoxDecoration(
-                            color: Colors.grey[200],
+                            color: Color.fromARGB(255, 204, 207, 248),
                             borderRadius: BorderRadius.circular(10),
                           ),
                           child: Column(
                             children: [
-                              Icon(Icons.dock, size: 30),
+                              Icon(Icons.dock, size: 30, color: Colors.black,),
                               Container(
                                 margin: EdgeInsets.only(top: 10),
-                                child: Text('Open indents'),
+                                child: Text('Open indents', style: TextStyle(color: Colors.black, fontSize: 16),),
                               )
                             ],
                           )),

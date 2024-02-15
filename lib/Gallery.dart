@@ -10,6 +10,7 @@ import 'NavMenu.dart';
 import 'main.dart';
 import 'UserHome.dart';
 import 'Scheduler.dart';
+import 'NotesAndComments.dart';
 
 var images = {};
 
@@ -23,12 +24,13 @@ class Gallery extends StatelessWidget {
       theme: ThemeData(fontFamily: App().fontName),
       home: Scaffold(
         key: _scaffoldKey,
-        backgroundColor: Colors.black,
+        backgroundColor: Color.fromARGB(255, 233, 233, 233),
         drawer: NavMenuWidget(),
         appBar: AppBar(
           automaticallyImplyLeading: false,
           title: Text(
             appTitle,
+            style: TextStyle(color: Color.fromARGB(255, 224, 224, 224), fontSize: 16),
           ),
           leading: new IconButton(
               icon: new Icon(Icons.menu),
@@ -37,7 +39,7 @@ class Gallery extends StatelessWidget {
                 var username = prefs.getString('username');
                 _scaffoldKey.currentState!.openDrawer();
               }),
-          backgroundColor: Colors.transparent,
+          backgroundColor: Color.fromARGB(255, 6, 10, 43),
         ),
         body: GalleryForm(context),
       ),
@@ -146,11 +148,11 @@ class GalleryState extends State<GalleryForm> {
                               padding: EdgeInsets.only(bottom: 15, top: 25),
                               child: Row(
                                 children: [
-                                  Icon(Icons.date_range, color: Colors.white),
+                                  Icon(Icons.date_range, color: Color.fromARGB(255, 44, 44, 44)),
                                   SizedBox(
                                     width: 10,
                                   ),
-                                  Text(subset[Index], style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12, color: Colors.white)),
+                                  Text(subset[Index], style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12, color: Color.fromARGB(255, 44, 44, 44))),
                                 ],
                               )),
                           Wrap(
@@ -194,68 +196,112 @@ class GalleryState extends State<GalleryForm> {
                       ));
                 }),
           ),
-          Container(
-              decoration: BoxDecoration(border: Border(top: BorderSide(color: const Color.fromARGB(255, 49, 49, 49))), color: Colors.black),
-              padding: EdgeInsets.only(top: 15, bottom: 15),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceAround,
-                children: [
-                  InkWell(
-                      onTap: () {
-                        Navigator.push(context, MaterialPageRoute(builder: (context) => Home()));
-                      },
-                      child: Container(
-                        height: 50,
-                        child: Column(
-                          children: [
-                            Icon(
-                              Icons.home_rounded,
-                              size: 30,
-                              color: Colors.grey,
-                            ),
-                            Text(
-                              'Home',
-                              style: TextStyle(color: Colors.grey),
-                            )
-                          ],
-                        ),
-                      )),
-                  InkWell(
-                      onTap: () {
-                        Navigator.push(context, MaterialPageRoute(builder: (context) => TaskWidget()));
-                      },
-                      child: Container(
-                        height: 50,
-                        child: Column(
-                          children: [
-                            Icon(
-                              Icons.alarm,
-                              color: Colors.grey,
-                            ),
-                            Text(
-                              'Schedule',
-                              style: TextStyle(color: Colors.grey),
-                            )
-                          ],
-                        ),
-                      )),
-                  Container(
-                    height: 50,
-                    child: Column(
-                      children: [
-                        Icon(
-                          Icons.photo_library,
-                          color: Colors.white,
-                        ),
-                        Text(
-                          'Gallery',
-                          style: TextStyle(color: Colors.white),
-                        )
-                      ],
+         Container(
+            decoration: BoxDecoration(
+              color: const Color.fromARGB(255, 223, 223, 223)
+            ),
+            padding: EdgeInsets.only(top: 15, bottom: 1),
+            child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+             InkWell(
+                    onTap: () {
+                      Navigator.push(
+                          context,
+                          PageRouteBuilder(
+                            pageBuilder: (context, animation, secondaryAnimation) => Home(),
+                            transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                              return SlideTransition(
+                                position: Tween<Offset>(
+                                  begin: const Offset(-1.0, 0.0),
+                                  end: Offset.zero,
+                                ).animate(animation),
+                                child: child,
+                              );
+                            },
+                          ),
+                        );
+                    },
+                    child: Container(
+                      height: 50,
+                      child: Column(
+                        children: [
+                          Icon(
+                            Icons.home_rounded,
+                            size: 20,
+                            color: Color.fromARGB(255, 100, 100, 100),
+                          ),
+                          Text(
+                            'Home',
+                            style: TextStyle(color: Color.fromARGB(255, 100, 100, 100), fontSize: 12),
+                          )
+                        ],
+                      ),
                     ),
                   ),
-                ],
-              )),
+              InkWell(
+               onTap: () {
+                  Navigator.push(
+                          context,
+                          PageRouteBuilder(
+                            pageBuilder: (context, animation, secondaryAnimation) => TaskWidget(),
+                            transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                              return SlideTransition(
+                                position: Tween<Offset>(
+                                  begin: const Offset(-1.0, 0.0),
+                                  end: Offset.zero,
+                                ).animate(animation),
+                                child: child,
+                              );
+                            },
+                          ),
+                        );
+                },
+                child: Container(
+                  height: 50,
+                  child: Column(children: [
+                  Icon(Icons.alarm, size: 20, color: const Color.fromARGB(255, 100, 100, 100),),
+                  Text('Schedule', style: TextStyle(color:  Color.fromARGB(255, 100, 100, 100), fontSize: 12))
+                ],),
+                )
+              ),
+              Container(
+                  height: 50,
+                  child: Column(children: [
+                  Icon(Icons.photo_library, size: 25, color:  const Color.fromARGB(255, 46, 46, 46),),
+                  Text('Gallery', style: TextStyle(color:  const Color.fromARGB(255, 46, 46, 46), fontSize: 12),)
+                ],),
+                ),
+              InkWell(
+                onTap: () {
+                   Navigator.push(
+                          context,
+                          PageRouteBuilder(
+                            pageBuilder: (context, animation, secondaryAnimation) => NotesAndComments(),
+                            transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                              return SlideTransition(
+                                position: Tween<Offset>(
+                                  begin: const Offset(1.0, 0.0),
+                                  end: Offset.zero,
+                                ).animate(animation),
+                                child: child,
+                              );
+                            },
+                          ),
+                        );
+                },
+                child: Container(
+                  height: 50,
+                  child: Column(children: [
+                  Icon(Icons.update, size: 20, color:  Color.fromARGB(255, 100, 100, 100),),
+                  Text('Notes', style: TextStyle(color:  Color.fromARGB(255, 100, 100, 100), fontSize: 12),)
+                ],),
+                )
+              ),
+            ],
+          )
+        
+          ),
         ]));
   }
 }

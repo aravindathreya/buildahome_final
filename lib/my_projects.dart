@@ -19,7 +19,7 @@ class MyProjects extends StatelessWidget {
       home: Scaffold(
         key: _scaffoldKey,
         // ADD THIS LINE
-        backgroundColor: Colors.white,
+          backgroundColor: Color.fromARGB(255, 233, 233, 233),
         appBar: AppBar(
           automaticallyImplyLeading: true,
           title: Row(
@@ -28,11 +28,11 @@ class MyProjects extends StatelessWidget {
           ),
           shadowColor: Colors.grey[100]!,
           leading: new IconButton(
-              icon: new Icon(Icons.chevron_left, color: Colors.black),
+              icon: new Icon(Icons.chevron_left, color: const Color.fromARGB(255, 255, 255, 255)),
               onPressed: () async {
                 Navigator.pop(context);
               }),
-          backgroundColor: Colors.white,
+          backgroundColor: Color.fromARGB(255, 0, 13, 87),
         ),
         body: ProjectsModal(),
       ),
@@ -82,7 +82,6 @@ class ProjectsModalBody extends State<ProjectsModal> {
             child: Text("Projects", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20),)),
         Container(
             margin: EdgeInsets.only(bottom: 10, top: 10),
-            color: Colors.white,
             child: TextFormField(
               onChanged: (text) {
                 setState(() {
@@ -136,7 +135,6 @@ class ProjectsModalBody extends State<ProjectsModal> {
                           padding: EdgeInsets.symmetric(
                               horizontal: 15, vertical: 20),
                           decoration: BoxDecoration(
-                            color: Colors.white,
                             shape: BoxShape.rectangle,
                             border: Border(
                               bottom: BorderSide(

@@ -20,7 +20,9 @@ class MaterialUnits extends StatelessWidget {
         content: Column(children: [
           Container(alignment: Alignment.centerLeft, padding: EdgeInsets.all(10), child: Text("Select unit")),
           Container(
-              height: MediaQuery.of(context).size.height - 130,
+              height: MediaQuery.of(context).viewInsets.bottom > 0
+                  ? MediaQuery.of(context).size.height * 0.3 // Reduce height when keyboard is active
+                  : MediaQuery.of(context).size.height * 0.7,
               width: MediaQuery.of(context).size.width - 20,
               child: ListView.builder(
                   shrinkWrap: true,

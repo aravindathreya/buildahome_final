@@ -19,19 +19,20 @@ class PaymentTaskWidget extends StatelessWidget {
       theme: ThemeData(fontFamily: App().fontName),
       home: Scaffold(
         key: _scaffoldKey,
-        backgroundColor: Colors.black,
+        backgroundColor: Color.fromARGB(255, 233, 233, 233),
         drawer: NavMenuWidget(),
         appBar: AppBar(
           automaticallyImplyLeading: true,
           title: Text(
             appTitle,
+            style: TextStyle(color: Color.fromARGB(255, 224, 224, 224), fontSize: 16),
           ),
           leading: new IconButton(
               icon: new Icon(Icons.chevron_left),
               onPressed: () async {
                 Navigator.pop(context);
               }),
-          backgroundColor: Colors.transparent,
+          backgroundColor: Color.fromARGB(255, 6, 10, 43),
         ),
         body: PaymentTasksClass(),
       ),
@@ -87,6 +88,9 @@ class TaskItemWidget extends State<TaskItem> with SingleTickerProviderStateMixin
   }
 
   _setValue() async {
+    if(this._paymentPercentage.toString().trim() == '') {
+      this._paymentPercentage = '0';
+    }
     setState(() {
       amt = ((int.parse(this._paymentPercentage)) / 100) * int.parse(this.projectValue);
     });
@@ -173,9 +177,7 @@ class TaskItemWidget extends State<TaskItem> with SingleTickerProviderStateMixin
             child: AnimatedContainer(
               duration: Duration(milliseconds: 500),
               decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(5),
-                color: Color.fromARGB(255, 26, 26, 26),
-              ),
+                  borderRadius: BorderRadius.circular(5), color: Color.fromARGB(255, 199, 199, 199), gradient: LinearGradient(colors: [Color.fromARGB(255, 167, 166, 166), Color.fromARGB(255, 221, 221, 221)])),
               padding: EdgeInsets.all(this.pad),
               child: Container(
                 child: Column(children: <Widget>[
@@ -230,10 +232,10 @@ class TaskItemWidget extends State<TaskItem> with SingleTickerProviderStateMixin
                                 child: Text(
                                   this._taskName,
                                   textAlign: TextAlign.left,
-                                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.white),
+                                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.normal, color: Color.fromARGB(255, 44, 44, 44)),
                                 ),
                               ),
-                              new Icon(view, color: Colors.white),
+                              new Icon(view, color: const Color.fromARGB(255, 44, 44, 44)),
                             ],
                           ),
                         ),
@@ -252,7 +254,7 @@ class TaskItemWidget extends State<TaskItem> with SingleTickerProviderStateMixin
                                 children: <Widget>[
                                   Text(
                                     this._paymentPercentage + "%     ₹ " + ((amt != null) ? amt.toStringAsFixed(2) : ''),
-                                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.white),
+                                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color.fromARGB(255, 44, 44, 44)),
                                   )
                                 ],
                               )),
@@ -261,7 +263,7 @@ class TaskItemWidget extends State<TaskItem> with SingleTickerProviderStateMixin
                                 padding: EdgeInsets.all(10),
                                 child: Text(
                                   this.note.trim(),
-                                  style: TextStyle(color: Colors.white),
+                                  style: TextStyle(color: Color.fromARGB(255, 44, 44, 44)),
                                 ))
                         ],
                       )),
@@ -313,93 +315,110 @@ class PaymentTasks extends State<PaymentTasksClass> {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.only(bottom: 1),
-      child: ListView(children: <Widget>[
-        Container(margin: EdgeInsets.only(top: 20, left: 15, bottom: 10), child: Text("Project Payments", style: TextStyle(fontSize: 20, color: Colors.white))),
-        AnimatedWidgetSlide(
-            direction: SlideDirection.leftToRight, // Specify the slide direction
-            duration: Duration(milliseconds: 300),
-            child: Container(
-              height: 2,
-              color: const Color.fromARGB(255, 34, 34, 34),
-              width: 200,
-              margin: EdgeInsets.only(left: 15, right: 100),
-            )),
-        Container(
-          margin: EdgeInsets.symmetric(vertical: 20, horizontal: 15),
-          padding: EdgeInsets.all(10),
-          decoration: BoxDecoration(
-            color: const Color.fromARGB(255, 7, 7, 7),
-            borderRadius: BorderRadius.circular(5),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              Container(
-                width: 150,
-                margin: EdgeInsets.symmetric(vertical: 5),
-                padding: EdgeInsets.all(10),
-                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(6)),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(child: Text("Project Value", style: TextStyle(fontSize: 10))),
-                    Container(margin: EdgeInsets.only(top: 5), child: Text("₹ " + projectValue, style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold))),
-                  ],
+    return Stack(
+      children: [
+        Opacity(
+          opacity: 0.3,
+          child: Container(
+            width: MediaQuery.of(context).size.width,
+            height: MediaQuery.of(context).size.height,
+            decoration: BoxDecoration(
+                color: Color.fromARGB(255, 214, 214, 214),
+                border: Border.all(width: 1, color: Colors.grey[200]!),
+                borderRadius: BorderRadius.circular(10),
                 ),
-              ),
-              Container(
-                width: 150,
-                margin: EdgeInsets.symmetric(vertical: 5),
-                padding: EdgeInsets.all(10),
-                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(6)),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
-                        child: Text("Paid till date",
-                            style: TextStyle(
-                              fontSize: 10,
-                            ))),
-                    Container(margin: EdgeInsets.only(top: 5), child: Text("₹ " + totalPaid, style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.green[700]))),
-                  ],
-                ),
-              ),
-              Container(
-                width: 150,
-                margin: EdgeInsets.symmetric(vertical: 5),
-                padding: EdgeInsets.all(10),
-                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(6)),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
-                        child: Text("Current Outstanding",
-                            style: TextStyle(
-                              fontSize: 10,
-                            ))),
-                    Container(margin: EdgeInsets.only(top: 5), child: Text("₹ " + outstanding, style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.red[500]))),
-                  ],
-                ),
-              ),
-            ],
+            
+            child: Image.network("https://images.unsplash.com/photo-1502005097973-6a7082348e28?w=500&auto=format&fit=crop&q=60&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxzZWFyY2h8MzV8fEhvdXNlfGVufDB8fDB8fHww", fit: BoxFit.fill),
           ),
         ),
-        new ListView.builder(
-            shrinkWrap: true,
-            physics: BouncingScrollPhysics(),
-            itemCount: body == null ? 0 : body.length,
-            itemBuilder: (BuildContext ctxt, int index) {
-              return AnimatedWidgetSlide(
-                  direction: index % 2 == 0 ? SlideDirection.leftToRight : SlideDirection.rightToLeft, // Specify the slide direction
-                  duration: Duration(milliseconds: 300),
-                  child: Container(
-                    child: TaskItem(body[index]['task_name'].toString(), body[index]['start_date'].toString(), body[index]['end_date'].toString(), body[index]['payment'].toString(), body[index]['paid'].toString(),
-                        body[index]['p_note'].toString(), projectValue),
-                  ));
-            }),
-      ]),
+        Padding(
+          padding: EdgeInsets.only(bottom: 1),
+          child: ListView(children: <Widget>[
+            Container(margin: EdgeInsets.only(top: 20, left: 20, bottom: 10), child: Text("Project Payments", style: TextStyle(fontSize: 16, color: const Color.fromARGB(255, 37, 37, 37)))),
+            AnimatedWidgetSlide(
+                direction: SlideDirection.leftToRight, // Specify the slide direction
+                duration: Duration(milliseconds: 300),
+                child: Container(
+                  height: 2,
+                  color: const Color.fromARGB(255, 34, 34, 34),
+                  width: 100,
+                  margin: EdgeInsets.only(left: 20, right: 250),
+                )),
+            Container(
+              margin: EdgeInsets.symmetric(vertical: 20, horizontal: 10),
+              padding: EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(5),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Container(
+                    width: 150,
+                    margin: EdgeInsets.symmetric(vertical: 5),
+                    padding: EdgeInsets.all(10),
+                    decoration: BoxDecoration(color: Color.fromARGB(255, 240, 255, 242), borderRadius: BorderRadius.circular(6)),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(child: Text("Project Value", style: TextStyle(fontSize: 10))),
+                        Container(margin: EdgeInsets.only(top: 5), child: Text("₹ " + projectValue, style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold))),
+                      ],
+                    ),
+                  ),
+                  Container(
+                    width: 150,
+                    margin: EdgeInsets.symmetric(vertical: 5),
+                    padding: EdgeInsets.all(10),
+                    decoration: BoxDecoration(color: Color.fromARGB(255, 255, 237, 237), borderRadius: BorderRadius.circular(6)),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                            child: Text("Paid till date",
+                                style: TextStyle(
+                                  fontSize: 10,
+                                ))),
+                        Container(margin: EdgeInsets.only(top: 5), child: Text("₹ " + totalPaid, style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.green[700]))),
+                      ],
+                    ),
+                  ),
+                  Container(
+                    width: 150,
+                    margin: EdgeInsets.symmetric(vertical: 5),
+                    padding: EdgeInsets.all(10),
+                    decoration: BoxDecoration(color: Color.fromARGB(255, 246, 248, 225), borderRadius: BorderRadius.circular(6)),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                            child: Text("Current Outstanding",
+                                style: TextStyle(
+                                  fontSize: 10,
+                                ))),
+                        Container(margin: EdgeInsets.only(top: 5), child: Text("₹ " + outstanding, style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.red[500]))),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            new ListView.builder(
+                shrinkWrap: true,
+                physics: BouncingScrollPhysics(),
+                itemCount: body == null ? 0 : body.length,
+                itemBuilder: (BuildContext ctxt, int index) {
+                  return AnimatedWidgetSlide(
+                      direction: index % 2 == 0 ? SlideDirection.leftToRight : SlideDirection.rightToLeft, // Specify the slide direction
+                      duration: Duration(milliseconds: 300),
+                      child: Container(
+                        child: TaskItem(body[index]['task_name'].toString(), body[index]['start_date'].toString(), body[index]['end_date'].toString(), body[index]['payment'].toString(), body[index]['paid'].toString(),
+                            body[index]['p_note'].toString(), projectValue),
+                      ));
+                }),
+          ]),
+        )
+      ],
     );
   }
 }

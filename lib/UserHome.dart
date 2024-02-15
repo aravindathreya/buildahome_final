@@ -26,26 +26,25 @@ class Home extends StatelessWidget {
   Widget build(BuildContext context) {
     final appTitle = 'buildAhome';
     return MaterialApp(
-      title: appTitle,
       theme: ThemeData(fontFamily: App().fontName),
       home: Scaffold(
         key: _scaffoldKey,
-        backgroundColor: Colors.black,
-
+        backgroundColor: Colors.white,
         drawer: NavMenuWidget(),
         appBar: AppBar(
           automaticallyImplyLeading: false,
           title: Text(
             appTitle,
+            style: TextStyle(color: Color.fromARGB(255, 224, 224, 224), fontSize: 16),
           ),
           leading: new IconButton(
-              icon: new Icon(Icons.menu),
+              icon: new Icon(Icons.menu, color: Color.fromARGB(255, 224, 224, 224)),
               onPressed: () async {
                 SharedPreferences prefs = await SharedPreferences.getInstance();
                 var username = prefs.getString('username');
                 _scaffoldKey.currentState!.openDrawer();
               }),
-          backgroundColor: Colors.transparent,
+          backgroundColor: Color.fromARGB(255, 6, 10, 43),
         ),
         body: UserHomeScreen(),
       ),
@@ -62,14 +61,7 @@ class chipSetNavigation extends StatefulWidget {
 
 class chipSetNavigationState extends State<chipSetNavigation> {
   var activeTab = 'My Home';
-  var tabsList = [
-    'My Home',
-    "Scheduler",
-    "Payments",
-    "Non tender payments",
-    "Gallery",
-    "Documents"
-  ];
+  var tabsList = ['My Home', "Scheduler", "Payments", "Non tender payments", "Gallery", "Documents"];
   @override
   void initState() {
     super.initState();
@@ -79,8 +71,7 @@ class chipSetNavigationState extends State<chipSetNavigation> {
     color: Color(0xFF000055),
   );
 
-  var inactiveDecoration = BoxDecoration(
-      color: const Color.fromARGB(255, 0, 0, 0), borderRadius: BorderRadius.circular(2));
+  var inactiveDecoration = BoxDecoration(color: const Color.fromARGB(255, 0, 0, 0), borderRadius: BorderRadius.circular(2));
 
   @override
   Widget build(BuildContext context) {
@@ -95,20 +86,16 @@ class chipSetNavigationState extends State<chipSetNavigation> {
                 activeTab = tabsList[i];
               });
               print(i);
-              UserHomeScreenState().pageController.animateToPage(i,
-                  duration: Duration(milliseconds: 100), curve: Curves.elasticInOut);
+              UserHomeScreenState().pageController.animateToPage(i, duration: Duration(milliseconds: 100), curve: Curves.elasticInOut);
             },
             child: Container(
                 padding: EdgeInsets.symmetric(horizontal: 20, vertical: 10),
                 margin: EdgeInsets.symmetric(horizontal: 5, vertical: 5),
-                decoration: tabsList[i] == activeTab
-                    ? activeDecoration
-                    : inactiveDecoration,
+                decoration: tabsList[i] == activeTab ? activeDecoration : inactiveDecoration,
                 child: Text(
                   tabsList[i],
                   style: TextStyle(
-                    color:
-                        tabsList[i] == activeTab ? Colors.white : Colors.black,
+                    color: tabsList[i] == activeTab ? Colors.white : Colors.black,
                     fontSize: 16,
                   ),
                 )),
@@ -138,27 +125,14 @@ class UserHomeScreenState extends State<UserHomeScreen> {
     "Payments",
     "Non tender payments",
   ];
-  var widgetList = [
-    UserDashboardScreen(),
-    TaskScreenClass(),
-    Gallery(),
-    Documents(),
-    NotesAndComments(),
-    PaymentTasksClass(),
-    NTPaymentTasksClass()
-  ];
-
+  var widgetList = [UserDashboardScreen(), TaskScreenClass(), Gallery(), Documents(), NotesAndComments(), PaymentTasksClass(), NTPaymentTasksClass()];
 
   var blocked = false;
   var block_reason = '';
 
-  var activeDecoration = BoxDecoration(
-      color: Color(0xFF000055), borderRadius: BorderRadius.circular(5));
+  var activeDecoration = BoxDecoration(color: Color(0xFF000055), borderRadius: BorderRadius.circular(5));
 
-  var inactiveDecoration = BoxDecoration(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(5),
-      border: Border.all(color: Colors.grey[300]!));
+  var inactiveDecoration = BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(5), border: Border.all(color: Color.fromARGB(255, 100, 100, 100)));
 
   void setUserRole() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
@@ -194,8 +168,7 @@ class UserHomeScreenState extends State<UserHomeScreen> {
   set_project_status() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     var id = prefs.getString('project_id');
-    var statusUrl =
-        'https://office.buildahome.in/API/get_project_block_status?project_id=$id';
+    var statusUrl = 'https://office.buildahome.in/API/get_project_block_status?project_id=$id';
     var statusResponse = await http.get(Uri.parse(statusUrl));
     var statusResponseBody = jsonDecode(statusResponse.body);
     if (statusResponseBody['status'] == 'blocked') {
@@ -208,11 +181,7 @@ class UserHomeScreenState extends State<UserHomeScreen> {
             "Payments",
             "Non tender payments",
           ];
-          widgetList = [
-            UserDashboardScreen(),
-            PaymentTasksClass(),
-            NTPaymentTasksClass()
-          ];
+          widgetList = [UserDashboardScreen(), PaymentTasksClass(), NTPaymentTasksClass()];
         }
       });
     }
@@ -234,53 +203,130 @@ class UserHomeScreenState extends State<UserHomeScreen> {
         children: [
           UserDashboardScreen(),
           Container(
-            decoration: BoxDecoration(
-              border: Border(top: BorderSide(color: const Color.fromARGB(255, 49, 49, 49))),
-              color: Colors.black
-            ),
-            padding: EdgeInsets.only(top: 15, bottom: 15),
-            child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: [
-              Container(
-                  height: 50,
-                  child: Column(children: [
-                  Icon(Icons.home_rounded, size: 30, color: Colors.white,),
-                  Text('Home', style: TextStyle(color: Colors.white),)
-                ],),
-                ),
-              InkWell(
-               onTap: () {
-                  Navigator.push(context, MaterialPageRoute(builder: (context) => TaskWidget()));
-                },
-                child: Container(
-                  height: 50,
-                  child: Column(children: [
-                  Icon(Icons.alarm, color: Colors.grey,),
-                  Text('Schedule', style: TextStyle(color: Colors.grey),)
-                ],),
-                )
-              ),
-              InkWell(
-                onTap: () {
-                  Navigator.push(context, MaterialPageRoute(builder: (context) => Gallery()));
-                },
-                child: Container(
-                  height: 50,
-                  child: Column(children: [
-                  Icon(Icons.photo_library, color: Colors.grey,),
-                  Text('Gallery', style: TextStyle(color: Colors.grey),)
-                ],),
-                )
-              ),
-            ],
-          )
-        
-          ),
-          ],
+              decoration: BoxDecoration(color: const Color.fromARGB(255, 223, 223, 223)),
+              padding: EdgeInsets.only(top: 15, bottom: 1),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                children: [
+                  Container(
+                    height: 50,
+                    child: Column(
+                      children: [
+                        Icon(
+                          Icons.home_rounded,
+                          size: 25,
+                          color: Color.fromARGB(255, 46, 46, 46),
+                        ),
+                        Text(
+                          'Home',
+                          style: TextStyle(color: const Color.fromARGB(255, 46, 46, 46), fontSize: 12),
+                        )
+                      ],
+                    ),
+                  ),
+                  InkWell(
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          PageRouteBuilder(
+                            pageBuilder: (context, animation, secondaryAnimation) => TaskWidget(),
+                            transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                              return SlideTransition(
+                                position: Tween<Offset>(
+                                  begin: const Offset(1.0, 0.0),
+                                  end: Offset.zero,
+                                ).animate(animation),
+                                child: child,
+                              );
+                            },
+                          ),
+                        );
+                      },
+                      child: Container(
+                        height: 50,
+                        child: Column(
+                          children: [
+                            Icon(
+                              Icons.alarm,
+                              size: 20,
+                              color: const Color.fromARGB(255, 100, 100, 100),
+                            ),
+                            Text('Schedule', style: TextStyle(color: Color.fromARGB(255, 100, 100, 100), fontSize: 12))
+                          ],
+                        ),
+                      )),
+                  InkWell(
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          PageRouteBuilder(
+                            pageBuilder: (context, animation, secondaryAnimation) => Gallery(),
+                            transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                              return SlideTransition(
+                                position: Tween<Offset>(
+                                  begin: const Offset(2.0, 0.0),
+                                  end: Offset.zero,
+                                ).animate(animation),
+                                child: child,
+                              );
+                            },
+                          ),
+                        );
+                      },
+                      child: Container(
+                        height: 50,
+                        child: Column(
+                          children: [
+                            Icon(
+                              Icons.photo_library,
+                              size: 20,
+                              color: Color.fromARGB(255, 100, 100, 100),
+                            ),
+                            Text(
+                              'Gallery',
+                              style: TextStyle(color: Color.fromARGB(255, 100, 100, 100), fontSize: 12),
+                            )
+                          ],
+                        ),
+                      )),
+                  InkWell(
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          PageRouteBuilder(
+                            pageBuilder: (context, animation, secondaryAnimation) => NotesAndComments(),
+                            transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                              return SlideTransition(
+                                position: Tween<Offset>(
+                                  begin: const Offset(1.0, 0.0),
+                                  end: Offset.zero,
+                                ).animate(animation),
+                                child: child,
+                              );
+                            },
+                          ),
+                        );
+                      },
+                      child: Container(
+                        height: 50,
+                        child: Column(
+                          children: [
+                            Icon(
+                              Icons.update,
+                              size: 20,
+                              color: Color.fromARGB(255, 100, 100, 100),
+                            ),
+                            Text(
+                              'Notes',
+                              style: TextStyle(color: Color.fromARGB(255, 100, 100, 100), fontSize: 12),
+                            )
+                          ],
+                        ),
+                      )),
+                ],
+              )),
+        ],
       ),
     );
-
-    
   }
 }

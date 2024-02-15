@@ -66,7 +66,7 @@ class MaterialState extends State<Materials> {
           Container(
               height: MediaQuery.of(context).viewInsets.bottom > 0
                   ? MediaQuery.of(context).size.height * 0.3 // Reduce height when keyboard is active
-                  : MediaQuery.of(context).size.height - 200,
+                  : MediaQuery.of(context).size.height * 0.7,
               width: MediaQuery.of(context).size.width - 20,
               child: materials.length == 0
                   ? SpinKitRing(

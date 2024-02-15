@@ -172,8 +172,41 @@ class DocumentsState extends State<Documents> {
         new GlobalKey<ScaffoldState>();
     return Scaffold(
         key: _scaffoldKey,
-        body: ListView(
+        backgroundColor: Color.fromARGB(255, 233, 233, 233),
+
+        appBar: AppBar(
+          automaticallyImplyLeading: true,
+          title: Text(
+            appTitle,
+            style: TextStyle(color: Color.fromARGB(255, 224, 224, 224), fontSize: 16),
+          ),
+          leading: new IconButton(
+              icon: new Icon(Icons.chevron_left),
+              onPressed: () async {
+                Navigator.pop(context);
+              }),
+          backgroundColor: Color.fromARGB(255, 6, 10, 43),
+
+        ),
+        body: Stack(children: [
+          Opacity(
+          opacity: 0.4,
+          child: Container(
+            width: MediaQuery.of(context).size.width,
+            height: MediaQuery.of(context).size.height,
+            decoration: BoxDecoration(
+                color: Color.fromARGB(255, 214, 214, 214),
+                border: Border.all(width: 1, color: Colors.grey[200]!),
+                borderRadius: BorderRadius.circular(10),
+                ),
+            
+            child: Image.network("https://plus.unsplash.com/premium_photo-1677402408071-232d1c3c3787?w=500&auto=format&fit=crop&q=60&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxzZWFyY2h8Mjl8fGZpbGVzfGVufDB8fDB8fHww", fit: BoxFit.fill),
+          ),
+        ),
+          ListView(
           children: [
+            Container(margin: EdgeInsets.only(top: 20, left: 15, bottom: 10), child: Text("Project Documents", style: TextStyle(fontSize: 16, color: const Color.fromARGB(255, 37, 37, 37)))),
+
             ListView.builder(
               shrinkWrap: true,
               physics: NeverScrollableScrollPhysics(),
@@ -190,6 +223,8 @@ class DocumentsState extends State<Documents> {
               margin: EdgeInsets.only(bottom: 100),
             )
           ],
-        ));
+        )
+        ],)
+        );
   }
 }

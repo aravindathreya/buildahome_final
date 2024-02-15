@@ -1,3 +1,4 @@
+import 'package:buildahome/NotesAndComments.dart';
 import 'package:flutter/material.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
@@ -20,12 +21,13 @@ class TaskWidget extends StatelessWidget {
       theme: ThemeData(fontFamily: App().fontName),
       home: Scaffold(
         key: _scaffoldKey,
-        backgroundColor: Colors.black,
+        backgroundColor: Color.fromARGB(255, 233, 233, 233),
         drawer: NavMenuWidget(),
         appBar: AppBar(
           automaticallyImplyLeading: false,
           title: Text(
             appTitle,
+            style: TextStyle(color: Color.fromARGB(255, 224, 224, 224), fontSize: 16),
           ),
           leading: new IconButton(
               icon: new Icon(Icons.menu),
@@ -34,7 +36,7 @@ class TaskWidget extends StatelessWidget {
                 var username = prefs.getString('username');
                 _scaffoldKey.currentState!.openDrawer();
               }),
-          backgroundColor: Colors.transparent,
+          backgroundColor: Color.fromARGB(255, 6, 10, 43),
         ),
         body: TaskScreenClass(),
       ),
@@ -79,7 +81,8 @@ class TaskScreen extends State<TaskScreenClass> {
         alignment: Alignment.bottomCenter,
         children: [
           ListView(children: <Widget>[
-            Container(padding: EdgeInsets.only(top: 20, left: 15, bottom: 10), decoration: BoxDecoration(border: Border()), child: Text("Project Schedule", style: TextStyle(fontSize: 20, color: Colors.white))),
+            Container(
+                padding: EdgeInsets.only(top: 20, left: 15, bottom: 20), decoration: BoxDecoration(), child: Text("Home construction Schedule", style: TextStyle(fontSize: 18, color: const Color.fromARGB(255, 0, 0, 0)))),
             if (body == null)
               new ListView.builder(
                   shrinkWrap: true,
@@ -93,7 +96,6 @@ class TaskScreen extends State<TaskScreenClass> {
                           width: MediaQuery.of(context).size.width,
                           alignment: Alignment.centerLeft,
                           padding: EdgeInsets.symmetric(horizontal: 15, vertical: 25),
-                          decoration: BoxDecoration(color: const Color.fromARGB(255, 0, 0, 0), border: Border(bottom: BorderSide(color: const Color.fromARGB(255, 0, 0, 0)!))),
                         )
                       ],
                     );
@@ -105,7 +107,7 @@ class TaskScreen extends State<TaskScreenClass> {
                 itemCount: body == null ? 0 : body.length,
                 itemBuilder: (BuildContext ctxt, int index) {
                   return AnimatedWidgetSlide(
-                            direction: index % 2 == 0 ? SlideDirection.leftToRight : SlideDirection.rightToLeft, // Specify the slide direction
+                      direction: index % 2 == 0 ? SlideDirection.leftToRight : SlideDirection.rightToLeft, // Specify the slide direction
                       duration: Duration(milliseconds: 500), // Adjust the duration as needed
 
                       child: Container(
@@ -115,49 +117,76 @@ class TaskScreen extends State<TaskScreenClass> {
                 }),
           ]),
           Container(
-              decoration: BoxDecoration(border: Border(top: BorderSide(color: const Color.fromARGB(255, 49, 49, 49))), color: Colors.black),
-              padding: EdgeInsets.only(top: 15, bottom: 15),
+              decoration: BoxDecoration(color: const Color.fromARGB(255, 223, 223, 223)),
+              padding: EdgeInsets.only(top: 15, bottom: 1),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceAround,
                 children: [
                   InkWell(
-                      onTap: () {
-                        Navigator.push(context, MaterialPageRoute(builder: (context) => Home()));
-                      },
-                      child: Container(
+                    onTap: () {
+                      Navigator.push(
+                          context,
+                          PageRouteBuilder(
+                            pageBuilder: (context, animation, secondaryAnimation) => Home(),
+                            transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                              return SlideTransition(
+                                position: Tween<Offset>(
+                                  begin: const Offset(-1.0, 0.0),
+                                  end: Offset.zero,
+                                ).animate(animation),
+                                child: child,
+                              );
+                            },
+                          ),
+                        );
+                    },
+                    child: Container(
+                      height: 50,
+                      child: Column(
+                        children: [
+                          Icon(
+                            Icons.home_rounded,
+                            size: 20,
+                            color: Color.fromARGB(255, 100, 100, 100),
+                          ),
+                          Text(
+                            'Home',
+                            style: TextStyle(color: Color.fromARGB(255, 100, 100, 100), fontSize: 12),
+                          )
+                        ],
+                      ),
+                    ),
+                  ),
+                  Container(
                         height: 50,
                         child: Column(
                           children: [
                             Icon(
-                              Icons.home_rounded,
-                              size: 30,
-                              color: Colors.grey,
+                              Icons.alarm,
+                              size: 25,
+                              color: const Color.fromARGB(255, 46, 46, 46),
                             ),
-                            Text(
-                              'Home',
-                              style: TextStyle(color: Colors.grey),
-                            )
+                            Text('Schedule', style: TextStyle(color: const Color.fromARGB(255, 46, 46, 46), fontSize: 12))
                           ],
                         ),
-                      )),
-                  Container(
-                    height: 50,
-                    child: Column(
-                      children: [
-                        Icon(
-                          Icons.alarm,
-                          color: Colors.white,
-                        ),
-                        Text(
-                          'Schedule',
-                          style: TextStyle(color: Colors.white),
-                        )
-                      ],
-                    ),
-                  ),
+                      ),
                   InkWell(
                       onTap: () {
-                        Navigator.push(context, MaterialPageRoute(builder: (context) => Gallery()));
+                        Navigator.push(
+                          context,
+                          PageRouteBuilder(
+                            pageBuilder: (context, animation, secondaryAnimation) => Gallery(),
+                            transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                              return SlideTransition(
+                                position: Tween<Offset>(
+                                  begin: const Offset(2.0, 0.0),
+                                  end: Offset.zero,
+                                ).animate(animation),
+                                child: child,
+                              );
+                            },
+                          ),
+                        );
                       },
                       child: Container(
                         height: 50,
@@ -165,11 +194,46 @@ class TaskScreen extends State<TaskScreenClass> {
                           children: [
                             Icon(
                               Icons.photo_library,
-                              color: Colors.grey,
+                              size: 20,
+                              color: Color.fromARGB(255, 100, 100, 100),
                             ),
                             Text(
                               'Gallery',
-                              style: TextStyle(color: Colors.grey),
+                              style: TextStyle(color: Color.fromARGB(255, 100, 100, 100), fontSize: 12),
+                            )
+                          ],
+                        ),
+                      )),
+                  InkWell(
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          PageRouteBuilder(
+                            pageBuilder: (context, animation, secondaryAnimation) => NotesAndComments(),
+                            transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                              return SlideTransition(
+                                position: Tween<Offset>(
+                                  begin: const Offset(2.0, 0.0),
+                                  end: Offset.zero,
+                                ).animate(animation),
+                                child: child,
+                              );
+                            },
+                          ),
+                        );
+                      },
+                      child: Container(
+                        height: 50,
+                        child: Column(
+                          children: [
+                            Icon(
+                              Icons.update,
+                              size: 20,
+                              color: Color.fromARGB(255, 100, 100, 100),
+                            ),
+                            Text(
+                              'Notes',
+                              style: TextStyle(color: Color.fromARGB(255, 100, 100, 100), fontSize: 12),
                             )
                           ],
                         ),
@@ -188,7 +252,7 @@ class TaskItem extends StatefulWidget {
   final _startDate;
   final _endDate;
   final _height = 0.0;
-  final _color = Color.fromARGB(255, 46, 46, 46);
+  final _color = Color.fromARGB(255, 255, 255, 255);
   final _subTasks;
   final _progressStr;
   final note;
@@ -267,16 +331,13 @@ class TaskItemWidget extends State<TaskItem> with SingleTickerProviderStateMixin
             child: AnimatedContainer(
           duration: Duration(milliseconds: 500),
           decoration: BoxDecoration(
-            color: const Color.fromARGB(255, 0, 0, 0),
+            color: const Color.fromARGB(255, 233, 233, 233),
             borderRadius: BorderRadius.circular(5),
           ),
           child: Container(
-            margin: EdgeInsets.only(top: 15, left: 15, right: 15),
-            decoration: BoxDecoration(
-              color: this._color,
-              borderRadius: BorderRadius.circular(5),
-            ),
-            padding: EdgeInsets.symmetric(horizontal: 5, vertical: 20),
+            margin: EdgeInsets.only(left: 15, right: 15),
+            decoration: BoxDecoration(color: this._color, border: Border(bottom: BorderSide(color: Color.fromARGB(255, 233, 233, 233), width: 2))),
+            padding: EdgeInsets.symmetric(horizontal: 5, vertical: 5),
             child: Column(children: <Widget>[
               AnimatedContainer(
                 duration: Duration(milliseconds: 900),
@@ -290,22 +351,22 @@ class TaskItemWidget extends State<TaskItem> with SingleTickerProviderStateMixin
                           this._textColor == Colors.green[600]
                               ? Container(
                                   margin: EdgeInsets.all(10),
-                                  padding: EdgeInsets.all(8),
-                                  decoration: BoxDecoration(color: Colors.green[900], borderRadius: BorderRadius.circular(40)),
+                                  padding: EdgeInsets.all(5),
+                                  decoration: BoxDecoration(color: Color.fromARGB(255, 0, 153, 10), borderRadius: BorderRadius.circular(40)),
                                   child: Icon(
                                     Icons.check,
-                                    size: 26,
+                                    size: 20,
                                     weight: 2.0,
                                     color: Colors.white!,
                                   ),
                                 )
                               : Container(
                                   margin: EdgeInsets.all(10),
-                                  padding: EdgeInsets.all(8),
+                                  padding: EdgeInsets.all(5),
                                   decoration: BoxDecoration(color: Colors.yellow[800], borderRadius: BorderRadius.circular(40)),
                                   child: Icon(
                                     Icons.schedule,
-                                    size: 26,
+                                    size: 20,
                                     weight: 2.0,
                                     color: Colors.white!,
                                   ),
@@ -315,10 +376,10 @@ class TaskItemWidget extends State<TaskItem> with SingleTickerProviderStateMixin
                             child: Text(
                               this._textColor == Colors.green[600] ? this._taskName + " (Completed)" : this._taskName,
                               textAlign: TextAlign.left,
-                              style: TextStyle(fontSize: 16, fontWeight: FontWeight.normal, color: Color.fromARGB(255, 201, 201, 201)),
+                              style: TextStyle(fontSize: 14, fontWeight: FontWeight.normal, color: Color.fromARGB(255, 44, 44, 44)),
                             ),
                           ),
-                          new Icon(view, color: const Color.fromARGB(255, 255, 255, 255)),
+                          new Icon(view, color: const Color.fromARGB(255, 44, 44, 44)),
                         ],
                       ),
                     ),
@@ -329,7 +390,7 @@ class TaskItemWidget extends State<TaskItem> with SingleTickerProviderStateMixin
                 visible: this.vis,
                 child: Container(
                     width: MediaQuery.of(context).size.width,
-                    padding: EdgeInsets.symmetric(horizontal: 20),
+                    padding: EdgeInsets.only(left: 20, right: 20, bottom: 20),
                     child: Column(
                       children: <Widget>[
                         Row(
@@ -339,19 +400,13 @@ class TaskItemWidget extends State<TaskItem> with SingleTickerProviderStateMixin
                                 padding: EdgeInsets.only(top: 10),
                                 child: Text(
                                   this._startDate.trim() != "" ? DateFormat("dd MMM yy").format(DateTime.parse(this._startDate)).toString() : "",
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: Color.fromARGB(255, 201, 201, 201)
-                                  ),
+                                  style: TextStyle(fontSize: 12, color: Color.fromARGB(255, 44, 44, 44)),
                                 )),
                             Container(
                                 padding: EdgeInsets.only(top: 10),
                                 child: Text(
                                   this._endDate.trim() != '' ? DateFormat("dd MMM yy").format(DateTime.parse(this._endDate)).toString() : "",
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: Color.fromARGB(255, 201, 201, 201)
-                                  ),
+                                  style: TextStyle(fontSize: 12, color: Color.fromARGB(255, 44, 44, 44)),
                                 ))
                           ],
                         ),
@@ -363,7 +418,7 @@ class TaskItemWidget extends State<TaskItem> with SingleTickerProviderStateMixin
                             animationDuration: 500,
                             animation: true,
                             backgroundColor: Colors.grey[300],
-                            progressColor: Color.fromARGB(255, 0, 139, 35),
+                            progressColor: Color.fromARGB(255, 12, 148, 21),
                             clipLinearGradient: true,
                           ),
                         ),
@@ -384,7 +439,10 @@ class TaskItemWidget extends State<TaskItem> with SingleTickerProviderStateMixin
                                         children: <Widget>[
                                           Row(
                                             children: <Widget>[
-                                              Icon(Icons.arrow_right_rounded, color: Colors.grey[500],),
+                                              Icon(
+                                                Icons.arrow_right_rounded,
+                                                color: Color.fromARGB(255, 44, 44, 44),
+                                              ),
                                               SizedBox(
                                                 width: 5.0,
                                               ),
@@ -395,7 +453,7 @@ class TaskItemWidget extends State<TaskItem> with SingleTickerProviderStateMixin
                                                     DateFormat("dd MMM yy").format(DateTime.parse(eachTask[2].toString())).toString() +
                                                     " : " +
                                                     eachTask[0].toString(),
-                                                style: TextStyle(color: Color.fromARGB(255, 201, 201, 201), fontSize: 14),
+                                                style: TextStyle(color: Color.fromARGB(255, 44, 44, 44), fontSize: 14),
                                               )),
                                             ],
                                           ),
@@ -404,10 +462,10 @@ class TaskItemWidget extends State<TaskItem> with SingleTickerProviderStateMixin
                                                 alignment: Alignment.centerLeft,
                                                 padding: EdgeInsets.only(top: 3, left: 28),
                                                 child: Text(
-                                                  'buildAhome: '+notes[index].trim(),
+                                                  'buildAhome: ' + notes[index].trim(),
                                                   style: TextStyle(
                                                     fontSize: 12,
-                                                    color: Colors.grey[500],
+                                                    color: Color.fromARGB(255, 87, 87, 87),
                                                   ),
                                                 ))
                                         ],
@@ -462,7 +520,7 @@ class _AnimatedWidgetSlideState extends State<AnimatedWidgetSlide> with SingleTi
           end: const Offset(0.0, 0.0),
         ).animate(CurvedAnimation(
           parent: _animationController,
-          curve: Curves.easeInSine,
+          curve: Curves.easeIn,
         ));
         break;
       case SlideDirection.rightToLeft:
@@ -471,7 +529,7 @@ class _AnimatedWidgetSlideState extends State<AnimatedWidgetSlide> with SingleTi
           end: const Offset(0.0, 0.0),
         ).animate(CurvedAnimation(
           parent: _animationController,
-          curve: Curves.easeInOut,
+          curve: Curves.easeIn,
         ));
         break;
       case SlideDirection.topToBottom:

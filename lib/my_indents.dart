@@ -94,7 +94,7 @@ class MyIndentsState extends State<MyIndents> {
                 child: Text('My indents (${indents.length})',
                     style: get_header_text_style())),
             Container(
-              height: MediaQuery.of(context).size.height - 180,
+              height: MediaQuery.of(context).size.height * 0.7,
               child: ListView.builder(
                   shrinkWrap: true,
                   padding: EdgeInsets.all(15),
