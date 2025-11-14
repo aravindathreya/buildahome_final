@@ -1,0 +1,2 @@
+C:/Users/Wonksknow India/Desktop/buildahome_final/android/app/.cxx/Debug/2g2k2h44/x86/CMakeFiles/edit_cache.dir
+C:/Users/Wonksknow India/Desktop/buildahome_final/android/app/.cxx/Debug/2g2k2h44/x86/CMakeFiles/rebuild_cache.dir

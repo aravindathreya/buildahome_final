@@ -15,7 +15,7 @@ description: A new Flutter project.
 version: 2.2.21+36
 
 environment:
-  sdk: ">=2.12.0 <3.0.0"
+  sdk: ">=2.17.0 <4.0.0"
 
 
 dependencies:
@@ -26,11 +26,11 @@ dependencies:
   flutter_swipe_detector:
   percent_indicator: ^4.2.2
   photo_view: ^0.14.0
-  file_picker: ^5.2.5
+  file_picker: ^6.1.1
   image_picker: 
   image: ^3.3.0
-  multi_image_picker: ^4.7.14
   flutter_spinkit: ^5.1.0
+  shimmer: ^3.0.0
   intl: ^0.18.0
   path_provider: ^2.0.11
   url_launcher: 
@@ -41,9 +41,14 @@ dependencies:
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.5
-  cached_network_image: ^3.2.1
+  cached_network_image: ^3.3.1
   firebase_messaging: ^14.2.1
   permission_handler:
+
+dependency_overrides:
+  win32: 3.0.0
+  archive: ^4.0.0
+  flutter_blurhash: ^0.9.0
 
 dev_dependencies:
   flutter_test:

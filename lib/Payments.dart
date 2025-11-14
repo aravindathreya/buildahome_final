@@ -1,51 +1,872 @@
-import 'package:flutter/material.dart';
 import 'dart:convert';
+
+import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
-import 'NavMenu.dart';
+import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'main.dart';
-import "UserHome.dart";
-import "Scheduler.dart";
-import "Gallery.dart";
-import 'AnimationHelper.dart';
+
+import 'app_theme.dart';
+
+enum PaymentCategory {
+  tender,
+  nonTender,
+}
 
 class PaymentTaskWidget extends StatelessWidget {
+  final PaymentCategory initialCategory;
+
+  const PaymentTaskWidget({this.initialCategory = PaymentCategory.tender});
+
   @override
   Widget build(BuildContext context) {
-    final appTitle = 'buildAhome';
-    final GlobalKey<ScaffoldState> _scaffoldKey = new GlobalKey<ScaffoldState>();
-    return MaterialApp(
-      title: appTitle,
-      theme: ThemeData(fontFamily: App().fontName),
-      home: Scaffold(
-        key: _scaffoldKey,
-        backgroundColor: Color.fromARGB(255, 233, 233, 233),
-        drawer: NavMenuWidget(),
-        appBar: AppBar(
-          automaticallyImplyLeading: true,
-          title: Text(
-            appTitle,
-            style: TextStyle(color: Color.fromARGB(255, 224, 224, 224), fontSize: 16),
-          ),
-          leading: new IconButton(
-              icon: new Icon(Icons.chevron_left),
-              onPressed: () async {
-                Navigator.pop(context);
-              }),
-          backgroundColor: Color.fromARGB(255, 6, 10, 43),
+    return Theme(
+      data: AppTheme.darkTheme,
+      child: PaymentsDashboard(initialCategory: initialCategory),
+    );
+  }
+}
+
+class PaymentsDashboard extends StatefulWidget {
+  final PaymentCategory initialCategory;
+
+  const PaymentsDashboard({Key? key, required this.initialCategory}) : super(key: key);
+
+  @override
+  _PaymentsDashboardState createState() => _PaymentsDashboardState();
+}
+
+class _PaymentsDashboardState extends State<PaymentsDashboard> {
+  PaymentCategory selectedCategory = PaymentCategory.tender;
+  bool isLoading = true;
+  bool isRefreshing = false;
+  String? errorMessage;
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
+
+  PaymentSummary tenderSummary = PaymentSummary.empty();
+  PaymentSummary nonTenderSummary = PaymentSummary.empty();
+  List<PaymentItem> tenderItems = [];
+  List<PaymentItem> nonTenderItems = [];
+
+  final currencyFormatter = NumberFormat.currency(locale: 'en_IN', symbol: '₹ ', decimalDigits: 0);
+
+  @override
+  void initState() {
+    super.initState();
+    selectedCategory = widget.initialCategory;
+    _loadData();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadData({bool showLoader = true}) async {
+    if (showLoader) {
+      setState(() {
+        isLoading = true;
+        errorMessage = null;
+      });
+    } else {
+      setState(() {
+        isRefreshing = true;
+        errorMessage = null;
+      });
+    }
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final projectId = prefs.getString('project_id');
+      if (projectId == null) {
+        throw Exception('Project not selected. Please reopen the project and try again.');
+      }
+
+      final paymentFuture = http.get(Uri.parse('https://office.buildahome.in/API/get_payment?project_id=$projectId'));
+      final tenderFuture = http.get(Uri.parse('https://office.buildahome.in/API/get_all_tasks?project_id=$projectId&nt_toggle=0'));
+      final nonTenderFuture = http.get(Uri.parse('https://office.buildahome.in/API/get_all_non_tender?project_id=$projectId'));
+
+      final responses = await Future.wait([paymentFuture, tenderFuture, nonTenderFuture]);
+      if (responses.any((response) => response.statusCode != 200)) {
+        throw Exception('Unable to load payment information right now.');
+      }
+
+      final paymentDetails = jsonDecode(responses[0].body);
+      final tenderData = jsonDecode(responses[1].body);
+      final nonTenderData = jsonDecode(responses[2].body);
+
+      final summary = (paymentDetails is List && paymentDetails.isNotEmpty) ? paymentDetails[0] : {};
+
+      setState(() {
+        tenderSummary = PaymentSummary(
+          value: (summary['value'] ?? '0').toString(),
+          totalPaid: (summary['total_paid'] ?? '0').toString(),
+          outstanding: (summary['outstanding'] ?? '0').toString(),
+        );
+
+        nonTenderSummary = PaymentSummary(
+          value: (summary['nt_value'] ?? summary['value'] ?? '0').toString(),
+          totalPaid: (summary['nt_total_paid'] ?? '0').toString(),
+          outstanding: (summary['nt_outstanding'] ?? '0').toString(),
+        );
+
+        tenderItems = (tenderData is List ? tenderData : [])
+            .map<PaymentItem>((item) => PaymentItem(
+                  name: (item['task_name'] ?? 'Milestone').toString(),
+                  percentage: _toDouble(item['payment']),
+                  status: (item['paid'] ?? '').toString(),
+                  note: item['p_note']?.toString(),
+                  startDate: item['start_date']?.toString(),
+                  endDate: item['end_date']?.toString(),
+                  isTender: true,
+                ))
+            .toList();
+
+        nonTenderItems = (nonTenderData is List ? nonTenderData : [])
+            .map<PaymentItem>((item) => PaymentItem(
+                  name: (item['task_name'] ?? 'Non tender item').toString(),
+                  percentage: _toDouble(item['payment']),
+                  status: (item['paid'] ?? '').toString(),
+                  isTender: false,
+                  amountOverride: _toDouble(item['payment']),
+                ))
+            .toList();
+      });
+    } catch (e) {
+      setState(() {
+        errorMessage = e.toString();
+      });
+    } finally {
+      setState(() {
+        isLoading = false;
+        isRefreshing = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppTheme.backgroundPrimary,
+      appBar: AppBar(
+        backgroundColor: AppTheme.backgroundPrimary,
+        elevation: 0,
+        leading: IconButton(
+          icon: Icon(Icons.arrow_back, color: AppTheme.textPrimary),
+          onPressed: () => Navigator.pop(context),
         ),
-        body: PaymentTasksClass(),
+        title: Text(
+          'Payments',
+          style: TextStyle(
+            color: AppTheme.textPrimary,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ),
+      body: SafeArea(
+        child: AnimatedSwitcher(
+          duration: Duration(milliseconds: 300),
+          child: _buildBody(),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBody() {
+    if (isLoading) {
+      return _buildLoader('Loading payment details…');
+    }
+
+    if (errorMessage != null) {
+      return _buildError();
+    }
+
+    return RefreshIndicator(
+      onRefresh: () => _loadData(showLoader: false),
+      color: AppTheme.primaryColorConst,
+      child: ListView(
+        physics: AlwaysScrollableScrollPhysics(),
+        padding: EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+        children: [
+          _buildHeader(),
+          SizedBox(height: 16),
+          _buildFilterChips(),
+          SizedBox(height: 16),
+          _buildSummaryCards(_currentSummary),
+          SizedBox(height: 24),
+          _buildSearchField(),
+          SizedBox(height: 20),
+          _buildPaymentList(_filteredItems, _currentSummary, isSearching: _isSearching),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHeader() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Track your project payments',
+          style: TextStyle(
+            fontSize: 22,
+            fontWeight: FontWeight.bold,
+            color: AppTheme.textPrimary,
+          ),
+        ),
+        SizedBox(height: 6),
+        Text(
+          'Switch between tender and non tender payments using the filters below.',
+          style: TextStyle(
+            color: AppTheme.textSecondary,
+            fontSize: 14,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildFilterChips() {
+    return Wrap(
+      spacing: 12,
+      children: [
+        _buildChip('Project Payments', PaymentCategory.tender),
+        _buildChip('Non Tender Payments', PaymentCategory.nonTender),
+      ],
+    );
+  }
+
+  Widget _buildSearchField() {
+    return TextField(
+      controller: _searchController,
+      onChanged: (value) => setState(() => _searchQuery = value),
+      decoration: InputDecoration(
+        hintText: 'Search payments, notes or status',
+        prefixIcon: Icon(Icons.search, color: AppTheme.textSecondary),
+        suffixIcon: _searchQuery.isEmpty
+            ? null
+            : IconButton(
+                icon: Icon(Icons.close, color: AppTheme.textSecondary),
+                onPressed: () {
+                  _searchController.clear();
+                  setState(() => _searchQuery = '');
+                },
+              ),
+        filled: true,
+        fillColor: AppTheme.backgroundSecondary,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: BorderSide.none,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildChip(String label, PaymentCategory category) {
+    final bool isSelected = selectedCategory == category;
+    return ChoiceChip(
+      label: Text(label),
+      selected: isSelected,
+      selectedColor: AppTheme.primaryColorConst,
+      backgroundColor: AppTheme.backgroundSecondary,
+      labelStyle: TextStyle(
+        color: isSelected ? Colors.white : AppTheme.textPrimary,
+        fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+      ),
+      onSelected: (value) {
+        if (value) {
+          setState(() {
+            selectedCategory = category;
+          });
+        }
+      },
+    );
+  }
+
+  Widget _buildSummaryCards(PaymentSummary summary) {
+    return Wrap(
+      spacing: 16,
+      runSpacing: 16,
+      children: [
+        _SummaryCard(
+          title: 'Contract Value',
+          subtitle: 'Total budgeted amount',
+          value: _formatCurrency(summary.valueNumeric),
+          icon: Icons.account_balance_wallet,
+          gradient: [
+            Color(0xFFE3F2FD),
+            Color(0xFFBBDEFB),
+          ],
+        ),
+        _SummaryCard(
+          title: 'Paid till date',
+          subtitle: 'Approved & released',
+          value: _formatCurrency(summary.totalPaidNumeric),
+          icon: Icons.check_circle_outline,
+          valueColor: Colors.green[700],
+          gradient: [
+            Color(0xFFE8F5E9),
+            Color(0xFFC8E6C9),
+          ],
+        ),
+        _SummaryCard(
+          title: 'Outstanding',
+          subtitle: 'Pending payment',
+          value: _formatCurrency(summary.outstandingNumeric),
+          icon: Icons.pending_actions,
+          valueColor: Colors.red[700],
+          gradient: [
+            Color(0xFFFFEBEE),
+            Color(0xFFFFCDD2),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPaymentList(List<PaymentItem> items, PaymentSummary summary, {bool isSearching = false}) {
+    if (items.isEmpty) {
+      return Container(
+        padding: EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          color: AppTheme.backgroundSecondary,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: AppTheme.primaryColorConst.withOpacity(0.1)),
+        ),
+        child: Column(
+          children: [
+            Icon(Icons.inbox_outlined, color: AppTheme.textSecondary, size: 44),
+            SizedBox(height: 12),
+            Text(
+              isSearching ? 'No payments match your search' : 'No payments yet',
+              style: TextStyle(
+                fontWeight: FontWeight.w600,
+                color: AppTheme.textPrimary,
+              ),
+            ),
+            SizedBox(height: 4),
+            Text(
+              isSearching ? 'Try a different keyword or clear the search.' : 'Once payments are scheduled, they will appear here.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: AppTheme.textSecondary),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          selectedCategory == PaymentCategory.tender ? 'Milestone payments' : 'Non tender payments',
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+            color: AppTheme.textPrimary,
+          ),
+        ),
+        SizedBox(height: 12),
+        ...items.map((item) => _PaymentCard(
+              item: item,
+              summary: summary,
+              currencyFormatter: currencyFormatter,
+            )),
+      ],
+    );
+  }
+
+  Widget _buildLoader(String message) {
+    final width = MediaQuery.of(context).size.width;
+    final summaryWidth = (width - 60) / 2;
+    return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+      children: [
+        _skeletonBar(width: 200, height: 22),
+        const SizedBox(height: 8),
+        _skeletonBar(width: width * 0.7, height: 14),
+        const SizedBox(height: 24),
+        Wrap(
+          spacing: 16,
+          runSpacing: 16,
+          children: List.generate(
+            3,
+            (_) => Container(
+              width: summaryWidth,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: AppTheme.backgroundSecondary,
+                borderRadius: BorderRadius.circular(18),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _skeletonBar(width: 120, height: 14),
+                  const SizedBox(height: 10),
+                  _skeletonBar(width: 90, height: 22),
+                ],
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 28),
+        ...List.generate(3, (_) => _buildSkeletonPaymentCard()),
+      ],
+    );
+  }
+
+  Widget _buildSkeletonPaymentCard() {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: AppTheme.backgroundSecondary,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              _skeletonBar(width: 48, height: 48, radius: 16),
+              const SizedBox(width: 12),
+              Expanded(child: _skeletonBar(height: 18)),
+            ],
+          ),
+          const SizedBox(height: 16),
+          _skeletonBar(height: 12),
+          const SizedBox(height: 6),
+          _skeletonBar(width: 160, height: 12),
+        ],
+      ),
+    );
+  }
+
+  Widget _skeletonBar({double? width, double height = 16, double radius = 10}) {
+    return Container(
+      width: width,
+      height: height,
+      decoration: BoxDecoration(
+        color: AppTheme.backgroundPrimaryLight,
+        borderRadius: BorderRadius.circular(radius),
+      ),
+    );
+  }
+
+  Widget _buildError() {
+    return Center(
+      child: Padding(
+        padding: EdgeInsets.symmetric(horizontal: 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.error_outline, color: Colors.redAccent, size: 48),
+            SizedBox(height: 12),
+            Text(
+              'Something went wrong',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: AppTheme.textPrimary,
+              ),
+            ),
+            SizedBox(height: 8),
+            Text(
+              errorMessage ?? 'Please try again later.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: AppTheme.textSecondary),
+            ),
+            SizedBox(height: 16),
+            ElevatedButton(
+              onPressed: _loadData,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primaryColorConst,
+                foregroundColor: Colors.white,
+              ),
+              child: Text('Retry'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  List<PaymentItem> get _currentItems => selectedCategory == PaymentCategory.tender ? tenderItems : nonTenderItems;
+
+  PaymentSummary get _currentSummary => selectedCategory == PaymentCategory.tender ? tenderSummary : nonTenderSummary;
+
+  bool get _isSearching => _searchQuery.trim().isNotEmpty;
+
+  List<PaymentItem> get _filteredItems {
+    if (!_isSearching) return _currentItems;
+    final query = _searchQuery.trim().toLowerCase();
+    return _currentItems.where((item) {
+      final note = item.note?.toLowerCase() ?? '';
+      final status = item.status.toLowerCase();
+      final dates = '${item.startDate ?? ''} ${item.endDate ?? ''}'.toLowerCase();
+      return item.name.toLowerCase().contains(query) || note.contains(query) || status.contains(query) || dates.contains(query);
+    }).toList();
+  }
+
+  double _toDouble(dynamic value) {
+    if (value == null) return 0;
+    if (value is num) return value.toDouble();
+    return double.tryParse(value.toString().replaceAll(RegExp('[^0-9\\.]'), '')) ?? 0;
+  }
+
+  String _formatCurrency(double amount) {
+    if (amount == 0) return '₹ 0';
+    return currencyFormatter.format(amount);
+  }
+}
+
+class PaymentSummary {
+  final String value;
+  final String totalPaid;
+  final String outstanding;
+
+  const PaymentSummary({
+    required this.value,
+    required this.totalPaid,
+    required this.outstanding,
+  });
+
+  static PaymentSummary empty() => PaymentSummary(value: '0', totalPaid: '0', outstanding: '0');
+
+  double get valueNumeric => _parse(value);
+
+  double get totalPaidNumeric => _parse(totalPaid);
+
+  double get outstandingNumeric => _parse(outstanding);
+
+  static double _parse(String input) {
+    return double.tryParse(input.replaceAll(RegExp('[^0-9\\.]'), '')) ?? 0;
+  }
+}
+
+class PaymentItem {
+  final String name;
+  final double percentage;
+  final String status;
+  final bool isTender;
+  final String? note;
+  final String? startDate;
+  final String? endDate;
+  final double? amountOverride;
+
+  const PaymentItem({
+    required this.name,
+    required this.percentage,
+    required this.status,
+    required this.isTender,
+    this.note,
+    this.startDate,
+    this.endDate,
+    this.amountOverride,
+  });
+}
+
+class _SummaryCard extends StatelessWidget {
+  final String title;
+  final String subtitle;
+  final String value;
+  final IconData icon;
+  final List<Color> gradient;
+  final Color? valueColor;
+
+  const _SummaryCard({
+    required this.title,
+    required this.subtitle,
+    required this.value,
+    required this.icon,
+    required this.gradient,
+    this.valueColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: (MediaQuery.of(context).size.width - 60) / 2,
+      padding: EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(colors: gradient),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.white.withOpacity(0.4)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.08),
+            blurRadius: 10,
+            offset: Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 20, color: Colors.black54),
+              SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  title,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: Colors.black87,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: 6),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: valueColor ?? Colors.black,
+            ),
+          ),
+          SizedBox(height: 4),
+          Text(
+            subtitle,
+            style: TextStyle(
+              fontSize: 12,
+              color: Colors.black54,
+            ),
+          ),
+        ],
       ),
     );
   }
 }
 
+class _PaymentCard extends StatelessWidget {
+  final PaymentItem item;
+  final PaymentSummary summary;
+  final NumberFormat currencyFormatter;
+
+  const _PaymentCard({
+    required this.item,
+    required this.summary,
+    required this.currencyFormatter,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final style = _statusStyle(item.status);
+    final double amount = item.amountOverride ?? (summary.valueNumeric * (item.percentage / 100));
+    final amountText = amount > 0 ? currencyFormatter.format(amount) : '—';
+
+    return Container(
+      margin: EdgeInsets.only(bottom: 16),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            AppTheme.backgroundSecondary,
+            AppTheme.backgroundPrimaryLight,
+          ],
+        ),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppTheme.primaryColorConst.withOpacity(0.08)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 8,
+            offset: Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(18),
+          onTap: () {},
+          child: Padding(
+            padding: EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      padding: EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: style.background,
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(
+                        style.label,
+                        style: TextStyle(
+                          color: style.foreground,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    Spacer(),
+                    Text(
+                      item.isTender ? '${item.percentage.toStringAsFixed(0)}%' : '',
+                      style: TextStyle(
+                        color: AppTheme.textSecondary,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+                SizedBox(height: 10),
+                Text(
+                  item.name,
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: AppTheme.textPrimary,
+                  ),
+                ),
+                if (item.note != null && item.note!.trim().isNotEmpty) ...[
+                  SizedBox(height: 8),
+                  Text(
+                    item.note!.trim(),
+                    style: TextStyle(color: AppTheme.textSecondary, fontSize: 13),
+                  ),
+                ],
+                SizedBox(height: 12),
+                 Container(
+                  width: (MediaQuery.of(context).size.width - 60),
+                  child: _InfoPill(
+                      icon: Icons.payments_outlined,
+                      label: 'Amount',
+                      value: amountText,
+                    ),),
+                    SizedBox(height: 12),
+               
+                Row(
+                  children: [
+                    
+                    if (item.startDate != null && item.startDate!.trim().isNotEmpty) ...[
+                      _InfoPill(
+                        icon: Icons.event_outlined,
+                        label: 'Start',
+                        value: item.startDate!,
+                      ),
+                    ],
+                    if (item.endDate != null && item.endDate!.trim().isNotEmpty) ...[
+                      SizedBox(width: 12),
+                      _InfoPill(
+                        icon: Icons.flag_outlined,
+                        label: 'End',
+                        value: item.endDate!,
+                      ),
+                    ],
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  _StatusStyle _statusStyle(String status) {
+    final normalized = status.toLowerCase().trim();
+    if (normalized == 'paid') {
+      return _StatusStyle(
+        label: 'Paid',
+        background: Colors.green.withOpacity(0.15),
+        foreground: Colors.green[800]!,
+      );
+    }
+    if (normalized == 'not due' || normalized == 'wip') {
+      return _StatusStyle(
+        label: 'Scheduled',
+        background: Colors.amber.withOpacity(0.2),
+        foreground: Colors.amber[800]!,
+      );
+    }
+    return _StatusStyle(
+      label: 'Pending',
+      background: Colors.red.withOpacity(0.15),
+      foreground: Colors.red[700]!,
+    );
+  }
+}
+
+class _InfoPill extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String value;
+
+  const _InfoPill({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: Container(
+        padding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.6),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: Colors.white.withOpacity(0.4)),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, size: 16, color: AppTheme.textSecondary),
+            SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label,
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: AppTheme.textSecondary,
+                    ),
+                  ),
+                  Text(
+                    value,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 13,
+                      color: AppTheme.textPrimary,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _StatusStyle {
+  final String label;
+  final Color background;
+  final Color foreground;
+
+  _StatusStyle({
+    required this.label,
+    required this.background,
+    required this.foreground,
+  });
+}
+
 class TaskItem extends StatefulWidget {
   final String _taskName;
-  final _icon = Icons.home;
-  final _startDate;
-  final _endDate;
-  final _height = 0.0;
+  final _icon = Icons.home; // ignore: unused_field
+  final _startDate; // ignore: unused_field
+  final _endDate; // ignore: unused_field
+  final _height = 0.0; // ignore: unused_field
   final _color = Colors.white;
   final _paymentPercentage;
   final status;
@@ -62,14 +883,14 @@ class TaskItem extends StatefulWidget {
 
 class TaskItemWidget extends State<TaskItem> with SingleTickerProviderStateMixin {
   String _taskName;
-  var _icon = Icons.home;
-  var _startDate;
-  var _endDate;
+  var _icon = Icons.home; // ignore: unused_field
+  var _startDate; // ignore: unused_field
+  var _endDate; // ignore: unused_field
   var _color;
   var vis = false;
   var _paymentPercentage;
   var _textColor = Colors.black;
-  var _height = 50.0;
+  var _height = 50.0; // ignore: unused_field
   var sprRadius = 1.0;
   var pad = 10.0;
   var valueStr;
@@ -168,108 +989,211 @@ class TaskItemWidget extends State<TaskItem> with SingleTickerProviderStateMixin
   Widget build(BuildContext context) {
     return Column(
       children: <Widget>[
-        Container(
-            margin: EdgeInsets.only(left: 20, top: 15, right: 20),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(5),
-              color: Colors.white,
-            ),
-            child: AnimatedContainer(
-              duration: Duration(milliseconds: 500),
-              decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(5), color: Color.fromARGB(255, 199, 199, 199), gradient: LinearGradient(colors: [Color.fromARGB(255, 167, 166, 166), Color.fromARGB(255, 221, 221, 221)])),
-              padding: EdgeInsets.all(this.pad),
-              child: Container(
-                child: Column(children: <Widget>[
-                  AnimatedContainer(
-                    duration: Duration(milliseconds: 900),
-                    padding: EdgeInsets.only(left: 7),
-                    child: Row(
-                      children: <Widget>[
-                        if (this._color == Colors.green)
-                          Container(
-                            height: 45,
-                            width: 45,
-                            alignment: Alignment.center,
-                            decoration: BoxDecoration(color: Colors.green[900], borderRadius: BorderRadius.circular(50)),
-                            child: Text(
-                              'PAID',
-                              style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
-                            ),
-                          ),
-                        if (this._color == Colors.white)
-                          Container(
-                            height: 45,
-                            width: 45,
-                            alignment: Alignment.center,
-                            decoration: BoxDecoration(color: Colors.yellow[700], borderRadius: BorderRadius.circular(50)),
-                            child: Text(
-                              'WIP',
-                              style: TextStyle(color: const Color.fromARGB(255, 0, 0, 0), fontSize: 10, fontWeight: FontWeight.bold),
-                            ),
-                          ),
-                        if (this._color == Colors.deepOrange)
-                          Container(
-                            height: 45,
-                            width: 45,
-                            alignment: Alignment.center,
-                            decoration: BoxDecoration(color: Colors.red[700], borderRadius: BorderRadius.circular(50)),
-                            child: Text(
-                              'DUE',
-                              style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
-                            ),
-                          ),
-                        SizedBox(
-                          width: 15,
+        TweenAnimationBuilder<double>(
+          tween: Tween(begin: 0.0, end: 1.0),
+          duration: Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+          builder: (context, value, child) {
+            return Transform.scale(
+              scale: 0.95 + (0.05 * value),
+              child: Opacity(
+                opacity: value,
+                child: Container(
+                  margin: EdgeInsets.only(left: 15, top: 10, right: 15, bottom: 10),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(16),
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        Colors.white,
+                        Color.fromARGB(255, 250, 250, 250),
+                      ],
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.08),
+                        blurRadius: 12,
+                        offset: Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: _expandCollapse,
+                      borderRadius: BorderRadius.circular(16),
+                      child: AnimatedContainer(
+                        duration: Duration(milliseconds: 300),
+                        padding: EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(16),
+                          gradient: this.gradient,
                         ),
-                        InkWell(
-                          onTap: _expandCollapse,
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        child: Column(children: <Widget>[
+                          Row(
                             children: <Widget>[
-                              Container(
-                                width: MediaQuery.of(context).size.width * .6 - 7,
+                              TweenAnimationBuilder<double>(
+                                tween: Tween(begin: 0.0, end: 1.0),
+                                duration: Duration(milliseconds: 400),
+                                curve: Curves.elasticOut,
+                                builder: (context, scaleValue, child) {
+                                  return Transform.scale(
+                                    scale: scaleValue,
+                                    child: this._color == Colors.green
+                                        ? Container(
+                                            height: 50,
+                                            width: 50,
+                                            alignment: Alignment.center,
+                                            decoration: BoxDecoration(
+                                              color: Colors.green[900],
+                                              borderRadius: BorderRadius.circular(12),
+                                              boxShadow: [
+                                                BoxShadow(
+                                                  color: Colors.green.withOpacity(0.3),
+                                                  blurRadius: 8,
+                                                  offset: Offset(0, 2),
+                                                ),
+                                              ],
+                                            ),
+                                            child: Text(
+                                              'PAID',
+                                              style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                                            ),
+                                          )
+                                        : this._color == Colors.white
+                                            ? Container(
+                                                height: 50,
+                                                width: 50,
+                                                alignment: Alignment.center,
+                                                decoration: BoxDecoration(
+                                                  color: Colors.yellow[700],
+                                                  borderRadius: BorderRadius.circular(12),
+                                                  boxShadow: [
+                                                    BoxShadow(
+                                                      color: Colors.yellow.withOpacity(0.3),
+                                                      blurRadius: 8,
+                                                      offset: Offset(0, 2),
+                                                    ),
+                                                  ],
+                                                ),
+                                                child: Text(
+                                                  'WIP',
+                                                  style: TextStyle(color: const Color.fromARGB(255, 0, 0, 0), fontSize: 10, fontWeight: FontWeight.bold),
+                                                ),
+                                              )
+                                            : Container(
+                                                height: 50,
+                                                width: 50,
+                                                alignment: Alignment.center,
+                                                decoration: BoxDecoration(
+                                                  color: Colors.red[700],
+                                                  borderRadius: BorderRadius.circular(12),
+                                                  boxShadow: [
+                                                    BoxShadow(
+                                                      color: Colors.red.withOpacity(0.3),
+                                                      blurRadius: 8,
+                                                      offset: Offset(0, 2),
+                                                    ),
+                                                  ],
+                                                ),
+                                                child: Text(
+                                                  'DUE',
+                                                  style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                                                ),
+                                              ),
+                                  );
+                                },
+                              ),
+                              SizedBox(width: 15),
+                              Expanded(
                                 child: Text(
                                   this._taskName,
                                   textAlign: TextAlign.left,
-                                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.normal, color: Color.fromARGB(255, 44, 44, 44)),
+                                  style: TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w600,
+                                    color: this._textColor,
+                                  ),
                                 ),
                               ),
-                              new Icon(view, color: const Color.fromARGB(255, 44, 44, 44)),
+                              AnimatedRotation(
+                                turns: this.vis ? 0.5 : 0.0,
+                                duration: Duration(milliseconds: 300),
+                                curve: Curves.easeInOut,
+                                child: Icon(
+                                  Icons.expand_more,
+                                  color: this._textColor,
+                                  size: 24,
+                                ),
+                              ),
                             ],
                           ),
-                        ),
-                      ],
+                          AnimatedSize(
+                            duration: Duration(milliseconds: 300),
+                            curve: Curves.easeInOut,
+                            child: this.vis
+                                ? Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: <Widget>[
+                                      SizedBox(height: 12),
+                                      Container(
+                                        padding: EdgeInsets.all(12),
+                                        decoration: BoxDecoration(
+                                          color: Colors.white.withOpacity(0.3),
+                                          borderRadius: BorderRadius.circular(12),
+                                        ),
+                                        child: Row(
+                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                          children: <Widget>[
+                                            Text(
+                                              this._paymentPercentage + "%",
+                                              style: TextStyle(
+                                                fontSize: 16,
+                                                fontWeight: FontWeight.bold,
+                                                color: this._textColor,
+                                              ),
+                                            ),
+                                            Text(
+                                              "₹ " + ((amt != null) ? amt.toStringAsFixed(2) : ''),
+                                              style: TextStyle(
+                                                fontSize: 16,
+                                                fontWeight: FontWeight.bold,
+                                                color: this._textColor,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      if (this.note.trim() != '')
+                                        Container(
+                                          margin: EdgeInsets.only(top: 8),
+                                          padding: EdgeInsets.all(12),
+                                          decoration: BoxDecoration(
+                                            color: Colors.white.withOpacity(0.2),
+                                            borderRadius: BorderRadius.circular(12),
+                                          ),
+                                          child: Text(
+                                            this.note.trim(),
+                                            style: TextStyle(
+                                              color: this._textColor,
+                                              fontSize: 13,
+                                            ),
+                                          ),
+                                        ),
+                                    ],
+                                  )
+                                : SizedBox.shrink(),
+                          ),
+                        ]),
+                      ),
                     ),
                   ),
-                  Visibility(
-                      visible: this.vis,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: <Widget>[
-                          Container(
-                              padding: EdgeInsets.all(10),
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: <Widget>[
-                                  Text(
-                                    this._paymentPercentage + "%     ₹ " + ((amt != null) ? amt.toStringAsFixed(2) : ''),
-                                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color.fromARGB(255, 44, 44, 44)),
-                                  )
-                                ],
-                              )),
-                          if (this.note.trim() != '')
-                            Container(
-                                padding: EdgeInsets.all(10),
-                                child: Text(
-                                  this.note.trim(),
-                                  style: TextStyle(color: Color.fromARGB(255, 44, 44, 44)),
-                                ))
-                        ],
-                      )),
-                ]),
+                ),
               ),
-            )),
+            );
+          },
+        ),
       ],
     );
   }
@@ -299,7 +1223,7 @@ class PaymentTasks extends State<PaymentTasksClass> {
   call() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     var id = prefs.getString('project_id');
-    var url = 'https://office.buildahome.in/API/get_all_tasks?project_id=$id&nt_toggle=1 ';
+    var url = 'https://office.buildahome.in/API/get_all_tasks?project_id=$id&nt_toggle=0';
     var response = await http.get(Uri.parse(url));
     body = jsonDecode(response.body);
 
@@ -315,94 +1239,272 @@ class PaymentTasks extends State<PaymentTasksClass> {
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
-      children: [
-        Opacity(
-          opacity: 0.3,
-          child: Container(
-            width: MediaQuery.of(context).size.width,
-            height: MediaQuery.of(context).size.height,
-            decoration: BoxDecoration(
-                color: Color.fromARGB(255, 214, 214, 214),
-                border: Border.all(width: 1, color: Colors.grey[200]!),
-                borderRadius: BorderRadius.circular(10),
-                ),
-            
-            child: Image.network("https://images.unsplash.com/photo-1502005097973-6a7082348e28?w=500&auto=format&fit=crop&q=60&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxzZWFyY2h8MzV8fEhvdXNlfGVufDB8fDB8fHww", fit: BoxFit.fill),
-          ),
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            Color.fromARGB(255, 250, 250, 255),
+            Color.fromARGB(255, 233, 233, 233),
+          ],
         ),
-        Padding(
-          padding: EdgeInsets.only(bottom: 1),
-          child: ListView(children: <Widget>[
-            Container(margin: EdgeInsets.only(top: 20, left: 20, bottom: 10), child: Text("Project Payments", style: TextStyle(fontSize: 16, color: const Color.fromARGB(255, 37, 37, 37)))),
-            AnimatedWidgetSlide(
-                direction: SlideDirection.leftToRight, // Specify the slide direction
-                duration: Duration(milliseconds: 300),
-                child: Container(
-                  height: 2,
-                  color: const Color.fromARGB(255, 34, 34, 34),
-                  width: 100,
-                  margin: EdgeInsets.only(left: 20, right: 250),
-                )),
-            Container(
-              margin: EdgeInsets.symmetric(vertical: 20, horizontal: 10),
-              padding: EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(5),
+      ),
+      child: Stack(
+        children: [
+          Padding(
+            padding: EdgeInsets.only(bottom: 1),
+            child: ListView(children: <Widget>[
+              TweenAnimationBuilder<double>(
+                tween: Tween(begin: 0.0, end: 1.0),
+                duration: Duration(milliseconds: 400),
+                curve: Curves.easeOut,
+                builder: (context, value, child) {
+                  return Opacity(
+                    opacity: value,
+                    child: Transform.translate(
+                      offset: Offset(0, -20 * (1 - value)),
+                      child: Container(
+                        margin: EdgeInsets.only(top: 20, left: 20, bottom: 10),
+                        child: Text(
+                          "Project Payments",
+                          style: TextStyle(
+                            fontSize: 22,
+                            fontWeight: FontWeight.bold,
+                            color: Color.fromARGB(255, 13, 17, 65),
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
+                },
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  Container(
-                    width: 150,
-                    margin: EdgeInsets.symmetric(vertical: 5),
-                    padding: EdgeInsets.all(10),
-                    decoration: BoxDecoration(color: Color.fromARGB(255, 240, 255, 242), borderRadius: BorderRadius.circular(6)),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Container(child: Text("Project Value", style: TextStyle(fontSize: 10))),
-                        Container(margin: EdgeInsets.only(top: 5), child: Text("₹ " + projectValue, style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold))),
-                      ],
+              TweenAnimationBuilder<double>(
+                tween: Tween(begin: 0.0, end: 1.0),
+                duration: Duration(milliseconds: 500),
+                curve: Curves.easeOutCubic,
+                builder: (context, value, child) {
+                  return Transform.scale(
+                    scale: value,
+                    child: Opacity(
+                      opacity: value,
+                      child: Container(
+                        height: 3,
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [
+                              Color.fromARGB(255, 13, 17, 65),
+                              Color.fromARGB(255, 20, 25, 80),
+                            ],
+                          ),
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                        width: 100,
+                        margin: EdgeInsets.only(left: 20, right: 250, bottom: 20),
+                      ),
                     ),
-                  ),
-                  Container(
-                    width: 150,
-                    margin: EdgeInsets.symmetric(vertical: 5),
-                    padding: EdgeInsets.all(10),
-                    decoration: BoxDecoration(color: Color.fromARGB(255, 255, 237, 237), borderRadius: BorderRadius.circular(6)),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Container(
-                            child: Text("Paid till date",
-                                style: TextStyle(
-                                  fontSize: 10,
-                                ))),
-                        Container(margin: EdgeInsets.only(top: 5), child: Text("₹ " + totalPaid, style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.green[700]))),
-                      ],
-                    ),
-                  ),
-                  Container(
-                    width: 150,
-                    margin: EdgeInsets.symmetric(vertical: 5),
-                    padding: EdgeInsets.all(10),
-                    decoration: BoxDecoration(color: Color.fromARGB(255, 246, 248, 225), borderRadius: BorderRadius.circular(6)),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Container(
-                            child: Text("Current Outstanding",
-                                style: TextStyle(
-                                  fontSize: 10,
-                                ))),
-                        Container(margin: EdgeInsets.only(top: 5), child: Text("₹ " + outstanding, style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.red[500]))),
-                      ],
-                    ),
-                  ),
-                ],
+                  );
+                },
               ),
-            ),
+              TweenAnimationBuilder<double>(
+                tween: Tween(begin: 0.0, end: 1.0),
+                duration: Duration(milliseconds: 600),
+                curve: Curves.easeOut,
+                builder: (context, value, child) {
+                  return Opacity(
+                    opacity: value,
+                    child: Transform.translate(
+                      offset: Offset(0, 30 * (1 - value)),
+                      child: Container(
+                        margin: EdgeInsets.symmetric(vertical: 10, horizontal: 15),
+                        child: Wrap(
+                          spacing: 10,
+                          runSpacing: 10,
+                          children: <Widget>[
+                            TweenAnimationBuilder<double>(
+                              tween: Tween(begin: 0.0, end: 1.0),
+                              duration: Duration(milliseconds: 400),
+                              curve: Curves.easeOutBack,
+                              builder: (context, scaleValue, child) {
+                                return Transform.scale(
+                                  scale: scaleValue,
+                                  child: Container(
+                                    width: (MediaQuery.of(context).size.width - 50) / 2,
+                                    padding: EdgeInsets.all(16),
+                                    decoration: BoxDecoration(
+                                      gradient: LinearGradient(
+                                        begin: Alignment.topLeft,
+                                        end: Alignment.bottomRight,
+                                        colors: [
+                                          Color.fromARGB(255, 240, 255, 242),
+                                          Color.fromARGB(255, 220, 245, 225),
+                                        ],
+                                      ),
+                                      borderRadius: BorderRadius.circular(16),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: Colors.black.withOpacity(0.08),
+                                          blurRadius: 10,
+                                          offset: Offset(0, 4),
+                                        ),
+                                      ],
+                                    ),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Row(
+                                          children: [
+                                            Icon(Icons.account_balance_wallet, size: 18, color: Color.fromARGB(255, 13, 17, 65)),
+                                            SizedBox(width: 6),
+                                            Text(
+                                              "Project Value",
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                color: Color.fromARGB(255, 100, 100, 100),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        SizedBox(height: 8),
+                                        Text(
+                                          "₹ " + projectValue,
+                                          style: TextStyle(
+                                            fontSize: 18,
+                                            fontWeight: FontWeight.bold,
+                                            color: Color.fromARGB(255, 13, 17, 65),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                            TweenAnimationBuilder<double>(
+                              tween: Tween(begin: 0.0, end: 1.0),
+                              duration: Duration(milliseconds: 500),
+                              curve: Curves.easeOutBack,
+                              builder: (context, scaleValue, child) {
+                                return Transform.scale(
+                                  scale: scaleValue,
+                                  child: Container(
+                                    width: (MediaQuery.of(context).size.width - 50) / 2,
+                                    padding: EdgeInsets.all(16),
+                                    decoration: BoxDecoration(
+                                      gradient: LinearGradient(
+                                        begin: Alignment.topLeft,
+                                        end: Alignment.bottomRight,
+                                        colors: [
+                                          Color.fromARGB(255, 255, 237, 237),
+                                          Color.fromARGB(255, 255, 220, 220),
+                                        ],
+                                      ),
+                                      borderRadius: BorderRadius.circular(16),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: Colors.black.withOpacity(0.08),
+                                          blurRadius: 10,
+                                          offset: Offset(0, 4),
+                                        ),
+                                      ],
+                                    ),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Row(
+                                          children: [
+                                            Icon(Icons.check_circle, size: 18, color: Colors.green[700]),
+                                            SizedBox(width: 6),
+                                            Text(
+                                              "Paid till date",
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                color: Color.fromARGB(255, 100, 100, 100),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        SizedBox(height: 8),
+                                        Text(
+                                          "₹ " + totalPaid,
+                                          style: TextStyle(
+                                            fontSize: 18,
+                                            fontWeight: FontWeight.bold,
+                                            color: Colors.green[700],
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                            TweenAnimationBuilder<double>(
+                              tween: Tween(begin: 0.0, end: 1.0),
+                              duration: Duration(milliseconds: 600),
+                              curve: Curves.easeOutBack,
+                              builder: (context, scaleValue, child) {
+                                return Transform.scale(
+                                  scale: scaleValue,
+                                  child: Container(
+                                    width: (MediaQuery.of(context).size.width - 50) / 2,
+                                    padding: EdgeInsets.all(16),
+                                    decoration: BoxDecoration(
+                                      gradient: LinearGradient(
+                                        begin: Alignment.topLeft,
+                                        end: Alignment.bottomRight,
+                                        colors: [
+                                          Color.fromARGB(255, 246, 248, 225),
+                                          Color.fromARGB(255, 240, 242, 200),
+                                        ],
+                                      ),
+                                      borderRadius: BorderRadius.circular(16),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: Colors.black.withOpacity(0.08),
+                                          blurRadius: 10,
+                                          offset: Offset(0, 4),
+                                        ),
+                                      ],
+                                    ),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Row(
+                                          children: [
+                                            Icon(Icons.pending_actions, size: 18, color: Colors.red[500]),
+                                            SizedBox(width: 6),
+                                            Text(
+                                              "Current Outstanding",
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                color: Color.fromARGB(255, 100, 100, 100),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        SizedBox(height: 8),
+                                        Text(
+                                          "₹ " + outstanding,
+                                          style: TextStyle(
+                                            fontSize: 18,
+                                            fontWeight: FontWeight.bold,
+                                            color: Colors.red[500],
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
             new ListView.builder(
                 shrinkWrap: true,
                 physics: BouncingScrollPhysics(),
@@ -416,9 +1518,10 @@ class PaymentTasks extends State<PaymentTasksClass> {
                             body[index]['p_note'].toString(), projectValue),
                       ));
                 }),
-          ]),
-        )
-      ],
+            ]),
+          ),
+        ],
+      ),
     );
   }
 }

@@ -1,309 +1,320 @@
-import 'package:flutter/material.dart';
 import 'dart:convert';
-import 'package:http/http.dart' as http;
-import 'dart:typed_data';
-import 'package:shared_preferences/shared_preferences.dart';
-import "FullScreenImage.dart";
+
 import 'package:cached_network_image/cached_network_image.dart';
-import './AnimationHelper.dart';
-import 'NavMenu.dart';
-import 'main.dart';
-import 'UserHome.dart';
-import 'Scheduler.dart';
-import 'NotesAndComments.dart';
+import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 
-var images = {};
+import 'FullScreenImage.dart';
+import 'app_theme.dart';
 
-class Gallery extends StatelessWidget {
-  @override
-  Widget build(context) {
-    final appTitle = 'buildAhome';
-    final GlobalKey<ScaffoldState> _scaffoldKey = new GlobalKey<ScaffoldState>();
-    return MaterialApp(
-      title: appTitle,
-      theme: ThemeData(fontFamily: App().fontName),
-      home: Scaffold(
-        key: _scaffoldKey,
-        backgroundColor: Color.fromARGB(255, 233, 233, 233),
-        drawer: NavMenuWidget(),
-        appBar: AppBar(
-          automaticallyImplyLeading: false,
-          title: Text(
-            appTitle,
-            style: TextStyle(color: Color.fromARGB(255, 224, 224, 224), fontSize: 16),
-          ),
-          leading: new IconButton(
-              icon: new Icon(Icons.menu),
-              onPressed: () async {
-                SharedPreferences prefs = await SharedPreferences.getInstance();
-                var username = prefs.getString('username');
-                _scaffoldKey.currentState!.openDrawer();
-              }),
-          backgroundColor: Color.fromARGB(255, 6, 10, 43),
-        ),
-        body: GalleryForm(context),
-      ),
-    );
-  }
-}
-
-class GalleryForm extends StatefulWidget {
-  var con;
-  GalleryForm(this.con);
+class Gallery extends StatefulWidget {
+  const Gallery({super.key});
 
   @override
-  GalleryState createState() {
-    return GalleryState(this.con);
-  }
+  State<Gallery> createState() => _GalleryState();
 }
 
-class GalleryState extends State<GalleryForm> {
-  var con;
-  GalleryState(this.con);
+class _GalleryState extends State<Gallery> {
+  List<dynamic> _entries = [];
+  List<String> _uniqueDates = [];
+  bool _isLoading = false;
 
   @override
   void initState() {
     super.initState();
-    call();
+    _fetchGallery();
   }
 
-  var entries_count = 0;
-  var data = [];
-  var entries;
-  var a;
-  var bytes;
-  var updates = [];
-  var subset = [];
-  var pr_id;
-  var dates = {};
+  Future<void> _fetchGallery() async {
+    setState(() {
+      _isLoading = true;
+    });
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final projectId = prefs.getString('project_id');
+      if (projectId == null) return;
 
-  call() async {
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    pr_id = prefs.getString('project_id');
+      final response = await http.get(Uri.parse('https://office.buildahome.in/API/get_gallery_data?id=$projectId'));
+      final data = jsonDecode(response.body) as List<dynamic>;
+      final dates = <String>[];
+      for (final entry in data) {
+        final date = entry['date']?.toString();
+        if (date != null && !dates.contains(date)) {
+          dates.add(date);
+        }
+      }
 
-    var url = 'https://office.buildahome.in/API/get_gallery_data?id=$pr_id';
-
-    var response = await http.get(Uri.parse(url));
-    entries = jsonDecode(response.body);
-    print(entries);
-    entries_count = entries.length;
-    for (int i = 0; i < entries_count; i++) {
-      if (subset.contains(entries[i]['date']) == false) {
+      if (!mounted) return;
+      setState(() {
+        _entries = data;
+        _uniqueDates = dates;
+      });
+    } catch (err) {
+      debugPrint('Failed to load gallery entries: $err');
+    } finally {
+      if (mounted) {
         setState(() {
-          subset.add(entries[i]['date']);
+          _isLoading = false;
         });
       }
     }
   }
 
-  _image_func(_image_string, update_id) {
-    var stripped = _image_string.toString().replaceFirst(RegExp(r'data:image/jpeg;base64,'), '');
-    var imageAsBytes = base64.decode(stripped);
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final canPop = Navigator.of(context).canPop();
+    return Scaffold(
+      backgroundColor: AppTheme.backgroundPrimary,
+      appBar: AppBar(
+        backgroundColor: AppTheme.backgroundSecondary,
+        automaticallyImplyLeading: canPop,
+        leading: canPop
+            ? IconButton(
+                icon: const Icon(Icons.arrow_back_ios_new_rounded),
+                onPressed: () => Navigator.of(context).maybePop(),
+              )
+            : null,
+        title: Text(
+          'Gallery',
+          style: theme.textTheme.headlineSmall?.copyWith(fontSize: 20),
+        ),
+      ),
+      body: SafeArea(
+        child: RefreshIndicator(
+          color: AppTheme.primaryColorConst,
+          onRefresh: _fetchGallery,
+          child: _buildBody(context, theme),
+        ),
+      ),
+    );
+  }
 
-    if (imageAsBytes != null) {
-      var actual_image = new Image.memory(imageAsBytes);
-      if (update_id != "From list") images[update_id] = _image_string;
-      Uint8List bytes = base64Decode(stripped);
-      return InkWell(
-          child: actual_image,
-          onTap: () async {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                  builder: (context) => FullScreenImage(
-                        MemoryImage(bytes),
-                      )),
-            );
-          });
-    } else {
-      return Container(
-        padding: EdgeInsets.all(30),
-        width: 100,
-        height: 100,
-        color: Colors.grey[200],
+  Widget _buildBody(BuildContext context, ThemeData theme) {
+    if (_isLoading && _uniqueDates.isEmpty) {
+      return ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 32),
+        children: List.generate(6, (index) => _buildLoadingCard()),
       );
     }
+
+    if (!_isLoading && _uniqueDates.isEmpty) {
+      return ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 32),
+        children: [
+          _buildHeader(theme),
+          const SizedBox(height: 40),
+          _buildEmptyState(),
+        ],
+      );
+    }
+
+    return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(16, 24, 16, 32),
+      children: [
+        _buildHeader(theme),
+        const SizedBox(height: 24),
+        for (final date in _uniqueDates) _buildDateSection(context, date, theme),
+      ],
+    );
   }
 
-  @override
-  Widget build(context) {
+  Widget _buildHeader(ThemeData theme) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Project gallery',
+          style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'Browse chronological site progress photographs shared by the buildAhome team.',
+          style: theme.textTheme.bodyMedium?.copyWith(color: AppTheme.textSecondary),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildLoadingCard() {
     return Container(
-        height: MediaQuery.of(context).size.height,
-        width: MediaQuery.of(context).size.width,
-        child: Stack(alignment: Alignment.bottomCenter, children: [
+      margin: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppTheme.backgroundSecondary,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
           Container(
-            padding: EdgeInsets.only(bottom: 100),
-            child: new ListView.builder(
-                padding: EdgeInsets.all(10),
-                shrinkWrap: true,
-                itemCount: subset == null ? 0 : subset.length,
-                itemBuilder: (context, int Index) {
-                  return AnimatedWidgetSlide(
-                      direction: SlideDirection.bottomToTop, // Specify the slide direction
-                      duration: Duration(milliseconds: 300),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: <Widget>[
-                          Container(
-                              padding: EdgeInsets.only(bottom: 15, top: 25),
-                              child: Row(
-                                children: [
-                                  Icon(Icons.date_range, color: Color.fromARGB(255, 44, 44, 44)),
-                                  SizedBox(
-                                    width: 10,
-                                  ),
-                                  Text(subset[Index], style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12, color: Color.fromARGB(255, 44, 44, 44))),
-                                ],
-                              )),
-                          Wrap(
-                            children: <Widget>[
-                              for (int i = 0; i < entries.length; i++)
-                                if (entries[i]['date'] == subset[Index])
-                                  if (images.containsKey(entries[i]['image_id']))
-                                    Container(
-                                        width: (MediaQuery.of(context).size.width - 20) / 3,
-                                        height: (MediaQuery.of(context).size.width - 20) / 3,
-                                        decoration: BoxDecoration(
-                                          border: Border.all(),
-                                        ),
-                                        child: _image_func(images[entries[i]['image_id']], "From list"))
-                                  else
-                                    Container(
-                                        width: (MediaQuery.of(context).size.width - 20) / 3,
-                                        height: (MediaQuery.of(context).size.width - 20) / 3,
-                                        decoration: BoxDecoration(
-                                          border: Border.all(width: 0.5, color: Colors.grey[300]!),
-                                        ),
-                                        child: InkWell(
-                                          onTap: () {
-                                            Navigator.push(
-                                              this.con,
-                                              MaterialPageRoute(builder: (context) => FullScreenImage("https://app.buildahome.in/api/images/${entries[i]['image']}")),
-                                            );
-                                          },
-                                          child: CachedNetworkImage(
-                                            fit: BoxFit.cover,
-                                            progressIndicatorBuilder: (context, url, progress) => Container(
-                                              height: 20,
-                                              width: 20,
-                                            ),
-                                            imageUrl: "https://app.buildahome.in/api/images/${entries[i]['image']}",
-                                          ),
-                                        ))
-                            ],
-                          )
-                        ],
-                      ));
-                }),
-          ),
-         Container(
+            width: 140,
+            height: 18,
             decoration: BoxDecoration(
-              color: const Color.fromARGB(255, 223, 223, 223)
+              color: AppTheme.backgroundPrimaryLight,
+              borderRadius: BorderRadius.circular(4),
             ),
-            padding: EdgeInsets.only(top: 15, bottom: 1),
-            child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: [
-             InkWell(
-                    onTap: () {
-                      Navigator.push(
-                          context,
-                          PageRouteBuilder(
-                            pageBuilder: (context, animation, secondaryAnimation) => Home(),
-                            transitionsBuilder: (context, animation, secondaryAnimation, child) {
-                              return SlideTransition(
-                                position: Tween<Offset>(
-                                  begin: const Offset(-1.0, 0.0),
-                                  end: Offset.zero,
-                                ).animate(animation),
-                                child: child,
-                              );
-                            },
-                          ),
-                        );
-                    },
-                    child: Container(
-                      height: 50,
-                      child: Column(
-                        children: [
-                          Icon(
-                            Icons.home_rounded,
-                            size: 20,
-                            color: Color.fromARGB(255, 100, 100, 100),
-                          ),
-                          Text(
-                            'Home',
-                            style: TextStyle(color: Color.fromARGB(255, 100, 100, 100), fontSize: 12),
-                          )
-                        ],
-                      ),
-                    ),
-                  ),
-              InkWell(
-               onTap: () {
-                  Navigator.push(
-                          context,
-                          PageRouteBuilder(
-                            pageBuilder: (context, animation, secondaryAnimation) => TaskWidget(),
-                            transitionsBuilder: (context, animation, secondaryAnimation, child) {
-                              return SlideTransition(
-                                position: Tween<Offset>(
-                                  begin: const Offset(-1.0, 0.0),
-                                  end: Offset.zero,
-                                ).animate(animation),
-                                child: child,
-                              );
-                            },
-                          ),
-                        );
-                },
-                child: Container(
-                  height: 50,
-                  child: Column(children: [
-                  Icon(Icons.alarm, size: 20, color: const Color.fromARGB(255, 100, 100, 100),),
-                  Text('Schedule', style: TextStyle(color:  Color.fromARGB(255, 100, 100, 100), fontSize: 12))
-                ],),
-                )
-              ),
-              Container(
-                  height: 50,
-                  child: Column(children: [
-                  Icon(Icons.photo_library, size: 25, color:  const Color.fromARGB(255, 46, 46, 46),),
-                  Text('Gallery', style: TextStyle(color:  const Color.fromARGB(255, 46, 46, 46), fontSize: 12),)
-                ],),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 10,
+            children: List.generate(
+              3,
+              (_) => Container(
+                width: 90,
+                height: 90,
+                decoration: BoxDecoration(
+                  color: AppTheme.backgroundPrimaryLight,
+                  borderRadius: BorderRadius.circular(12),
                 ),
-              InkWell(
-                onTap: () {
-                   Navigator.push(
-                          context,
-                          PageRouteBuilder(
-                            pageBuilder: (context, animation, secondaryAnimation) => NotesAndComments(),
-                            transitionsBuilder: (context, animation, secondaryAnimation, child) {
-                              return SlideTransition(
-                                position: Tween<Offset>(
-                                  begin: const Offset(1.0, 0.0),
-                                  end: Offset.zero,
-                                ).animate(animation),
-                                child: child,
-                              );
-                            },
-                          ),
-                        );
-                },
-                child: Container(
-                  height: 50,
-                  child: Column(children: [
-                  Icon(Icons.update, size: 20, color:  Color.fromARGB(255, 100, 100, 100),),
-                  Text('Notes', style: TextStyle(color:  Color.fromARGB(255, 100, 100, 100), fontSize: 12),)
-                ],),
-                )
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return Container(
+      padding: const EdgeInsets.all(32),
+      decoration: BoxDecoration(
+        color: AppTheme.backgroundSecondary,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Column(
+        children: [
+          Icon(Icons.photo_library_outlined, color: AppTheme.primaryColorConst, size: 32),
+          const SizedBox(height: 12),
+          Text(
+            'No uploads yet',
+            style: TextStyle(fontWeight: FontWeight.w600, color: AppTheme.textPrimary),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'You will receive a notification as soon as the team shares the first set of photos.',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: AppTheme.textSecondary),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDateSection(BuildContext context, String date, ThemeData theme) {
+    final items = _entries.where((element) => element['date'] == date).toList();
+    return Container(
+      margin: const EdgeInsets.only(bottom: 24),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppTheme.backgroundSecondary,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppTheme.primaryColorConst.withOpacity(0.08)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: AppTheme.primaryColorConst.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(Icons.date_range, size: 18, color: AppTheme.primaryColorConst),
+              ),
+              const SizedBox(width: 12),
+              Text(
+                date,
+                style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
               ),
             ],
-          )
-        
           ),
-        ]));
+          const SizedBox(height: 16),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: items.map((entry) => _buildImageTile(context, entry)).toList(),
+          ),
+        ],
+      ),
+    );
   }
+
+  Widget _buildImageTile(BuildContext context, dynamic entry) {
+    final double tileSize = (MediaQuery.of(context).size.width - 16 * 2 - 10 * 2) / 3;
+    final imageUrl = "https://app.buildahome.in/api/images/${entry['image']}";
+    final child = CachedNetworkImage(
+      imageUrl: imageUrl,
+      fit: BoxFit.cover,
+      progressIndicatorBuilder: (context, url, progress) => _buildImageSkeleton(),
+      errorWidget: (context, url, error) => _buildBrokenImage(),
+    );
+    final onTap = () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => FullScreenImage(imageUrl)));
+
+    return AnimatedWidgetSlide(
+      direction: SlideDirection.bottomToTop,
+      duration: const Duration(milliseconds: 300),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Ink(
+          width: tileSize,
+          height: tileSize,
+          decoration: BoxDecoration(
+            color: AppTheme.backgroundPrimaryLight,
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.06),
+                blurRadius: 8,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: child,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBrokenImage() {
+    return Container(
+      color: AppTheme.backgroundPrimaryLight,
+      child: const Center(
+        child: Icon(Icons.broken_image_outlined, color: AppTheme.onBackgroundColorConst),
+      ),
+    );
+  }
+
+  Widget _buildImageSkeleton() {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.centerLeft,
+              end: Alignment.centerRight,
+              colors: [
+                AppTheme.backgroundPrimaryLight,
+                AppTheme.backgroundSecondary,
+                AppTheme.backgroundPrimaryLight,
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
 }
 enum SlideDirection { leftToRight, rightToLeft, topToBottom, bottomToTop }
 
@@ -312,18 +323,18 @@ class AnimatedWidgetSlide extends StatefulWidget {
   final SlideDirection direction;
   final Duration duration;
 
-  AnimatedWidgetSlide({
+  const AnimatedWidgetSlide({
+    super.key,
     required this.child,
     required this.direction,
     required this.duration,
   });
 
   @override
-  _AnimatedWidgetSlideState createState() => _AnimatedWidgetSlideState();
+  State<AnimatedWidgetSlide> createState() => _AnimatedWidgetSlideState();
 }
 
-class _AnimatedWidgetSlideState extends State<AnimatedWidgetSlide>
-with SingleTickerProviderStateMixin {
+class _AnimatedWidgetSlideState extends State<AnimatedWidgetSlide> with SingleTickerProviderStateMixin {
   late AnimationController _animationController;
   late Animation<Offset> _slideAnimation;
 
@@ -342,7 +353,7 @@ with SingleTickerProviderStateMixin {
           end: const Offset(0.0, 0.0),
         ).animate(CurvedAnimation(
           parent: _animationController,
-          curve: Curves.easeInSine,
+          curve: Curves.easeIn,
         ));
         break;
       case SlideDirection.rightToLeft:
@@ -351,7 +362,7 @@ with SingleTickerProviderStateMixin {
           end: const Offset(0.0, 0.0),
         ).animate(CurvedAnimation(
           parent: _animationController,
-          curve: Curves.easeInOut,
+          curve: Curves.easeIn,
         ));
         break;
       case SlideDirection.topToBottom:

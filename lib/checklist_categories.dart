@@ -1,48 +1,38 @@
-import 'package:buildahome/widgets/material_units.dart';
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
-import 'NavMenu.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import "ShowAlert.dart";
-import 'projects.dart';
-import 'main.dart';
-import 'utilities/styles.dart';
-import 'widgets/material.dart';
-import 'package:intl/intl.dart';
-import 'package:file_picker/file_picker.dart';
-import 'dart:convert';
+
+import 'app_theme.dart';
 import 'checklist_items.dart';
 
 class ChecklistCategoriesLayout extends StatelessWidget {
+  const ChecklistCategoriesLayout({super.key});
+
   @override
   Widget build(BuildContext context) {
-    final appTitle = 'buildAhome';
-    final GlobalKey<ScaffoldState> _scaffoldKey = new GlobalKey<ScaffoldState>();
-    return MaterialApp(
-      title: appTitle,
-      theme: ThemeData(fontFamily: App().fontName),
-      home: Scaffold(
-        backgroundColor: Colors.black,
-        key: _scaffoldKey, // ADD THIS LINE
-        appBar: AppBar(
-          automaticallyImplyLeading: true,
-          title: Text(appTitle),
-          leading: new IconButton(
-              icon: new Icon(
-                Icons.chevron_left,
-                size: 30,
-              ),
-              onPressed: () => Navigator.pop(context)),
-          backgroundColor: Color.fromARGB(255, 0, 0, 0),
-        ),
-
-        body: ChecklistCategories()
+    final canPop = Navigator.of(context).canPop();
+    return Scaffold(
+      backgroundColor: AppTheme.backgroundPrimary,
+      appBar: AppBar(
+        backgroundColor: AppTheme.backgroundSecondary,
+        automaticallyImplyLeading: canPop,
+        leading: canPop
+            ? IconButton(
+                icon: const Icon(Icons.arrow_back_ios_new_rounded),
+                onPressed: () => Navigator.of(context).maybePop(),
+              )
+            : null,
+        title: const Text('Checklist'),
       ),
+      body: const ChecklistCategories(),
     );
   }
 }
 
 class ChecklistCategories extends StatefulWidget {
+  const ChecklistCategories({super.key});
+
   @override
   ChecklistCategoriesState createState() {
     return ChecklistCategoriesState();
@@ -50,7 +40,8 @@ class ChecklistCategories extends StatefulWidget {
 }
 
 class ChecklistCategoriesState extends State<ChecklistCategories> {
-  var categories = [];
+  List<dynamic> categories = [];
+  bool _isLoading = false;
 
   @override
   void initState() {
@@ -58,48 +49,110 @@ class ChecklistCategoriesState extends State<ChecklistCategories> {
     call();
   }
 
-  call() async {
-    var url = 'https://office.buildahome.in/API/get_checklist_categories';
-    var response = await http.get(Uri.parse(url));
+  Future<void> call() async {
     setState(() {
-      categories = jsonDecode(response.body)['categories'];
+      _isLoading = true;
     });
+    try {
+      var url = 'https://office.buildahome.in/API/get_checklist_categories';
+      var response = await http.get(Uri.parse(url));
+      var parsed = jsonDecode(response.body)['categories'];
+      if (!mounted) return;
+      setState(() {
+        categories = List<String>.from(parsed);
+      });
+    } catch (err) {
+      debugPrint('Failed to load checklist categories: $err');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
   }
-
-
-
 
   @override
   Widget build(BuildContext context) {
-    return ListView(
-      padding: EdgeInsets.symmetric(horizontal: 15, vertical: 20),
-      children: [
-        Container(
-            margin: EdgeInsets.symmetric(horizontal: 10, vertical: 20),
-            child: Text('Select category to view checklist', style: TextStyle(color: Color.fromARGB(255, 202, 202, 202)),))
-        ,
-        for(var i=0; i< categories.length; i++)
-          InkWell(
-            child: Container(
-              padding: EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                border: Border(
-                  bottom: BorderSide(color: Color.fromARGB(255, 65, 65, 65)!)
-                )
-              ),
-              child: Row(
-                children: [
-                  Icon(Icons.arrow_right_rounded,color: Colors.white),
-                  SizedBox(width: 5,),
-                  Expanded(child: Text(categories[i], style: TextStyle(fontSize: 16, color: Colors.white),),)
-                ],
-              )
-            ),
-            onTap: () {
-              Navigator.push(context, MaterialPageRoute(builder: (context) => ChecklistItemsLayout(categories[i])));
-            },
-          )
-      ],
+    final theme = Theme.of(context);
+    return RefreshIndicator(
+      color: AppTheme.primaryColorConst,
+      onRefresh: call,
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 24, 16, 32),
+        children: [
+          Text(
+            'Select a category',
+            style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Checklists keep track of work-front readiness across project stages.',
+            style: theme.textTheme.bodyMedium?.copyWith(color: AppTheme.textSecondary),
+          ),
+          const SizedBox(height: 24),
+          if (_isLoading && categories.isEmpty)
+            ...List.generate(4, (_) => _buildSkeleton())
+          else if (categories.isEmpty)
+            _buildEmptyState()
+          else
+            ...List.generate(categories.length, (index) => _buildCategoryTile(categories[index])),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCategoryTile(String category) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: AppTheme.backgroundSecondary,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppTheme.primaryColorConst.withOpacity(0.08)),
+      ),
+      child: ListTile(
+        onTap: () {
+          Navigator.push(context, MaterialPageRoute(builder: (context) => ChecklistItemsLayout(category)));
+        },
+        leading: const Icon(Icons.check_circle_outline, color: AppTheme.primaryColorConst),
+        trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+        title: Text(
+          category,
+          style: const TextStyle(fontWeight: FontWeight.w600, color: AppTheme.textPrimary),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSkeleton() {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      height: 64,
+      decoration: BoxDecoration(
+        color: AppTheme.backgroundSecondary,
+        borderRadius: BorderRadius.circular(12),
+      ),
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: AppTheme.backgroundSecondary,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        children: [
+          Icon(Icons.fact_check_outlined, color: AppTheme.primaryColorConst, size: 32),
+          const SizedBox(height: 12),
+          const Text(
+            'No checklist categories available',
+            style: TextStyle(fontWeight: FontWeight.w600, color: AppTheme.textPrimary),
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
     );
   }
 }

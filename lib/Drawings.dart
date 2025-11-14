@@ -1,10 +1,11 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
-import 'NavMenu.dart';
-import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'main.dart';
+
+import 'app_theme.dart';
 
 class Documents extends StatefulWidget {
   @override
@@ -14,11 +15,11 @@ class Documents extends StatefulWidget {
 }
 
 class DocumentObject extends StatefulWidget {
-  var parent;
-  var children;
-  var drawing_id;
+  final dynamic parent;
+  final dynamic children;
+  final dynamic drawing_id;
 
-  DocumentObject(this.parent, this.children, this.drawing_id);
+  const DocumentObject(this.parent, this.children, this.drawing_id, {super.key});
 
   @override
   DocumentObjectState createState() {
@@ -31,7 +32,6 @@ class DocumentObjectState extends State<DocumentObject> {
   var children;
   var drawing_id;
   bool vis = false;
-  Icon _icon = Icon(Icons.expand_more);
 
   DocumentObjectState(this.parent, this.children, this.drawing_id);
 
@@ -42,70 +42,138 @@ class DocumentObjectState extends State<DocumentObject> {
   @override
   Widget build(BuildContext context) {
     return Container(
-        decoration: BoxDecoration(
-            color: Colors.grey[200], borderRadius: BorderRadius.circular(10)),
-        margin: EdgeInsets.symmetric(vertical: 10, horizontal: 5),
+      margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+      decoration: BoxDecoration(
+        color: AppTheme.backgroundSecondary,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppTheme.primaryColorConst.withOpacity(0.08)),
+      ),
+      child: Material(
+        color: Colors.transparent,
         child: Column(
           children: <Widget>[
             InkWell(
               onTap: () {
                 setState(() {
-                  !vis
-                      ? _icon = Icon(Icons.expand_less)
-                      : _icon = Icon(Icons.expand_more);
                   vis = !vis;
                 });
               },
-              child: Container(
-                padding: EdgeInsets.all(15),
+              borderRadius: BorderRadius.circular(16),
+              child: Padding(
+                padding: const EdgeInsets.all(16),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: <Widget>[
-                    Text(
-                      this.parent.toString(),
-                      style: TextStyle(fontSize: 16),
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: AppTheme.primaryColorConst.withOpacity(0.12),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: const Icon(
+                            Icons.folder,
+                            size: 20,
+                            color: AppTheme.primaryColorConst,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Text(
+                          parent.toString(),
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: AppTheme.textPrimary,
+                          ),
+                        ),
+                      ],
                     ),
-                    _icon,
+                    AnimatedRotation(
+                      turns: vis ? 0.5 : 0.0,
+                      duration: const Duration(milliseconds: 250),
+                      child: const Icon(
+                        Icons.expand_more,
+                        color: AppTheme.textPrimary,
+                      ),
+                    ),
                   ],
                 ),
               ),
             ),
-            Visibility(
-                visible: vis,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    for (int x = 0; x < this.children.length; x++)
-                      InkWell(
-                          onTap: () => {
-                                showDialog(
-                                    context: context,
-                                    builder: (BuildContext context) {
-                                      return AlertDialog(
-                                          content: Text("Loading..."));
-                                    }),
-                                Navigator.of(context, rootNavigator: true)
-                                    .pop(),
-                                _launchURL(
-                                    "https://app.buildahome.in/team/Drawings/" +
-                                        children[x].toString())
-                              },
-                          child: Container(
-                            padding:
-                                EdgeInsets.only(left: 15, right: 15, bottom: 5),
-                            alignment: Alignment.centerLeft,
-                            margin: EdgeInsets.only(top: 20),
-                            child: Text(
-                              children[x].toString(),
-                              style: TextStyle(
-                                  color: Colors.indigo[900],
-                                  fontWeight: FontWeight.bold),
-                            ),
-                          ))
-                  ],
-                ))
+            AnimatedSize(
+              duration: const Duration(milliseconds: 250),
+              curve: Curves.easeInOut,
+              child: vis
+                  ? Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        for (int x = 0; x < children.length; x++)
+                          TweenAnimationBuilder<double>(
+                            tween: Tween(begin: 0.0, end: 1.0),
+                            duration: Duration(milliseconds: 200 + (x * 60)),
+                            curve: Curves.easeOut,
+                            builder: (context, value, child) {
+                              return Opacity(
+                                opacity: value,
+                                child: Material(
+                                  color: Colors.transparent,
+                                  child: InkWell(
+                                    onTap: () {
+                                      showDialog(
+                                          context: context,
+                                          builder: (BuildContext context) {
+                                            return const AlertDialog(content: Text("Loading..."));
+                                          });
+                                      Navigator.of(context, rootNavigator: true).pop();
+                                      _launchURL("https://app.buildahome.in/team/Drawings/${children[x]}");
+                                    },
+                                    child: Container(
+                                      padding: const EdgeInsets.all(16),
+                                      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                      decoration: BoxDecoration(
+                                        color: AppTheme.backgroundPrimary,
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      child: Row(
+                                        children: [
+                                          const Icon(
+                                            Icons.description,
+                                            size: 20,
+                                            color: AppTheme.primaryColorConst,
+                                          ),
+                                          const SizedBox(width: 12),
+                                          Expanded(
+                                            child: Text(
+                                              children[x].toString(),
+                                              style: const TextStyle(
+                                                color: AppTheme.textPrimary,
+                                                fontWeight: FontWeight.w600,
+                                                fontSize: 14,
+                                              ),
+                                            ),
+                                          ),
+                                          const Icon(
+                                            Icons.open_in_new,
+                                            size: 18,
+                                            color: AppTheme.primaryColorConst,
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                      ],
+                    )
+                  : const SizedBox.shrink(),
+            ),
           ],
-        ));
+        ),
+      ),
+    );
   }
 }
 
@@ -117,46 +185,62 @@ class DocumentsState extends State<Documents> {
   var work_orders = [];
   var purchase_orders = [];
   var role;
+  bool _isLoading = false;
 
-  call() async {
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    var id = prefs.getString('project_id');
-    var url = Uri.parse('https://office.buildahome.in/API/view_all_documents?id=$id');
-    var response = await http.get(url);
-    var _role = prefs.getString('role');
-    var pos = [];
-    var wos = [];
-
+  Future<void> call() async {
     setState(() {
-      role = _role;
-      folders = [];
-      subfolders = {};
-      drawing_ids = {};
-      if (response.body != '') {
+      _isLoading = true;
+    });
+    try {
+      SharedPreferences prefs = await SharedPreferences.getInstance();
+      var id = prefs.getString('project_id');
+      if (id == null) {
+        if (!mounted) return;
+        setState(() {
+          folders = [];
+          subfolders = {};
+          drawing_ids = {};
+        });
+        return;
+      }
+      var response = await http.get(Uri.parse('https://office.buildahome.in/API/view_all_documents?id=$id'));
+      var _role = prefs.getString('role');
+
+      final localFolders = <String>[];
+      final localSubFolders = <String, List<dynamic>>{};
+      final localDrawingIds = <String, List<dynamic>>{};
+
+      if (response.body.isNotEmpty) {
         entries = jsonDecode(response.body);
         for (int i = 0; i < entries.length; i++) {
-          if (folders.contains(entries[i]['folder']) == false &&
-              entries[i]['folder'].trim() != "") {
-            folders.add(entries[i]['folder']);
+          final folder = entries[i]['folder']?.toString() ?? '';
+          if (folder.trim().isEmpty) continue;
+          if (!localFolders.contains(folder)) {
+            localFolders.add(folder);
           }
-        }
-        for (int i = 0; i < folders.length; i++) {
-          for (int x = 0; x < entries.length; x++) {
-            if (entries[x]["folder"] == folders[i]) {
-              if (subfolders.containsKey(folders[i])) {
-                subfolders[folders[i]].add(entries[x]["name"]);
-                drawing_ids[folders[i]].add(entries[x]["doc_id"]);
-              } else {
-                subfolders[folders[i]] = [];
-                drawing_ids[folders[i]] = [];
-                subfolders[folders[i]].add(entries[x]["name"]);
-                drawing_ids[folders[i]].add(entries[x]["doc_id"]);
-              }
-            }
-          }
+          localSubFolders.putIfAbsent(folder, () => []);
+          localDrawingIds.putIfAbsent(folder, () => []);
+          localSubFolders[folder]!.add(entries[i]["name"]);
+          localDrawingIds[folder]!.add(entries[i]["doc_id"]);
         }
       }
-    });
+
+      if (!mounted) return;
+      setState(() {
+        role = _role;
+        folders = localFolders;
+        subfolders = localSubFolders;
+        drawing_ids = localDrawingIds;
+      });
+    } catch (err) {
+      debugPrint('Failed to load documents: $err');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
   }
 
   @override
@@ -167,64 +251,125 @@ class DocumentsState extends State<Documents> {
 
   @override
   Widget build(BuildContext context) {
-    final appTitle = 'buildAhome';
-    final GlobalKey<ScaffoldState> _scaffoldKey =
-        new GlobalKey<ScaffoldState>();
+    final theme = Theme.of(context);
+    final canPop = Navigator.of(context).canPop();
     return Scaffold(
-        key: _scaffoldKey,
-        backgroundColor: Color.fromARGB(255, 233, 233, 233),
-
-        appBar: AppBar(
-          automaticallyImplyLeading: true,
-          title: Text(
-            appTitle,
-            style: TextStyle(color: Color.fromARGB(255, 224, 224, 224), fontSize: 16),
-          ),
-          leading: new IconButton(
-              icon: new Icon(Icons.chevron_left),
-              onPressed: () async {
-                Navigator.pop(context);
-              }),
-          backgroundColor: Color.fromARGB(255, 6, 10, 43),
-
+      backgroundColor: AppTheme.backgroundPrimary,
+      appBar: AppBar(
+        backgroundColor: AppTheme.backgroundSecondary,
+        automaticallyImplyLeading: canPop,
+        leading: canPop
+            ? IconButton(
+                icon: const Icon(Icons.arrow_back_ios_new_rounded),
+                onPressed: () => Navigator.of(context).maybePop(),
+              )
+            : null,
+        title: Text(
+          'Documents',
+          style: theme.textTheme.headlineSmall?.copyWith(fontSize: 20),
         ),
-        body: Stack(children: [
-          Opacity(
-          opacity: 0.4,
-          child: Container(
-            width: MediaQuery.of(context).size.width,
-            height: MediaQuery.of(context).size.height,
-            decoration: BoxDecoration(
-                color: Color.fromARGB(255, 214, 214, 214),
-                border: Border.all(width: 1, color: Colors.grey[200]!),
-                borderRadius: BorderRadius.circular(10),
+      ),
+      body: SafeArea(
+        child: RefreshIndicator(
+          color: AppTheme.primaryColorConst,
+          onRefresh: call,
+          child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.fromLTRB(16, 24, 16, 32),
+            children: [
+              Text(
+                "Project documents",
+                style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Access sanctioned drawings, approvals and shared files in one place.',
+                style: theme.textTheme.bodyMedium?.copyWith(color: AppTheme.textSecondary),
+              ),
+              const SizedBox(height: 24),
+              if (_isLoading && folders.isEmpty)
+                ...List.generate(3, (_) => _buildSkeletonCard())
+              else if (folders.isEmpty)
+                _buildEmptyState()
+              else
+                ...List.generate(
+                  folders.length,
+                  (index) => TweenAnimationBuilder<double>(
+                    tween: Tween(begin: 0.0, end: 1.0),
+                    duration: Duration(milliseconds: 300 + (index * 80)),
+                    curve: Curves.easeOut,
+                    builder: (context, value, child) {
+                      return Opacity(
+                        opacity: value,
+                        child: Transform.translate(
+                          offset: Offset(0, 20 * (1 - value)),
+                          child: DocumentObject(
+                            folders[index].toString(),
+                            subfolders[folders[index]],
+                            drawing_ids[folders[index]],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
                 ),
-            
-            child: Image.network("https://plus.unsplash.com/premium_photo-1677402408071-232d1c3c3787?w=500&auto=format&fit=crop&q=60&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxzZWFyY2h8Mjl8fGZpbGVzfGVufDB8fDB8fHww", fit: BoxFit.fill),
+            ],
           ),
         ),
-          ListView(
-          children: [
-            Container(margin: EdgeInsets.only(top: 20, left: 15, bottom: 10), child: Text("Project Documents", style: TextStyle(fontSize: 16, color: const Color.fromARGB(255, 37, 37, 37)))),
+      ),
+    );
+  }
 
-            ListView.builder(
-              shrinkWrap: true,
-              physics: NeverScrollableScrollPhysics(),
-              padding: EdgeInsets.all(15),
-              itemCount: folders == null ? 0 : folders.length,
-              itemBuilder: (BuildContext ctxt, int Index) {
-                return Container(
-                  child: DocumentObject(folders[Index].toString(),
-                      subfolders[folders[Index]], drawing_ids[folders[Index]]),
-                );
-              },
-            ),
-            Container(
-              margin: EdgeInsets.only(bottom: 100),
-            )
-          ],
-        )
-        ],)
-        );
+  Widget _buildSkeletonCard() {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppTheme.backgroundSecondary,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 160,
+            height: 16,
+            color: AppTheme.backgroundPrimaryLight,
+          ),
+          const SizedBox(height: 12),
+          Container(
+            width: double.infinity,
+            height: 14,
+            color: AppTheme.backgroundPrimaryLight,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: AppTheme.backgroundSecondary,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        children: [
+          Icon(Icons.inventory_2_outlined, color: AppTheme.primaryColorConst, size: 32),
+          const SizedBox(height: 12),
+          Text(
+            'No documents shared yet',
+            style: const TextStyle(fontWeight: FontWeight.w600, color: AppTheme.textPrimary),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Project files uploaded by the team will appear here automatically.',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: AppTheme.textSecondary),
+          ),
+        ],
+      ),
+    );
   }
 }

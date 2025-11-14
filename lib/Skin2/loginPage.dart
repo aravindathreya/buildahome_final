@@ -8,6 +8,7 @@ import 'package:flutter_spinkit/flutter_spinkit.dart';
 // Custom dart files
 import '../UserHome.dart';
 import "../AdminDashboard.dart";
+import '../services/data_provider.dart';
 
 class LoginScreenNew extends StatefulWidget {
   @override
@@ -43,17 +44,20 @@ class LoginScreenNewState extends State<LoginScreenNew> {
     setState(() {
       if (username != null) {
         this.showLoginForm = false;
-        if (role == "Client") {
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (context) => Home()),
-          );
-        } else {
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (context) => AdminDashboard()),
-          );
-        }
+        // Initialize data provider on app load
+        DataProvider().initializeData().then((_) {
+          if (role == "Client") {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (context) => Home()),
+            );
+          } else {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (context) => AdminDashboard()),
+            );
+          }
+        });
       } else {
         this.showLoginForm = true;
       }
@@ -101,7 +105,7 @@ class LoginScreenNewState extends State<LoginScreenNew> {
         });
       } else {
         if (jsonDecodedResponse['role'] == 'Client') {
-          setSharedPrefs(
+          await setSharedPrefs(
               usernameTextController.text,
               jsonDecodedResponse['role'],
               jsonDecodedResponse['project_id'],
@@ -111,13 +115,19 @@ class LoginScreenNewState extends State<LoginScreenNew> {
               jsonDecodedResponse['location'],
               jsonDecodedResponse['api_token']);
 
+          // Initialize data provider after login
+          await DataProvider().initializeData();
+
           Navigator.pushReplacement(
             context,
             MaterialPageRoute(builder: (context) => Home()),
           );
         } else {
-          setSharedPrefs(usernameTextController.text, jsonDecodedResponse['role'], '', '', '',
+          await setSharedPrefs(usernameTextController.text, jsonDecodedResponse['role'], '', '', '',
               jsonDecodedResponse["user_id"], '', jsonDecodedResponse['api_token']);
+
+          // Initialize data provider after login
+          await DataProvider().initializeData();
 
           Navigator.pushReplacement(
             context,
@@ -138,189 +148,405 @@ class LoginScreenNewState extends State<LoginScreenNew> {
   @override
   Widget build(BuildContext context) {
     return Container(
-      color: Colors.white,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Colors.white,
+            Color.fromARGB(255, 250, 250, 255),
+          ],
+        ),
+      ),
       height: MediaQuery.of(context).size.height,
       width: MediaQuery.of(context).size.width,
       child: this.showLoginForm
-          ? Column(children: [
-              AnimatedContainer(
-                  height: this.imageContainerShrinked
-                      ? MediaQuery.of(context).size.height * .3
-                      : MediaQuery.of(context).size.height * .6,
-                  decoration: BoxDecoration(color: Colors.grey[200]),
-                  duration: Duration(milliseconds: 300),
-                  child: Container(
-                    color: Colors.white,
-                    padding: this.imageContainerShrinked ? EdgeInsets.only(top: 50) : EdgeInsets.all(30),
-                    child: Image(
-                      image: AssetImage('assets/images/login_illustration.png'),
-                      fit: BoxFit.cover,
-                    ),
-                  )),
-              Visibility(
-                visible: this.showUsernameField,
-                child: Container(
-                    margin: EdgeInsets.symmetric(vertical: 20, horizontal: 15),
-                    width: MediaQuery.of(context).size.width - 30,
-                    child: TextField(
-                      controller: usernameTextController,
-                      focusNode: userNamefocusNode,
-                      decoration: InputDecoration(
-                        hintText: 'Username',
-                        contentPadding: EdgeInsets.only(bottom: 10),
-                        isDense: true,
-                        enabledBorder: UnderlineInputBorder(
-                          borderSide: BorderSide(color: Color.fromARGB(255, 13, 17, 65)),
-                        ),
-                        focusedBorder: UnderlineInputBorder(
-                          borderSide: BorderSide(color: Color.fromARGB(255, 13, 17, 65), width: 2),
-                        ),
-                      ),
-                    )),
-              ),
-              Visibility(
-                  visible: this.showUsernameError,
-                  child: Container(
-                    margin: EdgeInsets.symmetric(horizontal: 15),
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      'Username cannot be empty',
-                      style: TextStyle(color: Colors.red[600]),
-                    ),
-                  )),
-              Visibility(
-                  visible: this.showIncorrectCredentials,
-                  child: Container(
-                    margin: EdgeInsets.symmetric(horizontal: 15),
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      'Incorrect username or password',
-                      style: TextStyle(color: Colors.red[600]),
-                    ),
-                  )),
-              Visibility(
-                  visible: this.showPasswordField,
-                  child: InkWell(
+          ? SingleChildScrollView(
+              child: Column(children: [
+                AnimatedContainer(
+                    height: this.imageContainerShrinked
+                        ? MediaQuery.of(context).size.height * .25
+                        : MediaQuery.of(context).size.height * .5,
+                    duration: Duration(milliseconds: 400),
+                    curve: Curves.easeInOutCubic,
                     child: Container(
-                        margin: EdgeInsets.symmetric(horizontal: 8),
-                        alignment: Alignment.centerLeft,
-                        child: Row(
-                          children: [
-                            Icon(
-                              Icons.chevron_left,
-                              size: 30,
+                      padding: this.imageContainerShrinked ? EdgeInsets.only(top: 40) : EdgeInsets.all(40),
+                      child: TweenAnimationBuilder<double>(
+                        tween: Tween(begin: 0.0, end: 1.0),
+                        duration: Duration(milliseconds: 600),
+                        curve: Curves.easeOut,
+                        builder: (context, value, child) {
+                          return Transform.scale(
+                            scale: value,
+                            child: Opacity(
+                              opacity: value,
+                              child: Image(
+                                image: AssetImage('assets/images/login_illustration.png'),
+                                fit: BoxFit.contain,
+                              ),
                             ),
-                            Text('Back')
-                          ],
-                        )),
-                    onTap: () {
-                      setState(() {
-                        this.showPasswordError = false;
-                        this.showPasswordField = false;
-                        this.showUsernameField = true;
-                      });
-                    },
-                  )),
-              Visibility(
-                visible: this.showPasswordField,
-                child: Container(
-                    margin: EdgeInsets.symmetric(vertical: 20, horizontal: 15),
-                    width: MediaQuery.of(context).size.width - 30,
-                    child: TextField(
-                      controller: passwordTextController,
-                      obscureText: true,
-                      focusNode: passwordfocusNode,
-                      decoration: InputDecoration(
-                        hintText: 'Password',
-                        contentPadding: EdgeInsets.only(bottom: 10),
-                        isDense: true,
-                        enabledBorder: UnderlineInputBorder(
-                          borderSide: BorderSide(color: Color.fromARGB(255, 13, 17, 65)),
-                        ),
-                        focusedBorder: UnderlineInputBorder(
-                          borderSide: BorderSide(color: Color.fromARGB(255, 13, 17, 65), width: 2),
-                        ),
+                          );
+                        },
                       ),
                     )),
-              ),
-              Visibility(
-                  visible: this.showPasswordError,
-                  child: Container(
-                    margin: EdgeInsets.symmetric(horizontal: 15),
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      'Password cannot be empty',
-                      style: TextStyle(color: Colors.red[600]),
-                    ),
-                  )),
-              Visibility(
-                visible: this.formBeingSubmitted,
-                child: Container(
-                    margin: EdgeInsets.symmetric(vertical: 20, horizontal: 15),
-                    width: MediaQuery.of(context).size.width - 30,
-                    child: Text('Verifying information..')),
-              ),
-              InkWell(
-                child: Opacity(
-                  opacity: this.formBeingSubmitted ? 0.5 : 1,
-                  child: AnimatedContainer(
-                    duration: Duration(milliseconds: 200),
-                    margin: EdgeInsets.symmetric(vertical: 20, horizontal: 15),
-                    padding: EdgeInsets.symmetric(vertical: 10, horizontal: 10),
-                    width: this.formBeingSubmitted ? 100 : MediaQuery.of(context).size.width - 20,
-                    alignment: Alignment.center,
-                    decoration:
-                        BoxDecoration(color: Color.fromARGB(255, 13, 17, 65), borderRadius: BorderRadius.circular(5)),
-                    child: this.formBeingSubmitted
-                        ? SpinKitRing(
-                            color: Colors.white,
-                            size: 15,
-                            lineWidth: 2,
-                          )
-                        : Text(
-                            getCTAButtonText(),
-                            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 16),
+                AnimatedSwitcher(
+                  duration: Duration(milliseconds: 300),
+                  transitionBuilder: (Widget child, Animation<double> animation) {
+                    return FadeTransition(
+                      opacity: animation,
+                      child: SlideTransition(
+                        position: Tween<Offset>(
+                          begin: Offset(0.0, 0.3),
+                          end: Offset.zero,
+                        ).animate(CurvedAnimation(
+                          parent: animation,
+                          curve: Curves.easeOutCubic,
+                        )),
+                        child: child,
+                      ),
+                    );
+                  },
+                  child: this.showUsernameField
+                      ? Container(
+                          key: ValueKey('username'),
+                          margin: EdgeInsets.symmetric(vertical: 10, horizontal: 20),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              TextField(
+                                controller: usernameTextController,
+                                focusNode: userNamefocusNode,
+                                style: TextStyle(fontSize: 16),
+                                decoration: InputDecoration(
+                                  hintText: 'Username',
+                                  prefixIcon: Icon(Icons.person_outline, color: Color.fromARGB(255, 13, 17, 65)),
+                                  filled: true,
+                                  fillColor: Colors.white,
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(16),
+                                    borderSide: BorderSide.none,
+                                  ),
+                                  enabledBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(16),
+                                    borderSide: BorderSide(color: Colors.grey[300]!, width: 1),
+                                  ),
+                                  focusedBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(16),
+                                    borderSide: BorderSide(color: Color.fromARGB(255, 13, 17, 65), width: 2),
+                                  ),
+                                  contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                                ),
+                              ),
+                              if (this.showUsernameError)
+                                Padding(
+                                  padding: EdgeInsets.only(top: 8, left: 16),
+                                  child: TweenAnimationBuilder<double>(
+                                    tween: Tween(begin: 0.0, end: 1.0),
+                                    duration: Duration(milliseconds: 200),
+                                    builder: (context, value, child) {
+                                      return Opacity(
+                                        opacity: value,
+                                        child: Row(
+                                          children: [
+                                            Icon(Icons.error_outline, size: 16, color: Colors.red[600]),
+                                            SizedBox(width: 4),
+                                            Text(
+                                              'Username cannot be empty',
+                                              style: TextStyle(color: Colors.red[600], fontSize: 12),
+                                            ),
+                                          ],
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                ),
+                              if (this.showIncorrectCredentials)
+                                Padding(
+                                  padding: EdgeInsets.only(top: 8, left: 16),
+                                  child: TweenAnimationBuilder<double>(
+                                    tween: Tween(begin: 0.0, end: 1.0),
+                                    duration: Duration(milliseconds: 200),
+                                    builder: (context, value, child) {
+                                      return Opacity(
+                                        opacity: value,
+                                        child: Row(
+                                          children: [
+                                            Icon(Icons.error_outline, size: 16, color: Colors.red[600]),
+                                            SizedBox(width: 4),
+                                            Text(
+                                              'Incorrect username or password',
+                                              style: TextStyle(color: Colors.red[600], fontSize: 12),
+                                            ),
+                                          ],
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                ),
+                            ],
                           ),
+                        )
+                      : SizedBox.shrink(),
+                ),
+                AnimatedSwitcher(
+                  duration: Duration(milliseconds: 300),
+                  transitionBuilder: (Widget child, Animation<double> animation) {
+                    return FadeTransition(
+                      opacity: animation,
+                      child: SlideTransition(
+                        position: Tween<Offset>(
+                          begin: Offset(0.0, 0.3),
+                          end: Offset.zero,
+                        ).animate(CurvedAnimation(
+                          parent: animation,
+                          curve: Curves.easeOutCubic,
+                        )),
+                        child: child,
+                      ),
+                    );
+                  },
+                  child: this.showPasswordField
+                      ? Container(
+                          key: ValueKey('password'),
+                          margin: EdgeInsets.symmetric(vertical: 10, horizontal: 20),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              InkWell(
+                                onTap: () {
+                                  setState(() {
+                                    this.showPasswordError = false;
+                                    this.showPasswordField = false;
+                                    this.showUsernameField = true;
+                                  });
+                                },
+                                child: Container(
+                                  margin: EdgeInsets.only(bottom: 8),
+                                  padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                  child: Row(
+                                    children: [
+                                      Icon(Icons.arrow_back_ios, size: 16, color: Color.fromARGB(255, 13, 17, 65)),
+                                      SizedBox(width: 4),
+                                      Text(
+                                        'Back',
+                                        style: TextStyle(
+                                          color: Color.fromARGB(255, 13, 17, 65),
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                              TextField(
+                                controller: passwordTextController,
+                                obscureText: true,
+                                focusNode: passwordfocusNode,
+                                style: TextStyle(fontSize: 16),
+                                decoration: InputDecoration(
+                                  hintText: 'Password',
+                                  prefixIcon: Icon(Icons.lock_outline, color: Color.fromARGB(255, 13, 17, 65)),
+                                  filled: true,
+                                  fillColor: Colors.white,
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(16),
+                                    borderSide: BorderSide.none,
+                                  ),
+                                  enabledBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(16),
+                                    borderSide: BorderSide(color: Colors.grey[300]!, width: 1),
+                                  ),
+                                  focusedBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(16),
+                                    borderSide: BorderSide(color: Color.fromARGB(255, 13, 17, 65), width: 2),
+                                  ),
+                                  contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                                ),
+                              ),
+                              if (this.showPasswordError)
+                                Padding(
+                                  padding: EdgeInsets.only(top: 8, left: 16),
+                                  child: TweenAnimationBuilder<double>(
+                                    tween: Tween(begin: 0.0, end: 1.0),
+                                    duration: Duration(milliseconds: 200),
+                                    builder: (context, value, child) {
+                                      return Opacity(
+                                        opacity: value,
+                                        child: Row(
+                                          children: [
+                                            Icon(Icons.error_outline, size: 16, color: Colors.red[600]),
+                                            SizedBox(width: 4),
+                                            Text(
+                                              'Password cannot be empty',
+                                              style: TextStyle(color: Colors.red[600], fontSize: 12),
+                                            ),
+                                          ],
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                ),
+                            ],
+                          ),
+                        )
+                      : SizedBox.shrink(),
+                ),
+                if (this.formBeingSubmitted)
+                  Container(
+                    margin: EdgeInsets.symmetric(vertical: 10, horizontal: 20),
+                    child: TweenAnimationBuilder<double>(
+                      tween: Tween(begin: 0.0, end: 1.0),
+                      duration: Duration(milliseconds: 300),
+                      builder: (context, value, child) {
+                        return Opacity(
+                          opacity: value,
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              SpinKitRing(
+                                color: Color.fromARGB(255, 13, 17, 65),
+                                size: 20,
+                                lineWidth: 2,
+                              ),
+                              SizedBox(width: 12),
+                              Text(
+                                'Verifying information...',
+                                style: TextStyle(
+                                  color: Color.fromARGB(255, 13, 17, 65),
+                                  fontSize: 14,
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                Container(
+                  margin: EdgeInsets.symmetric(vertical: 20, horizontal: 20),
+                  child: TweenAnimationBuilder<double>(
+                    tween: Tween(begin: 0.0, end: 1.0),
+                    duration: Duration(milliseconds: 400),
+                    curve: Curves.easeOut,
+                    builder: (context, value, child) {
+                      return Transform.scale(
+                        scale: 0.8 + (0.2 * value),
+                        child: Opacity(
+                          opacity: value,
+                          child: Material(
+                            color: Colors.transparent,
+                            child: InkWell(
+                              onTap: this.formBeingSubmitted
+                                  ? null
+                                  : () {
+                                      setState(() {
+                                        if (!this.imageContainerShrinked) {
+                                          this.imageContainerShrinked = true;
+                                          this.showUsernameField = true;
+                                          userNamefocusNode.requestFocus();
+                                        } else if (this.showUsernameField == true) {
+                                          if (this.usernameTextController.text.trim() == '') {
+                                            this.showUsernameError = true;
+                                            userNamefocusNode.requestFocus();
+                                            return;
+                                          }
+                                          this.showIncorrectCredentials = false;
+                                          this.showUsernameError = false;
+                                          this.showUsernameField = false;
+                                          this.showPasswordField = true;
+                                        } else {
+                                          if (this.passwordTextController.text == '') {
+                                            this.showPasswordError = true;
+                                            passwordfocusNode.requestFocus();
+                                            return;
+                                          }
+                                          this.showPasswordError = false;
+                                          this.showPasswordField = false;
+                                          this.formBeingSubmitted = true;
+                                          loginUser();
+                                        }
+                                      });
+                                    },
+                              borderRadius: BorderRadius.circular(16),
+                              child: AnimatedContainer(
+                                duration: Duration(milliseconds: 200),
+                                curve: Curves.easeInOut,
+                                padding: EdgeInsets.symmetric(vertical: 16, horizontal: 24),
+                                width: double.infinity,
+                                decoration: BoxDecoration(
+                                  gradient: LinearGradient(
+                                    colors: [
+                                      Color.fromARGB(255, 13, 17, 65),
+                                      Color.fromARGB(255, 20, 25, 80),
+                                    ],
+                                  ),
+                                  borderRadius: BorderRadius.circular(16),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Color.fromARGB(255, 13, 17, 65).withOpacity(0.3),
+                                      blurRadius: 12,
+                                      offset: Offset(0, 4),
+                                    ),
+                                  ],
+                                ),
+                                child: this.formBeingSubmitted
+                                    ? Center(
+                                        child: SpinKitRing(
+                                          color: Colors.white,
+                                          size: 20,
+                                          lineWidth: 2,
+                                        ),
+                                      )
+                                    : Center(
+                                        child: Text(
+                                          getCTAButtonText(),
+                                          style: TextStyle(
+                                            color: Colors.white,
+                                            fontWeight: FontWeight.w600,
+                                            fontSize: 16,
+                                            letterSpacing: 0.5,
+                                          ),
+                                        ),
+                                      ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      );
+                    },
                   ),
                 ),
-                onTap: () {
-                  setState(() {
-                    if (!this.imageContainerShrinked) {
-                      this.imageContainerShrinked = true;
-                      this.showUsernameField = true;
-                      userNamefocusNode.requestFocus();
-                    } else if (this.showUsernameField == true) {
-                      if (this.usernameTextController.text.trim() == '') {
-                        this.showUsernameError = true;
-                        userNamefocusNode.requestFocus();
-                        return;
-                      }
-                      this.showIncorrectCredentials = false;
-                      this.showUsernameError = false;
-                      this.showUsernameField = false;
-                      this.showPasswordField = true;
-                    } else {
-                      if (this.passwordTextController.text == '') {
-                        this.showPasswordError = true;
-                        passwordfocusNode.requestFocus();
-                        return;
-                      }
-                      this.showPasswordError = false;
-                      this.showPasswordField = false;
-                      this.formBeingSubmitted = true;
-                      loginUser();
-                    }
-                  });
-                },
-              ),
-            ])
-          : Container(
-              alignment: Alignment.center,
-              child: SpinKitRing(
-                lineWidth: 2,
-                color: Color.fromARGB(255, 13, 17, 65),
+              ]),
+            )
+        : Center(
+            child: TweenAnimationBuilder<double>(
+              tween: Tween(begin: 0.0, end: 1.0),
+              duration: Duration(milliseconds: 700),
+              curve: Curves.easeOutCubic,
+              builder: (context, value, child) {
+                final scaleValue = 0.85 + (0.15 * value);
+                return Transform.scale(
+                  scale: scaleValue,
+                  child: Opacity(
+                    opacity: value,
+                    child: child,
+                  ),
+                );
+              },
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Image.asset(
+                    'assets/images/logo-big.png',
+                    width: MediaQuery.of(context).size.width * 0.5,
+                    fit: BoxFit.contain,
+                  ),
+                  
+                ],
               ),
             ),
+          ),
     );
   }
 }

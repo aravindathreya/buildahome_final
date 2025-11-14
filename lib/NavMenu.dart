@@ -5,12 +5,10 @@ import 'package:flutter/material.dart';
 import 'UserHome.dart';
 import 'AddDailyUpdate.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'create_indent.dart';
-import 'view_open_indents.dart';
+import 'indents_screen.dart';
 import 'notifcations.dart';
 import 'RequestDrawing.dart';
 import 'NotesAndComments.dart';
-import 'my_indents.dart';
 import 'stock_report.dart';
 import 'checklist_categories.dart';
 
@@ -41,12 +39,37 @@ class NavMenuItem extends StatelessWidget {
         onTap: () {
           if (this._route == "Log out") {
             _logout();
+            Navigator.pop(context);
+            Navigator.pushAndRemoveUntil(
+              context,
+              MaterialPageRoute(builder: (context) => this._routename),
+              (route) => false,
+            );
+          } else {
+            Navigator.pop(context);
+            Navigator.pushReplacement(
+              context,
+              PageRouteBuilder(
+                pageBuilder: (context, animation, secondaryAnimation) => this._routename,
+                transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                  return FadeTransition(
+                    opacity: animation,
+                    child: SlideTransition(
+                      position: Tween<Offset>(
+                        begin: const Offset(0.3, 0.0),
+                        end: Offset.zero,
+                      ).animate(CurvedAnimation(
+                        parent: animation,
+                        curve: Curves.easeOutCubic,
+                      )),
+                      child: child,
+                    ),
+                  );
+                },
+                transitionDuration: Duration(milliseconds: 300),
+              ),
+            );
           }
-          Navigator.pop(context);
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => this._routename),
-          );
         },
         child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -204,7 +227,7 @@ class NavMenuWidgetState extends State<NavMenuWidget> {
                 role == 'Project Manager')
               Container(
                 child: NavMenuItem(
-                    "Create Indent", Icons.request_quote, CreateIndentLayout()),
+                    "Indents", Icons.request_quote, IndentsScreenLayout()),
               ),
             if (role != 'Client')
               Container(
@@ -214,22 +237,6 @@ class NavMenuWidgetState extends State<NavMenuWidget> {
             if (role == 'Client')
               Container(
                 child: NavMenuItem("Checklist", Icons.list, ChecklistCategoriesLayout()),
-              ),
-            if (role == 'Admin' ||
-                role == 'Project Coordinator' ||
-                role == 'Project Manager' ||
-                role == 'Site Engineer')
-              Container(
-                child: NavMenuItem(
-                    "My Indents", Icons.access_alarm_sharp, MyIndentsLayout()),
-              ),
-            if (role == 'Admin' ||
-                role == 'Project Coordinator' ||
-                role == 'Project Manager' ||
-                role == 'Site Engineer')
-              Container(
-                child: NavMenuItem("View open Indents", Icons.pending_actions,
-                    ViewIndentsLayout()),
               ),
             if (role == 'Admin' ||
                 role == 'Project Coordinator' ||

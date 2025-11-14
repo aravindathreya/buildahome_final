@@ -1,245 +1,568 @@
-import 'package:buildahome/NotesAndComments.dart';
-import 'package:flutter/material.dart';
 import 'dart:convert';
+
+import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:percent_indicator/linear_percent_indicator.dart';
-import 'main.dart';
-import 'NavMenu.dart';
-import 'UserHome.dart';
-import 'Gallery.dart';
-import 'AnimationHelper.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import 'app_theme.dart';
 
 class TaskWidget extends StatelessWidget {
+  const TaskWidget({super.key});
+
   @override
   Widget build(BuildContext context) {
-    final appTitle = 'buildAhome';
-    final GlobalKey<ScaffoldState> _scaffoldKey = new GlobalKey<ScaffoldState>();
-    return MaterialApp(
-      title: appTitle,
-      theme: ThemeData(fontFamily: App().fontName),
-      home: Scaffold(
-        key: _scaffoldKey,
-        backgroundColor: Color.fromARGB(255, 233, 233, 233),
-        drawer: NavMenuWidget(),
-        appBar: AppBar(
-          automaticallyImplyLeading: false,
-          title: Text(
-            appTitle,
-            style: TextStyle(color: Color.fromARGB(255, 224, 224, 224), fontSize: 16),
-          ),
-          leading: new IconButton(
-              icon: new Icon(Icons.menu),
-              onPressed: () async {
-                SharedPreferences prefs = await SharedPreferences.getInstance();
-                var username = prefs.getString('username');
-                _scaffoldKey.currentState!.openDrawer();
-              }),
-          backgroundColor: Color.fromARGB(255, 6, 10, 43),
+    final theme = Theme.of(context);
+    final canPop = Navigator.of(context).canPop();
+    return Scaffold(
+      backgroundColor: AppTheme.backgroundPrimary,
+      appBar: AppBar(
+        backgroundColor: AppTheme.backgroundSecondary,
+        automaticallyImplyLeading: true,
+        title: Text(
+          'Schedule',
+          style: theme.textTheme.headlineSmall?.copyWith(fontSize: 20),
         ),
-        body: TaskScreenClass(),
+        leading: canPop
+            ? IconButton(
+                icon: const Icon(Icons.arrow_back_ios_new_rounded),
+                onPressed: () => Navigator.of(context).maybePop(),
+              )
+            : null,
       ),
+      body: const TaskScreenClass(),
     );
   }
 }
 
+enum TaskStatusFilter { all, inProgress, completed, upcoming }
+
 class TaskScreenClass extends StatefulWidget {
+  const TaskScreenClass({super.key});
+
   @override
-  TaskScreen createState() {
-    return TaskScreen();
-  }
+  TaskScreen createState() => TaskScreen();
 }
 
 class TaskScreen extends State<TaskScreenClass> {
+  List<dynamic>? _tasks;
+  bool _isLoading = false;
+  String? _errorMessage;
+  TaskStatusFilter _selectedFilter = TaskStatusFilter.all;
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
+
   @override
   void initState() {
     super.initState();
-    call();
+    _loadTasks();
   }
 
-  var body;
-  var tasks = [];
-
-  call() async {
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    var id = prefs.getString('project_id');
-
-    var url = 'https://office.buildahome.in/API/get_all_tasks?project_id=$id&nt_toggle=0';
-    var response = await http.get(Uri.parse(url));
+  Future<void> _loadTasks() async {
+    if (!mounted) return;
     setState(() {
-      body = jsonDecode(response.body);
+      _isLoading = true;
+      _errorMessage = null;
     });
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final projectId = prefs.getString('project_id');
+      if (projectId == null) {
+        throw Exception('Project not selected. Please reopen the project and try again.');
+      }
+
+      final response = await http.get(Uri.parse('https://office.buildahome.in/API/get_all_tasks?project_id=$projectId&nt_toggle=0'));
+      if (response.statusCode != 200) {
+        throw Exception('Unable to fetch schedule right now.');
+      }
+
+      final decoded = jsonDecode(response.body);
+      if (!mounted) return;
+      setState(() {
+        _tasks = decoded is List ? decoded : [];
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _errorMessage = e.toString();
+      });
+    } finally {
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      height: MediaQuery.of(context).size.height,
-      width: MediaQuery.of(context).size.width,
-      child: Stack(
-        alignment: Alignment.bottomCenter,
-        children: [
-          ListView(children: <Widget>[
-            Container(
-                padding: EdgeInsets.only(top: 20, left: 15, bottom: 20), decoration: BoxDecoration(), child: Text("Home construction Schedule", style: TextStyle(fontSize: 18, color: const Color.fromARGB(255, 0, 0, 0)))),
-            if (body == null)
-              new ListView.builder(
-                  shrinkWrap: true,
-                  physics: BouncingScrollPhysics(),
-                  itemCount: 10,
-                  itemBuilder: (BuildContext ctxt, int index) {
-                    return Row(
-                      mainAxisAlignment: MainAxisAlignment.start,
-                      children: [
-                        Container(
-                          width: MediaQuery.of(context).size.width,
-                          alignment: Alignment.centerLeft,
-                          padding: EdgeInsets.symmetric(horizontal: 15, vertical: 25),
-                        )
-                      ],
-                    );
-                  }),
-            new ListView.builder(
-                padding: EdgeInsets.only(bottom: 100),
-                shrinkWrap: true,
-                physics: BouncingScrollPhysics(),
-                itemCount: body == null ? 0 : body.length,
-                itemBuilder: (BuildContext ctxt, int index) {
-                  return AnimatedWidgetSlide(
-                      direction: index % 2 == 0 ? SlideDirection.leftToRight : SlideDirection.rightToLeft, // Specify the slide direction
-                      duration: Duration(milliseconds: 500), // Adjust the duration as needed
+    final theme = Theme.of(context);
+    final stats = _computeStats(_tasks);
+    final filteredTasks = _filterTasks(_tasks);
+    final showFilteredEmpty = !_isLoading && _errorMessage == null && (_tasks?.isNotEmpty ?? false) && filteredTasks.isEmpty;
 
-                      child: Container(
-                        child: TaskItem(body[index]['task_name'].toString(), body[index]['start_date'].toString(), body[index]['end_date'].toString(), body[index]['sub_tasks'].toString(),
-                            body[index]['progress'].toString(), body[index]['s_note'].toString()),
-                      ));
-                }),
-          ]),
-          Container(
-              decoration: BoxDecoration(color: const Color.fromARGB(255, 223, 223, 223)),
-              padding: EdgeInsets.only(top: 15, bottom: 1),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceAround,
+    return RefreshIndicator(
+      color: AppTheme.primaryColorConst,
+      onRefresh: _loadTasks,
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(20, 24, 20, 32),
+        children: [
+          _buildHeader(theme),
+          const SizedBox(height: 16),
+          if (_tasks != null && _tasks!.isNotEmpty) ...[
+            _buildSummaryCards(stats),
+            const SizedBox(height: 16),
+            _buildFilterChips(),
+            const SizedBox(height: 16),
+            _buildSearchBar(),
+            const SizedBox(height: 20),
+          ],
+          if (_errorMessage != null) _buildErrorCard(_errorMessage!),
+          if (_isLoading && (_tasks == null || _tasks!.isEmpty)) _buildSkeletonLoader(),
+          if (!_isLoading && _errorMessage == null && (_tasks == null || _tasks!.isEmpty)) _buildEmptyState(),
+          if (showFilteredEmpty) _buildFilteredEmptyState(isSearchEmpty: _isSearching),
+          if (!_isLoading && filteredTasks.isNotEmpty)
+            ...List.generate(filteredTasks.length, (index) {
+              final task = filteredTasks[index];
+              return AnimatedWidgetSlide(
+                direction: index % 2 == 0 ? SlideDirection.leftToRight : SlideDirection.rightToLeft,
+                duration: const Duration(milliseconds: 450),
+                child: TaskItem(
+                  task['task_name'].toString(),
+                  task['start_date'].toString(),
+                  task['end_date'].toString(),
+                  task['sub_tasks'].toString(),
+                  task['progress'].toString(),
+                  task['s_note'].toString(),
+                ),
+              );
+            }),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHeader(ThemeData theme) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Home construction schedule',
+          style: theme.textTheme.headlineSmall?.copyWith(
+            color: AppTheme.textPrimary,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          'Preview milestone timelines, monitor progress and stay aligned with buildAhome.',
+          style: theme.textTheme.bodyMedium?.copyWith(color: AppTheme.textSecondary),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSummaryCards(Map<String, int> stats) {
+    final cards = [
+      _SummaryCard(
+        title: 'Total tasks',
+        subtitle: 'Overall milestones',
+        value: (stats['total'] ?? 0).toString(),
+        icon: Icons.view_timeline,
+        gradient: const [Color(0xFFE3F2FD), Color(0xFFC5E1F5)],
+      ),
+      _SummaryCard(
+        title: 'In progress',
+        subtitle: 'Actively tracked',
+        value: (stats['inProgress'] ?? 0).toString(),
+        icon: Icons.run_circle_outlined,
+        valueColor: Colors.orange[700],
+        gradient: const [Color(0xFFFFF3E0), Color(0xFFFFE0B2)],
+      ),
+      _SummaryCard(
+        title: 'Upcoming',
+        subtitle: 'Yet to begin',
+        value: (stats['pending'] ?? 0).toString(),
+        icon: Icons.pending_actions,
+        valueColor: Colors.red[600],
+        gradient: const [Color(0xFFFFEBEE), Color(0xFFFFCDD2)],
+      ),
+      _SummaryCard(
+        title: 'Completed',
+        subtitle: 'Signed off',
+        value: (stats['completed'] ?? 0).toString(),
+        icon: Icons.verified,
+        valueColor: Colors.green[700],
+        gradient: const [Color(0xFFE8F5E9), Color(0xFFC8E6C9)],
+      ),
+    ];
+
+    return Wrap(
+      spacing: 16,
+      runSpacing: 16,
+      children: cards,
+    );
+  }
+
+  Widget _buildFilterChips() {
+    return Wrap(
+      spacing: 12,
+      runSpacing: 12,
+      children: TaskStatusFilter.values.map((filter) {
+        final isSelected = _selectedFilter == filter;
+        return ChoiceChip(
+          label: Text(_filterLabel(filter)),
+          selected: isSelected,
+          selectedColor: AppTheme.primaryColorConst,
+          backgroundColor: AppTheme.backgroundSecondary,
+          labelStyle: TextStyle(
+            color: isSelected ? Colors.white : AppTheme.textPrimary,
+            fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+          ),
+          onSelected: (value) {
+            if (!value) return;
+            setState(() => _selectedFilter = filter);
+          },
+        );
+      }).toList(),
+    );
+  }
+
+  Widget _buildSearchBar() {
+    return TextField(
+      controller: _searchController,
+      onChanged: (value) => setState(() => _searchQuery = value),
+      decoration: InputDecoration(
+        hintText: 'Search tasks, notes or dates',
+        prefixIcon: Icon(Icons.search, color: AppTheme.textSecondary),
+        suffixIcon: _searchQuery.isEmpty
+            ? null
+            : IconButton(
+                icon: Icon(Icons.close, color: AppTheme.textSecondary),
+                onPressed: () {
+                  _searchController.clear();
+                  setState(() => _searchQuery = '');
+                },
+              ),
+        filled: true,
+        fillColor: AppTheme.backgroundSecondary,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: BorderSide.none,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSkeletonLoader() {
+    final width = MediaQuery.of(context).size.width;
+    final summaryWidth = (width - 56) / 2;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _skeletonBar(width: 220, height: 20),
+        const SizedBox(height: 8),
+        _skeletonBar(width: width * 0.65, height: 14),
+        const SizedBox(height: 24),
+        Wrap(
+          spacing: 16,
+          runSpacing: 16,
+          children: List.generate(
+            3,
+            (_) => Container(
+              width: summaryWidth,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: AppTheme.backgroundSecondary,
+                borderRadius: BorderRadius.circular(18),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  InkWell(
-                    onTap: () {
-                      Navigator.push(
-                          context,
-                          PageRouteBuilder(
-                            pageBuilder: (context, animation, secondaryAnimation) => Home(),
-                            transitionsBuilder: (context, animation, secondaryAnimation, child) {
-                              return SlideTransition(
-                                position: Tween<Offset>(
-                                  begin: const Offset(-1.0, 0.0),
-                                  end: Offset.zero,
-                                ).animate(animation),
-                                child: child,
-                              );
-                            },
-                          ),
-                        );
-                    },
-                    child: Container(
-                      height: 50,
-                      child: Column(
-                        children: [
-                          Icon(
-                            Icons.home_rounded,
-                            size: 20,
-                            color: Color.fromARGB(255, 100, 100, 100),
-                          ),
-                          Text(
-                            'Home',
-                            style: TextStyle(color: Color.fromARGB(255, 100, 100, 100), fontSize: 12),
-                          )
-                        ],
-                      ),
-                    ),
-                  ),
-                  Container(
-                        height: 50,
-                        child: Column(
-                          children: [
-                            Icon(
-                              Icons.alarm,
-                              size: 25,
-                              color: const Color.fromARGB(255, 46, 46, 46),
-                            ),
-                            Text('Schedule', style: TextStyle(color: const Color.fromARGB(255, 46, 46, 46), fontSize: 12))
-                          ],
-                        ),
-                      ),
-                  InkWell(
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          PageRouteBuilder(
-                            pageBuilder: (context, animation, secondaryAnimation) => Gallery(),
-                            transitionsBuilder: (context, animation, secondaryAnimation, child) {
-                              return SlideTransition(
-                                position: Tween<Offset>(
-                                  begin: const Offset(2.0, 0.0),
-                                  end: Offset.zero,
-                                ).animate(animation),
-                                child: child,
-                              );
-                            },
-                          ),
-                        );
-                      },
-                      child: Container(
-                        height: 50,
-                        child: Column(
-                          children: [
-                            Icon(
-                              Icons.photo_library,
-                              size: 20,
-                              color: Color.fromARGB(255, 100, 100, 100),
-                            ),
-                            Text(
-                              'Gallery',
-                              style: TextStyle(color: Color.fromARGB(255, 100, 100, 100), fontSize: 12),
-                            )
-                          ],
-                        ),
-                      )),
-                  InkWell(
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          PageRouteBuilder(
-                            pageBuilder: (context, animation, secondaryAnimation) => NotesAndComments(),
-                            transitionsBuilder: (context, animation, secondaryAnimation, child) {
-                              return SlideTransition(
-                                position: Tween<Offset>(
-                                  begin: const Offset(2.0, 0.0),
-                                  end: Offset.zero,
-                                ).animate(animation),
-                                child: child,
-                              );
-                            },
-                          ),
-                        );
-                      },
-                      child: Container(
-                        height: 50,
-                        child: Column(
-                          children: [
-                            Icon(
-                              Icons.update,
-                              size: 20,
-                              color: Color.fromARGB(255, 100, 100, 100),
-                            ),
-                            Text(
-                              'Notes',
-                              style: TextStyle(color: Color.fromARGB(255, 100, 100, 100), fontSize: 12),
-                            )
-                          ],
-                        ),
-                      )),
+                  _skeletonBar(width: 120, height: 14),
+                  const SizedBox(height: 10),
+                  _skeletonBar(width: 60, height: 24),
                 ],
-              )),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 20),
+        ...List.generate(3, (_) => _buildSkeletonCard()),
+      ],
+    );
+  }
+
+  Widget _buildSkeletonCard() {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: AppTheme.backgroundSecondary,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              _skeletonBar(width: 40, height: 40, radius: 14),
+              const SizedBox(width: 12),
+              Expanded(child: _skeletonBar(height: 18)),
+            ],
+          ),
+          const SizedBox(height: 12),
+          _skeletonBar(width: 140, height: 12),
+          const SizedBox(height: 8),
+          _skeletonBar(width: double.infinity, height: 10),
+        ],
+      ),
+    );
+  }
+
+  Widget _skeletonBar({double? width, double height = 14, double radius = 10}) {
+    return Container(
+      width: width,
+      height: height,
+      decoration: BoxDecoration(
+        color: AppTheme.backgroundPrimaryLight,
+        borderRadius: BorderRadius.circular(radius),
+      ),
+    );
+  }
+
+  Widget _buildErrorCard(String message) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.red[50],
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.red.withOpacity(0.2)),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.error_outline, color: Colors.red[500]),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              message,
+              style: TextStyle(color: Colors.red[700]),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return Container(
+      padding: const EdgeInsets.all(32),
+      decoration: BoxDecoration(
+        color: AppTheme.backgroundSecondary,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        children: [
+          Icon(Icons.event_available, color: AppTheme.primaryColorConst, size: 32),
+          const SizedBox(height: 12),
+          Text(
+            'No scheduled tasks yet',
+            style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Tasks assigned to your project will appear here automatically.',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: AppTheme.textSecondary, fontSize: 13),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFilteredEmptyState({bool isSearchEmpty = false}) {
+    return Container(
+      padding: const EdgeInsets.all(28),
+      decoration: BoxDecoration(
+        color: AppTheme.backgroundSecondary,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppTheme.primaryColorConst.withOpacity(0.08)),
+      ),
+      child: Column(
+        children: [
+          Icon(Icons.inbox_outlined, size: 36, color: AppTheme.textSecondary),
+          const SizedBox(height: 10),
+          Text(
+            isSearchEmpty ? 'No tasks match your search' : 'No tasks for this view',
+            style: TextStyle(fontWeight: FontWeight.w600, color: AppTheme.textPrimary),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            isSearchEmpty ? 'Try a different keyword or clear the search.' : 'Try switching to a different filter to see other milestones.',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: AppTheme.textSecondary),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Map<String, int> _computeStats(List<dynamic>? tasks) {
+    if (tasks == null) return {'total': 0, 'completed': 0, 'inProgress': 0, 'pending': 0};
+    int completed = 0;
+    int inProgress = 0;
+    int pending = 0;
+    for (final task in tasks) {
+      final ratio = _taskProgress(task);
+      if (ratio >= 0.99) {
+        completed++;
+      } else if (ratio <= 0.01) {
+        pending++;
+      } else {
+        inProgress++;
+      }
+    }
+    return {
+      'total': tasks.length,
+      'completed': completed,
+      'inProgress': inProgress,
+      'pending': pending,
+    };
+  }
+
+  List<dynamic> _filterTasks(List<dynamic>? tasks) {
+    if (tasks == null) return [];
+    List<dynamic> filtered;
+    switch (_selectedFilter) {
+      case TaskStatusFilter.all:
+        filtered = tasks;
+        break;
+      case TaskStatusFilter.inProgress:
+        filtered = tasks.where((task) => _taskProgress(task) > 0.01 && _taskProgress(task) < 0.99).toList();
+        break;
+      case TaskStatusFilter.completed:
+        filtered = tasks.where((task) => _taskProgress(task) >= 0.99).toList();
+        break;
+      case TaskStatusFilter.upcoming:
+        filtered = tasks.where((task) => _taskProgress(task) <= 0.01).toList();
+        break;
+    }
+
+    if (!_isSearching) return filtered;
+    final query = _searchQuery.trim().toLowerCase();
+    return filtered.where((task) {
+      final name = task['task_name']?.toString().toLowerCase() ?? '';
+      final note = task['s_note']?.toString().toLowerCase() ?? '';
+      final dates = '${task['start_date'] ?? ''} ${task['end_date'] ?? ''}'.toLowerCase();
+      return name.contains(query) || note.contains(query) || dates.contains(query);
+    }).toList();
+  }
+
+  bool get _isSearching => _searchQuery.trim().isNotEmpty;
+
+  double _taskProgress(dynamic task) {
+    final total = task['sub_tasks']?.toString().split('^') ?? [];
+    final done = task['progress']?.toString().split('|') ?? [];
+    if (total.length <= 1) return 0;
+    final ratio = (done.length - 1) / (total.length - 1);
+    if (ratio.isNaN) return 0;
+    return ratio.clamp(0.0, 1.0);
+  }
+
+  String _filterLabel(TaskStatusFilter filter) {
+    switch (filter) {
+      case TaskStatusFilter.all:
+        return 'All';
+      case TaskStatusFilter.inProgress:
+        return 'In progress';
+      case TaskStatusFilter.completed:
+        return 'Completed';
+      case TaskStatusFilter.upcoming:
+        return 'Upcoming';
+    }
+  }
+}
+
+class _SummaryCard extends StatelessWidget {
+  final String title;
+  final String subtitle;
+  final String value;
+  final IconData icon;
+  final List<Color> gradient;
+  final Color? valueColor;
+
+  const _SummaryCard({
+    required this.title,
+    required this.subtitle,
+    required this.value,
+    required this.icon,
+    required this.gradient,
+    this.valueColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final width = MediaQuery.of(context).size.width;
+    final targetWidth = (width - 56) / 2;
+    return Container(
+      width: targetWidth < 120 ? double.infinity : targetWidth,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(colors: gradient),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppTheme.primaryColorConst.withOpacity(0.04)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 8,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.8),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Icon(icon, color: AppTheme.primaryColorConst),
+              ),
+              const Spacer(),
+              Text(
+                value,
+                style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                  color: valueColor ?? AppTheme.textPrimary,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            title,
+            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            subtitle,
+            style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+          ),
         ],
       ),
     );
@@ -248,239 +571,265 @@ class TaskScreen extends State<TaskScreenClass> {
 
 class TaskItem extends StatefulWidget {
   final String _taskName;
-  final _icon = Icons.home;
-  final _startDate;
-  final _endDate;
-  final _height = 0.0;
-  final _color = Color.fromARGB(255, 255, 255, 255);
-  final _subTasks;
-  final _progressStr;
-  final note;
+  final String _startDate;
+  final String _endDate;
+  final String _subTasks;
+  final String _progressStr;
+  final String note;
 
   TaskItem(this._taskName, this._startDate, this._endDate, this._subTasks, this._progressStr, this.note);
 
   @override
-  TaskItemWidget createState() {
-    return TaskItemWidget(this._taskName, this._icon, this._startDate, this._endDate, this._progressStr, this._color, this._height, this._subTasks, this.note);
-  }
+  TaskItemWidget createState() => TaskItemWidget(_taskName, _startDate, _endDate, _progressStr, _subTasks, note);
 }
 
-class TaskItemWidget extends State<TaskItem> with SingleTickerProviderStateMixin {
+class TaskItemWidget extends State<TaskItem> {
   String _taskName;
-  var _icon = Icons.home;
-  var _startDate;
-  var _endDate;
-  var _color;
-  var vis = false;
-  var _subTasks;
-  var _textColor = Colors.black;
-  var _height = 50.0;
-  var sprRadius = 1.0;
-  var pad = 15.0;
-  var _progressStr;
-  var note;
-  var notes;
-  var view = Icons.expand_more;
+  String _startDate;
+  String _endDate;
+  String _subTasks;
+  String _progressStr;
+  String note;
+
+  bool _expanded = false;
+  late List<String> notes;
+
+  TaskItemWidget(this._taskName, this._startDate, this._endDate, this._progressStr, this._subTasks, this.note);
 
   @override
   void initState() {
     super.initState();
-    call();
+    notes = note.split("|");
   }
 
-  call() {
-    var total = this._subTasks.split("^");
-    var done = (this._progressStr.split("|"));
-    notes = this.note.split("|");
-    if (((done.length - 1) / (total.length - 1)) > 0.9) {
-      setState(() {
-        this._textColor = Colors.green[600]!;
-      });
-    }
+  double _progress() {
+    final total = _subTasks.split("^");
+    final done = _progressStr.split("|");
+    final percent = (done.length - 1) / (total.length - 1);
+    if (percent.isNaN) return 0;
+    return percent.clamp(0.0, 1.0);
   }
-
-  _progress() {
-    var total = this._subTasks.split("^");
-    var done = (this._progressStr.split("|"));
-    var percent = (done.length - 1) / (total.length - 1);
-    if (percent > 1) return 1.0;
-    return percent;
-  }
-
-  _expandCollapse() {
-    setState(() {
-      if (vis == false) {
-        vis = true;
-        view = Icons.expand_less;
-        sprRadius = 1.0;
-      } else if (vis == true) {
-        vis = false;
-        view = Icons.expand_more;
-        sprRadius = 1.0;
-      }
-    });
-  }
-
-  TaskItemWidget(this._taskName, this._icon, this._startDate, this._endDate, this._progressStr, this._color, this._height, this._subTasks, this.note);
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: <Widget>[
-        Container(
-            child: AnimatedContainer(
-          duration: Duration(milliseconds: 500),
-          decoration: BoxDecoration(
-            color: const Color.fromARGB(255, 233, 233, 233),
-            borderRadius: BorderRadius.circular(5),
-          ),
-          child: Container(
-            margin: EdgeInsets.only(left: 15, right: 15),
-            decoration: BoxDecoration(color: this._color, border: Border(bottom: BorderSide(color: Color.fromARGB(255, 233, 233, 233), width: 2))),
-            padding: EdgeInsets.symmetric(horizontal: 5, vertical: 5),
-            child: Column(children: <Widget>[
-              AnimatedContainer(
-                duration: Duration(milliseconds: 900),
-                child: Row(
-                  children: <Widget>[
-                    InkWell(
-                      onTap: _expandCollapse,
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: <Widget>[
-                          this._textColor == Colors.green[600]
-                              ? Container(
-                                  margin: EdgeInsets.all(10),
-                                  padding: EdgeInsets.all(5),
-                                  decoration: BoxDecoration(color: Color.fromARGB(255, 0, 153, 10), borderRadius: BorderRadius.circular(40)),
-                                  child: Icon(
-                                    Icons.check,
-                                    size: 20,
-                                    weight: 2.0,
-                                    color: Colors.white!,
-                                  ),
-                                )
-                              : Container(
-                                  margin: EdgeInsets.all(10),
-                                  padding: EdgeInsets.all(5),
-                                  decoration: BoxDecoration(color: Colors.yellow[800], borderRadius: BorderRadius.circular(40)),
-                                  child: Icon(
-                                    Icons.schedule,
-                                    size: 20,
-                                    weight: 2.0,
-                                    color: Colors.white!,
-                                  ),
-                                ),
-                          Container(
-                            width: MediaQuery.of(context).size.width * .7 - 20.0,
-                            child: Text(
-                              this._textColor == Colors.green[600] ? this._taskName + " (Completed)" : this._taskName,
-                              textAlign: TextAlign.left,
-                              style: TextStyle(fontSize: 14, fontWeight: FontWeight.normal, color: Color.fromARGB(255, 44, 44, 44)),
-                            ),
+    final progressValue = _progress();
+    final isCompleted = progressValue >= 0.99;
+    final isUpcoming = progressValue <= 0.01;
+    final statusLabel = isCompleted
+        ? 'Completed'
+        : isUpcoming
+            ? 'Upcoming'
+            : 'In progress';
+    final statusColor = isCompleted
+        ? Colors.green[600]!
+        : isUpcoming
+            ? Colors.red[600]!
+            : Colors.orange[600]!;
+    final statusIcon = isCompleted ? Icons.check : (isUpcoming ? Icons.pending : Icons.run_circle);
+
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 8),
+      decoration: BoxDecoration(
+        color: AppTheme.backgroundSecondary,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppTheme.primaryColorConst.withOpacity(0.06)),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(20),
+          onTap: () => setState(() => _expanded = !_expanded),
+          child: Padding(
+            padding: const EdgeInsets.all(18),
+            child: Column(
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: statusColor.withOpacity(0.12),
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: Icon(statusIcon, color: statusColor, size: 20),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            _taskName,
+                            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                           ),
-                          new Icon(view, color: const Color.fromARGB(255, 44, 44, 44)),
+                          const SizedBox(height: 4),
+                          Text(
+                            _formatDateRange(_startDate, _endDate),
+                            style: TextStyle(color: AppTheme.textSecondary, fontSize: 13),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: statusColor.withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(30),
+                      ),
+                      child: Text(
+                        statusLabel,
+                        style: TextStyle(color: statusColor, fontSize: 12, fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Icon(_expanded ? Icons.expand_less : Icons.expand_more, color: AppTheme.textSecondary),
+                  ],
+                ),
+                AnimatedSize(
+                  duration: const Duration(milliseconds: 250),
+                  curve: Curves.easeInOut,
+                  child: _expanded
+                      ? Padding(
+                          padding: const EdgeInsets.only(top: 16),
+                          child: Column(
+                            children: [
+                              _buildProgressSection(progressValue),
+                              const SizedBox(height: 12),
+                              _buildSubTaskList(),
+                            ],
+                          ),
+                        )
+                      : const SizedBox(),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildProgressSection(double progressValue) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppTheme.backgroundPrimaryLight,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Progress', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+          const SizedBox(height: 8),
+          LinearPercentIndicator(
+            lineHeight: 10,
+            percent: progressValue,
+            animation: true,
+            animationDuration: 600,
+            barRadius: const Radius.circular(8),
+            backgroundColor: Colors.grey[300],
+            progressColor: AppTheme.primaryColorConst,
+          ),
+          const SizedBox(height: 6),
+          Text('${(progressValue * 100).round()}% complete', style: TextStyle(color: AppTheme.textSecondary, fontSize: 12)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSubTaskList() {
+    final subTasks = _subTasks.split("^");
+    final entries = subTasks.where((element) => element.trim().isNotEmpty).toList();
+    if (entries.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: AppTheme.backgroundSecondary,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: AppTheme.primaryColorConst.withOpacity(0.05)),
+        ),
+        child: Text(
+          'No sub-tasks defined for this milestone.',
+          style: TextStyle(color: AppTheme.textSecondary, fontSize: 13),
+        ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppTheme.primaryColorConst.withOpacity(0.05)),
+      ),
+      child: Column(
+        children: List.generate(entries.length, (index) {
+          final parts = entries[index].split("|");
+          if (parts.length < 3) return const SizedBox.shrink();
+          final taskLabel = parts[0];
+          final start = _formatInlineDate(parts[1]);
+          final end = _formatInlineDate(parts[2]);
+          final noteLine = notes.length > index && notes[index].trim().isNotEmpty ? notes[index].trim() : null;
+          return Padding(
+            padding: EdgeInsets.only(top: index == 0 ? 0 : 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(Icons.radio_button_checked, size: 18, color: AppTheme.primaryColorConst.withOpacity(0.7)),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '$taskLabel',
+                            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                          ),
+                          Text(
+                            '$start • $end',
+                            style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+                          ),
                         ],
                       ),
                     ),
                   ],
                 ),
-              ),
-              Visibility(
-                visible: this.vis,
-                child: Container(
-                    width: MediaQuery.of(context).size.width,
-                    padding: EdgeInsets.only(left: 20, right: 20, bottom: 20),
-                    child: Column(
-                      children: <Widget>[
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: <Widget>[
-                            Container(
-                                padding: EdgeInsets.only(top: 10),
-                                child: Text(
-                                  this._startDate.trim() != "" ? DateFormat("dd MMM yy").format(DateTime.parse(this._startDate)).toString() : "",
-                                  style: TextStyle(fontSize: 12, color: Color.fromARGB(255, 44, 44, 44)),
-                                )),
-                            Container(
-                                padding: EdgeInsets.only(top: 10),
-                                child: Text(
-                                  this._endDate.trim() != '' ? DateFormat("dd MMM yy").format(DateTime.parse(this._endDate)).toString() : "",
-                                  style: TextStyle(fontSize: 12, color: Color.fromARGB(255, 44, 44, 44)),
-                                ))
-                          ],
-                        ),
-                        Container(
-                          padding: EdgeInsets.only(top: 5, bottom: 10),
-                          child: LinearPercentIndicator(
-                            lineHeight: 8.0,
-                            percent: _progress(),
-                            animationDuration: 500,
-                            animation: true,
-                            backgroundColor: Colors.grey[300],
-                            progressColor: Color.fromARGB(255, 12, 148, 21),
-                            clipLinearGradient: true,
-                          ),
-                        ),
-                        Container(
-                          padding: EdgeInsets.only(top: 5),
-                          child: ListView.builder(
-                              shrinkWrap: true,
-                              physics: NeverScrollableScrollPhysics(),
-                              itemCount: this._subTasks.split("^").length - 1,
-                              itemBuilder: (BuildContext ctxt, int index) {
-                                var subTasks = _subTasks.split("^");
-                                var eachTask = subTasks[index].split("|");
-                                if (eachTask[0] != "")
-                                  return Container(
-                                      margin: EdgeInsets.only(top: 15),
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: <Widget>[
-                                          Row(
-                                            children: <Widget>[
-                                              Icon(
-                                                Icons.arrow_right_rounded,
-                                                color: Color.fromARGB(255, 44, 44, 44),
-                                              ),
-                                              SizedBox(
-                                                width: 5.0,
-                                              ),
-                                              Expanded(
-                                                  child: Text(
-                                                DateFormat("dd MMM yy").format(DateTime.parse(eachTask[1].toString())).toString() +
-                                                    " to " +
-                                                    DateFormat("dd MMM yy").format(DateTime.parse(eachTask[2].toString())).toString() +
-                                                    " : " +
-                                                    eachTask[0].toString(),
-                                                style: TextStyle(color: Color.fromARGB(255, 44, 44, 44), fontSize: 14),
-                                              )),
-                                            ],
-                                          ),
-                                          if (notes.length > index && notes[index].trim() != "")
-                                            Container(
-                                                alignment: Alignment.centerLeft,
-                                                padding: EdgeInsets.only(top: 3, left: 28),
-                                                child: Text(
-                                                  'buildAhome: ' + notes[index].trim(),
-                                                  style: TextStyle(
-                                                    fontSize: 12,
-                                                    color: Color.fromARGB(255, 87, 87, 87),
-                                                  ),
-                                                ))
-                                        ],
-                                      ));
-                                return null;
-                              }),
-                        ),
-                      ],
-                    )),
-              ),
-            ]),
-          ),
-        )),
-      ],
+                if (noteLine != null)
+                  Padding(
+                    padding: const EdgeInsets.only(left: 26, top: 4),
+                    child: Text(
+                      'buildAhome: $noteLine',
+                      style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+                    ),
+                  ),
+              ],
+            ),
+          );
+        }),
+      ),
     );
+  }
+
+  String _formatDateRange(String start, String end) {
+    final startLabel = _formatInlineDate(start);
+    final endLabel = _formatInlineDate(end);
+    if (startLabel == null && endLabel == null) return 'Schedule not set';
+    if (startLabel != null && endLabel != null) return '$startLabel • $endLabel';
+    return startLabel ?? endLabel!;
+  }
+
+  String? _formatInlineDate(String raw) {
+    if (raw.trim().isEmpty) return null;
+    try {
+      final date = DateTime.parse(raw);
+      return DateFormat('dd MMM').format(date);
+    } catch (_) {
+      return null;
+    }
   }
 }
 
@@ -491,7 +840,8 @@ class AnimatedWidgetSlide extends StatefulWidget {
   final SlideDirection direction;
   final Duration duration;
 
-  AnimatedWidgetSlide({
+  const AnimatedWidgetSlide({
+    super.key,
     required this.child,
     required this.direction,
     required this.duration,
@@ -515,40 +865,16 @@ class _AnimatedWidgetSlideState extends State<AnimatedWidgetSlide> with SingleTi
 
     switch (widget.direction) {
       case SlideDirection.leftToRight:
-        _slideAnimation = Tween<Offset>(
-          begin: const Offset(-1.0, 0.0),
-          end: const Offset(0.0, 0.0),
-        ).animate(CurvedAnimation(
-          parent: _animationController,
-          curve: Curves.easeIn,
-        ));
+        _slideAnimation = Tween<Offset>(begin: const Offset(-1.0, 0.0), end: Offset.zero).animate(CurvedAnimation(parent: _animationController, curve: Curves.easeIn));
         break;
       case SlideDirection.rightToLeft:
-        _slideAnimation = Tween<Offset>(
-          begin: const Offset(1.0, 0.0),
-          end: const Offset(0.0, 0.0),
-        ).animate(CurvedAnimation(
-          parent: _animationController,
-          curve: Curves.easeIn,
-        ));
+        _slideAnimation = Tween<Offset>(begin: const Offset(1.0, 0.0), end: Offset.zero).animate(CurvedAnimation(parent: _animationController, curve: Curves.easeIn));
         break;
       case SlideDirection.topToBottom:
-        _slideAnimation = Tween<Offset>(
-          begin: const Offset(0.0, -1.0),
-          end: const Offset(0.0, 0.0),
-        ).animate(CurvedAnimation(
-          parent: _animationController,
-          curve: Curves.easeInOut,
-        ));
+        _slideAnimation = Tween<Offset>(begin: const Offset(0.0, -1.0), end: Offset.zero).animate(CurvedAnimation(parent: _animationController, curve: Curves.easeInOut));
         break;
       case SlideDirection.bottomToTop:
-        _slideAnimation = Tween<Offset>(
-          begin: const Offset(0.0, 1.0),
-          end: const Offset(0.0, 0.0),
-        ).animate(CurvedAnimation(
-          parent: _animationController,
-          curve: Curves.easeInOut,
-        ));
+        _slideAnimation = Tween<Offset>(begin: const Offset(0.0, 1.0), end: Offset.zero).animate(CurvedAnimation(parent: _animationController, curve: Curves.easeInOut));
         break;
     }
 
@@ -569,3 +895,4 @@ class _AnimatedWidgetSlideState extends State<AnimatedWidgetSlide> with SingleTi
     super.dispose();
   }
 }
+

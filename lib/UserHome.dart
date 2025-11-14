@@ -1,52 +1,32 @@
-import 'package:buildahome/Admin/Dpr.dart';
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'main.dart';
+import 'UserDashboard.dart';
+import 'app_theme.dart';
 import "Scheduler.dart";
 import "Payments.dart";
 import "Gallery.dart";
-import 'dart:convert';
-import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
-import 'NavMenu.dart';
-import 'package:percent_indicator/linear_percent_indicator.dart';
-import 'package:intl/intl.dart';
-import 'main.dart';
-import 'UserDashboard.dart';
 import 'Drawings.dart';
-import 'NonTenderTasks.dart';
 import 'NotesAndComments.dart';
 import 'po_bills.dart';
 import 'Dpr.dart';
 import 'checklist_categories.dart';
+import 'services/data_provider.dart';
 
 class Home extends StatelessWidget {
-  final GlobalKey<ScaffoldState> _scaffoldKey = new GlobalKey<ScaffoldState>();
+  final bool fromAdminDashboard;
+  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
+
+  Home({Key? key, this.fromAdminDashboard = false}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
-    final appTitle = 'buildAhome';
     return MaterialApp(
       theme: ThemeData(fontFamily: App().fontName),
       home: Scaffold(
         key: _scaffoldKey,
-        backgroundColor: Colors.white,
-        drawer: NavMenuWidget(),
-        appBar: AppBar(
-          automaticallyImplyLeading: false,
-          title: Text(
-            appTitle,
-            style: TextStyle(color: Color.fromARGB(255, 224, 224, 224), fontSize: 16),
-          ),
-          leading: new IconButton(
-              icon: new Icon(Icons.menu, color: Color.fromARGB(255, 224, 224, 224)),
-              onPressed: () async {
-                SharedPreferences prefs = await SharedPreferences.getInstance();
-                var username = prefs.getString('username');
-                _scaffoldKey.currentState!.openDrawer();
-              }),
-          backgroundColor: Color.fromARGB(255, 6, 10, 43),
-        ),
-        body: UserHomeScreen(),
+        backgroundColor: AppTheme.backgroundPrimary,
+        body: UserDashboardLayout(fromAdminDashboard: fromAdminDashboard),
       ),
     );
   }
@@ -125,7 +105,15 @@ class UserHomeScreenState extends State<UserHomeScreen> {
     "Payments",
     "Non tender payments",
   ];
-  var widgetList = [UserDashboardScreen(), TaskScreenClass(), Gallery(), Documents(), NotesAndComments(), PaymentTasksClass(), NTPaymentTasksClass()];
+  var widgetList = [
+    UserDashboardScreen(),
+    const TaskWidget(),
+    Gallery(),
+    Documents(),
+    NotesAndComments(),
+    PaymentTaskWidget(),
+    PaymentTaskWidget(initialCategory: PaymentCategory.nonTender),
+  ];
 
   var blocked = false;
   var block_reason = '';
@@ -166,32 +154,35 @@ class UserHomeScreenState extends State<UserHomeScreen> {
   }
 
   set_project_status() async {
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    var id = prefs.getString('project_id');
-    var statusUrl = 'https://office.buildahome.in/API/get_project_block_status?project_id=$id';
-    var statusResponse = await http.get(Uri.parse(statusUrl));
-    var statusResponseBody = jsonDecode(statusResponse.body);
-    if (statusResponseBody['status'] == 'blocked') {
-      setState(() {
-        blocked = true;
-        block_reason = statusResponseBody['reason'];
-        if (role == 'Client') {
-          tabsList = [
-            'Home',
-            "Payments",
-            "Non tender payments",
-          ];
-          widgetList = [UserDashboardScreen(), PaymentTasksClass(), NTPaymentTasksClass()];
-        }
-      });
-    }
+    // Load project status from data provider
+    final dataProvider = DataProvider();
+    setState(() {
+      blocked = dataProvider.clientProjectBlocked ?? false;
+      block_reason = dataProvider.clientProjectBlockReason ?? '';
+      
+      if (blocked && role == 'Client') {
+        tabsList = [
+          'Home',
+          "Payments",
+          "Non tender payments",
+        ];
+        widgetList = [
+          UserDashboardScreen(),
+          PaymentTaskWidget(),
+          PaymentTaskWidget(initialCategory: PaymentCategory.nonTender),
+        ];
+      }
+    });
   }
 
   @override
   void initState() {
     super.initState();
     setUserRole();
-    set_project_status();
+    // Reload data to ensure fresh status
+    DataProvider().reloadData().then((_) {
+      set_project_status();
+    });
   }
 
   Widget build(BuildContext context) {

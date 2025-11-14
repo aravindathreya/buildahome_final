@@ -2,7 +2,7 @@ import 'package:buildahome/widgets/material_units.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:http/http.dart' as http;
-import 'view_open_indents.dart';
+import 'indents_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import "ShowAlert.dart";
 import 'projects.dart';
@@ -319,7 +319,7 @@ class EditIndentState extends State<EditIndent> {
             Navigator.pop(context);
             Navigator.push(
               context,
-              MaterialPageRoute(builder: (context) => ViewIndentsLayout()),
+              MaterialPageRoute(builder: (context) => IndentsScreenLayout()),
             );
             setState(() {
               projectName = 'Select project';

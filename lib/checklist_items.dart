@@ -1,46 +1,34 @@
-import 'package:buildahome/widgets/material_units.dart';
-import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
-import 'NavMenu.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import "ShowAlert.dart";
-import 'projects.dart';
-import 'main.dart';
-import 'utilities/styles.dart';
-import 'widgets/material.dart';
-import 'package:intl/intl.dart';
-import 'package:file_picker/file_picker.dart';
 import 'dart:convert';
 
-class ChecklistItemsLayout extends StatelessWidget {
-  late final String category;
+import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 
-  ChecklistItemsLayout(this.category);
+import 'ShowAlert.dart';
+import 'app_theme.dart';
+
+class ChecklistItemsLayout extends StatelessWidget {
+  final String category;
+
+  const ChecklistItemsLayout(this.category, {super.key});
 
   @override
   Widget build(BuildContext context) {
-    final appTitle = 'buildAhome';
-    final GlobalKey<ScaffoldState> _scaffoldKey = new GlobalKey<ScaffoldState>();
-    return MaterialApp(
-      title: appTitle,
-      theme: ThemeData(fontFamily: App().fontName),
-      home: Scaffold(
-        backgroundColor: Colors.black,
-        key: _scaffoldKey, // ADD THIS LINE
-        appBar: AppBar(
-          automaticallyImplyLeading: true,
-          title: Text(appTitle),
-          leading: new IconButton(
-              icon: new Icon(
-                Icons.chevron_left,
-                size: 30,
-              ),
-              onPressed: () => Navigator.pop(context)),
-          backgroundColor: Color.fromARGB(255, 0, 0, 0),
-        ),
-
-        body: ChecklistItems(category),
+    final canPop = Navigator.of(context).canPop();
+    return Scaffold(
+      backgroundColor: AppTheme.backgroundPrimary,
+      appBar: AppBar(
+        backgroundColor: AppTheme.backgroundSecondary,
+        automaticallyImplyLeading: canPop,
+        leading: canPop
+            ? IconButton(
+                icon: const Icon(Icons.arrow_back_ios_new_rounded),
+                onPressed: () => Navigator.of(context).maybePop(),
+              )
+            : null,
+        title: Text(category),
       ),
+      body: ChecklistItems(category),
     );
   }
 }
@@ -48,24 +36,20 @@ class ChecklistItemsLayout extends StatelessWidget {
 class ChecklistItems extends StatefulWidget {
   final String category;
 
-  ChecklistItems(this.category);
+  const ChecklistItems(this.category, {super.key});
 
   @override
   ChecklistItemsState createState() {
-    return ChecklistItemsState(this.category);
+    return ChecklistItemsState();
   }
 }
 
 class ChecklistItemsState extends State<ChecklistItems> {
-  final String category;
-
-  ChecklistItemsState(this.category);
-
-  var data;
-  var loaded = false;
-  var projectId;
-  var role;
-  var user_id;
+  List<dynamic> data = [];
+  bool _isLoading = false;
+  String? projectId;
+  String? role;
+  String? userId;
 
   @override
   void initState() {
@@ -73,235 +57,233 @@ class ChecklistItemsState extends State<ChecklistItems> {
     call();
   }
 
-  call() async {
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    projectId = prefs.getString('project_id');
-
-    role = prefs.getString('role');
-    user_id = prefs.getString('user_id');
-    var url = 'https://office.buildahome.in/API/get_checklist_items_for_category';
-    var response = await http.post(Uri.parse(url), body: {'project_id': projectId, 'category': category});
-    print(response.statusCode);
-    print(response.body);
-
+  Future<void> call() async {
     setState(() {
-      loaded = true;
-      data = jsonDecode(response.body)['data'];
+      _isLoading = true;
     });
+    try {
+      SharedPreferences prefs = await SharedPreferences.getInstance();
+      projectId = prefs.getString('project_id');
+      role = prefs.getString('role');
+      userId = prefs.getString('user_id');
+      if (projectId == null) return;
+      var url = 'https://office.buildahome.in/API/get_checklist_items_for_category';
+      var response = await http.post(Uri.parse(url), body: {'project_id': projectId, 'category': widget.category});
+      if (!mounted) return;
+      setState(() {
+        data = jsonDecode(response.body)['data'];
+      });
+    } catch (err) {
+      debugPrint('Failed to load checklist items: $err');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    return ListView(
-      shrinkWrap: true,
-      padding: EdgeInsets.symmetric(horizontal: 15),
-      children: [
-        Container(margin: EdgeInsets.symmetric(horizontal: 10, vertical: 20), child: Text('Checklist for $category', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),)),
-        if (loaded != false)
-          for (var i = 0; i < data.length; i++)
-            Container(
-                padding: EdgeInsets.all(10),
-                decoration: BoxDecoration(border: Border(bottom: BorderSide(color: const Color.fromARGB(255, 0, 0, 0)!))),
-                child: Wrap(
-                  children: [
-                    Row(
-                      children: [
-                        if(data[i][2] == null && data[i][2] == 0)
-                          Container(
-                            margin: EdgeInsets.all(6),
-                            padding: EdgeInsets.all(6),
-                            decoration: BoxDecoration(color: Colors.yellow[800], borderRadius: BorderRadius.circular(40)),
-                            child: Icon(
-                              Icons.schedule,
-                              size: 22,
-                              weight: 2.0,
-                              color: Colors.white!,
-                            ),
-                          ),
-                        if(data[i][2] != null && data[i][2] != 0 && (data[i][3] == null || data[i][3] == 0))
-                          Container(
-                            margin: EdgeInsets.all(6),
-                            padding: EdgeInsets.all(6),
-                            decoration: BoxDecoration(color: Colors.yellow[800], borderRadius: BorderRadius.circular(40)),
-                            child: Icon(
-                              Icons.check,
-                              size: 22,
-                              weight: 2.0,
-                              color: Colors.white!,
-                            ),
-                          ),
-                        if(data[i][2] != null && data[i][2] != 0 && data[i][3] != null && data[i][3] != 0)
-                          Container(
-                            margin: EdgeInsets.all(6),
-                            padding: EdgeInsets.all(6),
-                            decoration: BoxDecoration(color: Colors.green[800], borderRadius: BorderRadius.circular(40)),
-                            child: Icon(
-                              Icons.check,
-                              size: 22,
-                              weight: 2.0,
-                              color: Colors.white!,
-                            ),
-                          ),
-                        SizedBox(width: 10,),
-                        Expanded(
-                          child: Text(
-                            data[i][1],
-                            style: TextStyle(fontSize: 14, color: Colors.white),
-                          ),
-                        ),
-                      ],
-                    ),
-                    Visibility(
-                        visible: (data[i][2] != null) && role != 'Client',
-                        child:Container(
-                            alignment: Alignment.bottomRight,
-                            margin: EdgeInsets.only(top: 10),
-                            child: InkWell(
-                              child: Container(
-                                padding: EdgeInsets.all(10),
-                                margin: EdgeInsets.only(top: 15),
-                                decoration:
-                                BoxDecoration(color: Colors.green[900], borderRadius: BorderRadius.circular(5)),
-                                child: Text(
-                                  'Mark as checked',
-                                  style: TextStyle(color: Colors.white, fontSize: 12),
-                                ),
-                              ),
-                              onTap: () {
-                                showDialog(
-                                  context: context,
-                                  builder: (BuildContext context) => AlertDialog(
-                                    title: const Text('Confirmation'),
-                                    content: const Text('Are you sure you want to mark this item as checked?'),
-                                    actions: <Widget>[
-                                      TextButton(
-                                        onPressed: () {
-                                          Navigator.of(context).pop(); // Close the confirmation dialog
-                                        },
-                                        child: const Text('Cancel'),
-                                      ),
-                                      TextButton(
-                                        onPressed: () async {
-                                          Navigator.of(context).pop(); // Close the confirmation dialog
-                                            var url = 'https://office.buildahome.in/API/update_project_checklist_item_api';
-                                          var response = await http.post(Uri.parse(url), body: {
-                                            'project_id': projectId,
-                                            'checklist_item_id': data[i][0].toString(),
-                                            'user_id': user_id
-                                          });
-                                          print(response.statusCode);
-                                          print(response.body);
-                                          call();
-                                          if (response.statusCode != 200) {
-                                            Navigator.of(context, rootNavigator: true).pop();
-                                            showDialog(
-                                                context: context,
-                                                builder: (BuildContext context) {
-                                                  return ShowAlert("Something went wrong", false);
-                                                });
-                                            return;
-                                          }
-                                        },
-                                        child: const Text('Yes, confirm'),
-                                      ),
-                                    ],
-                                  ),
-                                );
-                              },
-                            ))),
-                    Visibility(
-                        visible: data[i][2] != null && data[i][2] != 0,
-                        child: Container(
-                            margin: EdgeInsets.only(top: 10),
-                            child: Row(
-                              children: [
+    final theme = Theme.of(context);
+    return RefreshIndicator(
+      color: AppTheme.primaryColorConst,
+      onRefresh: call,
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 24, 16, 32),
+        children: [
+          Text(
+            'Checklist for ${widget.category}',
+            style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 16),
+          if (_isLoading && data.isEmpty)
+            ...List.generate(4, (_) => _buildSkeleton())
+          else if (data.isEmpty)
+            _buildEmptyState()
+          else
+            ...List.generate(data.length, (index) => _buildItemCard(index)),
+        ],
+      ),
+    );
+  }
 
-                                SizedBox(width: 15),
-                                Expanded(
-                                  child: Text(
-                                    'Checked by buildahome on ${data[i][4]}',
-                                    style: TextStyle(color: const Color.fromARGB(255, 153, 153, 153), fontSize: 12),
-                                  ),
-                                )
-                              ],
-                            ))),
-                    Visibility(
-                        visible: data[i][3] != null && data[i][3] != 0,
-                        child: Container(
-                            alignment: Alignment.bottomRight,
-                            margin: EdgeInsets.only(top: 10),
-                            child: Row(
-                              children: [
+  Widget _buildItemCard(int index) {
+    final item = data[index];
+    final bool bahChecked = item[2] != null && item[2] != 0;
+    final bool clientChecked = item[3] != null && item[3] != 0;
 
-                                SizedBox(width: 15),
-                                Expanded(
-                                  child: Text(
-                                    'Marked as checked by you on ${data[i][5]}',
-                                    style: TextStyle(color: Colors.green[900], fontSize: 12),
-                                  ),
-                                )
-                              ],
-                            ))),
-                    Visibility(
-                        visible: data[i][2] != null && data[i][2] != 0 && (data[i][3] == null || data[i][3] == 0) && role == 'Client',
-                        child: Container(
-                            alignment: Alignment.bottomRight,
-                            margin: EdgeInsets.only(top: 10),
-                            child: InkWell(
-                              child: Container(
-                                padding: EdgeInsets.all(10),
-                                margin: EdgeInsets.only(top: 15),
-                                decoration:
-                                    BoxDecoration(color: Colors.green[900], borderRadius: BorderRadius.circular(5)),
-                                child: Text(
-                                  'Mark as checked',
-                                  style: TextStyle(color: Colors.white, fontSize: 12),
-                                ),
-                              ),
-                              onTap: () {
-                                showDialog(
-                                  context: context,
-                                  builder: (BuildContext context) => AlertDialog(
-                                    title: const Text('Confirmation'),
-                                    content: const Text('Are you sure you want to mark this item as checked?'),
-                                    actions: <Widget>[
-                                      TextButton(
-                                        onPressed: () {
-                                          Navigator.of(context).pop(); // Close the confirmation dialog
-                                        },
-                                        child: const Text('Cancel'),
-                                      ),
-                                      TextButton(
-                                        onPressed: () async {
-                                          Navigator.of(context).pop(); // Close the confirmation dialog
-                                          var url = 'https://office.buildahome.in/API/update_checklist_item_by_client';
-                                          var response = await http.post(Uri.parse(url), body: {
-                                            'project_id': projectId,
-                                            'checklist_item_id': data[i][0].toString()
-                                          });
-                                          print(response.statusCode);
-                                          print(response.body);
-                                          call();
-                                          if (response.statusCode != 200) {
-                                            Navigator.of(context, rootNavigator: true).pop();
-                                            showDialog(
-                                                context: context,
-                                                builder: (BuildContext context) {
-                                                  return ShowAlert("Something went wrong", false);
-                                                });
-                                            return;
-                                          }
-                                        },
-                                        child: const Text('Yes, confirm'),
-                                      ),
-                                    ],
-                                  ),
-                                );
-                              },
-                            )))
-                  ],
-                )),
-      ],
+    final Color statusColor;
+    final IconData statusIcon;
+    final String statusLabel;
+
+    if (bahChecked && clientChecked) {
+      statusColor = Colors.green;
+      statusIcon = Icons.verified;
+      statusLabel = 'Completed';
+    } else if (bahChecked) {
+      statusColor = Colors.orange;
+      statusIcon = Icons.task_alt;
+      statusLabel = 'Client action pending';
+    } else {
+      statusColor = Colors.grey;
+      statusIcon = Icons.schedule;
+      statusLabel = 'Scheduled';
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppTheme.backgroundSecondary,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppTheme.primaryColorConst.withOpacity(0.08)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: statusColor.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(statusIcon, color: statusColor),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  item[1].toString(),
+                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: statusColor.withOpacity(0.12),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Text(
+              statusLabel,
+              style: TextStyle(color: statusColor, fontWeight: FontWeight.w600, fontSize: 12),
+            ),
+          ),
+          if (bahChecked) ...[
+            const SizedBox(height: 8),
+            Text(
+              'Checked by buildAhome on ${item[4]}',
+              style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+            ),
+          ],
+          if (clientChecked) ...[
+            const SizedBox(height: 4),
+            Text(
+              'Marked as checked by you on ${item[5]}',
+              style: const TextStyle(color: Colors.green, fontSize: 12),
+            ),
+          ],
+          if (bahChecked && !clientChecked && role == 'Client')
+            _buildActionButton(index, isClient: true),
+          if (bahChecked && role != 'Client' && !clientChecked)
+            _buildActionButton(index, isClient: false),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildActionButton(int index, {required bool isClient}) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Align(
+        alignment: Alignment.centerRight,
+        child: FilledButton(
+          onPressed: () => _confirmCheck(index, isClient: isClient),
+          child: const Text('Mark as checked'),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _confirmCheck(int index, {required bool isClient}) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Confirmation'),
+        content: const Text('Are you sure you want to mark this item as checked?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.of(context).pop(true), child: const Text('Yes, confirm')),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+    if (projectId == null) return;
+
+    try {
+      final endpoint = isClient ? 'update_checklist_item_by_client' : 'update_project_checklist_item_api';
+      final body = {
+        'project_id': projectId,
+        'checklist_item_id': data[index][0].toString(),
+      };
+      if (!isClient) {
+        body['user_id'] = userId ?? '';
+      }
+      final response = await http.post(Uri.parse('https://office.buildahome.in/API/$endpoint'), body: body);
+      if (response.statusCode != 200) {
+        throw Exception('Failed to update item');
+      }
+      await call();
+    } catch (err) {
+      showDialog(
+        context: context,
+        builder: (BuildContext context) {
+          return ShowAlert("Something went wrong", false);
+        },
+      );
+    }
+  }
+
+  Widget _buildSkeleton() {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      height: 96,
+      decoration: BoxDecoration(
+        color: AppTheme.backgroundSecondary,
+        borderRadius: BorderRadius.circular(16),
+      ),
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: AppTheme.backgroundSecondary,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        children: [
+          Icon(Icons.fact_check, color: AppTheme.primaryColorConst, size: 32),
+          const SizedBox(height: 12),
+          const Text(
+            'No checklist items yet',
+            style: TextStyle(fontWeight: FontWeight.w600, color: AppTheme.textPrimary),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'Items will appear once the project team shares the checklist.',
+            style: TextStyle(color: AppTheme.textSecondary),
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
     );
   }
 }

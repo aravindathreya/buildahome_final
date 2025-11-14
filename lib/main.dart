@@ -1,6 +1,7 @@
 // Built in packages
 import 'package:flutter/material.dart';
 import 'Skin2/loginPage.dart';
+import 'app_theme.dart';
 
 void main() => runApp(App());
 
@@ -17,8 +18,10 @@ class App extends StatelessWidget {
 
     return MaterialApp(
       title: appTitle,
-      theme: ThemeData(fontFamily: fontName),
+      debugShowCheckedModeBanner: false,
+      theme: AppTheme.darkTheme,
       home: Scaffold(
+        backgroundColor: AppTheme.backgroundPrimary,
         body: LoginScreenNew(),
       ),
     );
