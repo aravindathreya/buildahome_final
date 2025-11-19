@@ -35,157 +35,108 @@ class AdminDashboard extends StatelessWidget {
           title: Row(
             mainAxisAlignment: MainAxisAlignment.end,
             children: [
-              InkWell(
-                onTap: () {
-                  _scaffoldKey.currentState?.openDrawer();
-                },
-                child: Container(
-                  padding: EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: AppTheme.backgroundSecondary,
-                    borderRadius: BorderRadius.circular(100),
-                  ),
-                  child: Image.asset('assets/images/logo.png', height: 30),
-                ),
-              )
+              _LogoutButton(),
             ],
           ),
           automaticallyImplyLeading: false,
           backgroundColor: AppTheme.backgroundPrimary,
         ),
-        drawer: _SimpleDrawer(scaffoldKey: _scaffoldKey),
         body: AdminHome(),
       ),
     );
   }
 }
 
-class _SimpleDrawer extends StatelessWidget {
-  final GlobalKey<ScaffoldState> scaffoldKey;
+class _LogoutButton extends StatelessWidget {
+  Future<void> _handleLogout(BuildContext context) async {
+    // Show confirmation dialog
+    final shouldLogout = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          backgroundColor: AppTheme.backgroundSecondary,
+          title: Text(
+            'Logout',
+            style: TextStyle(
+              color: AppTheme.textPrimary,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          content: Text(
+            'Are you sure you want to logout?',
+            style: TextStyle(
+              color: AppTheme.textSecondary,
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: Text(
+                'Cancel',
+                style: TextStyle(
+                  color: AppTheme.textSecondary,
+                ),
+              ),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: Text(
+                'Logout',
+                style: TextStyle(
+                  color: Colors.red,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
 
-  const _SimpleDrawer({required this.scaffoldKey});
-
-  Future<String?> _getUsername() async {
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    return prefs.getString('username');
+    if (shouldLogout == true) {
+      SharedPreferences preferences = await SharedPreferences.getInstance();
+      preferences.clear();
+      DataProvider().clearData();
+      if (context.mounted) {
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(builder: (context) => App()),
+          (route) => false,
+        );
+      }
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Drawer(
-      backgroundColor: AppTheme.backgroundSecondary,
-      child: SafeArea(
-        child: Column(
+    return InkWell(
+      onTap: () => _handleLogout(context),
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        decoration: BoxDecoration(
+          color: Colors.red.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: Colors.red.withOpacity(0.3),
+            width: 1.5,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            // Drawer Header
-            Container(
-              padding: EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: AppTheme.primaryColorConst.withOpacity(0.1),
-                border: Border(
-                  bottom: BorderSide(
-                    color: AppTheme.primaryColorConst.withOpacity(0.3),
-                    width: 1,
-                  ),
-                ),
-              ),
-              child: Row(
-                children: [
-                  Container(
-                    padding: EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: AppTheme.primaryColorConst.withOpacity(0.2),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Icon(
-                      Icons.person,
-                      color: AppTheme.primaryColorConst,
-                      size: 24,
-                    ),
-                  ),
-                  SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'buildAhome',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color: AppTheme.textPrimary,
-                          ),
-                        ),
-                        SizedBox(height: 4),
-                        FutureBuilder<String?>(
-                          future: _getUsername(),
-                          builder: (context, snapshot) {
-                            return Text(
-                              snapshot.data ?? 'User',
-                              style: TextStyle(
-                                fontSize: 14,
-                                color: AppTheme.textSecondary,
-                              ),
-                            );
-                          },
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
+            Icon(
+              Icons.logout,
+              color: Colors.red,
+              size: 20,
             ),
-            
-            // Spacer
-            Spacer(),
-            
-            // Logout Button
-            Container(
-              margin: EdgeInsets.all(20),
-              child: Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  onTap: () async {
-                    SharedPreferences preferences = await SharedPreferences.getInstance();
-                    preferences.clear();
-                    DataProvider().clearData();
-                    Navigator.pushAndRemoveUntil(
-                      context,
-                      MaterialPageRoute(builder: (context) => App()),
-                      (route) => false,
-                    );
-                  },
-                  borderRadius: BorderRadius.circular(12),
-                  child: Container(
-                    padding: EdgeInsets.symmetric(vertical: 16, horizontal: 20),
-                    decoration: BoxDecoration(
-                      color: Colors.red.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: Colors.red.withOpacity(0.3),
-                        width: 1.5,
-                      ),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.logout,
-                          color: Colors.red,
-                          size: 24,
-                        ),
-                        SizedBox(width: 12),
-                        Text(
-                          'Logout',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.red,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
+            SizedBox(width: 8),
+            Text(
+              'Logout',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: Colors.red,
               ),
             ),
           ],
@@ -409,7 +360,7 @@ class AdminHomeState extends State<AdminHome> {
     currentWidgetContext = context;
     List<Map<String, dynamic>> menuItems = getMenuItems();
     int totalProjects = projects.length;
-    final quickSearch = _buildQuickSearchSection(context, menuItems);
+    final quickSearch = _buildQuickSearchSection(context);
 
     return RefreshIndicator(
       onRefresh: () => loadProjects(force: true),
@@ -574,7 +525,7 @@ class AdminHomeState extends State<AdminHome> {
               },
             ),
 
-            // Statistics Cards
+            // Statistics Card - Total Projects
             if (currentUserRole != 'Client')
               TweenAnimationBuilder<double>(
                 tween: Tween(begin: 0.0, end: 1.0),
@@ -585,28 +536,12 @@ class AdminHomeState extends State<AdminHome> {
                     opacity: value,
                     child: Transform.translate(
                       offset: Offset(0, 20 * (1 - value)),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: _buildStatCard(
-                              context,
-                              'Total Projects',
-                              totalProjects.toString(),
-                              Icons.folder_special,
-                              AppTheme.primaryColorConst,
-                            ),
-                          ),
-                          SizedBox(width: 12),
-                          Expanded(
-                            child: _buildStatCard(
-                              context,
-                              'Active',
-                              totalProjects.toString(),
-                              Icons.check_circle,
-                              Colors.green,
-                            ),
-                          ),
-                        ],
+                      child: _buildStatCard(
+                        context,
+                        'Total Projects',
+                        totalProjects.toString(),
+                        Icons.folder_special,
+                        AppTheme.primaryColorConst,
                       ),
                     ),
                   );
@@ -744,8 +679,8 @@ class AdminHomeState extends State<AdminHome> {
     );
   }
 
-  Widget _buildQuickSearchSection(BuildContext context, List<Map<String, dynamic>> menuItems) {
-    final searchItems = _buildSearchItems(context, menuItems);
+  Widget _buildQuickSearchSection(BuildContext context) {
+    final searchItems = _buildProjectSearchItems();
     final query = _quickSearchQuery.trim();
     final hasQuery = query.isNotEmpty;
     final filteredItems = hasQuery ? searchItems.where((item) => item.matches(query)).toList() : <_DashboardSearchItem>[];
@@ -808,7 +743,7 @@ class AdminHomeState extends State<AdminHome> {
                       onPressed: _clearQuickSearch,
                     )
                   : null,
-              hintText: 'Search actions, screens, indents…',
+              hintText: 'Search projects by name, client, or ID…',
               border: InputBorder.none,
             ),
           ),
@@ -830,7 +765,7 @@ class AdminHomeState extends State<AdminHome> {
                       ? Padding(
                           padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                           child: Text(
-                            'No actions match "$query".',
+                            'No projects match "$query".',
                             style: TextStyle(color: AppTheme.textSecondary, fontSize: 13),
                           ),
                         )
@@ -872,53 +807,88 @@ class AdminHomeState extends State<AdminHome> {
     });
   }
 
-  List<_DashboardSearchItem> _buildSearchItems(BuildContext context, List<Map<String, dynamic>> menuItems) {
+  List<_DashboardSearchItem> _buildProjectSearchItems() {
     final List<_DashboardSearchItem> items = [];
 
-    for (final item in menuItems) {
-      final title = item['title']?.toString() ?? '';
-      if (title.isEmpty) continue;
+    for (final project in projects) {
+      final name = project['name']?.toString() ?? 'Unnamed Project';
+      final id = project['id']?.toString() ?? '';
+      final clientName = project['client_name']?.toString() ?? '';
+      
+      final keywords = <String>[
+        name.toLowerCase(),
+        id.toLowerCase(),
+        if (clientName.isNotEmpty) clientName.toLowerCase(),
+      ];
 
       items.add(
         _DashboardSearchItem(
-          title: title,
-          icon: item['icon'] as IconData? ?? Icons.circle,
-          keywords: [title],
+          title: name,
+          subtitle: clientName.isNotEmpty ? 'Client: $clientName' : 'Project ID: $id',
+          icon: Icons.folder_special,
+          keywords: keywords,
           onSelected: () async {
-            await _handleMenuTap(context, item);
+            await _openProject(project);
           },
         ),
       );
     }
 
-    final bool hasIndents = menuItems.any((item) => item['title'] == 'Indents');
-    if (hasIndents) {
-      const indentTitles = [
-        {'label': 'Indents • Create', 'tab': 0, 'subtitle': 'Start a new indent'},
-        {'label': 'Indents • View', 'tab': 1, 'subtitle': 'Browse open indents'},
-        {'label': 'Indents • My Indents', 'tab': 2, 'subtitle': 'Review requests raised by you'},
-      ];
+    return items;
+  }
 
-      for (final config in indentTitles) {
-        items.add(
-          _DashboardSearchItem(
-            title: config['label'] as String,
-            subtitle: config['subtitle'] as String,
-            icon: Icons.request_quote,
-            keywords: ['indent', 'indents', config['label'] as String],
-            onSelected: () async {
-              await _handleMenuTap(context, {
-                'title': config['label'],
-                'icon': Icons.request_quote,
-                'route': () => IndentsScreenLayout(initialTab: config['tab'] as int),
-              });
-            },
-          ),
-        );
-      }
+  Future<void> _openProject(dynamic project) async {
+    final projectId = project['id'];
+    final projectName = project['name']?.toString() ?? 'Project';
+
+    if (projectId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Unable to open this project.')),
+      );
+      return;
     }
 
-    return items;
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    await prefs.setString("project_id", projectId.toString());
+    await prefs.setString("client_name", projectName);
+    
+    // Preload project data for non-Client users
+    final role = prefs.getString('role');
+    if (role != null && role != 'Client') {
+      DataProvider().resetProjectData();
+      DataProvider().loadProjectDataForNonClient(projectId.toString()).catchError((e) {
+        print('[AdminDashboard] Error preloading project data: $e');
+      });
+    }
+    
+    if (!mounted) return;
+
+    Navigator.push(
+      context,
+      PageRouteBuilder(
+        pageBuilder: (context, animation, secondaryAnimation) => Home(fromAdminDashboard: true),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          return FadeTransition(
+            opacity: animation,
+            child: SlideTransition(
+              position: Tween<Offset>(
+                begin: const Offset(0.3, 0.0),
+                end: Offset.zero,
+              ).animate(CurvedAnimation(
+                parent: animation,
+                curve: Curves.easeOutCubic,
+              )),
+              child: child,
+            ),
+          );
+        },
+        transitionDuration: Duration(milliseconds: 300),
+      ),
+    ).then((_) {
+      if (mounted) {
+        loadProjects();
+      }
+    });
   }
 
   Future<void> _handleMenuTap(BuildContext context, Map<String, dynamic> item) async {
@@ -989,61 +959,69 @@ class AdminHomeState extends State<AdminHome> {
 
   Widget _buildStatCard(BuildContext context, String title, String value, IconData icon, Color color) {
     return Container(
-      padding: EdgeInsets.all(18),
+      padding: EdgeInsets.all(24),
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            AppTheme.backgroundSecondary,
-            AppTheme.backgroundPrimaryLight,
+            color.withOpacity(0.15),
+            color.withOpacity(0.05),
           ],
         ),
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: color.withOpacity(0.3),
+          width: 1.5,
+        ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.2),
-            blurRadius: 8,
-            offset: Offset(0, 4),
+            color: color.withOpacity(0.2),
+            blurRadius: 12,
+            offset: Offset(0, 6),
+            spreadRadius: 0,
           ),
         ],
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Container(
-                padding: EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: color.withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(
-                  icon,
-                  size: 24,
-                  color: color,
-                ),
-              ),
-            ],
-          ),
-          SizedBox(height: 12),
-          Text(
-            value,
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-              color: AppTheme.textPrimary,
+          Container(
+            padding: EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.2),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Icon(
+              icon,
+              size: 32,
+              color: color,
             ),
           ),
-          SizedBox(height: 4),
-          Text(
-            title,
-            style: TextStyle(
-              fontSize: 13,
-              color: AppTheme.textSecondary,
-              fontWeight: FontWeight.w500,
+          SizedBox(width: 20),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  value,
+                  style: TextStyle(
+                    fontSize: 32,
+                    fontWeight: FontWeight.bold,
+                    color: AppTheme.textPrimary,
+                    letterSpacing: -0.5,
+                  ),
+                ),
+                SizedBox(height: 6),
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: AppTheme.textSecondary,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0.3,
+                  ),
+                ),
+              ],
             ),
           ),
         ],

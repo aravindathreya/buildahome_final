@@ -356,6 +356,7 @@ class DataProvider {
         await loadClientProjectData();
       }
     } else {
+      // Load project data (including updates) first - this is critical for showing updates immediately
       if (projectId != null && (force || lastClientDataLoad == null || 
           DateTime.now().difference(lastClientDataLoad!).inMinutes > 5)) {
         await loadProjectDataForProject(projectId);
@@ -367,7 +368,8 @@ class DataProvider {
         await loadProjects();
       }
 
-      // Load project data for non-Client users if project is selected
+      // Load project data for non-Client users (payments, gallery, etc.) in background
+      // This should not block the updates from showing
       if (projectId != null) {
         final shouldLoad = force || 
             lastPaymentsLoad == null || 
@@ -378,7 +380,10 @@ class DataProvider {
             DateTime.now().difference(lastPaymentsLoad!).inMinutes > 5;
         
         if (shouldLoad) {
-          await loadProjectDataForNonClient(projectId);
+          // Don't await - let this run in background so updates can show immediately
+          loadProjectDataForNonClient(projectId).catchError((e) {
+            print('[DataProvider] Error loading project data in background: $e');
+          });
         }
       }
     }

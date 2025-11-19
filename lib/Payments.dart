@@ -276,27 +276,36 @@ class _PaymentsDashboardState extends State<PaymentsDashboard> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppTheme.backgroundPrimary,
-      appBar: AppBar(
+    return PopScope(
+      canPop: true,
+      onPopInvoked: (didPop) {
+        if (!didPop) {
+          // Ensure we can always pop back to the previous screen
+          Navigator.pop(context);
+        }
+      },
+      child: Scaffold(
         backgroundColor: AppTheme.backgroundPrimary,
-        elevation: 0,
-        leading: IconButton(
-          icon: Icon(Icons.arrow_back, color: AppTheme.textPrimary),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: Text(
-          'Payments',
-          style: TextStyle(
-            color: AppTheme.textPrimary,
-            fontWeight: FontWeight.w600,
+        appBar: AppBar(
+          backgroundColor: AppTheme.backgroundPrimary,
+          elevation: 0,
+          leading: IconButton(
+            icon: Icon(Icons.arrow_back, color: AppTheme.textPrimary),
+            onPressed: () => Navigator.pop(context),
+          ),
+          title: Text(
+            'Payments',
+            style: TextStyle(
+              color: AppTheme.textPrimary,
+              fontWeight: FontWeight.w600,
+            ),
           ),
         ),
-      ),
-      body: SafeArea(
-        child: AnimatedSwitcher(
-          duration: Duration(milliseconds: 300),
-          child: _buildBody(),
+        body: SafeArea(
+          child: AnimatedSwitcher(
+            duration: Duration(milliseconds: 300),
+            child: _buildBody(),
+          ),
         ),
       ),
     );

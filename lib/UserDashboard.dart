@@ -14,6 +14,7 @@ import 'checklist_categories.dart';
 import 'services/data_provider.dart';
 import 'AdminDashboard.dart';
 import 'RequestDrawing.dart';
+import 'main.dart';
 
 class UserDashboardLayout extends StatefulWidget {
   final bool fromAdminDashboard;
@@ -170,6 +171,7 @@ class UserDashboardLayoutState extends State<UserDashboardLayout> {
                           ],
                         ),
                       ),
+                      _UserLogoutButton(),
                     ],
                   ),
                 ),
@@ -1408,5 +1410,104 @@ String parsedUpdateTradesmen(dynamic tradesmenMap) {
     return '';
   } catch (e) {
     return tradesmenMap.toString().trim() == 'null' ? '' : tradesmenMap.toString().trim();
+  }
+}
+
+class _UserLogoutButton extends StatelessWidget {
+  Future<void> _handleLogout(BuildContext context) async {
+    // Show confirmation dialog
+    final shouldLogout = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          backgroundColor: AppTheme.backgroundSecondary,
+          title: Text(
+            'Logout',
+            style: TextStyle(
+              color: AppTheme.textPrimary,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          content: Text(
+            'Are you sure you want to logout?',
+            style: TextStyle(
+              color: AppTheme.textSecondary,
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: Text(
+                'Cancel',
+                style: TextStyle(
+                  color: AppTheme.textSecondary,
+                ),
+              ),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: Text(
+                'Logout',
+                style: TextStyle(
+                  color: Colors.red,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (shouldLogout == true) {
+      SharedPreferences preferences = await SharedPreferences.getInstance();
+      preferences.clear();
+      DataProvider().clearData();
+      if (context.mounted) {
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(builder: (context) => App()),
+          (route) => false,
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: () => _handleLogout(context),
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: Colors.red.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: Colors.red.withOpacity(0.3),
+            width: 1.5,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.logout,
+              color: Colors.red,
+              size: 18,
+            ),
+            SizedBox(width: 6),
+            Text(
+              'Logout',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: Colors.red,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }

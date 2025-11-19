@@ -7,6 +7,8 @@
 		<string>com.buildahome.buildahome</string>
 		<string>com.buildahome.buildahome1</string>
 	</array>
+	<key>CADisableMinimumFrameDurationOnPhone</key>
+	<true/>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleExecutable</key>
@@ -29,6 +31,8 @@
 	<true/>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Take progress pictures of house constructon</string>
+	<key>UIApplicationSupportsIndirectInputEvents</key>
+	<true/>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>processing</string>
