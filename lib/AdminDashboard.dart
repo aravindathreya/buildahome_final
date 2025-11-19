@@ -1,21 +1,23 @@
-import 'package:buildahome/AddDailyUpdate.dart';
-import 'package:flutter/material.dart';
+import 'dart:async';
 import 'dart:convert';
-import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
-import 'package:flutter_spinkit/flutter_spinkit.dart';
 
+import 'package:buildahome/AddDailyUpdate.dart';
 import 'package:buildahome/UserHome.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_spinkit/flutter_spinkit.dart';
+import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import 'SiteVisitReports.dart';
 import 'app_theme.dart';
-import 'indents_screen.dart';
-import 'RequestDrawing.dart';
-import 'notifcations.dart';
-import 'stock_report.dart';
 import 'checklist_categories.dart';
-import 'services/data_provider.dart';
-import 'widgets/searchable_select.dart';
+import 'indents_screen.dart';
 import 'main.dart';
+import 'notifcations.dart';
+import 'project_picker.dart';
+import 'services/data_provider.dart';
+import 'stock_report.dart';
 
 class AdminDashboard extends StatelessWidget {
   @override
@@ -205,6 +207,9 @@ class AdminHomeState extends State<AdminHome> {
   var currentDate;
   var showTopSection = true;
   var showProjects = false;
+  bool _isLoadingProjects = false;
+  bool _isRefreshingProjects = false;
+  String? _projectsError;
   var searchProjectfocusNode = FocusNode();
   var searchProjectTextController = new TextEditingController();
   var currentUserRole = '';
@@ -214,7 +219,9 @@ class AdminHomeState extends State<AdminHome> {
   bool readOnly = true;
   final TextEditingController _quickSearchController = TextEditingController();
   final FocusNode _quickSearchFocusNode = FocusNode();
+  final ScrollController _scrollController = ScrollController();
   String _quickSearchQuery = '';
+  Timer? _projectsRefreshTimer;
 
   @override
   void dispose() {
@@ -222,6 +229,8 @@ class AdminHomeState extends State<AdminHome> {
     searchProjectTextController.dispose();
     _quickSearchController.dispose();
     _quickSearchFocusNode.dispose();
+    _scrollController.dispose();
+    _projectsRefreshTimer?.cancel();
     super.dispose();
   }
 
@@ -239,13 +248,41 @@ class AdminHomeState extends State<AdminHome> {
     });
   }
 
-  loadProjects() async {
-    // Reload data from data provider
-    await DataProvider().reloadData();
-    setState(() {
-      projects = DataProvider().projects;
-      projectsToShow = projects;
-    });
+  Future<void> loadProjects({bool force = false, bool showLoader = false}) async {
+    if (!mounted) return;
+
+    if (showLoader || !showLoader) {
+      setState(() {
+        if (showLoader) {
+          _isLoadingProjects = true;
+        } else {
+          _isRefreshingProjects = true;
+        }
+        _projectsError = null;
+      });
+    }
+
+    try {
+      await DataProvider().reloadData(force: force);
+      if (!mounted) return;
+      final provider = DataProvider();
+      setState(() {
+        projects = provider.projects;
+        projectsToShow = projects;
+      });
+    } catch (e) {
+      // In practice DataProvider swallows errors, but keep this for future safety
+      if (!mounted) return;
+      setState(() {
+        _projectsError = 'Unable to refresh projects. Please pull down to retry.';
+      });
+    } finally {
+      if (!mounted) return;
+      setState(() {
+        _isLoadingProjects = false;
+        _isRefreshingProjects = false;
+      });
+    }
   }
 
   @override
@@ -259,7 +296,32 @@ class AdminHomeState extends State<AdminHome> {
       projectsToShow = projects;
     });
     // Reload to ensure fresh data
-    loadProjects();
+    loadProjects(showLoader: true);
+    _startProjectsAutoRefresh();
+    
+    // Add listener to scroll to max when search field is focused
+    _quickSearchFocusNode.addListener(() {
+      if (_quickSearchFocusNode.hasFocus) {
+        // Wait for the next frame to ensure the scroll controller is attached
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (_scrollController.hasClients) {
+            _scrollController.animateTo(
+              _scrollController.position.maxScrollExtent + 200,
+              duration: Duration(milliseconds: 300),
+              curve: Curves.easeOut,
+            );
+          }
+        });
+      }
+    });
+  }
+
+  void _startProjectsAutoRefresh() {
+    _projectsRefreshTimer?.cancel();
+    _projectsRefreshTimer = Timer.periodic(Duration(minutes: 1), (_) {
+      if (!mounted) return;
+      loadProjects();
+    });
   }
 
   List<Map<String, dynamic>> getMenuItems() {
@@ -270,25 +332,7 @@ class AdminHomeState extends State<AdminHome> {
       menuItems.add({
         'title': 'Projects',
         'icon': Icons.list,
-        'route': () async {
-          // Load projects and directly open SearchableSelect
-          SharedPreferences prefs = await SharedPreferences.getInstance();
-          var userId = prefs.getString('user_id');
-          var url = "https://office.buildahome.in/API/projects_access?id=${userId.toString()}";
-          var response = await http.get(Uri.parse(url));
-          var projects = jsonDecode(response.body);
-          
-          return SearchableSelect(
-            title: 'Select Project',
-            items: projects,
-            itemLabel: (item) => item['name'] ?? 'Unknown',
-            selectedItem: null,
-            onItemSelected: (item) {
-              // This will be handled after SearchableSelect returns
-            },
-            defaultVisibleCount: 5,
-          );
-        },
+        'route': () => ProjectPickerScreen(),
       });
     }
 
@@ -297,7 +341,7 @@ class AdminHomeState extends State<AdminHome> {
       menuItems.add({
         'title': 'Daily Update',
         'icon': Icons.update,
-        'route': () => AddDailyUpdate(),
+        'route': () => AddDailyUpdate(returnToAdminDashboard: true),
       });
     }
 
@@ -317,6 +361,12 @@ class AdminHomeState extends State<AdminHome> {
         'icon': Icons.inventory,
         'route': () => StockReportLayout(),
       });
+
+      menuItems.add({
+        'title': 'Site Visit Reports',
+        'icon': Icons.assignment_outlined,
+        'route': () => SiteVisitReportsScreen(),
+      });
     }
 
     // Checklist (Client only)
@@ -325,15 +375,6 @@ class AdminHomeState extends State<AdminHome> {
         'title': 'Checklist',
         'icon': Icons.list,
         'route': () => ChecklistCategoriesLayout(),
-      });
-    }
-
-    // Request drawing
-    if (currentUserRole == 'Admin' || currentUserRole == 'Project Coordinator' || currentUserRole == 'Project Manager' || currentUserRole == 'Site Engineer') {
-      menuItems.add({
-        'title': 'Request Drawing',
-        'icon': Icons.playlist_add_outlined,
-        'route': () => RequestDrawingLayout(),
       });
     }
 
@@ -370,15 +411,45 @@ class AdminHomeState extends State<AdminHome> {
     int totalProjects = projects.length;
     final quickSearch = _buildQuickSearchSection(context, menuItems);
 
-    return Container(
+    return RefreshIndicator(
+      onRefresh: () => loadProjects(force: true),
+      color: AppTheme.primaryColorConst,
+      child: Container(
         decoration: BoxDecoration(
           color: AppTheme.backgroundPrimary,
         ),
         height: MediaQuery.of(context).size.height,
         width: MediaQuery.of(context).size.width,
         child: ListView(
+          controller: _scrollController,
+          physics: const AlwaysScrollableScrollPhysics(),
           padding: EdgeInsets.all(20),
           children: [
+            if (_projectsError != null)
+              Container(
+                margin: EdgeInsets.only(bottom: 12),
+                padding: EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.red.withOpacity(0.08),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.red.withOpacity(0.3)),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.error_outline, color: Colors.red, size: 18),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        _projectsError!,
+                        style: TextStyle(
+                          color: Colors.red[800],
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             // Welcome Section with User Info
             TweenAnimationBuilder<double>(
               tween: Tween(begin: 0.0, end: 1.0),
@@ -668,7 +739,9 @@ class AdminHomeState extends State<AdminHome> {
 
             SizedBox(height: 20),
           ],
-        ));
+        ),
+      ),
+    );
   }
 
   Widget _buildQuickSearchSection(BuildContext context, List<Map<String, dynamic>> menuItems) {
@@ -698,12 +771,36 @@ class AdminHomeState extends State<AdminHome> {
           child: TextField(
             controller: _quickSearchController,
             focusNode: _quickSearchFocusNode,
+            onTap: () async {
+              // Scroll to max when search field is tapped
+              // Use a small delay to ensure the scroll controller is ready
+              await Future.delayed(Duration(milliseconds: 50));
+              if (_scrollController.hasClients) {
+                _scrollController.animateTo(
+                  _scrollController.position.maxScrollExtent + 120,
+                  duration: Duration(milliseconds: 300),
+                  curve: Curves.easeOut,
+                );
+              } else {
+                // If controller not attached yet, wait for next frame
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  if (_scrollController.hasClients && mounted) {
+                    _scrollController.animateTo(
+                      _scrollController.position.maxScrollExtent + 120,
+                      duration: Duration(milliseconds: 300),
+                      curve: Curves.easeOut,
+                    );
+                  }
+                });
+              }
+            },
             onChanged: (value) {
               setState(() {
                 _quickSearchQuery = value;
               });
             },
             decoration: InputDecoration(
+              contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 0),
               prefixIcon: Icon(Icons.search, color: AppTheme.textSecondary),
               suffixIcon: _quickSearchQuery.isNotEmpty
                   ? IconButton(
@@ -835,7 +932,7 @@ class AdminHomeState extends State<AdminHome> {
     final widget = routeResult is Future ? await routeResult : routeResult;
 
     if (item['title'] == 'Projects') {
-      final selectedProject = await Navigator.push(
+      Navigator.push(
         context,
         PageRouteBuilder(
           pageBuilder: (context, animation, secondaryAnimation) => widget,
@@ -856,48 +953,11 @@ class AdminHomeState extends State<AdminHome> {
           },
           transitionDuration: Duration(milliseconds: 300),
         ),
-      );
-
-      if (selectedProject != null) {
-        print('selectedProject: ${selectedProject}');
-        SharedPreferences prefs = await SharedPreferences.getInstance();
-        await prefs.setString("project_id", selectedProject['id'].toString());
-        await prefs.setString("client_name", selectedProject['name'].toString());
-
-        Navigator.pushReplacement(
-          context,
-          PageRouteBuilder(
-            transitionDuration: Duration(milliseconds: 320),
-            reverseTransitionDuration: Duration(milliseconds: 240),
-            pageBuilder: (context, animation, secondaryAnimation) => Home(fromAdminDashboard: true),
-            transitionsBuilder: (context, animation, secondaryAnimation, child) {
-              final curvedAnimation = CurvedAnimation(
-                parent: animation,
-                curve: Curves.easeOutCubic,
-                reverseCurve: Curves.easeInCubic,
-              );
-              return FadeTransition(
-                opacity: curvedAnimation,
-                child: SlideTransition(
-                  position: Tween<Offset>(
-                    begin: const Offset(0.05, 0.04),
-                    end: Offset.zero,
-                  ).animate(curvedAnimation),
-                  child: ScaleTransition(
-                    scale: Tween<double>(
-                      begin: 0.98,
-                      end: 1.0,
-                    ).animate(curvedAnimation),
-                    child: child,
-                  ),
-                ),
-              );
-            },
-          ),
-        );
-      } else {
-        loadProjects();
-      }
+      ).then((_) {
+        if (mounted) {
+          loadProjects();
+        }
+      });
       return;
     }
 
@@ -1027,10 +1087,11 @@ class DashboardState extends State<Dashboard> {
   var username = "";
   var date = "";
   var role = "";
-
   var userId;
   var data;
   var searchData;
+  bool _isLoading = false;
+  String? _errorMessage;
 
   @override
   void initState() {
@@ -1038,143 +1099,215 @@ class DashboardState extends State<Dashboard> {
     call();
   }
 
-  call() async {
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    role = prefs.getString('role')!;
-    userId = prefs.getString('userId');
-    String apiToken = prefs.getString('api_token')!;
-    var response = await http.post(Uri.parse("https://office.buildahome.in/API/get_projects_for_user"), body: {"user_id": userId, "role": role, "api_token": apiToken});
-
+  Future<void> call({bool force = false}) async {
     setState(() {
-      print(data);
-      data = jsonDecode(response.body);
-      searchData = data;
-
-      username = prefs.getString('username')!;
+      _isLoading = true;
+      _errorMessage = null;
     });
+
+    try {
+      SharedPreferences prefs = await SharedPreferences.getInstance();
+      role = prefs.getString('role') ?? '';
+      userId = prefs.getString('userId') ?? prefs.getString('user_id');
+      String? apiToken = prefs.getString('api_token');
+
+      if (userId == null || apiToken == null || role.isEmpty) {
+        throw Exception('Missing credentials to load your projects. Please log in again.');
+      }
+
+      final payload = {"user_id": userId, "role": role, "api_token": apiToken};
+      final uri = Uri.parse("https://office.buildahome.in/API/get_projects_for_user");
+      print('[Dashboard] Loading projects with $payload');
+      final response = await http.post(uri, body: payload).timeout(const Duration(seconds: 20));
+
+      if (response.statusCode != 200) {
+        throw Exception('Unable to load projects right now (code ${response.statusCode}). Pull to refresh to retry.');
+      }
+
+      final decoded = jsonDecode(response.body);
+
+      setState(() {
+        data = decoded;
+        searchData = data;
+        username = prefs.getString('username') ?? '';
+      });
+    } on TimeoutException {
+      setState(() {
+        _errorMessage = 'Request timed out while loading projects. Pull down to retry.';
+      });
+    } catch (e) {
+      print('[Dashboard] Error loading projects: $e');
+      setState(() {
+        _errorMessage = 'Something went wrong while loading your projects. Pull down to retry.';
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
   }
 
   Widget build(BuildContext context) {
-    return Container(
-        child: ListView(
-      padding: EdgeInsets.all(25),
-      children: <Widget>[
-        Container(
-          padding: EdgeInsets.only(bottom: 10),
-          margin: EdgeInsets.only(bottom: 10, right: 100),
-          child: Text("Projects handled by you", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-          decoration: BoxDecoration(border: Border(bottom: BorderSide(width: 3))),
-        ),
-        Container(
-            margin: EdgeInsets.only(bottom: 10, top: 10),
-            color: Colors.white,
-            child: TextFormField(
-              onChanged: (text) {
-                setState(() {
-                  searchData = [];
-                  for (int i = 0; i < data.length; i++) {
-                    if (text.toLowerCase().trim() == "") {
-                      searchData.add(data[i]);
-                    } else if (data[i]['name'].toLowerCase().contains(text)) {
-                      searchData.add(data[i]);
-                    }
-                  }
-                });
-              },
-              decoration: InputDecoration(
-                hintText: 'Search project',
-                contentPadding: EdgeInsets.all(10),
-                suffixIcon: InkWell(child: Icon(Icons.search)),
+    return RefreshIndicator(
+      onRefresh: () => call(force: true),
+      color: AppTheme.primaryColorConst,
+      child: Container(
+          child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: EdgeInsets.all(25),
+        children: <Widget>[
+          Container(
+            padding: EdgeInsets.only(bottom: 10),
+            margin: EdgeInsets.only(bottom: 10, right: 100),
+            child: Text("Projects handled by you", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            decoration: BoxDecoration(border: Border(bottom: BorderSide(width: 3))),
+          ),
+          if (_errorMessage != null)
+            Container(
+              margin: EdgeInsets.only(bottom: 12),
+              padding: EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.red.withOpacity(0.08),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.red.withOpacity(0.3)),
               ),
-            )),
-        if (searchData == null)
+              child: Row(
+                children: [
+                  Icon(Icons.error_outline, color: Colors.red, size: 18),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      _errorMessage!,
+                      style: TextStyle(color: Colors.red[800], fontSize: 12),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          Container(
+              margin: EdgeInsets.only(bottom: 10, top: 10),
+              color: Colors.white,
+              child: TextFormField(
+                onChanged: (text) {
+                  setState(() {
+                    searchData = [];
+                    if (data != null) {
+                      for (int i = 0; i < data.length; i++) {
+                        if (text.toLowerCase().trim() == "") {
+                          searchData.add(data[i]);
+                        } else if (data[i]['name'].toLowerCase().contains(text.toLowerCase())) {
+                          searchData.add(data[i]);
+                        }
+                      }
+                    }
+                  });
+                },
+                decoration: InputDecoration(
+                  hintText: 'Search project',
+                  contentPadding: EdgeInsets.all(10),
+                  suffixIcon: InkWell(child: Icon(Icons.search)),
+                ),
+              )),
+          if (_isLoading && (searchData == null || searchData.length == 0))
+            ListView.builder(
+                shrinkWrap: true,
+                physics: new BouncingScrollPhysics(),
+                scrollDirection: Axis.vertical,
+                itemCount: 10,
+                itemBuilder: (BuildContext ctxt, int index) {
+                  return Container(
+                      padding: EdgeInsets.all(15),
+                      margin: EdgeInsets.only(bottom: 10),
+                      decoration: BoxDecoration(
+                        color: Colors.grey[200],
+                        shape: BoxShape.rectangle,
+                        border: Border(
+                          bottom: BorderSide(width: 1.0, color: Colors.grey[300]!),
+                        ),
+                      ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: <Widget>[
+                          SpinKitRing(
+                            color: Color(0xFF03045E),
+                            size: 20,
+                            lineWidth: 2,
+                          ),
+                          Container(width: 60, child: Text('', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold))),
+                          Container(child: Text('', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)))
+                        ],
+                      ));
+                }),
           ListView.builder(
               shrinkWrap: true,
               physics: new BouncingScrollPhysics(),
               scrollDirection: Axis.vertical,
-              itemCount: 10,
+              itemCount: searchData == null ? 0 : searchData.length,
               itemBuilder: (BuildContext ctxt, int index) {
-                return Container(
-                    padding: EdgeInsets.all(15),
-                    margin: EdgeInsets.only(bottom: 10),
-                    decoration: BoxDecoration(
-                      color: Colors.grey[200],
-                      shape: BoxShape.rectangle,
-                      border: Border(
-                        bottom: BorderSide(width: 1.0, color: Colors.grey[300]!),
-                      ),
-                    ),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: <Widget>[
-                        SpinKitRing(
-                          color: Color(0xFF03045E),
-                          size: 20,
-                          lineWidth: 2,
-                        ),
-                        Container(width: 60, child: Text('', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold))),
-                        Container(child: Text('', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)))
-                      ],
-                    ));
-              }),
-        ListView.builder(
-            shrinkWrap: true,
-            physics: new BouncingScrollPhysics(),
-            scrollDirection: Axis.vertical,
-            itemCount: searchData == null ? 0 : searchData.length,
-            itemBuilder: (BuildContext ctxt, int index) {
-              return searchData[index]['name'].trim().length > 0
-                  ? InkWell(
-                      onTap: () async {
-                        SharedPreferences prefs = await SharedPreferences.getInstance();
-                        await prefs.setString("project_id", searchData[index]['id'].toString());
-                        await prefs.setString("client_name", searchData[index]['name'].toString());
+                return searchData[index]['name'].trim().length > 0
+                    ? InkWell(
+                        onTap: () async {
+                          SharedPreferences prefs = await SharedPreferences.getInstance();
+                          final projectId = searchData[index]['id'].toString();
+                          await prefs.setString("project_id", projectId);
+                          await prefs.setString("client_name", searchData[index]['name'].toString());
 
-                        Navigator.pushReplacement(
-                          context,
-                          PageRouteBuilder(
-                            pageBuilder: (context, animation, secondaryAnimation) => Home(fromAdminDashboard: true),
-                            transitionsBuilder: (context, animation, secondaryAnimation, child) {
-                              return FadeTransition(
-                                opacity: animation,
-                                child: SlideTransition(
-                                  position: Tween<Offset>(
-                                    begin: const Offset(0.3, 0.0),
-                                    end: Offset.zero,
-                                  ).animate(CurvedAnimation(
-                                    parent: animation,
-                                    curve: Curves.easeOutCubic,
-                                  )),
-                                  child: child,
-                                ),
-                              );
-                            },
-                            transitionDuration: Duration(milliseconds: 300),
-                          ),
-                        );
-                      },
-                      child: Container(
-                          padding: EdgeInsets.symmetric(horizontal: 15, vertical: 20),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            shape: BoxShape.rectangle,
-                            border: Border(
-                              bottom: BorderSide(width: 1.0, color: Colors.grey[300]!),
+                          // Preload project data for non-Client users
+                          final role = prefs.getString('role');
+                          if (role != null && role != 'Client') {
+                            DataProvider().loadProjectDataForNonClient(projectId).catchError((e) {
+                              print('[Dashboard] Error preloading project data: $e');
+                            });
+                          }
+                          Navigator.pop(context);
+                          Navigator.pushReplacement(
+                            context,
+                            PageRouteBuilder(
+                              pageBuilder: (context, animation, secondaryAnimation) => Home(fromAdminDashboard: true),
+                              transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                                return FadeTransition(
+                                  opacity: animation,
+                                  child: SlideTransition(
+                                    position: Tween<Offset>(
+                                      begin: const Offset(0.3, 0.0),
+                                      end: Offset.zero,
+                                    ).animate(CurvedAnimation(
+                                      parent: animation,
+                                      curve: Curves.easeOutCubic,
+                                    )),
+                                    child: child,
+                                  ),
+                                );
+                              },
+                              transitionDuration: Duration(milliseconds: 300),
                             ),
-                          ),
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: <Widget>[
-                              Container(width: 40, child: Text((index + 1).toString() + ".", style: TextStyle(fontSize: 18, fontWeight: FontWeight.w500))),
-                              Container(
-                                  width: MediaQuery.of(context).size.width * 0.65,
-                                  child: Text(searchData[index]['name'].trim(), overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 18, fontWeight: FontWeight.w500)))
-                            ],
-                          )))
-                  : Container();
-            })
-      ],
-    ));
+                          );
+                        },
+                        child: Container(
+                            padding: EdgeInsets.symmetric(horizontal: 15, vertical: 20),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              shape: BoxShape.rectangle,
+                              border: Border(
+                                bottom: BorderSide(width: 1.0, color: Colors.grey[300]!),
+                              ),
+                            ),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: <Widget>[
+                                Container(width: 40, child: Text((index + 1).toString() + ".", style: TextStyle(fontSize: 18, fontWeight: FontWeight.w500))),
+                                Container(
+                                    width: MediaQuery.of(context).size.width * 0.65,
+                                    child: Text(searchData[index]['name'].trim(), overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 18, fontWeight: FontWeight.w500)))
+                              ],
+                            )))
+                    : Container();
+              })
+        ],
+      )),
+    );
   }
 }
 

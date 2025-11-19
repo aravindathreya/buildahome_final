@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -6,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'app_theme.dart';
+import 'services/data_provider.dart';
 
 class Documents extends StatefulWidget {
   @override
@@ -186,62 +188,138 @@ class DocumentsState extends State<Documents> {
   var purchase_orders = [];
   var role;
   bool _isLoading = false;
+  bool _isRefreshing = false;
+  String? _errorMessage;
+  int _loadRequestId = 0;
+  static const Duration _requestTimeout = Duration(seconds: 20);
 
-  Future<void> call() async {
-    setState(() {
-      _isLoading = true;
-    });
+  Future<void> call({bool showLoader = true}) async {
+    final int requestId = ++_loadRequestId;
+
+    if (showLoader) {
+      if (!mounted) return;
+      setState(() {
+        _isLoading = true;
+        _errorMessage = null;
+      });
+    } else {
+      if (!mounted) return;
+      setState(() {
+        _isRefreshing = true;
+        _errorMessage = null;
+      });
+    }
+
     try {
       SharedPreferences prefs = await SharedPreferences.getInstance();
       var id = prefs.getString('project_id');
       if (id == null) {
+        throw Exception('Project not selected. Please reopen the project and try again.');
+      }
+      var _role = prefs.getString('role');
+
+      // Check cache for non-Client users
+      final dataProvider = DataProvider();
+      List<dynamic>? cachedData;
+      if (_role != null && _role != 'Client' && dataProvider.cachedDocuments != null) {
+        cachedData = dataProvider.cachedDocuments;
+      }
+
+      // Use cache if available and not initial load
+      if (cachedData != null && !showLoader) {
+        _processDocuments(cachedData, _role, requestId);
+        
+        // Still refresh in background
+        _fetchDocumentsFromApi(id, dataProvider, _role, requestId);
+        return;
+      }
+
+      // Fetch from API
+      await _fetchDocumentsFromApi(id, dataProvider, _role, requestId);
+    } catch (e) {
+      if (_shouldIgnoreLoad(requestId)) return;
+      if (!mounted) return;
+      setState(() {
+        _errorMessage = e.toString().replaceAll('Exception: ', '');
+      });
+    } finally {
+      if (_shouldIgnoreLoad(requestId)) return;
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+        _isRefreshing = false;
+      });
+    }
+  }
+
+  Future<void> _fetchDocumentsFromApi(String projectId, DataProvider dataProvider, String? userRole, int requestId) async {
+    try {
+      final response = await http.get(Uri.parse('https://office.buildahome.in/API/view_all_documents?id=$projectId'))
+          .timeout(_requestTimeout);
+      
+      if (response.statusCode != 200) {
+        throw Exception('Unable to load documents right now. Please try again.');
+      }
+
+      if (response.body.isEmpty) {
+        if (_shouldIgnoreLoad(requestId)) return;
         if (!mounted) return;
         setState(() {
+          entries = [];
           folders = [];
           subfolders = {};
           drawing_ids = {};
         });
         return;
       }
-      var response = await http.get(Uri.parse('https://office.buildahome.in/API/view_all_documents?id=$id'));
-      var _role = prefs.getString('role');
 
-      final localFolders = <String>[];
-      final localSubFolders = <String, List<dynamic>>{};
-      final localDrawingIds = <String, List<dynamic>>{};
-
-      if (response.body.isNotEmpty) {
-        entries = jsonDecode(response.body);
-        for (int i = 0; i < entries.length; i++) {
-          final folder = entries[i]['folder']?.toString() ?? '';
-          if (folder.trim().isEmpty) continue;
-          if (!localFolders.contains(folder)) {
-            localFolders.add(folder);
-          }
-          localSubFolders.putIfAbsent(folder, () => []);
-          localDrawingIds.putIfAbsent(folder, () => []);
-          localSubFolders[folder]!.add(entries[i]["name"]);
-          localDrawingIds[folder]!.add(entries[i]["doc_id"]);
-        }
+      final data = jsonDecode(response.body);
+      
+      // Update cache for non-Client users
+      if (userRole != null && userRole != 'Client') {
+        dataProvider.cachedDocuments = data is List ? data : [];
+        dataProvider.lastDocumentsLoad = DateTime.now();
       }
 
-      if (!mounted) return;
-      setState(() {
-        role = _role;
-        folders = localFolders;
-        subfolders = localSubFolders;
-        drawing_ids = localDrawingIds;
-      });
-    } catch (err) {
-      debugPrint('Failed to load documents: $err');
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
+      _processDocuments(data, userRole, requestId);
+    } catch (e) {
+      if (_shouldIgnoreLoad(requestId)) return;
+      rethrow;
     }
   }
+
+  void _processDocuments(dynamic data, String? userRole, int requestId) {
+    if (_shouldIgnoreLoad(requestId)) return;
+    if (!mounted) return;
+
+    final localFolders = <String>[];
+    final localSubFolders = <String, List<dynamic>>{};
+    final localDrawingIds = <String, List<dynamic>>{};
+
+    if (data != null && data is List) {
+      entries = data;
+      for (int i = 0; i < entries.length; i++) {
+        final folder = entries[i]['folder']?.toString() ?? '';
+        if (folder.trim().isEmpty) continue;
+        if (!localFolders.contains(folder)) {
+          localFolders.add(folder);
+        }
+        localSubFolders.putIfAbsent(folder, () => []);
+        localDrawingIds.putIfAbsent(folder, () => []);
+        localSubFolders[folder]!.add(entries[i]["name"]);
+        localDrawingIds[folder]!.add(entries[i]["doc_id"]);
+      }
+    }
+
+    setState(() {
+      role = userRole;
+      folders = localFolders;
+      subfolders = localSubFolders;
+      drawing_ids = localDrawingIds;
+    });
+  }
+
+  bool _shouldIgnoreLoad(int requestId) => !mounted || requestId != _loadRequestId;
 
   @override
   void initState() {
@@ -272,7 +350,7 @@ class DocumentsState extends State<Documents> {
       body: SafeArea(
         child: RefreshIndicator(
           color: AppTheme.primaryColorConst,
-          onRefresh: call,
+          onRefresh: () => call(showLoader: false),
           child: ListView(
             physics: const AlwaysScrollableScrollPhysics(),
             padding: const EdgeInsets.fromLTRB(16, 24, 16, 32),
@@ -287,11 +365,27 @@ class DocumentsState extends State<Documents> {
                 style: theme.textTheme.bodyMedium?.copyWith(color: AppTheme.textSecondary),
               ),
               const SizedBox(height: 24),
-              if (_isLoading && folders.isEmpty)
+              if (_errorMessage != null && folders.isEmpty)
+                _buildErrorState()
+              else if (_isLoading && folders.isEmpty)
                 ...List.generate(3, (_) => _buildSkeletonCard())
               else if (folders.isEmpty)
                 _buildEmptyState()
-              else
+              else ...[
+                if (_isRefreshing && folders.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 16),
+                    child: Center(
+                      child: SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor: AlwaysStoppedAnimation<Color>(AppTheme.primaryColorConst),
+                        ),
+                      ),
+                    ),
+                  ),
                 ...List.generate(
                   folders.length,
                   (index) => TweenAnimationBuilder<double>(
@@ -313,6 +407,7 @@ class DocumentsState extends State<Documents> {
                     },
                   ),
                 ),
+              ],
             ],
           ),
         ),
@@ -367,6 +462,41 @@ class DocumentsState extends State<Documents> {
             'Project files uploaded by the team will appear here automatically.',
             textAlign: TextAlign.center,
             style: TextStyle(color: AppTheme.textSecondary),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildErrorState() {
+    return Container(
+      padding: const EdgeInsets.all(32),
+      decoration: BoxDecoration(
+        color: AppTheme.backgroundSecondary,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Column(
+        children: [
+          Icon(Icons.error_outline, color: Colors.redAccent, size: 48),
+          const SizedBox(height: 12),
+          Text(
+            'Something went wrong',
+            style: TextStyle(fontWeight: FontWeight.w600, color: AppTheme.textPrimary),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            _errorMessage ?? 'Please try again later.',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: AppTheme.textSecondary),
+          ),
+          const SizedBox(height: 16),
+          ElevatedButton(
+            onPressed: () => call(),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.primaryColorConst,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Retry'),
           ),
         ],
       ),

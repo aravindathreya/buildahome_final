@@ -5,15 +5,15 @@ import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:shimmer/shimmer.dart';
 import "Payments.dart";
-import 'Drawings.dart';
 import 'app_theme.dart';
+import 'Drawings.dart';
 import 'Scheduler.dart';
 import 'Gallery.dart';
 import 'NotesAndComments.dart';
 import 'checklist_categories.dart';
 import 'services/data_provider.dart';
 import 'AdminDashboard.dart';
-import 'dart:convert';
+import 'RequestDrawing.dart';
 
 class UserDashboardLayout extends StatefulWidget {
   final bool fromAdminDashboard;
@@ -197,8 +197,8 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
   var username = ' ';
   var updatePostedOnDate = " ";
   var value = " ";
-  var completed = "0";
-  var updateResponseBody;
+  String? completed;
+  dynamic updateResponseBody;
   var blocked = false;
   var bolckReason = '';
   var location = '';
@@ -209,12 +209,14 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
   bool _hasLoadedUpdates = false;
   final TextEditingController _quickSearchController = TextEditingController();
   final FocusNode _quickSearchFocusNode = FocusNode();
+  final ScrollController _scrollController = ScrollController();
   String _quickSearchQuery = '';
 
   @override
   void dispose() {
     _quickSearchController.dispose();
     _quickSearchFocusNode.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -223,8 +225,41 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
     super.initState();
     // Load cached data (if available) without blocking the transition
     loadDataFromProvider();
-    // Fetch fresh data asynchronously
-    reloadData(force: true);
+    // Fetch fresh data asynchronously and preload project data for non-Client users
+    _initializeData();
+    
+    // Add listener to scroll to top when search field is focused
+    _quickSearchFocusNode.addListener(() {
+      if (_quickSearchFocusNode.hasFocus) {
+        // Wait for the next frame to ensure the scroll controller is attached
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (_scrollController.hasClients) {
+            _scrollController.animateTo(
+              0.0,
+              duration: Duration(milliseconds: 300),
+              curve: Curves.easeOut,
+            );
+          }
+        });
+      }
+    });
+  }
+
+  Future<void> _initializeData() async {
+    // Reload client/update data
+    await reloadData(force: true);
+    
+    // For non-Client users, preload project data
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    final role = prefs.getString('role');
+    final projectId = prefs.getString('project_id');
+    
+    if (role != null && role != 'Client' && projectId != null) {
+      // Trigger background loading of project data
+      DataProvider().loadProjectDataForNonClient(projectId).catchError((e) {
+        print('[UserDashboard] Error preloading project data: $e');
+      });
+    }
   }
 
   loadDataFromProvider() async {
@@ -242,15 +277,16 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
     if (!mounted) return;
 
     final String nextLocation = dataProvider.clientProjectLocation ?? '';
-    final String nextCompletion = dataProvider.clientProjectCompletion ?? '0';
+    final String? nextCompletion = dataProvider.clientProjectCompletion;
     final bool nextBlocked = dataProvider.clientProjectBlocked ?? false;
     final String nextBlockReason = dataProvider.clientProjectBlockReason ?? '';
     final String nextValue = dataProvider.clientProjectValue ?? '';
     final dynamic nextUpdates = dataProvider.clientProjectUpdates;
 
-    final List<String> nextDailyUpdates = [];
+    List<String> nextDailyUpdates = [];
     String nextUpdateDate = DateFormat("EEEE dd MMMM").format(DateTime.now()).toString();
 
+    // Only process updates if data is loaded (not null)
     if (nextUpdates != null && nextUpdates is List && nextUpdates.isNotEmpty) {
       nextUpdateDate = nextUpdates[0]['date']?.toString() ?? nextUpdateDate;
       for (final update in nextUpdates) {
@@ -263,7 +299,11 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
       if (nextDailyUpdates.isEmpty) {
         nextDailyUpdates.add('Stay tuned for updates about your home');
       }
+    } else if (nextUpdates == null) {
+      // Data not loaded yet - keep empty list to show skeleton
+      nextDailyUpdates = [];
     } else {
+      // Data loaded but empty - show empty state message
       nextDailyUpdates.add('Stay tuned for updates about your home');
     }
 
@@ -286,7 +326,9 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
       dailyUpdateList = nextDailyUpdates;
       updatePostedOnDate = nextUpdateDate;
       _isLoadingUpdates = false;
-      _hasLoadedUpdates = true;
+      // Only mark as loaded if we have actual data OR if we got empty data (not null)
+      // If nextUpdates is null, data hasn't loaded yet, so keep hasLoadedUpdates false to show skeleton
+      _hasLoadedUpdates = nextUpdates != null;
     });
   }
 
@@ -348,6 +390,12 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
       'route': () => ChecklistCategoriesLayout(),
     });
 
+    menuItems.add({
+      'title': 'Request Drawings',
+      'icon': Icons.architecture,
+      'route': () => RequestDrawingLayout(),
+    });
+
     return menuItems;
   }
 
@@ -363,6 +411,7 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
         color: AppTheme.backgroundPrimary,
       ),
       child: ListView(
+        controller: _scrollController,
         children: <Widget>[
           AnimatedWidgetSlide(
               direction: SlideDirection.topToBottom, // Specify the slide direction
@@ -578,12 +627,37 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
           child: TextField(
             controller: _quickSearchController,
             focusNode: _quickSearchFocusNode,
+            onTap: () async {
+              // Scroll to top when search field is tapped
+              // Use a small delay to ensure the scroll controller is ready
+              await Future.delayed(Duration(milliseconds: 50));
+              if (_scrollController.hasClients) {
+                print("scrolling to bottom");
+                _scrollController.animateTo(
+                  _scrollController.position.maxScrollExtent + 110,
+                  duration: Duration(milliseconds: 300),
+                  curve: Curves.easeOut,
+                );
+              } else {
+                // If controller not attached yet, wait for next frame
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  if (_scrollController.hasClients && mounted) {
+                    _scrollController.animateTo(
+                      _scrollController.position.maxScrollExtent + 110,
+                      duration: Duration(milliseconds: 300),
+                      curve: Curves.easeOut,
+                    );
+                  }
+                });
+              }
+            },
             onChanged: (value) {
               setState(() {
                 _quickSearchQuery = value;
               });
             },
             decoration: InputDecoration(
+              contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 0),
               prefixIcon: Icon(Icons.search, color: AppTheme.textSecondary),
               suffixIcon: _quickSearchQuery.isNotEmpty
                   ? IconButton(
@@ -801,31 +875,37 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
                 ),
               ),
               SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      "Construction Progress",
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: AppTheme.textSecondary,
-                        fontWeight: FontWeight.w500,
+              if (completed != null) ...[
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        "Construction Progress",
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: AppTheme.textSecondary,
+                          fontWeight: FontWeight.w500,
+                        ),
                       ),
-                    ),
-                    SizedBox(height: 4),
-                    Text(
-                      "${completed.toString()}% Complete",
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: AppTheme.textPrimary,
-                        letterSpacing: 0.5,
+                      SizedBox(height: 4),
+                      Text(
+                        "$completed% Complete",
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: AppTheme.textPrimary,
+                          letterSpacing: 0.5,
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
+              ] else ...[
+                Expanded(
+                  child: _buildCardSkeleton(height: 40, borderRadius: BorderRadius.circular(12)),
+                ),
+              ],
               Container(
                 child: InkWell(
                   onTap: () async {
@@ -847,7 +927,6 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
                             color: AppTheme.primaryColorConst,
                             size: 20,
                           ),
-                          
                         ],
                       ),
                     ),
@@ -857,25 +936,29 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
             ],
           ),
           SizedBox(height: 20),
-          Container(
-            padding: EdgeInsets.only(top: 8, bottom: 8),
-            child: LinearPercentIndicator(
-              barRadius: Radius.circular(12),
-              padding: EdgeInsets.all(0),
-              lineHeight: 14.0,
-              percent: (double.tryParse(completed.toString()) ?? 0.0) / 100,
-              animation: true,
-              animationDuration: 1200,
-              backgroundColor: AppTheme.backgroundPrimaryLight,
-              clipLinearGradient: true,
-              linearGradient: LinearGradient(
-                colors: [
-                  AppTheme.primaryColorConst,
-                  AppTheme.primaryColorConst.withOpacity(0.8),
-                ],
+          if (completed != null) ...[
+            Container(
+              padding: EdgeInsets.only(top: 8, bottom: 8),
+              child: LinearPercentIndicator(
+                barRadius: Radius.circular(12),
+                padding: EdgeInsets.all(0),
+                lineHeight: 14.0,
+                percent: (double.tryParse(completed!) ?? 0.0) / 100,
+                animation: true,
+                animationDuration: 1200,
+                backgroundColor: AppTheme.backgroundPrimaryLight,
+                clipLinearGradient: true,
+                linearGradient: LinearGradient(
+                  colors: [
+                    AppTheme.primaryColorConst,
+                    AppTheme.primaryColorConst.withOpacity(0.8),
+                  ],
+                ),
               ),
             ),
-          ),
+          ] else ...[
+            _buildCardSkeleton(height: 14, borderRadius: BorderRadius.circular(12)),
+          ],
         ],
       ),
     );
@@ -909,6 +992,22 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
   }
 
   Widget _buildUpdatesCardBody(BuildContext context) {
+    // Show skeleton if data not loaded yet
+    if (updateResponseBody == null && !_hasLoadedUpdates) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildCardSkeleton(height: 16, borderRadius: BorderRadius.circular(4)),
+          SizedBox(height: 12),
+          _buildCardSkeleton(height: 20, borderRadius: BorderRadius.circular(4)),
+          SizedBox(height: 12),
+          _buildCardSkeleton(height: 60, borderRadius: BorderRadius.circular(4)),
+          SizedBox(height: 8),
+          _buildCardSkeleton(height: 60, borderRadius: BorderRadius.circular(4)),
+        ],
+      );
+    }
+    
     return Container(
       padding: EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -955,27 +1054,28 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
                 style: TextStyle(fontSize: 14, color: AppTheme.textPrimary),
               ),
             ),
-          ListView.builder(
-            physics: NeverScrollableScrollPhysics(),
-            shrinkWrap: true,
-            itemCount: dailyUpdateList.length,
-            itemBuilder: (BuildContext ctxt, int index) {
-              return Padding(
-                padding: const EdgeInsets.only(top: 12),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    Expanded(
-                      child: Text(
-                        dailyUpdateList[index].toString(),
-                        style: TextStyle(fontSize: 14, color: AppTheme.textPrimary),
-                      ),
-                    )
-                  ],
-                ),
-              );
-            },
-          ),
+          if (dailyUpdateList.isNotEmpty)
+            ListView.builder(
+              physics: NeverScrollableScrollPhysics(),
+              shrinkWrap: true,
+              itemCount: dailyUpdateList.length,
+              itemBuilder: (BuildContext ctxt, int index) {
+                return Padding(
+                  padding: const EdgeInsets.only(top: 12),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Expanded(
+                        child: Text(
+                          dailyUpdateList[index].toString(),
+                          style: TextStyle(fontSize: 14, color: AppTheme.textPrimary),
+                        ),
+                      )
+                    ],
+                  ),
+                );
+              },
+            ),
         ],
       ),
     );

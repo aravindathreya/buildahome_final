@@ -8,15 +8,15 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'indents_screen.dart';
 import 'notifcations.dart';
 import 'RequestDrawing.dart';
-import 'NotesAndComments.dart';
 import 'stock_report.dart';
 import 'checklist_categories.dart';
 
 class NavMenuItem extends StatelessWidget {
-  String _route;
-  final _icon;
-  final _routename;
-  NavMenuItem(this._route, this._icon, this._routename);
+  final String _route;
+  final IconData _icon;
+  final Widget _routename;
+
+  const NavMenuItem(this._route, this._icon, this._routename, {Key? key}) : super(key: key);
 
   _logout() async {
     SharedPreferences preferences = await SharedPreferences.getInstance();
@@ -128,7 +128,6 @@ class NavMenuWidgetState extends State<NavMenuWidget> {
 
   @override
   Widget build(BuildContext context) {
-    final appTitle = 'buildAhome';
     return Drawer(
       child: ListView(
           dragStartBehavior: DragStartBehavior.start,
@@ -238,10 +237,7 @@ class NavMenuWidgetState extends State<NavMenuWidget> {
               Container(
                 child: NavMenuItem("Checklist", Icons.list, ChecklistCategoriesLayout()),
               ),
-            if (role == 'Admin' ||
-                role == 'Project Coordinator' ||
-                role == 'Project Manager' ||
-                role == 'Site Engineer')
+            if (role == 'Client')
               Container(
                 child: NavMenuItem("Request drawing",
                     Icons.playlist_add_outlined, RequestDrawingLayout()),

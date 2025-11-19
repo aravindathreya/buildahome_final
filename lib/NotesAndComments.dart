@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:file_picker/file_picker.dart';
@@ -10,6 +11,7 @@ import 'Gallery.dart';
 import 'Scheduler.dart';
 import 'ShowAlert.dart';
 import 'app_theme.dart';
+import 'services/data_provider.dart';
 
 class NotesAndComments extends StatefulWidget {
   const NotesAndComments({super.key});
@@ -28,6 +30,10 @@ class NotesAndCommentsState extends State<NotesAndComments> {
   String attachedFileName = '';
   PlatformFile? attachedFile;
   bool _isLoading = false;
+  bool _isRefreshing = false;
+  String? _errorMessage;
+  int _loadRequestId = 0;
+  static const Duration _requestTimeout = Duration(seconds: 20);
 
   final TextEditingController message = TextEditingController();
 
@@ -37,36 +43,101 @@ class NotesAndCommentsState extends State<NotesAndComments> {
     getNotes();
   }
 
-  Future<void> getNotes() async {
-    setState(() {
-      _isLoading = true;
-    });
+  Future<void> getNotes({bool showLoader = true}) async {
+    final int requestId = ++_loadRequestId;
+
+    if (showLoader) {
+      if (!mounted) return;
+      setState(() {
+        _isLoading = true;
+        _errorMessage = null;
+      });
+    } else {
+      if (!mounted) return;
+      setState(() {
+        _isRefreshing = true;
+        _errorMessage = null;
+      });
+    }
+
     try {
       final prefs = await SharedPreferences.getInstance();
       final currentProjectId = prefs.getString('project_id');
       userId = prefs.getString('user_id');
 
-      if (currentProjectId == null) return;
+      if (currentProjectId == null) {
+        throw Exception('Project not selected. Please reopen the project and try again.');
+      }
 
-      final url = 'https://office.buildahome.in/API/get_notes?project_id=$currentProjectId';
-      final response = await http.get(Uri.parse(url));
+      // Check cache for non-Client users
+      final dataProvider = DataProvider();
+      final role = prefs.getString('role');
+      List<dynamic>? cachedData;
+      if (role != null && role != 'Client' && dataProvider.cachedNotes != null) {
+        cachedData = dataProvider.cachedNotes;
+      }
+
+      // Use cache if available and not initial load
+      if (cachedData != null && !showLoader) {
+        if (!mounted) return;
+        setState(() {
+          notes = cachedData;
+          projectId = currentProjectId;
+        });
+        
+        // Still refresh in background
+        _fetchNotesFromApi(currentProjectId, dataProvider, role, requestId);
+        return;
+      }
+
+      // Fetch from API
+      await _fetchNotesFromApi(currentProjectId, dataProvider, role, requestId);
+    } catch (e) {
+      if (_shouldIgnoreLoad(requestId)) return;
+      if (!mounted) return;
+      setState(() {
+        _errorMessage = e.toString().replaceAll('Exception: ', '');
+      });
+    } finally {
+      if (_shouldIgnoreLoad(requestId)) return;
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+        _isRefreshing = false;
+      });
+    }
+  }
+
+  Future<void> _fetchNotesFromApi(String projectId, DataProvider dataProvider, String? userRole, int requestId) async {
+    try {
+      final url = 'https://office.buildahome.in/API/get_notes?project_id=$projectId';
+      final response = await http.get(Uri.parse(url)).timeout(_requestTimeout);
+      
+      if (response.statusCode != 200) {
+        throw Exception('Unable to load notes right now. Please try again.');
+      }
+
       final parsed = jsonDecode(response.body);
+      
+      // Update cache for non-Client users
+      if (userRole != null && userRole != 'Client') {
+        dataProvider.cachedNotes = parsed is List ? parsed : [];
+        dataProvider.lastNotesLoad = DateTime.now();
+      }
 
+      if (_shouldIgnoreLoad(requestId)) return;
       if (!mounted) return;
       setState(() {
         notes = parsed;
-        projectId = currentProjectId;
+        projectId = projectId; // Keep the existing projectId
       });
-    } catch (err) {
-      debugPrint('Failed to load notes: $err');
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
+    } catch (e) {
+      if (_shouldIgnoreLoad(requestId)) return;
+      rethrow;
     }
   }
+
+  bool _shouldIgnoreLoad(int requestId) => !mounted || requestId != _loadRequestId;
 
   Future<void> getFile() async {
     final res = await FilePicker.platform.pickFiles(allowMultiple: false);
@@ -193,7 +264,7 @@ class NotesAndCommentsState extends State<NotesAndComments> {
       body: SafeArea(
         child: RefreshIndicator(
           color: AppTheme.primaryColorConst,
-          onRefresh: getNotes,
+          onRefresh: () => getNotes(showLoader: false),
           child: ListView(
             physics: const AlwaysScrollableScrollPhysics(),
             padding: const EdgeInsets.fromLTRB(16, 24, 16, 32),
@@ -221,12 +292,29 @@ class NotesAndCommentsState extends State<NotesAndComments> {
                 style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
               ),
               const SizedBox(height: 12),
-              if (_isLoading && (notes == null || notes!.isEmpty))
+              if (_errorMessage != null && (notes == null || notes!.isEmpty))
+                _buildErrorState()
+              else if (_isLoading && (notes == null || notes!.isEmpty))
                 ...List.generate(3, (_) => _buildNoteSkeleton())
               else if (notes == null || notes!.isEmpty)
                 _buildEmptyState()
-              else
+              else ...[
+                if (_isRefreshing && notes!.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 16),
+                    child: Center(
+                      child: SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor: AlwaysStoppedAnimation<Color>(AppTheme.primaryColorConst),
+                        ),
+                      ),
+                    ),
+                  ),
                 ...notes!.map((note) => _buildNoteCard(note)).toList(),
+              ],
             ],
           ),
         ),
@@ -351,6 +439,41 @@ class NotesAndCommentsState extends State<NotesAndComments> {
             'Start the conversation by sharing your first note.',
             style: TextStyle(color: AppTheme.textSecondary),
             textAlign: TextAlign.center,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildErrorState() {
+    return Container(
+      padding: const EdgeInsets.all(32),
+      decoration: BoxDecoration(
+        color: AppTheme.backgroundSecondary,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Column(
+        children: [
+          Icon(Icons.error_outline, color: Colors.redAccent, size: 48),
+          const SizedBox(height: 12),
+          Text(
+            'Something went wrong',
+            style: TextStyle(fontWeight: FontWeight.w600, color: AppTheme.textPrimary),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            _errorMessage ?? 'Please try again later.',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: AppTheme.textSecondary),
+          ),
+          const SizedBox(height: 16),
+          ElevatedButton(
+            onPressed: () => getNotes(),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.primaryColorConst,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Retry'),
           ),
         ],
       ),

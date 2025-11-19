@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -14,6 +15,7 @@ import 'widgets/searchable_select.dart';
 import 'widgets/full_screen_message.dart';
 import 'widgets/full_screen_progress.dart';
 import 'widgets/full_screen_error_summary.dart';
+import 'AdminDashboard.dart';
 
 class FullScreenImage extends StatefulWidget {
   final id;
@@ -57,6 +59,10 @@ class ImageOnly extends StatelessWidget {
 }
 
 class AddDailyUpdate extends StatelessWidget {
+  final bool returnToAdminDashboard;
+  
+  const AddDailyUpdate({Key? key, this.returnToAdminDashboard = false}) : super(key: key);
+
   @override
   Widget build(BuildContext context) {
     final appTitle = 'buildAhome';
@@ -75,13 +81,17 @@ class AddDailyUpdate extends StatelessWidget {
             },
           ),
         ),
-        body: AddDailyUpdateForm(),
+        body: AddDailyUpdateForm(returnToAdminDashboard: returnToAdminDashboard),
       ),
     );
   }
 }
 
 class AddDailyUpdateForm extends StatefulWidget {
+  final bool returnToAdminDashboard;
+  
+  const AddDailyUpdateForm({Key? key, this.returnToAdminDashboard = false}) : super(key: key);
+
   @override
   AddDailyUpdateState createState() {
     return AddDailyUpdateState();
@@ -129,65 +139,141 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
     });
   }
 
-  Future<void> checkPermissionStatus() async {
-    final PermissionStatus cameraStatus = await Permission.camera.status;
-    final PermissionStatus galleryStatus = await Permission.photos.status;
+  Future<bool> checkPermissionStatus({required bool forCamera}) async {
+    try {
+      PermissionStatus status;
+      if (forCamera) {
+        status = await Permission.camera.status;
+        if (!status.isGranted) {
+          status = await Permission.camera.request();
+        }
+      } else {
+        // For gallery/photos - handle both Android storage and photos permissions
+        // Try photos first (Android 13+)
+        status = await Permission.photos.status;
+        if (!status.isGranted) {
+          status = await Permission.photos.request();
+        }
+        
+        // If photos permission is not available (older Android), try storage
+        if (!status.isGranted && Platform.isAndroid) {
+          final storageStatus = await Permission.storage.status;
+          if (!storageStatus.isGranted) {
+            await Permission.storage.request();
+          }
+          // On Android, image_picker can work without explicit permission in some cases
+          // Return true to let image_picker handle it
+          return true;
+        }
+      }
 
-    if (cameraStatus.isGranted && galleryStatus.isGranted) {
-      // Permissions are granted
-      print("Camera and gallery permission is granted.");
-    } else {
-      // Permissions are not granted
-      print("Camera and gallery permission is NOT granted.");
-
-      // Request permissions
-      await _requestPermissions();
+      if (status.isGranted) {
+        return true;
+      } else if (status.isPermanentlyDenied) {
+        if (mounted) {
+          await _showPermissionDeniedDialog(forCamera: forCamera);
+        }
+        return false;
+      } else {
+        if (mounted) {
+          await _showPermissionDeniedDialog(forCamera: forCamera);
+        }
+        return false;
+      }
+    } catch (e) {
+      print('[AddDailyUpdate] Error checking permissions: $e');
+      // On some platforms, permissions might not be required
+      // Return true to let image_picker handle it
+      if (Platform.isAndroid && !forCamera) {
+        return true;
+      }
+      return false;
     }
   }
 
-  Future<void> _requestPermissions() async {
-    final List<Permission> permissions = [
-      Permission.camera,
-      Permission.photos,
-    ];
-
-    await permissions.request();
-
-    final PermissionStatus cameraStatus = await Permission.camera.status;
-    final PermissionStatus galleryStatus = await Permission.photos.status;
-
-    if (cameraStatus.isGranted && galleryStatus.isGranted) {
-      // Permissions granted
-    } else {
-      // Permissions still not granted
-    }
-  }
-
-  void showProcessingSelectedPicturesDialog() {
-    Navigator.push(
+  Future<void> _showPermissionDeniedDialog({required bool forCamera}) async {
+    await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => FullScreenProgress(
-          title: 'Processing Images',
-          message: 'Processing selected images. Please wait..',
+        builder: (context) => FullScreenMessage(
+          title: 'Permission Required',
+          message: forCamera
+              ? 'Camera permission is required to take photos. Please enable it in your device settings.'
+              : 'Photo library permission is required to select images. Please enable it in your device settings.',
+          icon: Icons.error_outline,
+          iconColor: Colors.orange,
+          buttonText: 'OK',
+          onButtonPressed: () => Navigator.pop(context),
         ),
       ),
     );
   }
+
+  bool _uploadDialogShown = false;
+  BuildContext? _uploadDialogContext;
 
   void showUploadProgressDialog(int currentIndex, int totalFiles, double progress, {String? error, String? errorMessage}) {
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(
-        builder: (context) => FullScreenProgress(
-          title: 'Uploading',
-          message: error == null ? "Uploading picture $currentIndex of $totalFiles" : "Upload Failed",
-          progress: progress,
-          error: error,
-          errorMessage: errorMessage,
+    if (!mounted) return;
+    
+    // Dismiss previous dialog if exists
+    if (_uploadDialogShown && _uploadDialogContext != null) {
+      try {
+        if (Navigator.of(_uploadDialogContext!, rootNavigator: true).canPop()) {
+          Navigator.of(_uploadDialogContext!, rootNavigator: true).pop();
+        }
+      } catch (e) {
+        print('[AddDailyUpdate] Error dismissing previous dialog: $e');
+      }
+      _uploadDialogShown = false;
+      _uploadDialogContext = null;
+    }
+    
+    // Wait a bit before showing new dialog to prevent visual artifacts
+    Future.delayed(Duration(milliseconds: 100), () {
+      if (!mounted) return;
+      _uploadDialogShown = true;
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (dialogContext) {
+            _uploadDialogContext = dialogContext;
+            return FullScreenProgress(
+              title: 'Uploading',
+              message: error == null ? "Uploading picture $currentIndex of $totalFiles" : "Upload Failed",
+              progress: progress,
+              error: error,
+              errorMessage: errorMessage,
+            );
+          },
         ),
-      ),
-    );
+      );
+    });
+  }
+
+  void _dismissUploadDialog() {
+    if (!mounted) return;
+    if (_uploadDialogShown) {
+      if (_uploadDialogContext != null) {
+        try {
+          if (Navigator.of(_uploadDialogContext!, rootNavigator: true).canPop()) {
+            Navigator.of(_uploadDialogContext!, rootNavigator: true).pop();
+          }
+        } catch (e) {
+          print('[AddDailyUpdate] Error dismissing dialog: $e');
+        }
+        _uploadDialogContext = null;
+      } else {
+        // Fallback: try to pop from current context
+        try {
+          if (Navigator.of(context, rootNavigator: true).canPop()) {
+            Navigator.of(context, rootNavigator: true).pop();
+          }
+        } catch (e) {
+          print('[AddDailyUpdate] Error dismissing dialog (fallback): $e');
+        }
+      }
+      _uploadDialogShown = false;
+    }
   }
 
   setUserId() async {
@@ -195,28 +281,252 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
     userId = prefs.getString('user_id');
   }
 
-  Future processSelectedPicture(picture) async {
-    var imageFile = File(picture.path);
+  Future<bool> processSelectedPicture(XFile picture) async {
+    try {
+      // Process synchronously - FileImage is lazy-loaded anyway
+      // Don't check file existence as it can hang on some devices
+      // The file picker already ensures the file exists
+      
+      selectedPictures.insert(0, FileImage(File(picture.path)));
+      selectedPictureFilenames.insert(0, picture.name);
+      selectedPictureFilePaths.add(picture.path);
+      return true;
+    } catch (e) {
+      print('[AddDailyUpdate] Error processing picture: $e');
+      return false;
+    }
+  }
 
-    selectedPictures.insert(0, FileImage(imageFile));
-    selectedPictureFilenames.insert(0, picture.name);
-    selectedPictureFilePaths.add(picture.path);
+  Future<void> _showImageSourceDialog() async {
+    if (!mounted) return;
+    
+    await showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          backgroundColor: AppTheme.backgroundSecondary,
+          title: Text(
+            'Select Image Source',
+            style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.bold),
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: Icon(Icons.camera_alt, color: AppTheme.primaryColorConst),
+                title: Text('Take Photo', style: TextStyle(color: AppTheme.textPrimary)),
+                onTap: () {
+                  Navigator.pop(context);
+                  _takePhotoFromCamera();
+                },
+              ),
+              ListTile(
+                leading: Icon(Icons.photo_library, color: AppTheme.primaryColorConst),
+                title: Text('Choose from Gallery', style: TextStyle(color: AppTheme.textPrimary)),
+                onTap: () {
+                  Navigator.pop(context);
+                  _selectPicturesFromGallery();
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _takePhotoFromCamera() async {
+    try {
+      if (!mounted) return;
+      
+      // Check camera permission
+      final hasPermission = await checkPermissionStatus(forCamera: true);
+      if (!hasPermission) {
+        return;
+      }
+
+      final picker = ImagePicker();
+      final pickedFile = await picker.pickImage(
+        source: ImageSource.camera,
+        maxWidth: maxImageWidth.toDouble(),
+        maxHeight: maxImageHeight.toDouble(),
+        imageQuality: 85,
+      );
+
+      if (pickedFile == null) {
+        // User cancelled
+        return;
+      }
+
+      if (!mounted) return;
+
+      // Process the image immediately (should be very fast)
+      bool success = false;
+      try {
+        success = await processSelectedPicture(pickedFile).timeout(
+          Duration(seconds: 5),
+          onTimeout: () {
+            print('[AddDailyUpdate] Image processing timeout');
+            return false;
+          },
+        );
+      } catch (e) {
+        print('[AddDailyUpdate] Error processing image: $e');
+        success = false;
+      }
+
+      if (!mounted) return;
+
+      if (success) {
+        if (mounted) {
+          setState(() {
+            attachPictureButtonText = "Add more pictures";
+          });
+        }
+      } else {
+        // Show error
+        if (!mounted) return;
+        await Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => FullScreenMessage(
+              title: 'Error',
+              message: 'Failed to process the image. Please try again.',
+              icon: Icons.error_outline,
+              iconColor: Colors.red,
+              buttonText: 'OK',
+              onButtonPressed: () => Navigator.pop(context),
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      print('[AddDailyUpdate] Error taking photo: $e');
+      if (!mounted) return;
+      
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => FullScreenMessage(
+            title: 'Error',
+            message: 'An error occurred while taking the photo: ${e.toString()}',
+            icon: Icons.error_outline,
+            iconColor: Colors.red,
+            buttonText: 'OK',
+            onButtonPressed: () => Navigator.pop(context),
+          ),
+        ),
+      );
+    }
+  }
+
+  Future<void> _selectPicturesFromGallery() async {
+    try {
+      if (!mounted) return;
+      
+      // Check gallery permission
+      final hasPermission = await checkPermissionStatus(forCamera: false);
+      if (!hasPermission) {
+        return;
+      }
+
+      final picker = ImagePicker();
+      final pickedFiles = await picker.pickMultiImage(
+        maxWidth: maxImageWidth.toDouble(),
+        maxHeight: maxImageHeight.toDouble(),
+        imageQuality: 85,
+      );
+
+      if (pickedFiles.isEmpty) {
+        // User cancelled or no files selected
+        return;
+      }
+
+      if (!mounted) return;
+
+      // Process all images (should be very fast)
+      int successCount = 0;
+      for (var i = 0; i < pickedFiles.length; i++) {
+        try {
+          final success = await processSelectedPicture(pickedFiles[i]).timeout(
+            Duration(seconds: 5),
+            onTimeout: () {
+              print('[AddDailyUpdate] Image processing timeout for image ${i + 1}');
+              return false;
+            },
+          );
+          if (success) {
+            successCount++;
+          }
+        } catch (e) {
+          print('[AddDailyUpdate] Error processing image ${i + 1}: $e');
+        }
+      }
+
+      if (!mounted) return;
+
+      if (successCount > 0) {
+        if (mounted) {
+          setState(() {
+            attachPictureButtonText = "Add more pictures";
+          });
+        }
+
+        if (successCount < pickedFiles.length && mounted) {
+          // Some images failed to process
+          await Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => FullScreenMessage(
+                title: 'Partial Success',
+                message: '$successCount of ${pickedFiles.length} image(s) were added successfully.',
+                icon: Icons.warning_amber_rounded,
+                iconColor: Colors.orange,
+                buttonText: 'OK',
+                onButtonPressed: () => Navigator.pop(context),
+              ),
+            ),
+          );
+        }
+      } else {
+        if (!mounted) return;
+        // All images failed
+        await Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => FullScreenMessage(
+              title: 'Error',
+              message: 'Failed to process the images. Please try again.',
+              icon: Icons.error_outline,
+              iconColor: Colors.red,
+              buttonText: 'OK',
+              onButtonPressed: () => Navigator.pop(context),
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      print('[AddDailyUpdate] Error selecting pictures: $e');
+      if (!mounted) return;
+      
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => FullScreenMessage(
+            title: 'Error',
+            message: 'An error occurred while selecting images: ${e.toString()}',
+            icon: Icons.error_outline,
+            iconColor: Colors.red,
+            buttonText: 'OK',
+            onButtonPressed: () => Navigator.pop(context),
+          ),
+        ),
+      );
+    }
   }
 
   Future<void> selectPicturesFromPhone() async {
-    await checkPermissionStatus();
-    final picker = ImagePicker();
-    final pickedFiles = await picker.pickMultiImage();
-
-    showProcessingSelectedPicturesDialog();
-    for (var i = 0; i < pickedFiles.length; i++) {
-      await processSelectedPicture(pickedFiles[i]);
-    }
-
-    Navigator.of(context, rootNavigator: true).pop();
-    setState(() {
-      attachPictureButtonText = "Add more pictures";
-    });
+    await _showImageSourceDialog();
   }
 
   @override
@@ -755,6 +1065,7 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
                       return;
                     }
 
+                    if (!mounted) return;
                     setState(() {
                       isUploading = true;
                       successfulImageUploadCount = 0;
@@ -778,12 +1089,19 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
                           });
 
                         if (response.statusCode == 200) {
+                          if (!mounted) return;
                           setState(() {
+                            selectedPictures.clear();
+                            selectedPictureFilePaths.clear();
+                            selectedPictureFilenames.clear();
                             dailyUpdateTextController.text = '';
                             selectedTradesmen.clear();
+                            attachPictureButtonText = "Add picture from phone";
                             isUploading = false;
+                            successfulImageUploadCount = 0;
                           });
-                          Navigator.push(
+                          if (!mounted) return;
+                          await Navigator.push(
                             context,
                             MaterialPageRoute(
                               builder: (context) => FullScreenMessage(
@@ -792,11 +1110,26 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
                                 icon: Icons.check_circle,
                                 iconColor: Colors.green,
                                 buttonText: 'OK',
-                                onButtonPressed: () => Navigator.pop(context),
+                                onButtonPressed: () {
+                                  Navigator.pop(context);
+                                },
                               ),
                             ),
                           );
+                          
+                          // Navigate back to the screen that opened AddDailyUpdate
+                          if (!mounted) return;
+                          if (widget.returnToAdminDashboard) {
+                            Navigator.pushAndRemoveUntil(
+                              context,
+                              MaterialPageRoute(builder: (context) => AdminDashboard()),
+                              (route) => false,
+                            );
+                          } else {
+                            Navigator.pop(context);
+                          }
                         } else {
+                          if (!mounted) return;
                           setState(() {
                             isUploading = false;
                           });
@@ -823,6 +1156,8 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
 
                       for (int x = 0; x < selectedPictures.length; x++) {
                         try {
+                          if (!mounted) break;
+                          
                           // Show progress dialog
                           showUploadProgressDialog(
                             x + 1,
@@ -836,23 +1171,40 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
                           var pic = await http.MultipartFile.fromPath("image", selectedPictureFilePaths[x]);
                           request.files.add(pic);
 
-                          // Track upload progress
-                          var fileResponse = await request.send();
+                          // Track upload progress with timeout
+                          var fileResponse = await request.send().timeout(
+                            Duration(seconds: 60),
+                            onTimeout: () {
+                              throw TimeoutException('Image upload timeout after 60 seconds');
+                            },
+                          );
+                          
+                          if (!mounted) {
+                            _dismissUploadDialog();
+                            break;
+                          }
                           
                           // Update progress while uploading
                           double progress = 0.5; // Approximate progress
-                          Navigator.pop(context);
                           showUploadProgressDialog(
                             x + 1,
                             selectedPictures.length,
                             progress,
                           );
 
-                          // Read response
-                          var responseData = await fileResponse.stream.toBytes();
+                          // Read response with timeout
+                          var responseData = await fileResponse.stream.toBytes().timeout(
+                            Duration(seconds: 10),
+                            onTimeout: () {
+                              throw TimeoutException('Response read timeout');
+                            },
+                          );
                           var responseString = String.fromCharCodes(responseData);
 
-                          Navigator.pop(context);
+                          if (!mounted) {
+                            _dismissUploadDialog();
+                            break;
+                          }
 
                           if (fileResponse.statusCode == 200 && responseString.trim().toString() == "success") {
                             // Image uploaded successfully, now add daily update
@@ -863,7 +1215,12 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
                               'desc': dailyUpdateTextController.text,
                               'tradesmenMap': tradesmenMap.toString(),
                               'image': pic.filename
-                            });
+                            }).timeout(
+                              Duration(seconds: 30),
+                              onTimeout: () {
+                                throw TimeoutException('Daily update save timeout');
+                              },
+                            );
 
                             if (response.statusCode == 200) {
                               successfulImageUploadCount += 1;
@@ -880,7 +1237,8 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
                                 );
                               } else {
                                 // All uploads complete
-                                Navigator.pop(context);
+                                _dismissUploadDialog();
+                                if (!mounted) return;
                                 setState(() {
                                   selectedPictures.clear();
                                   selectedPictureFilePaths.clear();
@@ -891,7 +1249,10 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
                                   isUploading = false;
                                   successfulImageUploadCount = 0;
                                 });
-                                Navigator.push(
+                                if (!mounted) return;
+                                
+                                // Show success message and navigate back
+                                await Navigator.push(
                                   context,
                                   MaterialPageRoute(
                                     builder: (context) => FullScreenMessage(
@@ -900,10 +1261,24 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
                                       icon: Icons.check_circle,
                                       iconColor: Colors.green,
                                       buttonText: 'OK',
-                                      onButtonPressed: () => Navigator.pop(context),
+                                      onButtonPressed: () {
+                                        Navigator.pop(context);
+                                      },
                                     ),
                                   ),
                                 );
+                                
+                                // Navigate back to the screen that opened AddDailyUpdate
+                                if (!mounted) return;
+                                if (widget.returnToAdminDashboard) {
+                                  Navigator.pushAndRemoveUntil(
+                                    context,
+                                    MaterialPageRoute(builder: (context) => AdminDashboard()),
+                                    (route) => false,
+                                  );
+                                } else {
+                                  Navigator.pop(context);
+                                }
                               }
                             } else {
                               // Failed to add daily update
@@ -912,10 +1287,13 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
                               
                               if (x == selectedPictures.length - 1) {
                                 // Last image, show error summary
-                                await _showUploadErrorSummary(failedUploads, failedReasons);
-                                setState(() {
-                                  isUploading = false;
-                                });
+                                _dismissUploadDialog();
+                                if (mounted) {
+                                  await _showUploadErrorSummary(failedUploads, failedReasons);
+                                  setState(() {
+                                    isUploading = false;
+                                  });
+                                }
                               } else {
                                 // Continue with next upload
                                 showUploadProgressDialog(
@@ -947,15 +1325,42 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
 
                                   // Wait a bit then continue or show summary
                                   await Future.delayed(Duration(seconds: 2));
-                                  Navigator.pop(context);
+                                  _dismissUploadDialog();
                             
                             if (x == selectedPictures.length - 1) {
+                              if (mounted) {
+                                await _showUploadErrorSummary(failedUploads, failedReasons);
+                                setState(() {
+                                  isUploading = false;
+                                });
+                              }
+                            } else {
+                              // Continue with next upload
+                              if (mounted) {
+                                showUploadProgressDialog(
+                                  x + 2,
+                                  selectedPictures.length,
+                                  (x + 1) / selectedPictures.length,
+                                );
+                              }
+                            }
+                          }
+                        } catch (e) {
+                          print('[AddDailyUpdate] Upload error: $e');
+                          _dismissUploadDialog();
+                          failedUploads.add(selectedPictureFilenames[x]);
+                          failedReasons.add("Exception: ${e.toString()}");
+                          
+                          if (x == selectedPictures.length - 1) {
+                            if (mounted) {
                               await _showUploadErrorSummary(failedUploads, failedReasons);
                               setState(() {
                                 isUploading = false;
                               });
-                            } else {
-                              // Continue with next upload
+                            }
+                          } else {
+                            // Continue with next upload
+                            if (mounted) {
                               showUploadProgressDialog(
                                 x + 2,
                                 selectedPictures.length,
@@ -963,39 +1368,41 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
                               );
                             }
                           }
-                        } catch (e) {
-                          Navigator.of(context, rootNavigator: true).pop('dialog');
-                          failedUploads.add(selectedPictureFilenames[x]);
-                          failedReasons.add("Exception: ${e.toString()}");
-                          
-                          if (x == selectedPictures.length - 1) {
-                            await _showUploadErrorSummary(failedUploads, failedReasons);
-                            setState(() {
-                              isUploading = false;
-                            });
-                          }
                         }
                       }
+                      
+                      // Ensure dialog is dismissed after all uploads
+                      _dismissUploadDialog();
                     } catch (e) {
-                      setState(() {
-                        isUploading = false;
-                      });
-                      await showDialog(
-                        context: context,
-                        builder: (BuildContext context) {
-                          return AlertDialog(
-                            backgroundColor: AppTheme.backgroundSecondary,
-                            title: Text(
-                              "Error",
-                              style: TextStyle(color: Colors.red),
-                            ),
-                            content: Text(
-                              "An error occurred: ${e.toString()}",
-                              style: TextStyle(color: AppTheme.textPrimary),
-                            ),
-                          );
-                        },
-                      );
+                      print('[AddDailyUpdate] Upload loop error: $e');
+                      _dismissUploadDialog();
+                      if (mounted) {
+                        setState(() {
+                          isUploading = false;
+                        });
+                        await showDialog(
+                          context: context,
+                          builder: (BuildContext context) {
+                            return AlertDialog(
+                              backgroundColor: AppTheme.backgroundSecondary,
+                              title: Text(
+                                "Error",
+                                style: TextStyle(color: Colors.red),
+                              ),
+                              content: Text(
+                                "An error occurred: ${e.toString()}",
+                                style: TextStyle(color: AppTheme.textPrimary),
+                              ),
+                              actions: [
+                                TextButton(
+                                  onPressed: () => Navigator.pop(context),
+                                  child: Text('OK'),
+                                ),
+                              ],
+                            );
+                          },
+                        );
+                      }
                     }
                   },
                   child: Container(

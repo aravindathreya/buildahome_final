@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -6,6 +7,7 @@ import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app_theme.dart';
+import 'services/data_provider.dart';
 
 enum PaymentCategory {
   tender,
@@ -42,6 +44,8 @@ class _PaymentsDashboardState extends State<PaymentsDashboard> {
   String? errorMessage;
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
+  int _loadRequestId = 0;
+  static const Duration _requestTimeout = Duration(seconds: 20);
 
   PaymentSummary tenderSummary = PaymentSummary.empty();
   PaymentSummary nonTenderSummary = PaymentSummary.empty();
@@ -60,88 +64,213 @@ class _PaymentsDashboardState extends State<PaymentsDashboard> {
   @override
   void dispose() {
     _searchController.dispose();
+    _loadRequestId++;
     super.dispose();
   }
 
   Future<void> _loadData({bool showLoader = true}) async {
+    final int requestId = ++_loadRequestId;
+
     if (showLoader) {
-      setState(() {
+      _safeSetState(() {
         isLoading = true;
         errorMessage = null;
       });
     } else {
-      setState(() {
+      _safeSetState(() {
         isRefreshing = true;
         errorMessage = null;
       });
     }
 
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final projectId = prefs.getString('project_id');
+      final projectId = await _ensureProjectId();
       if (projectId == null) {
         throw Exception('Project not selected. Please reopen the project and try again.');
       }
 
-      final paymentFuture = http.get(Uri.parse('https://office.buildahome.in/API/get_payment?project_id=$projectId'));
-      final tenderFuture = http.get(Uri.parse('https://office.buildahome.in/API/get_all_tasks?project_id=$projectId&nt_toggle=0'));
-      final nonTenderFuture = http.get(Uri.parse('https://office.buildahome.in/API/get_all_non_tender?project_id=$projectId'));
-
-      final responses = await Future.wait([paymentFuture, tenderFuture, nonTenderFuture]);
-      if (responses.any((response) => response.statusCode != 200)) {
-        throw Exception('Unable to load payment information right now.');
+      // Check cache for non-Client users
+      final dataProvider = DataProvider();
+      final prefs = await SharedPreferences.getInstance();
+      final role = prefs.getString('role');
+      
+      Map<String, dynamic>? cachedPaymentData;
+      List<dynamic>? cachedTenderData;
+      
+      if (role != null && role != 'Client' && dataProvider.cachedPayments != null) {
+        cachedPaymentData = dataProvider.cachedPayments;
+        // Tender data can be obtained from cached schedule
+        cachedTenderData = dataProvider.cachedSchedule;
       }
 
-      final paymentDetails = jsonDecode(responses[0].body);
-      final tenderData = jsonDecode(responses[1].body);
-      final nonTenderData = jsonDecode(responses[2].body);
+      // Use cache if available and not initial load
+      if (cachedPaymentData != null && !showLoader) {
+        _processPaymentData(cachedPaymentData, cachedTenderData ?? [], [], requestId);
+        
+        // Still refresh in background
+        _fetchPaymentsFromApi(projectId, dataProvider, role, requestId);
+        return;
+      }
 
-      final summary = (paymentDetails is List && paymentDetails.isNotEmpty) ? paymentDetails[0] : {};
-
-      setState(() {
-        tenderSummary = PaymentSummary(
-          value: (summary['value'] ?? '0').toString(),
-          totalPaid: (summary['total_paid'] ?? '0').toString(),
-          outstanding: (summary['outstanding'] ?? '0').toString(),
-        );
-
-        nonTenderSummary = PaymentSummary(
-          value: (summary['nt_value'] ?? summary['value'] ?? '0').toString(),
-          totalPaid: (summary['nt_total_paid'] ?? '0').toString(),
-          outstanding: (summary['nt_outstanding'] ?? '0').toString(),
-        );
-
-        tenderItems = (tenderData is List ? tenderData : [])
-            .map<PaymentItem>((item) => PaymentItem(
-                  name: (item['task_name'] ?? 'Milestone').toString(),
-                  percentage: _toDouble(item['payment']),
-                  status: (item['paid'] ?? '').toString(),
-                  note: item['p_note']?.toString(),
-                  startDate: item['start_date']?.toString(),
-                  endDate: item['end_date']?.toString(),
-                  isTender: true,
-                ))
-            .toList();
-
-        nonTenderItems = (nonTenderData is List ? nonTenderData : [])
-            .map<PaymentItem>((item) => PaymentItem(
-                  name: (item['task_name'] ?? 'Non tender item').toString(),
-                  percentage: _toDouble(item['payment']),
-                  status: (item['paid'] ?? '').toString(),
-                  isTender: false,
-                  amountOverride: _toDouble(item['payment']),
-                ))
-            .toList();
-      });
+      // Fetch from API
+      await _fetchPaymentsFromApi(projectId, dataProvider, role, requestId);
     } catch (e) {
-      setState(() {
-        errorMessage = e.toString();
+      print('[Payments] Error while loading data: $e');
+      if (_shouldIgnoreLoad(requestId)) return;
+
+      _safeSetState(() {
+        errorMessage = e.toString().replaceAll('Exception: ', '');
       });
     } finally {
-      setState(() {
+      if (_shouldIgnoreLoad(requestId)) return;
+
+      _safeSetState(() {
         isLoading = false;
         isRefreshing = false;
       });
+    }
+  }
+
+  Future<void> _fetchPaymentsFromApi(String projectId, DataProvider dataProvider, String? userRole, int requestId) async {
+    try {
+      final paymentUrl = 'https://office.buildahome.in/API/get_payment?project_id=$projectId';
+      final tenderUrl = 'https://office.buildahome.in/API/get_all_tasks?project_id=$projectId&nt_toggle=0';
+      final nonTenderUrl = 'https://office.buildahome.in/API/get_all_non_tender?project_id=$projectId';
+
+      print('[Payments] Loading data for project $projectId');
+
+      final paymentResponse = await _fetchWithLogging('payment', paymentUrl);
+      if (paymentResponse.statusCode != 200) {
+        throw Exception('Unable to load payment summary right now.');
+      }
+
+      List<dynamic> tenderData = [];
+      List<dynamic> nonTenderData = [];
+
+      try {
+        final tenderResponse = await _fetchWithLogging('tender', tenderUrl);
+        if (tenderResponse.statusCode == 200) {
+          final decoded = jsonDecode(tenderResponse.body);
+          if (decoded is List) {
+            tenderData = decoded;
+          }
+        } else {
+          print('[Payments] Tender request failed with status ${tenderResponse.statusCode}');
+        }
+      } catch (e) {
+        print('[Payments] Tender request error: $e');
+      }
+
+      try {
+        final nonTenderResponse = await _fetchWithLogging('non-tender', nonTenderUrl);
+        if (nonTenderResponse.statusCode == 200) {
+          final decoded = jsonDecode(nonTenderResponse.body);
+          if (decoded is List) {
+            nonTenderData = decoded;
+          }
+        } else {
+          print('[Payments] Non-tender request failed with status ${nonTenderResponse.statusCode}');
+        }
+      } catch (e) {
+        print('[Payments] Non-tender request error: $e');
+      }
+
+      final paymentDetails = jsonDecode(paymentResponse.body);
+      final summary = (paymentDetails is List && paymentDetails.isNotEmpty) ? paymentDetails[0] : {};
+
+      // Update cache for non-Client users
+      if (userRole != null && userRole != 'Client') {
+        dataProvider.cachedPayments = summary;
+        dataProvider.lastPaymentsLoad = DateTime.now();
+      }
+
+      _processPaymentData(summary, tenderData, nonTenderData, requestId);
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  void _processPaymentData(Map<String, dynamic> summary, List<dynamic> tenderData, List<dynamic> nonTenderData, int requestId) {
+    if (_shouldIgnoreLoad(requestId)) return;
+
+    _safeSetState(() {
+      tenderSummary = PaymentSummary(
+        value: (summary['value'] ?? '0').toString(),
+        totalPaid: (summary['total_paid'] ?? '0').toString(),
+        outstanding: (summary['outstanding'] ?? '0').toString(),
+      );
+
+      nonTenderSummary = PaymentSummary(
+        value: (summary['nt_value'] ?? summary['value'] ?? '0').toString(),
+        totalPaid: (summary['nt_total_paid'] ?? '0').toString(),
+        outstanding: (summary['nt_outstanding'] ?? '0').toString(),
+      );
+
+      tenderItems = tenderData
+          .map<PaymentItem>((item) => PaymentItem(
+                name: (item['task_name'] ?? 'Milestone').toString(),
+                percentage: _toDouble(item['payment']),
+                status: (item['paid'] ?? '').toString(),
+                note: item['p_note']?.toString(),
+                startDate: item['start_date']?.toString(),
+                endDate: item['end_date']?.toString(),
+                isTender: true,
+              ))
+          .toList();
+
+      nonTenderItems = nonTenderData
+          .map<PaymentItem>((item) => PaymentItem(
+                name: (item['task_name'] ?? 'Non tender item').toString(),
+                percentage: _toDouble(item['payment']),
+                status: (item['paid'] ?? '').toString(),
+                isTender: false,
+                amountOverride: _toDouble(item['payment']),
+              ))
+          .toList();
+    });
+  }
+
+  void _safeSetState(VoidCallback fn) {
+    if (!mounted) return;
+    setState(fn);
+  }
+
+  bool _shouldIgnoreLoad(int requestId) {
+    return !mounted || requestId != _loadRequestId;
+  }
+
+  Future<String?> _ensureProjectId({int retries = 5, Duration delay = const Duration(milliseconds: 300)}) async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    String? projectId = prefs.getString('project_id');
+    int attempts = 0;
+
+    while ((projectId == null || projectId.isEmpty) && attempts < retries) {
+      await Future.delayed(delay);
+      prefs = await SharedPreferences.getInstance();
+      projectId = prefs.getString('project_id');
+      attempts++;
+    }
+
+    if (projectId == null || projectId.isEmpty) {
+      print('[Payments] Project ID unavailable after ${attempts + 1} attempts');
+      return null;
+    }
+
+    return projectId;
+  }
+
+  Future<http.Response> _fetchWithLogging(String label, String url) async {
+    try {
+      print('[Payments] GET $label → $url');
+      final response = await http.get(Uri.parse(url)).timeout(_requestTimeout);
+      print('[Payments] $label response: ${response.statusCode}, bytes=${response.bodyBytes.length}');
+      return response;
+    } on TimeoutException catch (e) {
+      print('[Payments] $label request timeout: $e');
+      rethrow;
+    } catch (e) {
+      print('[Payments] $label request failed: $e');
+      rethrow;
     }
   }
 
@@ -744,20 +873,23 @@ class _PaymentCard extends StatelessWidget {
                
                 Row(
                   children: [
-                    
                     if (item.startDate != null && item.startDate!.trim().isNotEmpty) ...[
-                      _InfoPill(
-                        icon: Icons.event_outlined,
-                        label: 'Start',
-                        value: item.startDate!,
+                      Expanded(
+                        child: _InfoPill(
+                          icon: Icons.event_outlined,
+                          label: 'Start',
+                          value: item.startDate!,
+                        ),
                       ),
                     ],
                     if (item.endDate != null && item.endDate!.trim().isNotEmpty) ...[
                       SizedBox(width: 12),
-                      _InfoPill(
-                        icon: Icons.flag_outlined,
-                        label: 'End',
-                        value: item.endDate!,
+                      Expanded(
+                        child: _InfoPill(
+                          icon: Icons.flag_outlined,
+                          label: 'End',
+                          value: item.endDate!,
+                        ),
                       ),
                     ],
                   ],
@@ -807,43 +939,41 @@ class _InfoPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Expanded(
-      child: Container(
-        padding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.6),
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: Colors.white.withOpacity(0.4)),
-        ),
-        child: Row(
-          children: [
-            Icon(icon, size: 16, color: AppTheme.textSecondary),
-            SizedBox(width: 8),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    label,
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: AppTheme.textSecondary,
-                    ),
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.6),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.white.withOpacity(0.4)),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, size: 16, color: AppTheme.textSecondary),
+          SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: AppTheme.textSecondary,
                   ),
-                  Text(
-                    value,
-                    style: TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 13,
-                      color: AppTheme.textPrimary,
-                    ),
-                    overflow: TextOverflow.ellipsis,
+                ),
+                Text(
+                  value,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13,
+                    color: AppTheme.textPrimary,
                   ),
-                ],
-              ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

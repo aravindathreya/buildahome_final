@@ -21,6 +21,11 @@ class Home extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Reset project data if opened from AdminDashboard
+    if (fromAdminDashboard) {
+      DataProvider().resetProjectData();
+    }
+    
     return MaterialApp(
       theme: ThemeData(fontFamily: App().fontName),
       home: Scaffold(

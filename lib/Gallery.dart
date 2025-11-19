@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:cached_network_image/cached_network_image.dart';
@@ -7,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'FullScreenImage.dart';
 import 'app_theme.dart';
+import 'services/data_provider.dart';
 
 class Gallery extends StatefulWidget {
   const Gallery({super.key});
@@ -19,47 +21,123 @@ class _GalleryState extends State<Gallery> {
   List<dynamic> _entries = [];
   List<String> _uniqueDates = [];
   bool _isLoading = false;
+  bool _isRefreshing = false;
+  String? _errorMessage;
+  int _loadRequestId = 0;
+  static const Duration _requestTimeout = Duration(seconds: 20);
 
   @override
   void initState() {
     super.initState();
-    _fetchGallery();
+    _loadGallery();
   }
 
-  Future<void> _fetchGallery() async {
-    setState(() {
-      _isLoading = true;
-    });
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final projectId = prefs.getString('project_id');
-      if (projectId == null) return;
+  Future<void> _loadGallery({bool showLoader = true}) async {
+    final int requestId = ++_loadRequestId;
 
-      final response = await http.get(Uri.parse('https://office.buildahome.in/API/get_gallery_data?id=$projectId'));
-      final data = jsonDecode(response.body) as List<dynamic>;
-      final dates = <String>[];
-      for (final entry in data) {
-        final date = entry['date']?.toString();
-        if (date != null && !dates.contains(date)) {
-          dates.add(date);
-        }
-      }
-
+    if (showLoader) {
       if (!mounted) return;
       setState(() {
-        _entries = data;
-        _uniqueDates = dates;
+        _isLoading = true;
+        _errorMessage = null;
       });
-    } catch (err) {
-      debugPrint('Failed to load gallery entries: $err');
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
+    } else {
+      if (!mounted) return;
+      setState(() {
+        _isRefreshing = true;
+        _errorMessage = null;
+      });
+    }
+
+    try {
+      // Try to load from cache first
+      final dataProvider = DataProvider();
+      final prefs = await SharedPreferences.getInstance();
+      final role = prefs.getString('role');
+      final projectId = prefs.getString('project_id');
+      
+      if (projectId == null) {
+        throw Exception('Project not selected. Please reopen the project and try again.');
       }
+
+      // For non-Client users, check cache first
+      List<dynamic>? cachedData;
+      if (role != null && role != 'Client' && dataProvider.cachedGallery != null) {
+        cachedData = dataProvider.cachedGallery;
+      }
+
+      // Use cache if available and not refreshing
+      if (cachedData != null && !showLoader) {
+        _processData(cachedData, requestId);
+        
+        // Still refresh in background
+        _fetchGalleryFromApi(projectId, requestId, dataProvider);
+        return;
+      }
+
+      // Fetch from API
+      await _fetchGalleryFromApi(projectId, requestId, dataProvider);
+    } catch (e) {
+      if (_shouldIgnoreLoad(requestId)) return;
+      if (!mounted) return;
+      setState(() {
+        _errorMessage = e.toString().replaceAll('Exception: ', '');
+      });
+    } finally {
+      if (_shouldIgnoreLoad(requestId)) return;
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+        _isRefreshing = false;
+      });
     }
   }
+
+  Future<void> _fetchGalleryFromApi(String projectId, int requestId, DataProvider dataProvider) async {
+    try {
+      final response = await http.get(Uri.parse('https://office.buildahome.in/API/get_gallery_data?id=$projectId'))
+          .timeout(_requestTimeout);
+      
+      if (response.statusCode != 200) {
+        throw Exception('Unable to load gallery right now. Please try again.');
+      }
+
+      final data = jsonDecode(response.body) as List<dynamic>;
+      
+      // Update cache for non-Client users
+      final prefs = await SharedPreferences.getInstance();
+      final role = prefs.getString('role');
+      if (role != null && role != 'Client') {
+        dataProvider.cachedGallery = data;
+        dataProvider.lastGalleryLoad = DateTime.now();
+      }
+
+      _processData(data, requestId);
+    } catch (e) {
+      if (_shouldIgnoreLoad(requestId)) return;
+      rethrow;
+    }
+  }
+
+  void _processData(List<dynamic> data, int requestId) {
+    if (_shouldIgnoreLoad(requestId)) return;
+    if (!mounted) return;
+
+    final dates = <String>[];
+    for (final entry in data) {
+      final date = entry['date']?.toString();
+      if (date != null && !dates.contains(date)) {
+        dates.add(date);
+      }
+    }
+
+    setState(() {
+      _entries = data;
+      _uniqueDates = dates;
+    });
+  }
+
+  bool _shouldIgnoreLoad(int requestId) => !mounted || requestId != _loadRequestId;
 
   @override
   Widget build(BuildContext context) {
@@ -84,7 +162,7 @@ class _GalleryState extends State<Gallery> {
       body: SafeArea(
         child: RefreshIndicator(
           color: AppTheme.primaryColorConst,
-          onRefresh: _fetchGallery,
+          onRefresh: () => _loadGallery(showLoader: false),
           child: _buildBody(context, theme),
         ),
       ),
@@ -92,6 +170,18 @@ class _GalleryState extends State<Gallery> {
   }
 
   Widget _buildBody(BuildContext context, ThemeData theme) {
+    if (_errorMessage != null && _entries.isEmpty) {
+      return ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 32),
+        children: [
+          _buildHeader(theme),
+          const SizedBox(height: 40),
+          _buildErrorState(),
+        ],
+      );
+    }
+
     if (_isLoading && _uniqueDates.isEmpty) {
       return ListView(
         physics: const AlwaysScrollableScrollPhysics(),
@@ -118,8 +208,57 @@ class _GalleryState extends State<Gallery> {
       children: [
         _buildHeader(theme),
         const SizedBox(height: 24),
+        if (_isRefreshing && _entries.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 16),
+            child: Center(
+              child: SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation<Color>(AppTheme.primaryColorConst),
+                ),
+              ),
+            ),
+          ),
         for (final date in _uniqueDates) _buildDateSection(context, date, theme),
       ],
+    );
+  }
+
+  Widget _buildErrorState() {
+    return Container(
+      padding: const EdgeInsets.all(32),
+      decoration: BoxDecoration(
+        color: AppTheme.backgroundSecondary,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Column(
+        children: [
+          Icon(Icons.error_outline, color: Colors.redAccent, size: 48),
+          const SizedBox(height: 12),
+          Text(
+            'Something went wrong',
+            style: TextStyle(fontWeight: FontWeight.w600, color: AppTheme.textPrimary),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            _errorMessage ?? 'Please try again later.',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: AppTheme.textSecondary),
+          ),
+          const SizedBox(height: 16),
+          ElevatedButton(
+            onPressed: () => _loadGallery(),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.primaryColorConst,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Retry'),
+          ),
+        ],
+      ),
     );
   }
 
@@ -248,7 +387,7 @@ class _GalleryState extends State<Gallery> {
 
   Widget _buildImageTile(BuildContext context, dynamic entry) {
     final double tileSize = (MediaQuery.of(context).size.width - 16 * 2 - 10 * 2) / 3;
-    final imageUrl = "https://app.buildahome.in/api/images/${entry['image']}";
+    final imageUrl = "https://office.buildahome.in/files/migrated/${entry['image']}";
     final child = CachedNetworkImage(
       imageUrl: imageUrl,
       fit: BoxFit.cover,

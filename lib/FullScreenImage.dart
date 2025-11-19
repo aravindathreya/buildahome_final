@@ -2,55 +2,48 @@ import 'package:flutter/material.dart';
 import 'package:flutter/widgets.dart';
 import 'package:photo_view/photo_view.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'main.dart';
+import 'app_theme.dart';
 
 class FullScreenImage extends StatefulWidget {
-  var id;
+  final String id;
 
-  FullScreenImage(this.id);
+  const FullScreenImage(this.id, {super.key});
 
   @override
-  State<FullScreenImage> createState() => FullScreenImage1(this.id);
+  State<FullScreenImage> createState() => _FullScreenImageState();
 }
 
-class FullScreenImage1 extends State<FullScreenImage> {
-  var image;
-
-  FullScreenImage1(this.image);
+class _FullScreenImageState extends State<FullScreenImage> {
 
   @override
-  Widget build(BuildContext context1) {
-    return MaterialApp(
-      theme: ThemeData(fontFamily: App().fontName),
-      home: Scaffold(
+  Widget build(BuildContext context) {
+    return Theme(
+      data: AppTheme.darkTheme,
+      child: Scaffold(
+        backgroundColor: Colors.black,
         appBar: AppBar(
           automaticallyImplyLeading: true,
-          title: Text(
-            'buildAhome',
-            style: TextStyle(color: Color.fromARGB(255, 224, 224, 224), fontSize: 16),
+          backgroundColor: Colors.black,
+          iconTheme: const IconThemeData(color: Colors.white),
+          title: const Text(
+            'Image preview',
+            style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600),
           ),
-          leading: new IconButton(
-              icon: new Icon(Icons.chevron_left),
-              onPressed: () => {Navigator.pop(context)}),
-          backgroundColor: Color.fromARGB(255, 6, 10, 43),
         ),
-        body: imageOnly(this.image),
+        body: SafeArea(
+          child: Container(
+            color: Colors.black,
+            child: PhotoView(
+              backgroundDecoration: const BoxDecoration(color: Colors.black),
+              minScale: PhotoViewComputedScale.contained,
+              imageProvider: CachedNetworkImageProvider(widget.id),
+              loadingBuilder: (context, event) => const Center(
+                child: CircularProgressIndicator(color: Colors.white),
+              ),
+            ),
+          ),
+        ),
       ),
     );
-  }
-}
-
-class imageOnly extends StatelessWidget {
-  var image;
-  imageOnly(this.image);
-  Widget build(BuildContext context) {
-    return Container(
-        decoration: BoxDecoration(border: Border.all(color: Colors.black)),
-        child: PhotoView(
-          minScale: PhotoViewComputedScale.contained,
-          imageProvider: CachedNetworkImageProvider(
-            this.image,
-          ),
-        ));
   }
 }

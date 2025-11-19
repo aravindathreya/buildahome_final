@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -7,6 +8,7 @@ import 'package:percent_indicator/linear_percent_indicator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app_theme.dart';
+import 'services/data_provider.dart';
 
 class TaskWidget extends StatelessWidget {
   const TaskWidget({super.key});
@@ -52,6 +54,7 @@ class TaskScreen extends State<TaskScreenClass> {
   TaskStatusFilter _selectedFilter = TaskStatusFilter.all;
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
+  static const Duration _requestTimeout = Duration(seconds: 20);
 
   @override
   void initState() {
@@ -59,41 +62,113 @@ class TaskScreen extends State<TaskScreenClass> {
     _loadTasks();
   }
 
-  Future<void> _loadTasks() async {
+  Future<void> _loadTasks({bool showLoader = true}) async {
     if (!mounted) return;
-    setState(() {
-      _isLoading = true;
-      _errorMessage = null;
-    });
+    
+    if (showLoader) {
+      setState(() {
+        _isLoading = true;
+        _errorMessage = null;
+      });
+    }
 
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final projectId = prefs.getString('project_id');
+      final projectId = await _ensureProjectId();
       if (projectId == null) {
         throw Exception('Project not selected. Please reopen the project and try again.');
       }
 
-      final response = await http.get(Uri.parse('https://office.buildahome.in/API/get_all_tasks?project_id=$projectId&nt_toggle=0'));
+      // Check cache for non-Client users
+      final dataProvider = DataProvider();
+      final prefs = await SharedPreferences.getInstance();
+      final role = prefs.getString('role');
+      
+      List<dynamic>? cachedData;
+      if (role != null && role != 'Client' && dataProvider.cachedSchedule != null) {
+        cachedData = dataProvider.cachedSchedule;
+      }
+
+      // Use cache if available and not initial load
+      if (cachedData != null && !showLoader) {
+        if (!mounted) return;
+        setState(() {
+          _tasks = cachedData;
+          _isLoading = false;
+        });
+        
+        // Still refresh in background
+        _fetchScheduleFromApi(projectId, dataProvider);
+        return;
+      }
+
+      // Fetch from API
+      await _fetchScheduleFromApi(projectId, dataProvider);
+    } on TimeoutException catch (e) {
+      if (!mounted) return;
+      print('[Scheduler] Request timed out: $e');
+      setState(() {
+        _errorMessage = 'Request timed out. Please try again.';
+        _isLoading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _errorMessage = e.toString().replaceAll('Exception: ', '');
+        _isLoading = false;
+      });
+    }
+  }
+
+  Future<void> _fetchScheduleFromApi(String projectId, DataProvider dataProvider) async {
+    try {
+      final url = 'https://office.buildahome.in/API/get_all_tasks?project_id=$projectId&nt_toggle=0';
+      print('[Scheduler] Loading tasks for project $projectId');
+      final response = await http.get(Uri.parse(url)).timeout(_requestTimeout);
+      print('[Scheduler] Response status: ${response.statusCode}');
+      
       if (response.statusCode != 200) {
         throw Exception('Unable to fetch schedule right now.');
       }
 
       final decoded = jsonDecode(response.body);
+      
+      // Update cache for non-Client users
+      final prefs = await SharedPreferences.getInstance();
+      final role = prefs.getString('role');
+      if (role != null && role != 'Client') {
+        dataProvider.cachedSchedule = decoded is List ? decoded : [];
+        dataProvider.lastScheduleLoad = DateTime.now();
+      }
+
       if (!mounted) return;
       setState(() {
         _tasks = decoded is List ? decoded : [];
+        _isLoading = false;
       });
     } catch (e) {
       if (!mounted) return;
-      setState(() {
-        _errorMessage = e.toString();
-      });
-    } finally {
-      if (!mounted) return;
-      setState(() {
-        _isLoading = false;
-      });
+      rethrow;
     }
+  }
+
+  Future<String?> _ensureProjectId({int retries = 5, Duration delay = const Duration(milliseconds: 300)}) async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    String? projectId = prefs.getString('project_id');
+    int attempts = 0;
+
+    while ((projectId == null || projectId.isEmpty) && attempts < retries) {
+      await Future.delayed(delay);
+      prefs = await SharedPreferences.getInstance();
+      projectId = prefs.getString('project_id');
+      attempts++;
+    }
+
+    if (projectId == null || projectId.isEmpty) {
+      print('[Scheduler] Project ID unavailable after ${attempts + 1} attempts');
+      return null;
+    }
+
+    return projectId;
   }
 
   @override
@@ -111,7 +186,7 @@ class TaskScreen extends State<TaskScreenClass> {
 
     return RefreshIndicator(
       color: AppTheme.primaryColorConst,
-      onRefresh: _loadTasks,
+      onRefresh: () => _loadTasks(showLoader: false),
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.fromLTRB(20, 24, 20, 32),

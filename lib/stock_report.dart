@@ -1,125 +1,90 @@
-import 'package:buildahome/widgets/material_units.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
-import 'NavMenu.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import "ShowAlert.dart";
 import 'projects.dart';
-import 'main.dart';
-import 'utilities/styles.dart';
 import 'widgets/material.dart';
 import 'package:intl/intl.dart';
-import 'package:file_picker/file_picker.dart';
-import 'dart:convert';
+import 'app_theme.dart';
 
 class StockReportLayout extends StatelessWidget {
+  const StockReportLayout({super.key});
+
   @override
   Widget build(BuildContext context) {
-    final appTitle = 'buildAhome';
-    final GlobalKey<ScaffoldState> _scaffoldKey = new GlobalKey<ScaffoldState>();
-    return MaterialApp(
-      title: appTitle,
-      theme: ThemeData(fontFamily: App().fontName),
-      home: Scaffold(
-        key: _scaffoldKey, // ADD THIS LINE
+    return Theme(
+      data: AppTheme.darkTheme,
+      child: Scaffold(
+        backgroundColor: AppTheme.backgroundPrimary,
         appBar: AppBar(
-          automaticallyImplyLeading: false,
-          title: Text(appTitle),
-          leading: new IconButton(icon: new Icon(Icons.menu), onPressed: () => _scaffoldKey.currentState?.openDrawer()),
-          backgroundColor: Color(0xFF000055),
+          automaticallyImplyLeading: true,
+          title: Text(
+            'Stock Report',
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
+          ),
         ),
-        drawer: NavMenuWidget(),
-        body: StockReport(),
+        body: const SafeArea(child: StockReport()),
       ),
     );
   }
 }
 
 class StockReport extends StatefulWidget {
+  const StockReport({super.key});
+
   @override
-  StockReportState createState() {
-    return StockReportState();
-  }
+  StockReportState createState() => StockReportState();
 }
 
 class StockReportState extends State<StockReport> {
-  var user_id;
-  var userName;
-  var projectName = 'Select project';
-  var projectId;
-  var material = 'Select material';
-  var unit = 'Unit';
-  var quantityTextController = new TextEditingController();
-  var purposeTextController = new TextEditingController();
-  var diffCostTextController = new TextEditingController(text: '0');
-  var approvalTaken = false;
-  var attachedFileName = '';
-  var attachedFile;
-  var materialsTextController = [new TextEditingController()];
-  var quantitiesTextController = [new TextEditingController()];
-  var unitsTextController = [new TextEditingController()];
+  String? userId;
+  String? userName;
+  String projectName = 'Select project';
+  String? projectId;
+  List<TextEditingController> materialsTextController = [TextEditingController()];
+  List<TextEditingController> quantitiesTextController = [TextEditingController()];
 
   @override
   void initState() {
     super.initState();
-    call();
+    _loadUser();
   }
 
-  call() async {
+  Future<void> _loadUser() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
-    user_id = prefs.getString('user_id');
-    userName = prefs.getString('username')!;
-  }
-
-  void getFile() async {
-    var res = await FilePicker.platform.pickFiles(allowMultiple: false);
-    var file = res?.files.first;
-    if (file != null) {
-      setState(() {
-        var fileSplit = file.path?.split('/');
-        attachedFile = file;
-        attachedFileName = 'Attached file: ' + (fileSplit![fileSplit.length - 1]);
-      });
-    } else {
-      setState(() {
-        attachedFileName = '';
-      });
-    }
-  }
-
-  bool _isNumeric(String str) {
-    return double.tryParse(str) != null;
+    userId = prefs.getString('user_id');
+    userName = prefs.getString('username');
   }
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final formattedDate = DateFormat("EEEE, dd MMMM yyyy").format(DateTime.now());
+
     return ListView(
-      padding: EdgeInsets.symmetric(horizontal: 15),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
       children: [
-        Container(
-            margin: EdgeInsets.symmetric(horizontal: 10, vertical: 20),
-            child: Text('Stock report', style: get_header_text_style())),
-        Container(
-          margin: EdgeInsets.symmetric(horizontal: 10, vertical: 20),
-          child: Text(
-            DateFormat("dd MMMM yyyy").format(DateTime.now()),
-          ),
+        Text(
+          'Stock Report',
+          style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700),
         ),
-        InkWell(
-          child: Container(
-            width: MediaQuery.of(context).size.width,
-            padding: EdgeInsets.all(10),
-            margin: EdgeInsets.only(left: 10, bottom: 20),
-            decoration: get_button_decoration(),
-            child: Text(projectName, style: get_button_text_style()),
-          ),
+        const SizedBox(height: 6),
+        Text(
+          formattedDate,
+          style: theme.textTheme.bodyMedium?.copyWith(color: AppTheme.textSecondary),
+        ),
+        const SizedBox(height: 24),
+        _buildSelectionTile(
+          context: context,
+          label: 'Project',
+          value: projectName,
+          icon: Icons.home_work_outlined,
           onTap: () async {
-            //Get the project name to which the user wants to upload
-            var projectDetails = await showDialog(
-                context: context,
-                builder: (BuildContext context) {
-                  return ProjectsModal(user_id);
-                });
+            final projectDetails = await showDialog<String>(
+              context: context,
+              builder: (BuildContext context) => ProjectsModal(userId ?? ''),
+            );
+            if (!mounted) return;
             setState(() {
               if (projectDetails != null) {
                 projectName = projectDetails.split("|")[0];
@@ -131,245 +96,285 @@ class StockReportState extends State<StockReport> {
             });
           },
         ),
-        for (var i = 0; i < materialsTextController.length; i++)
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              InkWell(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
-                      margin: EdgeInsets.only(left: 10, top: 15),
-                      child: Text(
-                        'Material',
-                        style: TextStyle(fontSize: 12),
-                      ),
-                    ),
-                    Container(
-                        padding: EdgeInsets.all(15),
-                        margin: EdgeInsets.all(10),
-                        decoration: BoxDecoration(color: Colors.white, border: Border.all(color: Colors.grey[300]!)),
-                        child: Container(
-                          width: (MediaQuery.of(context).size.width - 60) * .55,
-                          child: Text(materialsTextController[i].text, style: TextStyle(fontSize: 12)),
-                        )),
-                  ],
-                ),
-                onTap: () async {
-                  //Get the project name to which the user wants to upload
-                  var materialDetails = await showDialog(
-                      context: context,
-                      builder: (BuildContext context) {
-                        return Materials();
-                      });
-                  setState(() {
-                    if (materialDetails != null)
-                      materialsTextController[i].text = materialDetails;
+        const SizedBox(height: 20),
+        ...List.generate(materialsTextController.length, (index) => _buildEntryCard(context, index)),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton.icon(
+            onPressed: _addEntry,
+            icon: const Icon(Icons.add),
+            label: const Text('Add another material'),
+          ),
+        ),
+        const SizedBox(height: 16),
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton(
+            onPressed: () => _submitReport(context),
+            child: const Text('Submit report'),
+          ),
+        ),
+      ],
+    );
+  }
 
-                  });
-                },
-              ),
-              Column(
+  @override
+  void dispose() {
+    for (final controller in materialsTextController) {
+      controller.dispose();
+    }
+    for (final controller in quantitiesTextController) {
+      controller.dispose();
+    }
+    super.dispose();
+  }
+
+  Widget _buildSelectionTile({
+    required BuildContext context,
+    required String label,
+    required String value,
+    required IconData icon,
+    required VoidCallback onTap,
+  }) {
+    final theme = Theme.of(context);
+    final isPlaceholder = value == 'Select project';
+
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: BoxDecoration(
+          color: AppTheme.backgroundSecondary,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppTheme.primaryColorConst.withOpacity(0.15)),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, color: AppTheme.primaryColorConst),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Container(
-                    margin: EdgeInsets.only(left: 10, top: 15),
-                    child: Text(
-                      'Quantity',
-                      style: TextStyle(fontSize: 12),
+                  Text(
+                    label,
+                    style: theme.textTheme.bodySmall?.copyWith(color: AppTheme.textSecondary),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    value,
+                    style: theme.textTheme.bodyLarge?.copyWith(
+                      color: isPlaceholder ? AppTheme.textSecondary : AppTheme.textPrimary,
+                      fontWeight: isPlaceholder ? FontWeight.w500 : FontWeight.w600,
                     ),
                   ),
-                  Container(
-                      margin: EdgeInsets.only(left: 10, top: 10, right: 10),
-                      width: (MediaQuery.of(context).size.width - 60) * .3,
-                      child: TextFormField(
-                        controller: quantitiesTextController[i],
-                        keyboardType: TextInputType.numberWithOptions(),
-                        decoration: InputDecoration(
-                          contentPadding: EdgeInsets.symmetric(vertical: 5, horizontal: 10),
-                          border: OutlineInputBorder(),
-                          floatingLabelBehavior: FloatingLabelBehavior.never,
-                          fillColor: Colors.white,
-                          focusColor: Colors.white,
-                          filled: true,
-                          errorBorder: OutlineInputBorder(
-                            borderSide: BorderSide(color: Colors.grey[600]!, width: 1.0),
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderSide: BorderSide(color: Colors.grey[600]!, width: 1.0),
-                          ),
-                          enabledBorder: OutlineInputBorder(
-                            borderSide: BorderSide(color: Colors.grey[300]!, width: 1.0),
-                          ),
-                          alignLabelWithHint: true,
-                        ),
-                      )),
                 ],
               ),
+            ),
+            Icon(Icons.chevron_right, color: AppTheme.textSecondary),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEntryCard(BuildContext context, int index) {
+    final theme = Theme.of(context);
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppTheme.backgroundSecondary,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppTheme.primaryColorConst.withOpacity(0.15)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(
+                'Entry ${index + 1}',
+                style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+              ),
+              const Spacer(),
+              if (materialsTextController.length > 1)
+                IconButton(
+                  tooltip: 'Remove entry',
+                  icon: const Icon(Icons.delete_outline),
+                  onPressed: () => _removeEntry(index),
+                ),
             ],
           ),
-        InkWell(
-            child: Container(
-          alignment: Alignment.centerLeft,
-          padding: EdgeInsets.all(8),
-          margin: EdgeInsets.all(10),
-              child: Text('Add new entry'),
-        ),
-
-          onTap: () {
-              setState(() {
-                materialsTextController.add(TextEditingController());
-                quantitiesTextController.add(TextEditingController());
-              });
-          },
-        ),
-        InkWell(
-          child: Container(
-            alignment: Alignment.center,
-            padding: EdgeInsets.all(8),
-            margin: EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              boxShadow: [
-                new BoxShadow(
-                  color: Colors.grey[600]!,
-                  blurRadius: 5,
-                  spreadRadius: 1,
-                )
-              ],
-              gradient: LinearGradient(
-                // Where the linear gradient begins and ends
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-
-                // Add one stop for each color. Stops should increase from 0 to 1
-                stops: [0.2, 0.5, 0.8],
-                colors: [
-                  // Colors are easy thanks to Flutter's Colors class.
-
-                  //Colors.blue,
-                  Colors.indigo[900]!,
-                  Colors.indigo[700]!,
-                  Colors.indigo[900]!,
-                ],
-              ),
-              border: Border.all(color: Colors.black, width: 1),
-              borderRadius: BorderRadius.all(Radius.circular(5)),
-            ),
-            child: Text(
-              "Submit",
-              style: TextStyle(fontSize: 18, color: Colors.white, fontWeight: FontWeight.bold),
+          const SizedBox(height: 12),
+          _buildMaterialPicker(context, index),
+          const SizedBox(height: 12),
+          TextField(
+            controller: quantitiesTextController[index],
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: const InputDecoration(
+              labelText: 'Quantity',
+              hintText: 'Enter quantity',
             ),
           ),
-          onTap: () async {
-            showDialog(
-                barrierDismissible: false,
-                context: context,
-                builder: (BuildContext context) {
-                  return ShowAlert("Hang in there. We're adding this user to our records", true);
-                });
+        ],
+      ),
+    );
+  }
 
-            if (projectName == 'Select project') {
-              Navigator.of(context, rootNavigator: true).pop();
-              showDialog(
-                  context: context,
-                  builder: (BuildContext context) {
-                    return AlertDialog(
-                      content: Text(
-                        "Please select a project",
-                      ),
-                    );
-                  });
-              return;
-            }
+  Widget _buildMaterialPicker(BuildContext context, int index) {
+    final theme = Theme.of(context);
+    final currentValue = materialsTextController[index].text;
+    final isPlaceholder = currentValue.isEmpty;
+    final displayValue = isPlaceholder ? 'Tap to select material' : currentValue;
 
-            if (materialsTextController.isEmpty) {
-              Navigator.of(context, rootNavigator: true).pop();
-              showDialog(
-                  context: context,
-                  builder: (BuildContext context) {
-                    return AlertDialog(
-                      content: Text(
-                        "Please add atleast one entry",
-                      ),
-                    );
-                  });
-              return;
-            }
+    return InkWell(
+      onTap: () async {
+        final materialDetails = await showDialog<String>(
+          context: context,
+          builder: (BuildContext context) => Materials(),
+        );
+        if (!mounted) return;
+        if (materialDetails != null) {
+          setState(() {
+            materialsTextController[index].text = materialDetails;
+          });
+        }
+      },
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        decoration: BoxDecoration(
+          color: AppTheme.backgroundPrimary,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppTheme.primaryColorConst.withOpacity(0.2)),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.inventory_2_outlined, color: AppTheme.primaryColorConst),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                displayValue,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: isPlaceholder ? AppTheme.textSecondary : AppTheme.textPrimary,
+                  fontWeight: isPlaceholder ? FontWeight.w500 : FontWeight.w600,
+                ),
+              ),
+            ),
+            Icon(Icons.search, color: AppTheme.textSecondary),
+          ],
+        ),
+      ),
+    );
+  }
 
+  void _addEntry() {
+    setState(() {
+      materialsTextController.add(TextEditingController());
+      quantitiesTextController.add(TextEditingController());
+    });
+  }
 
-            var stockReportEntries = [];
-            for(var i=0; i< materialsTextController.length; i++) {
-              if(materialsTextController[i].text == '') {
-                Navigator.of(context, rootNavigator: true).pop();
-                showDialog(
-                    context: context,
-                    builder: (BuildContext context) {
-                      return AlertDialog(
-                        content: Text(
-                          "Material cannot be empty",
-                        ),
-                      );
-                    });
-                return;
-              }
-              if(quantitiesTextController[i].text == '') {
-                Navigator.of(context, rootNavigator: true).pop();
-                showDialog(
-                    context: context,
-                    builder: (BuildContext context) {
-                      return AlertDialog(
-                        content: Text(
-                          "Quantity cannot be empty",
-                        ),
-                      );
-                    });
-                return;
-              }
-              stockReportEntries.add('${materialsTextController[i].text}|${quantitiesTextController[i].text}');
-            }
+  void _removeEntry(int index) {
+    if (materialsTextController.length <= 1) return;
+    setState(() {
+      final materialController = materialsTextController.removeAt(index);
+      final quantityController = quantitiesTextController.removeAt(index);
+      materialController.dispose();
+      quantityController.dispose();
+    });
+  }
 
+  Future<void> _submitReport(BuildContext context) async {
+    showDialog(
+      barrierDismissible: false,
+      context: context,
+      builder: (_) => ShowAlert("Submitting your stock report...", true),
+    );
 
-            DateTime now = DateTime.now();
-            String formattedDate = DateFormat('EEEE d MMMM yyyy H:m').format(now);
-            var url = 'https://office.buildahome.in/API/update_stock_report';
-            var response = await http.post(Uri.parse(url), body: {
-              'project_id': projectId,
-              'timestamp': formattedDate,
-              'stock_report_entries': stockReportEntries.join('^'),
-              'user_id': user_id,
-              'user_name': userName
-            });
-            print(response.body);
-            if (response.statusCode != 200) {
-              Navigator.of(context, rootNavigator: true).pop();
-              showDialog(
-                  context: context,
-                  builder: (BuildContext context) {
-                    return ShowAlert("Something went wrong", false);
-                  });
-              return;
-            }
+    if (projectId == null || projectName == 'Select project') {
+      Navigator.of(context, rootNavigator: true).pop();
+      _showSimpleDialog(context, "Please select a project");
+      return;
+    }
 
-            Navigator.of(context, rootNavigator: true).pop();
-            showDialog(
-                context: context,
-                builder: (BuildContext context) {
-                  return ShowAlert("Stock report submitted successfully", false);
-                });
+    if (materialsTextController.isEmpty) {
+      Navigator.of(context, rootNavigator: true).pop();
+      _showSimpleDialog(context, "Please add at least one entry");
+      return;
+    }
 
-            setState(() {
-              projectName = 'Select project';
-              projectId = null;
-              materialsTextController.clear();
-              quantitiesTextController.clear();
-            });
+    final List<String> stockReportEntries = [];
+    for (var i = 0; i < materialsTextController.length; i++) {
+      if (materialsTextController[i].text.trim().isEmpty) {
+        Navigator.of(context, rootNavigator: true).pop();
+        _showSimpleDialog(context, "Material cannot be empty");
+        return;
+      }
+      if (quantitiesTextController[i].text.trim().isEmpty) {
+        Navigator.of(context, rootNavigator: true).pop();
+        _showSimpleDialog(context, "Quantity cannot be empty");
+        return;
+      }
+      stockReportEntries.add('${materialsTextController[i].text}|${quantitiesTextController[i].text}');
+    }
 
-            //set_response_text(response.body);
-          },
-        )
-      ],
+    final formattedDate = DateFormat('EEEE d MMMM yyyy H:m').format(DateTime.now());
+    final response = await http.post(
+      Uri.parse('https://office.buildahome.in/API/update_stock_report'),
+      body: {
+        'project_id': projectId,
+        'timestamp': formattedDate,
+        'stock_report_entries': stockReportEntries.join('^'),
+        'user_id': userId,
+        'user_name': userName ?? '',
+      },
+    );
+
+    if (!mounted) return;
+
+    if (response.statusCode != 200) {
+      Navigator.of(context, rootNavigator: true).pop();
+      showDialog(
+        context: context,
+        builder: (BuildContext context) => ShowAlert("Something went wrong", false),
+      );
+      return;
+    }
+
+    Navigator.of(context, rootNavigator: true).pop();
+    showDialog(
+      context: context,
+      builder: (BuildContext context) => ShowAlert("Stock report submitted successfully", false),
+    );
+
+    setState(() {
+      projectName = 'Select project';
+      projectId = null;
+      _resetEntries();
+    });
+  }
+
+  void _resetEntries() {
+    for (final controller in materialsTextController) {
+      controller.dispose();
+    }
+    for (final controller in quantitiesTextController) {
+      controller.dispose();
+    }
+    materialsTextController = [TextEditingController()];
+    quantitiesTextController = [TextEditingController()];
+  }
+
+  void _showSimpleDialog(BuildContext context, String message) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) => AlertDialog(
+        content: Text(message),
+      ),
     );
   }
 }
