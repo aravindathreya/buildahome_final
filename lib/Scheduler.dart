@@ -18,9 +18,9 @@ class TaskWidget extends StatelessWidget {
     final theme = Theme.of(context);
     final canPop = Navigator.of(context).canPop();
     return Scaffold(
-      backgroundColor: AppTheme.backgroundPrimary,
+      backgroundColor: AppTheme.getBackgroundPrimary(context),
       appBar: AppBar(
-        backgroundColor: AppTheme.backgroundSecondary,
+        backgroundColor: AppTheme.getBackgroundSecondary(context),
         automaticallyImplyLeading: true,
         title: Text(
           'Schedule',
@@ -33,7 +33,25 @@ class TaskWidget extends StatelessWidget {
               )
             : null,
       ),
-      body: const TaskScreenClass(),
+      body: Stack(
+        children: [
+          // Background image with opacity
+          Positioned.fill(
+            child: Opacity(
+              opacity: 0.3,
+              child: Image.asset(
+                'assets/images/See details.jpg',
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) {
+                  return Container();
+                },
+              ),
+            ),
+          ),
+          // Content on top
+          const TaskScreenClass(),
+        ],
+      ),
     );
   }
 }
@@ -185,7 +203,7 @@ class TaskScreen extends State<TaskScreenClass> {
     final showFilteredEmpty = !_isLoading && _errorMessage == null && (_tasks?.isNotEmpty ?? false) && filteredTasks.isEmpty;
 
     return RefreshIndicator(
-      color: AppTheme.primaryColorConst,
+      color: AppTheme.getPrimaryColor(context),
       onRefresh: () => _loadTasks(showLoader: false),
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
@@ -233,14 +251,14 @@ class TaskScreen extends State<TaskScreenClass> {
         Text(
           'Home construction schedule',
           style: theme.textTheme.headlineSmall?.copyWith(
-            color: AppTheme.textPrimary,
+            color: AppTheme.getTextPrimary(context),
             fontWeight: FontWeight.w700,
           ),
         ),
         const SizedBox(height: 6),
         Text(
           'Preview milestone timelines, monitor progress and stay aligned with buildAhome.',
-          style: theme.textTheme.bodyMedium?.copyWith(color: AppTheme.textSecondary),
+          style: theme.textTheme.bodyMedium?.copyWith(color: AppTheme.getTextSecondary(context)),
         ),
       ],
     );
@@ -297,10 +315,10 @@ class TaskScreen extends State<TaskScreenClass> {
         return ChoiceChip(
           label: Text(_filterLabel(filter)),
           selected: isSelected,
-          selectedColor: AppTheme.primaryColorConst,
-          backgroundColor: AppTheme.backgroundSecondary,
+          selectedColor: AppTheme.getPrimaryColor(context),
+          backgroundColor: AppTheme.getBackgroundSecondary(context),
           labelStyle: TextStyle(
-            color: isSelected ? Colors.white : AppTheme.textPrimary,
+            color: isSelected ? Colors.white : AppTheme.getTextPrimary(context),
             fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
           ),
           onSelected: (value) {
@@ -318,18 +336,18 @@ class TaskScreen extends State<TaskScreenClass> {
       onChanged: (value) => setState(() => _searchQuery = value),
       decoration: InputDecoration(
         hintText: 'Search tasks, notes or dates',
-        prefixIcon: Icon(Icons.search, color: AppTheme.textSecondary),
+        prefixIcon: Icon(Icons.search, color: AppTheme.getTextSecondary(context)),
         suffixIcon: _searchQuery.isEmpty
             ? null
             : IconButton(
-                icon: Icon(Icons.close, color: AppTheme.textSecondary),
+                icon: Icon(Icons.close, color: AppTheme.getTextSecondary(context)),
                 onPressed: () {
                   _searchController.clear();
                   setState(() => _searchQuery = '');
                 },
               ),
         filled: true,
-        fillColor: AppTheme.backgroundSecondary,
+        fillColor: AppTheme.getBackgroundSecondary(context),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
           borderSide: BorderSide.none,
@@ -357,7 +375,7 @@ class TaskScreen extends State<TaskScreenClass> {
               width: summaryWidth,
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: AppTheme.backgroundSecondary,
+                color: AppTheme.getBackgroundSecondary(context),
                 borderRadius: BorderRadius.circular(18),
               ),
               child: Column(
@@ -382,7 +400,7 @@ class TaskScreen extends State<TaskScreenClass> {
       margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: AppTheme.backgroundSecondary,
+        color: AppTheme.getBackgroundSecondary(context),
         borderRadius: BorderRadius.circular(20),
       ),
       child: Column(
@@ -409,7 +427,7 @@ class TaskScreen extends State<TaskScreenClass> {
       width: width,
       height: height,
       decoration: BoxDecoration(
-        color: AppTheme.backgroundPrimaryLight,
+        color: AppTheme.getBackgroundPrimaryLight(context),
         borderRadius: BorderRadius.circular(radius),
       ),
     );
@@ -443,22 +461,22 @@ class TaskScreen extends State<TaskScreenClass> {
     return Container(
       padding: const EdgeInsets.all(32),
       decoration: BoxDecoration(
-        color: AppTheme.backgroundSecondary,
+        color: AppTheme.getBackgroundSecondary(context),
         borderRadius: BorderRadius.circular(16),
       ),
       child: Column(
         children: [
-          Icon(Icons.event_available, color: AppTheme.primaryColorConst, size: 32),
+          Icon(Icons.event_available, color: AppTheme.getPrimaryColor(context), size: 32),
           const SizedBox(height: 12),
           Text(
             'No scheduled tasks yet',
-            style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.w600),
+            style: TextStyle(color: AppTheme.getTextPrimary(context), fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: 4),
           Text(
             'Tasks assigned to your project will appear here automatically.',
             textAlign: TextAlign.center,
-            style: TextStyle(color: AppTheme.textSecondary, fontSize: 13),
+            style: TextStyle(color: AppTheme.getTextSecondary(context), fontSize: 13),
           ),
         ],
       ),
@@ -469,23 +487,23 @@ class TaskScreen extends State<TaskScreenClass> {
     return Container(
       padding: const EdgeInsets.all(28),
       decoration: BoxDecoration(
-        color: AppTheme.backgroundSecondary,
+        color: AppTheme.getBackgroundSecondary(context),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AppTheme.primaryColorConst.withOpacity(0.08)),
+        border: Border.all(color: AppTheme.getPrimaryColor(context).withOpacity(0.08)),
       ),
       child: Column(
         children: [
-          Icon(Icons.inbox_outlined, size: 36, color: AppTheme.textSecondary),
+          Icon(Icons.inbox_outlined, size: 36, color: AppTheme.getTextSecondary(context)),
           const SizedBox(height: 10),
           Text(
             isSearchEmpty ? 'No tasks match your search' : 'No tasks for this view',
-            style: TextStyle(fontWeight: FontWeight.w600, color: AppTheme.textPrimary),
+            style: TextStyle(fontWeight: FontWeight.w600, color: AppTheme.getTextPrimary(context)),
           ),
           const SizedBox(height: 6),
           Text(
             isSearchEmpty ? 'Try a different keyword or clear the search.' : 'Try switching to a different filter to see other milestones.',
             textAlign: TextAlign.center,
-            style: TextStyle(color: AppTheme.textSecondary),
+            style: TextStyle(color: AppTheme.getTextSecondary(context)),
           ),
         ],
       ),
@@ -593,14 +611,14 @@ class _SummaryCard extends StatelessWidget {
       width: targetWidth < 120 ? double.infinity : targetWidth,
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        gradient: LinearGradient(colors: gradient),
+        color: AppTheme.getBackgroundSecondary(context),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AppTheme.primaryColorConst.withOpacity(0.04)),
+        border: Border.all(color: AppTheme.getPrimaryColor(context).withOpacity(0.1)),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.05),
             blurRadius: 8,
-            offset: const Offset(0, 4),
+            offset: const Offset(0, 2),
           ),
         ],
       ),
@@ -612,10 +630,10 @@ class _SummaryCard extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.8),
+                  color: AppTheme.getBackgroundPrimary(context),
                   borderRadius: BorderRadius.circular(16),
                 ),
-                child: Icon(icon, color: AppTheme.primaryColorConst),
+                child: Icon(icon, color: AppTheme.getPrimaryColor(context)),
               ),
               const Spacer(),
               Text(
@@ -623,7 +641,7 @@ class _SummaryCard extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 24,
                   fontWeight: FontWeight.bold,
-                  color: valueColor ?? AppTheme.textPrimary,
+                  color: valueColor ?? AppTheme.getTextPrimary(context),
                 ),
               ),
             ],
@@ -636,7 +654,7 @@ class _SummaryCard extends StatelessWidget {
           const SizedBox(height: 4),
           Text(
             subtitle,
-            style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+            style: TextStyle(color: AppTheme.getTextSecondary(context), fontSize: 12),
           ),
         ],
       ),
@@ -705,9 +723,9 @@ class TaskItemWidget extends State<TaskItem> {
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 8),
       decoration: BoxDecoration(
-        color: AppTheme.backgroundSecondary,
+        color: AppTheme.getBackgroundSecondary(context),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AppTheme.primaryColorConst.withOpacity(0.06)),
+        border: Border.all(color: AppTheme.getPrimaryColor(context).withOpacity(0.06)),
       ),
       child: Material(
         color: Colors.transparent,
@@ -741,7 +759,7 @@ class TaskItemWidget extends State<TaskItem> {
                           const SizedBox(height: 4),
                           Text(
                             _formatDateRange(_startDate, _endDate),
-                            style: TextStyle(color: AppTheme.textSecondary, fontSize: 13),
+                            style: TextStyle(color: AppTheme.getTextSecondary(context), fontSize: 13),
                           ),
                         ],
                       ),
@@ -758,7 +776,7 @@ class TaskItemWidget extends State<TaskItem> {
                       ),
                     ),
                     const SizedBox(width: 8),
-                    Icon(_expanded ? Icons.expand_less : Icons.expand_more, color: AppTheme.textSecondary),
+                    Icon(_expanded ? Icons.expand_less : Icons.expand_more, color: AppTheme.getTextSecondary(context)),
                   ],
                 ),
                 AnimatedSize(
@@ -804,10 +822,10 @@ class TaskItemWidget extends State<TaskItem> {
             animationDuration: 600,
             barRadius: const Radius.circular(8),
             backgroundColor: Colors.grey[300],
-            progressColor: AppTheme.primaryColorConst,
+            progressColor: AppTheme.getPrimaryColor(context),
           ),
           const SizedBox(height: 6),
-          Text('${(progressValue * 100).round()}% complete', style: TextStyle(color: AppTheme.textSecondary, fontSize: 12)),
+          Text('${(progressValue * 100).round()}% complete', style: TextStyle(color: AppTheme.getTextSecondary(context), fontSize: 12)),
         ],
       ),
     );
@@ -820,13 +838,13 @@ class TaskItemWidget extends State<TaskItem> {
       return Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: AppTheme.backgroundSecondary,
+          color: AppTheme.getBackgroundSecondary(context),
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: AppTheme.primaryColorConst.withOpacity(0.05)),
+          border: Border.all(color: AppTheme.getPrimaryColor(context).withOpacity(0.05)),
         ),
         child: Text(
           'No sub-tasks defined for this milestone.',
-          style: TextStyle(color: AppTheme.textSecondary, fontSize: 13),
+          style: TextStyle(color: AppTheme.getTextSecondary(context), fontSize: 13),
         ),
       );
     }
@@ -834,9 +852,9 @@ class TaskItemWidget extends State<TaskItem> {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppTheme.getBackgroundSecondary(context),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppTheme.primaryColorConst.withOpacity(0.05)),
+        border: Border.all(color: AppTheme.getPrimaryColor(context).withOpacity(0.05)),
       ),
       child: Column(
         children: List.generate(entries.length, (index) {
@@ -854,7 +872,7 @@ class TaskItemWidget extends State<TaskItem> {
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Icon(Icons.radio_button_checked, size: 18, color: AppTheme.primaryColorConst.withOpacity(0.7)),
+                    Icon(Icons.radio_button_checked, size: 18, color: AppTheme.getPrimaryColor(context).withOpacity(0.7)),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Column(
@@ -866,7 +884,7 @@ class TaskItemWidget extends State<TaskItem> {
                           ),
                           Text(
                             '$start • $end',
-                            style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+                            style: TextStyle(color: AppTheme.getTextSecondary(context), fontSize: 12),
                           ),
                         ],
                       ),
@@ -878,7 +896,7 @@ class TaskItemWidget extends State<TaskItem> {
                     padding: const EdgeInsets.only(left: 26, top: 4),
                     child: Text(
                       'buildAhome: $noteLine',
-                      style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+                      style: TextStyle(color: AppTheme.getTextSecondary(context), fontSize: 12),
                     ),
                   ),
               ],

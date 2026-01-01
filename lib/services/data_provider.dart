@@ -22,6 +22,8 @@ class DataProvider {
   String? clientProjectValue;
   bool clientDataLoading = false;
   DateTime? lastClientDataLoad;
+  DateTime? lastUpdatesLoad;
+  bool isLoadingUpdates = false;
 
   String? currentRole;
   String? currentUserId;
@@ -41,20 +43,29 @@ class DataProvider {
   bool isLoadingProjectData = false;
 
   // Load projects for non-Client users
-  Future<void> loadProjects() async {
-    if (projectsLoading) return;
+  Future<void> loadProjects({bool force = false}) async {
+    if (projectsLoading && !force) return;
     
     SharedPreferences prefs = await SharedPreferences.getInstance();
+    
+    // Always refresh credentials from SharedPreferences to ensure we have the latest
     currentRole = prefs.getString('role');
     currentUserId = prefs.getString('userId') ?? prefs.getString('user_id');
     currentApiToken = prefs.getString('api_token');
 
     if (currentRole == null || currentUserId == null || currentApiToken == null) {
+      print('[DataProvider] Cannot load projects: missing credentials');
       return;
     }
 
     if (currentRole == 'Client') {
       return; // Don't load projects for clients
+    }
+
+    // If forcing reload, clear existing projects first
+    if (force) {
+      projects = [];
+      lastProjectsLoad = null;
     }
 
     projectsLoading = true;
@@ -66,19 +77,28 @@ class DataProvider {
       };
       print('[DataProvider] Loading projects with $payload');
       var response = await http.post(
-        Uri.parse("https://office.buildahome.in/API/get_projects_for_user"),
+        Uri.parse("https://office1.buildahome.in/API/get_projects_for_user"),
         body: payload,
-      );
+      ).timeout(Duration(seconds: 15));
 
       if (response.statusCode == 200) {
-        projects = jsonDecode(response.body);
+        final decoded = jsonDecode(response.body);
+        // Ensure we're getting a list
+        if (decoded is List) {
+          projects = decoded;
+        } else {
+          projects = [];
+          print('[DataProvider] Unexpected response format: $decoded');
+        }
         lastProjectsLoad = DateTime.now();
-        print('[DataProvider] Loaded ${projects.length} projects');
+        print('[DataProvider] Loaded ${projects.length} projects for user $currentUserId (role: $currentRole)');
       } else {
         print('[DataProvider] Failed to load projects: ${response.statusCode}');
+        projects = []; // Clear projects on error
       }
     } catch (e) {
-      print('Error loading projects: $e');
+      print('[DataProvider] Error loading projects: $e');
+      projects = []; // Clear projects on error
     } finally {
       projectsLoading = false;
     }
@@ -106,7 +126,15 @@ class DataProvider {
   }
 
   Future<void> _loadProjectData(String projectId) async {
-    if (clientDataLoading) return;
+    // Allow concurrent loads for updates - they're lightweight and should load independently
+    // Only prevent concurrent loads if we're loading the same project
+    if (clientDataLoading && clientProjectId == projectId) {
+      // If already loading the same project, wait for it to complete
+      while (clientDataLoading && clientProjectId == projectId) {
+        await Future.delayed(Duration(milliseconds: 100));
+      }
+      return;
+    }
 
     SharedPreferences prefs = await SharedPreferences.getInstance();
     
@@ -118,20 +146,66 @@ class DataProvider {
     clientProjectId = projectId;
     clientDataLoading = true;
 
-    print('loading project data for project $projectId');
-    print('prefs: $prefs');
-    print('clientProjectId: $clientProjectId');
-    print('currentRole: $currentRole');
+    print('[DataProvider] Loading project data for project $projectId');
+    print('[DataProvider] Current role: $currentRole');
+    print('[DataProvider] Current user id: $currentUserId');
 
+    // For non-Client users, explicitly set to null at start to ensure skeleton loader shows
+    if (currentRole != 'Client') {
+      clientProjectUpdates = null;
+    }
+
+    // Load project value from SharedPreferences (synchronous, no API call needed)
+    if (currentRole == 'Client') {
+      var value = prefs.getString('project_value');
+      if (value != null) {
+        clientProjectValue = value;
+      }
+    } else {
+      // For non-Client users, try to load from API or set empty
+      clientProjectValue = '';
+    }
+
+      try {
+      // Load critical data first: updates and percentage (required for immediate display)
+      await Future.wait([
+        _loadLatestUpdates(projectId, prefs, skipIfRecent: true),
+        _loadProjectPercentage(projectId, prefs),
+      ], eagerError: false);
+
+      print('[DataProvider] Updates and percentage loaded for $projectId');
+
+      // Then load other project data (location, block status) after critical data is ready
+      await Future.wait([
+        _loadProjectLocation(projectId),
+        _loadProjectBlockStatus(projectId),
+      ], eagerError: false);
+
+      lastClientDataLoad = DateTime.now();
+      print('[DataProvider] Successfully loaded project data for $projectId');
+    } catch (e) {
+      print('[DataProvider] Error loading client project data: $e');
+    } finally {
+      clientDataLoading = false;
+    }
+  }
+
+  // Helper method to load project location
+  Future<void> _loadProjectLocation(String projectId) async {
     try {
-      // Load project location
       var locationUrl = 'https://office.buildahome.in/API/get_project_location?id=${projectId}';
       var locResponse = await http.get(Uri.parse(locationUrl));
       if (locResponse.statusCode == 200 && locResponse.body.trim().isNotEmpty) {
         clientProjectLocation = locResponse.body.trim();
       }
+    } catch (e) {
+      print('Error loading project location: $e');
+    }
+  }
 
-      // Load project completion percentage
+  // Helper method to load project completion percentage
+  Future<void> _loadProjectPercentage(String projectId, SharedPreferences prefs) async {
+    try {
       var percUrl = 'https://office.buildahome.in/API/get_project_percentage?id=${projectId}';
       var percResponse = await http.get(Uri.parse(percUrl));
       print('percentage response: ${percResponse.body}');
@@ -148,29 +222,46 @@ class DataProvider {
         // For non-Client users or when API fails, return null to indicate data not loaded
         clientProjectCompletion = null;
       }
-
-      // Load project value
-      // Only load from SharedPreferences for Client users
-      if (currentRole == 'Client') {
-        var value = prefs.getString('project_value');
-        if (value != null) {
-          clientProjectValue = value;
-        }
+    } catch (e) {
+      print('Error loading project percentage: $e');
+      // Fallback to SharedPreferences for Client users on error
+      if (currentRole == 'Client' && prefs.containsKey("completed")) {
+        clientProjectCompletion = prefs.getString('completed');
       } else {
-        // For non-Client users, try to load from API or set empty
-        clientProjectValue = '';
+        clientProjectCompletion = null;
       }
+    }
+  }
 
-      // Load latest updates - always from API, no SharedPreferences fallback
-      // For non-Client users, explicitly set to null at start to ensure skeleton loader shows
-      if (currentRole != 'Client') {
-        clientProjectUpdates = null;
+  // Helper method to load latest updates
+  Future<void> _loadLatestUpdates(String projectId, SharedPreferences prefs, {bool skipIfRecent = false}) async {
+    // Skip if already loading updates to prevent duplicate calls
+    if (isLoadingUpdates) {
+      print('[DataProvider] Skipping latest updates load - already in progress');
+      // Wait for the current load to complete
+      while (isLoadingUpdates) {
+        await Future.delayed(Duration(milliseconds: 100));
       }
-      
+      return;
+    }
+
+    // Skip if updates were loaded recently (within last 2 seconds) to prevent duplicate calls
+    if (skipIfRecent && lastUpdatesLoad != null && 
+        DateTime.now().difference(lastUpdatesLoad!).inSeconds < 2) {
+      print('[DataProvider] Skipping latest updates load - already loaded recently');
+      return;
+    }
+
+    isLoadingUpdates = true;
+    try {
+      print('[DataProvider] Loading latest updates for project $projectId');
       var updatesUrl = 'https://office.buildahome.in/API/latest_update?id=${projectId}';
-      var updatesResponse = await http.get(Uri.parse(updatesUrl));
+      var updatesResponse = await http.get(Uri.parse(updatesUrl)).timeout(Duration(seconds: 15));
+      
       if (updatesResponse.statusCode == 200 && updatesResponse.body.trim() != "No updates") {
         clientProjectUpdates = jsonDecode(updatesResponse.body);
+        lastUpdatesLoad = DateTime.now();
+        print('[DataProvider] Successfully loaded ${clientProjectUpdates is List ? clientProjectUpdates.length : 0} updates');
       } else if (updatesResponse.statusCode == 200 && updatesResponse.body.trim() == "No updates") {
         // API returned "No updates" - set to empty list to indicate data was loaded but is empty
         // For non-Client users, use empty list; for Client users, check SharedPreferences
@@ -189,8 +280,11 @@ class DataProvider {
             clientProjectUpdates = [];
           }
         }
+        lastUpdatesLoad = DateTime.now();
+        print('[DataProvider] No updates returned from API');
       } else {
         // API call failed - set to null to indicate data not loaded
+        print('[DataProvider] Failed to load updates: status ${updatesResponse.statusCode}');
         // For non-Client users, always set to null (never load from SharedPreferences)
         if (currentRole != 'Client') {
           clientProjectUpdates = null;
@@ -208,8 +302,46 @@ class DataProvider {
           }
         }
       }
+    } catch (e) {
+      print('[DataProvider] Error loading latest updates: $e');
+      // On error, handle fallback for Client users
+      if (currentRole != 'Client') {
+        clientProjectUpdates = null;
+      } else {
+        var savedUpdates = prefs.getString('latest_update');
+        if (savedUpdates != null && savedUpdates.isNotEmpty) {
+          try {
+            clientProjectUpdates = jsonDecode(savedUpdates);
+          } catch (e) {
+            clientProjectUpdates = null;
+          }
+        } else {
+          clientProjectUpdates = null;
+        }
+      }
+    } finally {
+      isLoadingUpdates = false;
+    }
+  }
+  
+  // Load latest updates independently (for immediate loading when project is selected)
+  Future<void> loadLatestUpdatesForProject(String projectId) async {
+    if (projectId.isEmpty) return;
+    
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    
+    // Update currentRole if not set
+    if (currentRole == null) {
+      currentRole = prefs.getString('role');
+    }
+    
+    // Load updates independently without blocking on other data
+    await _loadLatestUpdates(projectId, prefs);
+  }
 
-      // Load project block status
+  // Helper method to load project block status
+  Future<void> _loadProjectBlockStatus(String projectId) async {
+    try {
       var statusUrl = 'https://office.buildahome.in/API/get_project_block_status?project_id=${projectId}';
       var statusResponse = await http.get(Uri.parse(statusUrl));
       if (statusResponse.statusCode == 200) {
@@ -222,17 +354,13 @@ class DataProvider {
           clientProjectBlockReason = null;
         }
       }
-
-      lastClientDataLoad = DateTime.now();
     } catch (e) {
-      print('Error loading client project data: $e');
-    } finally {
-      clientDataLoading = false;
+      print('Error loading project block status: $e');
     }
   }
 
   // Initialize data based on user role
-  Future<void> initializeData() async {
+  Future<void> initializeData({bool force = false}) async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     var role = prefs.getString('role');
 
@@ -240,10 +368,16 @@ class DataProvider {
       return;
     }
 
+    // Ensure we have fresh credentials
+    currentRole = role;
+    currentUserId = prefs.getString('userId') ?? prefs.getString('user_id');
+    currentApiToken = prefs.getString('api_token');
+
     if (role == 'Client') {
       await loadClientProjectData();
     } else {
-      await loadProjects();
+      // Force reload projects after login to ensure fresh data
+      await loadProjects(force: force);
     }
   }
 
@@ -362,11 +496,8 @@ class DataProvider {
         await loadProjectDataForProject(projectId);
       }
 
-      // Force reload projects if forced or if data is stale (older than 5 minutes)
-      if (force || lastProjectsLoad == null || 
-          DateTime.now().difference(lastProjectsLoad!).inMinutes > 5) {
-        await loadProjects();
-      }
+      // Note: loadProjects() should only be called from AdminDashboard, not from UserDashboard
+      // Removed from here to prevent unnecessary loading in UserDashboard
 
       // Load project data for non-Client users (payments, gallery, etc.) in background
       // This should not block the updates from showing
@@ -426,9 +557,16 @@ class DataProvider {
     clientProjectValue = null;
     lastProjectsLoad = null;
     lastClientDataLoad = null;
+    lastUpdatesLoad = null;
     currentRole = null;
     currentUserId = null;
     currentApiToken = null;
+    
+    // Clear loading flags to prevent stale state
+    projectsLoading = false;
+    clientDataLoading = false;
+    isLoadingUpdates = false;
+    isLoadingProjectData = false;
     
     // Clear cached project data
     cachedPayments = null;
@@ -441,6 +579,8 @@ class DataProvider {
     lastScheduleLoad = null;
     lastNotesLoad = null;
     lastDocumentsLoad = null;
+    
+    print('[DataProvider] All data cleared');
   }
 }
 

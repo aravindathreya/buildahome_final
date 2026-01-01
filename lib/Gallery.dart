@@ -9,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'FullScreenImage.dart';
 import 'app_theme.dart';
 import 'services/data_provider.dart';
+import 'widgets/dark_mode_toggle.dart';
 
 class Gallery extends StatefulWidget {
   const Gallery({super.key});
@@ -144,9 +145,9 @@ class _GalleryState extends State<Gallery> {
     final theme = Theme.of(context);
     final canPop = Navigator.of(context).canPop();
     return Scaffold(
-      backgroundColor: AppTheme.backgroundPrimary,
+      backgroundColor: AppTheme.getBackgroundPrimary(context),
       appBar: AppBar(
-        backgroundColor: AppTheme.backgroundSecondary,
+        backgroundColor: AppTheme.getBackgroundSecondary(context),
         automaticallyImplyLeading: canPop,
         leading: canPop
             ? IconButton(
@@ -158,10 +159,14 @@ class _GalleryState extends State<Gallery> {
           'Gallery',
           style: theme.textTheme.headlineSmall?.copyWith(fontSize: 20),
         ),
+        actions: [
+          DarkModeToggle(showLabel: false),
+          SizedBox(width: 8),
+        ],
       ),
       body: SafeArea(
         child: RefreshIndicator(
-          color: AppTheme.primaryColorConst,
+          color: AppTheme.getPrimaryColor(context),
           onRefresh: () => _loadGallery(showLoader: false),
           child: _buildBody(context, theme),
         ),
@@ -217,7 +222,7 @@ class _GalleryState extends State<Gallery> {
                 height: 20,
                 child: CircularProgressIndicator(
                   strokeWidth: 2,
-                  valueColor: AlwaysStoppedAnimation<Color>(AppTheme.primaryColorConst),
+                  valueColor: AlwaysStoppedAnimation<Color>(AppTheme.getPrimaryColor(context)),
                 ),
               ),
             ),
@@ -231,7 +236,7 @@ class _GalleryState extends State<Gallery> {
     return Container(
       padding: const EdgeInsets.all(32),
       decoration: BoxDecoration(
-        color: AppTheme.backgroundSecondary,
+        color: AppTheme.getBackgroundSecondary(context),
         borderRadius: BorderRadius.circular(20),
       ),
       child: Column(
@@ -240,19 +245,19 @@ class _GalleryState extends State<Gallery> {
           const SizedBox(height: 12),
           Text(
             'Something went wrong',
-            style: TextStyle(fontWeight: FontWeight.w600, color: AppTheme.textPrimary),
+            style: TextStyle(fontWeight: FontWeight.w600, color: AppTheme.getTextPrimary(context)),
           ),
           const SizedBox(height: 8),
           Text(
             _errorMessage ?? 'Please try again later.',
             textAlign: TextAlign.center,
-            style: TextStyle(color: AppTheme.textSecondary),
+            style: TextStyle(color: AppTheme.getTextSecondary(context)),
           ),
           const SizedBox(height: 16),
           ElevatedButton(
             onPressed: () => _loadGallery(),
             style: ElevatedButton.styleFrom(
-              backgroundColor: AppTheme.primaryColorConst,
+              backgroundColor: AppTheme.getPrimaryColor(context),
               foregroundColor: Colors.white,
             ),
             child: const Text('Retry'),
@@ -273,7 +278,7 @@ class _GalleryState extends State<Gallery> {
         const SizedBox(height: 8),
         Text(
           'Browse chronological site progress photographs shared by the buildAhome team.',
-          style: theme.textTheme.bodyMedium?.copyWith(color: AppTheme.textSecondary),
+          style: theme.textTheme.bodyMedium?.copyWith(color: AppTheme.getTextSecondary(context)),
         ),
       ],
     );
@@ -284,7 +289,7 @@ class _GalleryState extends State<Gallery> {
       margin: const EdgeInsets.symmetric(vertical: 8),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppTheme.backgroundSecondary,
+        color: AppTheme.getBackgroundSecondary(context),
         borderRadius: BorderRadius.circular(16),
       ),
       child: Column(
@@ -294,7 +299,7 @@ class _GalleryState extends State<Gallery> {
             width: 140,
             height: 18,
             decoration: BoxDecoration(
-              color: AppTheme.backgroundPrimaryLight,
+              color: AppTheme.getBackgroundPrimaryLight(context),
               borderRadius: BorderRadius.circular(4),
             ),
           ),
@@ -307,7 +312,7 @@ class _GalleryState extends State<Gallery> {
                 width: 90,
                 height: 90,
                 decoration: BoxDecoration(
-                  color: AppTheme.backgroundPrimaryLight,
+                  color: AppTheme.getBackgroundPrimaryLight(context),
                   borderRadius: BorderRadius.circular(12),
                 ),
               ),
@@ -322,22 +327,22 @@ class _GalleryState extends State<Gallery> {
     return Container(
       padding: const EdgeInsets.all(32),
       decoration: BoxDecoration(
-        color: AppTheme.backgroundSecondary,
+        color: AppTheme.getBackgroundSecondary(context),
         borderRadius: BorderRadius.circular(20),
       ),
       child: Column(
         children: [
-          Icon(Icons.photo_library_outlined, color: AppTheme.primaryColorConst, size: 32),
+          Icon(Icons.photo_library_outlined, color: AppTheme.getPrimaryColor(context), size: 32),
           const SizedBox(height: 12),
           Text(
             'No uploads yet',
-            style: TextStyle(fontWeight: FontWeight.w600, color: AppTheme.textPrimary),
+            style: TextStyle(fontWeight: FontWeight.w600, color: AppTheme.getTextPrimary(context)),
           ),
           const SizedBox(height: 4),
           Text(
             'You will receive a notification as soon as the team shares the first set of photos.',
             textAlign: TextAlign.center,
-            style: TextStyle(color: AppTheme.textSecondary),
+            style: TextStyle(color: AppTheme.getTextSecondary(context)),
           ),
         ],
       ),
@@ -350,9 +355,9 @@ class _GalleryState extends State<Gallery> {
       margin: const EdgeInsets.only(bottom: 24),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppTheme.backgroundSecondary,
+        color: AppTheme.getBackgroundSecondary(context),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppTheme.primaryColorConst.withOpacity(0.08)),
+        border: Border.all(color: AppTheme.getPrimaryColor(context).withOpacity(0.08)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -362,10 +367,10 @@ class _GalleryState extends State<Gallery> {
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: AppTheme.primaryColorConst.withOpacity(0.12),
+                  color: AppTheme.getPrimaryColor(context).withOpacity(0.12),
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: const Icon(Icons.date_range, size: 18, color: AppTheme.primaryColorConst),
+                child: Icon(Icons.date_range, size: 18, color: AppTheme.getPrimaryColor(context)),
               ),
               const SizedBox(width: 12),
               Text(
@@ -386,13 +391,13 @@ class _GalleryState extends State<Gallery> {
   }
 
   Widget _buildImageTile(BuildContext context, dynamic entry) {
-    final double tileSize = (MediaQuery.of(context).size.width - 16 * 2 - 10 * 2) / 3;
+    final double tileSize = (MediaQuery.of(context).size.width - 16 * 2 - 27 * 2) / 3;
     final imageUrl = "https://office.buildahome.in/files/migrated/${entry['image']}";
     final child = CachedNetworkImage(
       imageUrl: imageUrl,
       fit: BoxFit.cover,
       progressIndicatorBuilder: (context, url, progress) => _buildImageSkeleton(),
-      errorWidget: (context, url, error) => _buildBrokenImage(),
+      errorWidget: (context, url, error) => _buildBrokenImage(context),
     );
     final onTap = () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => FullScreenImage(imageUrl)));
 
@@ -406,7 +411,7 @@ class _GalleryState extends State<Gallery> {
           width: tileSize,
           height: tileSize,
           decoration: BoxDecoration(
-            color: AppTheme.backgroundPrimaryLight,
+            color: AppTheme.getBackgroundPrimaryLight(context),
             borderRadius: BorderRadius.circular(12),
             boxShadow: [
               BoxShadow(
@@ -425,11 +430,11 @@ class _GalleryState extends State<Gallery> {
     );
   }
 
-  Widget _buildBrokenImage() {
+  Widget _buildBrokenImage(BuildContext context) {
     return Container(
-      color: AppTheme.backgroundPrimaryLight,
-      child: const Center(
-        child: Icon(Icons.broken_image_outlined, color: AppTheme.onBackgroundColorConst),
+      color: AppTheme.getBackgroundPrimaryLight(context),
+      child: Center(
+        child: Icon(Icons.broken_image_outlined, color: AppTheme.getTextSecondary(context)),
       ),
     );
   }
@@ -443,9 +448,9 @@ class _GalleryState extends State<Gallery> {
               begin: Alignment.centerLeft,
               end: Alignment.centerRight,
               colors: [
-                AppTheme.backgroundPrimaryLight,
-                AppTheme.backgroundSecondary,
-                AppTheme.backgroundPrimaryLight,
+                AppTheme.getBackgroundPrimaryLight(context),
+                AppTheme.getBackgroundSecondary(context),
+                AppTheme.getBackgroundPrimaryLight(context),
               ],
             ),
           ),

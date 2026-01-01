@@ -1,17 +1,22 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:image_picker/image_picker.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 import 'Gallery.dart';
 import 'Scheduler.dart';
 import 'ShowAlert.dart';
 import 'app_theme.dart';
 import 'services/data_provider.dart';
+import 'widgets/dark_mode_toggle.dart';
+import 'AddDailyUpdate.dart'; // For FullScreenImage if needed, or I can implement it here
 
 class NotesAndComments extends StatefulWidget {
   const NotesAndComments({super.key});
@@ -27,8 +32,9 @@ class NotesAndCommentsState extends State<NotesAndComments> {
   List<dynamic>? notes;
   bool showPostBtn = false;
   String? userId;
-  String attachedFileName = '';
-  PlatformFile? attachedFile;
+  var selectedPictures = [];
+  var selectedPictureFilenames = [];
+  var selectedPictureFilePaths = [];
   bool _isLoading = false;
   bool _isRefreshing = false;
   String? _errorMessage;
@@ -110,7 +116,7 @@ class NotesAndCommentsState extends State<NotesAndComments> {
 
   Future<void> _fetchNotesFromApi(String projectId, DataProvider dataProvider, String? userRole, int requestId) async {
     try {
-      final url = 'https://office.buildahome.in/API/get_notes?project_id=$projectId';
+      final url = 'https://office1.buildahome.in/API/get_notes?project_id=$projectId';
       final response = await http.get(Uri.parse(url)).timeout(_requestTimeout);
       
       if (response.statusCode != 200) {
@@ -139,27 +145,97 @@ class NotesAndCommentsState extends State<NotesAndComments> {
 
   bool _shouldIgnoreLoad(int requestId) => !mounted || requestId != _loadRequestId;
 
-  Future<void> getFile() async {
-    final res = await FilePicker.platform.pickFiles(allowMultiple: false);
-    final file = res?.files.first;
-
-    if (!mounted) return;
-
-    if (file != null) {
-      setState(() {
-        attachedFile = file;
-        attachedFileName = 'Attached file: ${file.name}';
-      });
-    } else {
-      setState(() {
-        attachedFile = null;
-        attachedFileName = '';
-      });
+  Future<bool> checkPermissionStatus({required bool forCamera}) async {
+    try {
+      PermissionStatus status;
+      if (forCamera) {
+        status = await Permission.camera.status;
+        if (!status.isGranted) {
+          status = await Permission.camera.request();
+        }
+      } else {
+        status = await Permission.photos.status;
+        if (!status.isGranted) {
+          status = await Permission.photos.request();
+        }
+        if (!status.isGranted && Platform.isAndroid) {
+          final storageStatus = await Permission.storage.status;
+          if (!storageStatus.isGranted) {
+            await Permission.storage.request();
+          }
+          return true;
+        }
+      }
+      return status.isGranted;
+    } catch (e) {
+      return !forCamera && Platform.isAndroid;
     }
   }
 
+  Future<void> _showImageSourceDialog() async {
+    await showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          backgroundColor: AppTheme.getBackgroundSecondary(context),
+          title: const Text('Select Image Source', style: TextStyle(fontWeight: FontWeight.bold)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: Icon(Icons.camera_alt, color: AppTheme.getPrimaryColor(context)),
+                title: const Text('Take Photo'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _takePhotoFromCamera();
+                },
+              ),
+              ListTile(
+                leading: Icon(Icons.photo_library, color: AppTheme.getPrimaryColor(context)),
+                title: const Text('Choose from Gallery'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _selectPicturesFromGallery();
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _takePhotoFromCamera() async {
+    if (!await checkPermissionStatus(forCamera: true)) return;
+    final picker = ImagePicker();
+    final pickedFile = await picker.pickImage(source: ImageSource.camera, imageQuality: 85);
+    if (pickedFile != null) _processImage(pickedFile);
+  }
+
+  Future<void> _selectPicturesFromGallery() async {
+    if (!await checkPermissionStatus(forCamera: false)) return;
+    final picker = ImagePicker();
+    final pickedFiles = await picker.pickMultiImage(imageQuality: 85);
+    for (var file in pickedFiles) {
+      _processImage(file);
+    }
+  }
+
+  void _processImage(XFile file) {
+    setState(() {
+      selectedPictures.insert(0, FileImage(File(file.path)));
+      selectedPictureFilenames.insert(0, file.name);
+      selectedPictureFilePaths.insert(0, file.path);
+      showPostBtn = true;
+    });
+  }
+
   Future<void> _postNote() async {
-    if (projectId == null || userId == null) return;
+    
+    final prefs = await SharedPreferences.getInstance();
+    final currentProjectId = prefs.getString('project_id');
+    final userId = prefs.getString('user_id');
+    if (currentProjectId == null || userId == null) return;
     showDialog(
       barrierDismissible: false,
       context: context,
@@ -169,17 +245,12 @@ class NotesAndCommentsState extends State<NotesAndComments> {
     );
 
     try {
-      final url = Uri.parse("https://office.buildahome.in/API/post_comment");
-      final response = await http.post(url, body: {'project_id': projectId!, 'user_id': userId!, 'note': message.text});
-      final responseBody = jsonDecode(response.body);
-      final noteId = responseBody['note_id'];
-
-      if (attachedFile != null && attachedFile!.path != null) {
-        final uri = Uri.parse("https://office.buildahome.in/API/notes_picture_uplpoad");
-        final request = http.MultipartRequest("POST", uri);
-        request.fields['note_id'] = noteId.toString();
-        request.files.add(await http.MultipartFile.fromPath("file", attachedFile!.path!));
-        await request.send();
+      if (selectedPictureFilePaths.isEmpty) {
+        await _submitSingleNote(null);
+      } else {
+        for (String filePath in selectedPictureFilePaths) {
+          await _submitSingleNote(filePath);
+        }
       }
 
       if (mounted) {
@@ -192,8 +263,9 @@ class NotesAndCommentsState extends State<NotesAndComments> {
         );
         message.clear();
         showPostBtn = false;
-        attachedFile = null;
-        attachedFileName = '';
+        selectedPictures.clear();
+        selectedPictureFilenames.clear();
+        selectedPictureFilePaths.clear();
         setState(() {});
         await getNotes();
       }
@@ -211,9 +283,52 @@ class NotesAndCommentsState extends State<NotesAndComments> {
     }
   }
 
+  Future<void> _submitSingleNote(String? filePath) async {
+    final prefs = await SharedPreferences.getInstance();
+    final currentProjectId = prefs.getString('project_id');
+    final userId = prefs.getString('user_id');
+    print("projectId: $currentProjectId");
+    print("userId: $userId");
+    print("message: ${message.text}");
+    final url = Uri.parse("https://office1.buildahome.in/API/post_comment");
+    final response = await http.post(url, body: {'project_id': currentProjectId!, 'user_id': userId!, 'note': message.text});
+    print("response: ${response.body}");
+    if (response.statusCode != 200) {
+      throw Exception('Server returned ${response.statusCode}');
+    }
+
+    print("post single note: ${response.body}");
+
+    if (filePath != null) {
+      try {
+        final responseBody = jsonDecode(response.body);
+        final noteId = responseBody['note_id'];
+        
+        if (noteId != null) {
+          final uri = Uri.parse("https://office1.buildahome.in/API/notes_picture_uplpoad");
+          final request = http.MultipartRequest("POST", uri);
+          request.fields['note_id'] = noteId.toString();
+          request.files.add(await http.MultipartFile.fromPath("file", filePath));
+          await request.send();
+        }
+      } catch (e) {
+        debugPrint('Failed to upload attachment: $e');
+        // We don't throw here to allow the process to continue even if attachment fails
+        // but since we are in a loop, maybe we should? The user said "it should post even without attachment".
+      }
+    }
+  }
+
+  bool _isImage(String filename) {
+    final imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'];
+    final lowerCaseFilename = filename.toLowerCase();
+    return imageExtensions.any((ext) => lowerCaseFilename.endsWith(ext));
+  }
+
   Future<void> _launchURL(String url) async {
-    if (await canLaunch(url)) {
-      await launch(url);
+    final Uri uri = Uri.parse(url);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
     } else {
       throw 'Could not launch $url';
     }
@@ -230,9 +345,9 @@ class NotesAndCommentsState extends State<NotesAndComments> {
     final theme = Theme.of(context);
     final canPop = Navigator.of(context).canPop();
     return Scaffold(
-      backgroundColor: AppTheme.backgroundPrimary,
+      backgroundColor: AppTheme.getBackgroundPrimary(context),
       appBar: AppBar(
-        backgroundColor: AppTheme.backgroundSecondary,
+        backgroundColor: AppTheme.getBackgroundSecondary(context),
         automaticallyImplyLeading: canPop,
         leading: canPop
             ? IconButton(
@@ -241,29 +356,17 @@ class NotesAndCommentsState extends State<NotesAndComments> {
               )
             : null,
         title: Text(
-          'Notes & comments',
+          'ChatBox',
           style: theme.textTheme.headlineSmall?.copyWith(fontSize: 20),
         ),
         actions: [
-          IconButton(
-            tooltip: 'Gallery',
-            icon: const Icon(Icons.photo_library_outlined),
-            onPressed: () {
-              Navigator.of(context).push(MaterialPageRoute(builder: (_) => const Gallery()));
-            },
-          ),
-          IconButton(
-            tooltip: 'Scheduler',
-            icon: const Icon(Icons.event_note_outlined),
-            onPressed: () {
-              Navigator.of(context).push(MaterialPageRoute(builder: (_) => const TaskWidget()));
-            },
-          ),
+          DarkModeToggle(showLabel: false),
+          
         ],
       ),
       body: SafeArea(
         child: RefreshIndicator(
-          color: AppTheme.primaryColorConst,
+          color: AppTheme.getPrimaryColor(context),
           onRefresh: () => getNotes(showLoader: false),
           child: ListView(
             physics: const AlwaysScrollableScrollPhysics(),
@@ -281,14 +384,14 @@ class NotesAndCommentsState extends State<NotesAndComments> {
                       onPressed: _postNote,
                       child: const Padding(
                         padding: EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                        child: Text('Post'),
+                        child: Text('Post 1', style: TextStyle(fontWeight: FontWeight.w600, color: Colors.white)),
                       ),
                     ),
                   ),
                 ),
               const SizedBox(height: 24),
               Text(
-                'Previous notes',
+                'Previous messages',
                 style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
               ),
               const SizedBox(height: 12),
@@ -308,7 +411,7 @@ class NotesAndCommentsState extends State<NotesAndComments> {
                         height: 20,
                         child: CircularProgressIndicator(
                           strokeWidth: 2,
-                          valueColor: AlwaysStoppedAnimation<Color>(AppTheme.primaryColorConst),
+                          valueColor: AlwaysStoppedAnimation<Color>(AppTheme.getPrimaryColor(context)),
                         ),
                       ),
                     ),
@@ -333,7 +436,7 @@ class NotesAndCommentsState extends State<NotesAndComments> {
         const SizedBox(height: 8),
         Text(
           'Share instructions, raise clarifications and review updates directly with buildAhome.',
-          style: theme.textTheme.bodyMedium?.copyWith(color: AppTheme.textSecondary),
+          style: theme.textTheme.bodyMedium?.copyWith(color: AppTheme.getTextSecondary(context)),
         ),
       ],
     );
@@ -357,28 +460,107 @@ class NotesAndCommentsState extends State<NotesAndComments> {
             maxLines: 4,
             onChanged: (value) {
               setState(() {
-                showPostBtn = value.trim().isNotEmpty;
+                showPostBtn = value.trim().isNotEmpty || selectedPictureFilePaths.isNotEmpty;
               });
             },
             decoration: const InputDecoration(
               hintText: "Add a note",
             ),
           ),
-          const SizedBox(height: 12),
-          OutlinedButton.icon(
-            style: OutlinedButton.styleFrom(
-              foregroundColor: AppTheme.primaryColorConst,
-              side: BorderSide(color: AppTheme.primaryColorConst.withOpacity(0.4)),
+          const SizedBox(height: 16),
+          InkWell(
+            onTap: _showImageSourceDialog,
+            borderRadius: BorderRadius.circular(12),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(
+                color: AppTheme.getBackgroundPrimaryLight(context),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppTheme.getPrimaryColor(context).withOpacity(0.1)),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: AppTheme.getPrimaryColor(context).withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Icon(Icons.add_a_photo, size: 20, color: AppTheme.getPrimaryColor(context)),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      selectedPictures.isEmpty ? 'Add pictures' : 'Add more pictures',
+                      style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                  Icon(Icons.chevron_right, size: 20, color: AppTheme.getTextSecondary(context)),
+                ],
+              ),
             ),
-            onPressed: getFile,
-            icon: const Icon(Icons.attach_file),
-            label: const Text('Add attachment'),
           ),
-          if (attachedFileName.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            Text(
-              attachedFileName,
-              style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+          if (selectedPictures.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            SizedBox(
+              height: 100,
+              child: ListView.builder(
+                scrollDirection: Axis.horizontal,
+                itemCount: selectedPictures.length,
+                itemBuilder: (context, index) {
+                  return Container(
+                    margin: const EdgeInsets.only(right: 12),
+                    child: Stack(
+                      children: [
+                        InkWell(
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => FullScreenImage(selectedPictures[index]),
+                              ),
+                            );
+                          },
+                          child: Container(
+                            width: 100,
+                            height: 100,
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(12),
+                              image: DecorationImage(
+                                image: selectedPictures[index],
+                                fit: BoxFit.cover,
+                              ),
+                              border: Border.all(color: AppTheme.getPrimaryColor(context).withOpacity(0.2)),
+                            ),
+                          ),
+                        ),
+                        Positioned(
+                          top: 4,
+                          right: 4,
+                          child: GestureDetector(
+                            onTap: () {
+                              setState(() {
+                                selectedPictures.removeAt(index);
+                                selectedPictureFilenames.removeAt(index);
+                                selectedPictureFilePaths.removeAt(index);
+                                showPostBtn = message.text.trim().isNotEmpty || selectedPictureFilePaths.isNotEmpty;
+                              });
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.all(4),
+                              decoration: const BoxDecoration(
+                                color: Colors.red,
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(Icons.close, size: 14, color: Colors.white),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
             ),
           ],
         ],
@@ -391,7 +573,7 @@ class NotesAndCommentsState extends State<NotesAndComments> {
       margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppTheme.backgroundSecondary,
+        color: AppTheme.getBackgroundSecondary(context),
         borderRadius: BorderRadius.circular(16),
       ),
       child: Column(
@@ -400,19 +582,19 @@ class NotesAndCommentsState extends State<NotesAndComments> {
           Container(
             width: 140,
             height: 14,
-            color: AppTheme.backgroundPrimaryLight,
+            color: AppTheme.getBackgroundPrimaryLight(context),
           ),
           const SizedBox(height: 8),
           Container(
             width: double.infinity,
             height: 14,
-            color: AppTheme.backgroundPrimaryLight,
+            color: AppTheme.getBackgroundPrimaryLight(context),
           ),
           const SizedBox(height: 8),
           Container(
             width: 80,
             height: 12,
-            color: AppTheme.backgroundPrimaryLight,
+            color: AppTheme.getBackgroundPrimaryLight(context),
           ),
         ],
       ),
@@ -423,21 +605,21 @@ class NotesAndCommentsState extends State<NotesAndComments> {
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: AppTheme.backgroundSecondary,
+        color: AppTheme.getBackgroundSecondary(context),
         borderRadius: BorderRadius.circular(16),
       ),
       child: Column(
         children: [
-          Icon(Icons.chat_bubble_outline, size: 32, color: AppTheme.primaryColorConst),
+          Icon(Icons.chat_bubble_outline, size: 32, color: AppTheme.getPrimaryColor(context)),
           const SizedBox(height: 12),
           Text(
-            'No notes yet',
-            style: TextStyle(fontWeight: FontWeight.w600, color: AppTheme.textPrimary),
+            'No tasks yet',
+            style: TextStyle(fontWeight: FontWeight.w600, color: AppTheme.getTextPrimary(context)),
           ),
           const SizedBox(height: 4),
           Text(
-            'Start the conversation by sharing your first note.',
-            style: TextStyle(color: AppTheme.textSecondary),
+            'Start the conversation by sharing your first task.',
+            style: TextStyle(color: AppTheme.getTextSecondary(context)),
             textAlign: TextAlign.center,
           ),
         ],
@@ -449,7 +631,7 @@ class NotesAndCommentsState extends State<NotesAndComments> {
     return Container(
       padding: const EdgeInsets.all(32),
       decoration: BoxDecoration(
-        color: AppTheme.backgroundSecondary,
+        color: AppTheme.getBackgroundSecondary(context),
         borderRadius: BorderRadius.circular(20),
       ),
       child: Column(
@@ -458,19 +640,19 @@ class NotesAndCommentsState extends State<NotesAndComments> {
           const SizedBox(height: 12),
           Text(
             'Something went wrong',
-            style: TextStyle(fontWeight: FontWeight.w600, color: AppTheme.textPrimary),
+            style: TextStyle(fontWeight: FontWeight.w600, color: AppTheme.getTextPrimary(context)),
           ),
           const SizedBox(height: 8),
           Text(
             _errorMessage ?? 'Please try again later.',
             textAlign: TextAlign.center,
-            style: TextStyle(color: AppTheme.textSecondary),
+            style: TextStyle(color: AppTheme.getTextSecondary(context)),
           ),
           const SizedBox(height: 16),
           ElevatedButton(
             onPressed: () => getNotes(),
             style: ElevatedButton.styleFrom(
-              backgroundColor: AppTheme.primaryColorConst,
+              backgroundColor: AppTheme.getPrimaryColor(context),
               foregroundColor: Colors.white,
             ),
             child: const Text('Retry'),
@@ -485,21 +667,22 @@ class NotesAndCommentsState extends State<NotesAndComments> {
     final when = note[1].toString();
     final author = note[2].toString();
     final attachment = note[4].toString();
+    final attachmentUrl = "https://office1.buildahome.in/files/$attachment";
 
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppTheme.backgroundSecondary,
+        color: AppTheme.getBackgroundSecondary(context),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppTheme.primaryColorConst.withOpacity(0.08)),
+        border: Border.all(color: AppTheme.getPrimaryColor(context).withOpacity(0.08)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              const Icon(Icons.account_circle, color: AppTheme.primaryColorConst),
+              Icon(Icons.account_circle, color: AppTheme.getPrimaryColor(context)),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
@@ -509,7 +692,7 @@ class NotesAndCommentsState extends State<NotesAndComments> {
               ),
               Text(
                 when,
-                style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+                style: TextStyle(color: AppTheme.getTextSecondary(context), fontSize: 12),
               ),
             ],
           ),
@@ -520,11 +703,59 @@ class NotesAndCommentsState extends State<NotesAndComments> {
           ),
           if (attachment != '0') ...[
             const SizedBox(height: 12),
-            OutlinedButton.icon(
-              onPressed: () => _launchURL("https://app.buildahome.in/files/$attachment"),
-              icon: const Icon(Icons.attach_file),
-              label: const Text('View attachment'),
-            ),
+            if (_isImage(attachment))
+              GestureDetector(
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => FullScreenImage(NetworkImage(attachmentUrl)),
+                    ),
+                  );
+                },
+                child: Hero(
+                  tag: attachmentUrl,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: CachedNetworkImage(
+                      imageUrl: attachmentUrl,
+                      placeholder: (context, url) => Container(
+                        width: 150,
+                        height: 150,
+                        decoration: BoxDecoration(
+                          color: AppTheme.getBackgroundPrimaryLight(context),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Center(
+                          child: SizedBox(
+                            width: 24,
+                            height: 24,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.getPrimaryColor(context)),
+                          ),
+                        ),
+                      ),
+                      errorWidget: (context, url, error) => Container(
+                        width: 150,
+                        height: 150,
+                        decoration: BoxDecoration(
+                          color: AppTheme.getBackgroundPrimaryLight(context),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Icon(Icons.error_outline, color: Colors.redAccent),
+                      ),
+                      width: 150,
+                      height: 150,
+                      fit: BoxFit.cover,
+                    ),
+                  ),
+                ),
+              )
+            else
+              OutlinedButton.icon(
+                onPressed: () => _launchURL(attachmentUrl),
+                icon: const Icon(Icons.attach_file),
+                label: const Text('View attachment'),
+              ),
           ],
         ],
       ),

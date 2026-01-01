@@ -22,10 +22,14 @@ class FullScreenMessage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppTheme.backgroundPrimary,
+      backgroundColor: AppTheme.getBackgroundPrimary(context),
       appBar: AppBar(
-        title: Text(title),
-        backgroundColor: AppTheme.backgroundSecondary,
+        title: Text(
+          title,
+          style: TextStyle(color: AppTheme.getTextPrimary(context)),
+        ),
+        backgroundColor: AppTheme.getBackgroundSecondary(context),
+        iconTheme: IconThemeData(color: AppTheme.getTextPrimary(context)),
         leading: IconButton(
           icon: Icon(Icons.arrow_back),
           onPressed: () => Navigator.pop(context),
@@ -53,7 +57,7 @@ class FullScreenMessage extends StatelessWidget {
               Text(
                 title,
                 style: TextStyle(
-                  color: AppTheme.textPrimary,
+                  color: AppTheme.getTextPrimary(context),
                   fontSize: 24,
                   fontWeight: FontWeight.bold,
                 ),
@@ -63,7 +67,7 @@ class FullScreenMessage extends StatelessWidget {
               Text(
                 message,
                 style: TextStyle(
-                  color: AppTheme.textSecondary,
+                  color: AppTheme.getTextSecondary(context),
                   fontSize: 16,
                 ),
                 textAlign: TextAlign.center,
@@ -82,14 +86,14 @@ class FullScreenMessage extends StatelessWidget {
                           begin: Alignment.topLeft,
                           end: Alignment.bottomRight,
                           colors: [
-                            AppTheme.primaryColorConst,
+                            AppTheme.getPrimaryColor(context),
                             AppTheme.primaryColorConstDark,
                           ],
                         ),
                         borderRadius: BorderRadius.circular(16),
                         boxShadow: [
                           BoxShadow(
-                            color: AppTheme.primaryColorConst.withOpacity(0.3),
+                            color: AppTheme.getPrimaryColor(context).withOpacity(0.3),
                             blurRadius: 12,
                             offset: Offset(0, 4),
                           ),

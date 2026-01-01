@@ -1,43 +1,56 @@
 import 'package:flutter/material.dart';
 
 class AppTheme {
-  // Dark grey and primaryColorConst color scheme
-  static const Color backgroundPrimary = Color.fromARGB(255, 234, 234, 234); // Primary dark grey
-  static const Color backgroundSecondary = Color.fromARGB(255, 211, 211, 211); // Secondary dark grey
-  static const Color backgroundPrimaryLight = Color.fromARGB(255, 229, 229, 229); // Lighter dark grey
-  static const Color primaryColorConst = Color(0xFF001489); // Primary primaryColorConst
-  static const Color primaryColorConstDark = Color(0xFF08254f); // Darker primaryColorConst#001489
-  static const Color primaryColorConstLight = Color(0xFF08254f); // Lighter primaryColorConst#08254f
-  static const Color textPrimary = Color.fromARGB(255, 27, 27, 27); // Light text for dark background
-  static const Color textSecondary = Color.fromARGB(255, 40, 40, 40); // Secondary text
-  static const Color onPrimaryColorConst = Color.fromARGB(255, 120, 120, 120); // Tertiary text
-  static const Color onSecondaryColorConst = Color.fromARGB(255, 120, 120, 120); // Tertiary text
-  static const Color onSurfaceColorConst = Color.fromARGB(255, 120, 120, 120); // Tertiary text
-  static const Color onBackgroundColorConst = Color.fromARGB(255, 120, 120, 120); // Tertiary text
+  // Light theme colors
+  static const Color lightBackgroundPrimary = Color.fromARGB(255, 234, 234, 234);
+  static const Color lightBackgroundSecondary = Color.fromARGB(255, 211, 211, 211);
+  static const Color lightBackgroundPrimaryLight = Color.fromARGB(255, 229, 229, 229);
+  static const Color lightTextPrimary = Color.fromARGB(255, 27, 27, 27);
+  static const Color lightTextSecondary = Color.fromARGB(255, 40, 40, 40);
   
-  static ThemeData get darkTheme {
+  // Dark theme colors
+  static const Color darkBackgroundPrimary = Color.fromARGB(255, 18, 18, 18);
+  static const Color darkBackgroundSecondary = Color.fromARGB(255, 30, 30, 30);
+  static const Color darkBackgroundPrimaryLight = Color.fromARGB(255, 40, 40, 40);
+  static const Color darkTextPrimary = Color.fromARGB(255, 255, 255, 255);
+  static const Color darkTextSecondary = Color.fromARGB(255, 200, 200, 200);
+  
+  // Primary color - dark indigo that works well in both light and dark modes
+  static const Color primaryColorConst = Color.fromARGB(255, 46, 60, 135); // Dark indigo (#3F51B5)
+  static const Color primaryColorConstDark = Color.fromARGB(255, 44, 54, 119); // Darker indigo for dark mode
+  static const Color primaryColorConstLight = Color.fromARGB(255, 92, 107, 192); // Lighter indigo for light mode
+  
+  // Legacy colors for backward compatibility (will use theme-aware versions)
+  static Color get backgroundPrimary => lightBackgroundPrimary;
+  static Color get backgroundSecondary => lightBackgroundSecondary;
+  static Color get backgroundPrimaryLight => lightBackgroundPrimaryLight;
+  static Color get textPrimary => lightTextPrimary;
+  static Color get textSecondary => lightTextSecondary;
+  
+  static ThemeData getLightTheme() {
     return ThemeData(
+      brightness: Brightness.light,
       primaryColor: primaryColorConst,
-      scaffoldBackgroundColor: backgroundPrimary,
+      scaffoldBackgroundColor: lightBackgroundPrimary,
       fontFamily: 'Mulish-Regular',
       
-      colorScheme: ColorScheme.dark(
+      colorScheme: ColorScheme.light(
         primary: primaryColorConst,
-        secondary: primaryColorConstDark,
-        surface: backgroundSecondary,
-        background: backgroundPrimary,
-        onPrimary: onPrimaryColorConst,
-        onSecondary: onSecondaryColorConst,
-        onSurface: onSurfaceColorConst,
-        onBackground: onBackgroundColorConst,
+        secondary: primaryColorConstLight,
+        surface: lightBackgroundSecondary,
+        background: lightBackgroundPrimary,
+        onPrimary: Colors.white,
+        onSecondary: Colors.white,
+        onSurface: lightTextPrimary,
+        onBackground: lightTextPrimary,
       ),
 
       appBarTheme: AppBarTheme(
-        backgroundColor: backgroundSecondary,
+        backgroundColor: lightBackgroundSecondary,
         elevation: 0,
-        iconTheme: IconThemeData(color: textPrimary),
+        iconTheme: IconThemeData(color: lightTextPrimary),
         titleTextStyle: TextStyle(
-          color: textPrimary,
+          color: lightTextPrimary,
           fontSize: 18,
           fontWeight: FontWeight.w600,
           fontFamily: 'Mulish-Regular',
@@ -45,7 +58,7 @@ class AppTheme {
       ),
 
       cardTheme: CardThemeData(
-        color: backgroundSecondary,
+        color: lightBackgroundSecondary,
         elevation: 4,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
@@ -66,7 +79,7 @@ class AppTheme {
 
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: backgroundPrimaryLight,
+        fillColor: lightBackgroundPrimaryLight,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
           borderSide: BorderSide(color: primaryColorConst.withOpacity(0.3)),
@@ -79,26 +92,146 @@ class AppTheme {
           borderRadius: BorderRadius.circular(12),
           borderSide: BorderSide(color: primaryColorConst, width: 2),
         ),
-        labelStyle: TextStyle(color: textSecondary),
-        hintStyle: TextStyle(color: textSecondary),
+        labelStyle: TextStyle(color: lightTextSecondary),
+        hintStyle: TextStyle(color: lightTextSecondary),
         contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 16),
       ),
 
       textTheme: TextTheme(
-        headlineLarge: TextStyle(color: textPrimary, fontSize: 28, fontWeight: FontWeight.bold),
-        headlineMedium: TextStyle(color: textPrimary, fontSize: 24, fontWeight: FontWeight.bold),
-        headlineSmall: TextStyle(color: textPrimary, fontSize: 20, fontWeight: FontWeight.w600),
-        bodyLarge: TextStyle(color: textPrimary, fontSize: 16),
-        bodyMedium: TextStyle(color: textPrimary, fontSize: 14),
-        bodySmall: TextStyle(color: textSecondary, fontSize: 12),
+        headlineLarge: TextStyle(color: lightTextPrimary, fontSize: 28, fontWeight: FontWeight.bold),
+        headlineMedium: TextStyle(color: lightTextPrimary, fontSize: 24, fontWeight: FontWeight.bold),
+        headlineSmall: TextStyle(color: lightTextPrimary, fontSize: 20, fontWeight: FontWeight.w600),
+        bodyLarge: TextStyle(color: lightTextPrimary, fontSize: 16),
+        bodyMedium: TextStyle(color: lightTextPrimary, fontSize: 14),
+        bodySmall: TextStyle(color: lightTextSecondary, fontSize: 12),
       ),
 
       iconTheme: IconThemeData(
-        color: textPrimary,
+        color: lightTextPrimary,
       ),
 
       dividerColor: primaryColorConst.withOpacity(0.3),
     );
+  }
+  
+  static ThemeData getDarkTheme() {
+    return ThemeData(
+      brightness: Brightness.dark,
+      primaryColor: primaryColorConst,
+      scaffoldBackgroundColor: darkBackgroundPrimary,
+      fontFamily: 'Mulish-Regular',
+      
+      colorScheme: ColorScheme.dark(
+        primary: primaryColorConst,
+        secondary: primaryColorConstLight,
+        surface: darkBackgroundSecondary,
+        background: darkBackgroundPrimary,
+        onPrimary: Colors.white,
+        onSecondary: Colors.white,
+        onSurface: darkTextPrimary,
+        onBackground: darkTextPrimary,
+      ),
+
+      appBarTheme: AppBarTheme(
+        backgroundColor: darkBackgroundSecondary,
+        elevation: 0,
+        iconTheme: IconThemeData(color: darkTextPrimary),
+        titleTextStyle: TextStyle(
+          color: darkTextPrimary,
+          fontSize: 18,
+          fontWeight: FontWeight.w600,
+          fontFamily: 'Mulish-Regular',
+        ),
+      ),
+
+      cardTheme: CardThemeData(
+        color: darkBackgroundSecondary,
+        elevation: 4,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+      ),
+
+      elevatedButtonTheme: ElevatedButtonThemeData(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: primaryColorConst,
+          foregroundColor: Colors.white,
+          elevation: 2,
+          padding: EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+      ),
+
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: darkBackgroundPrimaryLight,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: primaryColorConst.withOpacity(0.5)),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: primaryColorConst.withOpacity(0.5)),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: primaryColorConst, width: 2),
+        ),
+        labelStyle: TextStyle(color: darkTextSecondary),
+        hintStyle: TextStyle(color: darkTextSecondary),
+        contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+      ),
+
+      textTheme: TextTheme(
+        headlineLarge: TextStyle(color: darkTextPrimary, fontSize: 28, fontWeight: FontWeight.bold),
+        headlineMedium: TextStyle(color: darkTextPrimary, fontSize: 24, fontWeight: FontWeight.bold),
+        headlineSmall: TextStyle(color: darkTextPrimary, fontSize: 20, fontWeight: FontWeight.w600),
+        bodyLarge: TextStyle(color: darkTextPrimary, fontSize: 16),
+        bodyMedium: TextStyle(color: darkTextPrimary, fontSize: 14),
+        bodySmall: TextStyle(color: darkTextSecondary, fontSize: 12),
+      ),
+
+      iconTheme: IconThemeData(
+        color: darkTextPrimary,
+      ),
+
+      dividerColor: primaryColorConst.withOpacity(0.5),
+    );
+  }
+  
+  // Legacy getter for backward compatibility
+  static ThemeData get darkTheme => getLightTheme();
+  
+  // Helper methods to get theme-aware colors from context
+  static Color getBackgroundPrimary(BuildContext context) {
+    final brightness = Theme.of(context).brightness;
+    return brightness == Brightness.dark ? darkBackgroundPrimary : lightBackgroundPrimary;
+  }
+  
+  static Color getBackgroundSecondary(BuildContext context) {
+    final brightness = Theme.of(context).brightness;
+    return brightness == Brightness.dark ? darkBackgroundSecondary : lightBackgroundSecondary;
+  }
+  
+  static Color getBackgroundPrimaryLight(BuildContext context) {
+    final brightness = Theme.of(context).brightness;
+    return brightness == Brightness.dark ? darkBackgroundPrimaryLight : lightBackgroundPrimaryLight;
+  }
+  
+  static Color getTextPrimary(BuildContext context) {
+    final brightness = Theme.of(context).brightness;
+    return brightness == Brightness.dark ? darkTextPrimary : lightTextPrimary;
+  }
+  
+  static Color getTextSecondary(BuildContext context) {
+    final brightness = Theme.of(context).brightness;
+    return brightness == Brightness.dark ? darkTextSecondary : lightTextSecondary;
+  }
+  
+  static Color getPrimaryColor(BuildContext context) {
+    return Theme.of(context).colorScheme.primary;
   }
 
   // Grid card decoration

@@ -8,6 +8,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import 'app_theme.dart';
 import 'services/data_provider.dart';
+import 'widgets/dark_mode_toggle.dart';
 
 class Documents extends StatefulWidget {
   @override
@@ -46,9 +47,9 @@ class DocumentObjectState extends State<DocumentObject> {
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
       decoration: BoxDecoration(
-        color: AppTheme.backgroundSecondary,
+        color: AppTheme.getBackgroundSecondary(context),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppTheme.primaryColorConst.withOpacity(0.08)),
+        border: Border.all(color: AppTheme.getPrimaryColor(context).withOpacity(0.08)),
       ),
       child: Material(
         color: Colors.transparent,
@@ -71,22 +72,22 @@ class DocumentObjectState extends State<DocumentObject> {
                         Container(
                           padding: const EdgeInsets.all(8),
                           decoration: BoxDecoration(
-                            color: AppTheme.primaryColorConst.withOpacity(0.12),
+                            color: AppTheme.getPrimaryColor(context).withOpacity(0.12),
                             borderRadius: BorderRadius.circular(10),
                           ),
-                          child: const Icon(
+                          child: Icon(
                             Icons.folder,
                             size: 20,
-                            color: AppTheme.primaryColorConst,
+                            color: AppTheme.getPrimaryColor(context),
                           ),
                         ),
                         const SizedBox(width: 12),
                         Text(
                           parent.toString(),
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.w600,
-                            color: AppTheme.textPrimary,
+                            color: AppTheme.getTextPrimary(context),
                           ),
                         ),
                       ],
@@ -94,9 +95,9 @@ class DocumentObjectState extends State<DocumentObject> {
                     AnimatedRotation(
                       turns: vis ? 0.5 : 0.0,
                       duration: const Duration(milliseconds: 250),
-                      child: const Icon(
+                      child: Icon(
                         Icons.expand_more,
-                        color: AppTheme.textPrimary,
+                        color: AppTheme.getTextPrimary(context),
                       ),
                     ),
                   ],
@@ -128,37 +129,37 @@ class DocumentObjectState extends State<DocumentObject> {
                                             return const AlertDialog(content: Text("Loading..."));
                                           });
                                       Navigator.of(context, rootNavigator: true).pop();
-                                      _launchURL("https://app.buildahome.in/team/Drawings/${children[x]}");
+                                      _launchURL("https://office.buildahome.in/files/${children[x]['link']}");
                                     },
                                     child: Container(
                                       padding: const EdgeInsets.all(16),
                                       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                                       decoration: BoxDecoration(
-                                        color: AppTheme.backgroundPrimary,
+                                        color: AppTheme.getBackgroundPrimaryLight(context),
                                         borderRadius: BorderRadius.circular(12),
                                       ),
                                       child: Row(
                                         children: [
-                                          const Icon(
+                                          Icon(
                                             Icons.description,
                                             size: 20,
-                                            color: AppTheme.primaryColorConst,
+                                            color: AppTheme.getPrimaryColor(context),
                                           ),
                                           const SizedBox(width: 12),
                                           Expanded(
                                             child: Text(
-                                              children[x].toString(),
-                                              style: const TextStyle(
-                                                color: AppTheme.textPrimary,
+                                              children[x]['name'].toString() == 'null' ? children[x]['link'].toString() : children[x]['name'].toString(),
+                                              style: TextStyle(
+                                                color: AppTheme.getTextPrimary(context),
                                                 fontWeight: FontWeight.w600,
                                                 fontSize: 14,
                                               ),
                                             ),
                                           ),
-                                          const Icon(
+                                          Icon(
                                             Icons.open_in_new,
                                             size: 18,
-                                            color: AppTheme.primaryColorConst,
+                                            color: AppTheme.getPrimaryColor(context),
                                           ),
                                         ],
                                       ),
@@ -254,7 +255,7 @@ class DocumentsState extends State<Documents> {
 
   Future<void> _fetchDocumentsFromApi(String projectId, DataProvider dataProvider, String? userRole, int requestId) async {
     try {
-      final response = await http.get(Uri.parse('https://office.buildahome.in/API/view_all_documents?id=$projectId'))
+      final response = await http.get(Uri.parse('https://office1.buildahome.in/API/view_all_documents?id=$projectId'))
           .timeout(_requestTimeout);
       
       if (response.statusCode != 200) {
@@ -274,6 +275,7 @@ class DocumentsState extends State<Documents> {
       }
 
       final data = jsonDecode(response.body);
+      print('data: $data');
       
       // Update cache for non-Client users
       if (userRole != null && userRole != 'Client') {
@@ -296,17 +298,38 @@ class DocumentsState extends State<Documents> {
     final localSubFolders = <String, List<dynamic>>{};
     final localDrawingIds = <String, List<dynamic>>{};
 
+    // Check if user is site engineer
+    final isSiteEngineer = userRole != null && 
+        userRole.toLowerCase().trim() == 'site engineer';
+
     if (data != null && data is List) {
       entries = data;
       for (int i = 0; i < entries.length; i++) {
-        final folder = entries[i]['folder']?.toString() ?? '';
+        var folder = entries[i]['folder']?.toString() ?? '';
         if (folder.trim().isEmpty) continue;
+        print('folder: $folder');
+        
+        // Normalize folder name: merge "Agreement" into "Agreements"
+        if (folder.toLowerCase().trim() == 'agreement' || folder.toLowerCase() == 'agreements') {
+          print('changed folder: $folder to Agreements');
+          folder = 'Agreements';
+        }
+        
+        // Filter out folders with "agreements" or "receipts" in name for site engineer
+        if (isSiteEngineer) {
+          final folderLower = folder.toLowerCase();
+          if (folderLower.contains('agreement') || folderLower.contains('receipts')) {
+            print('Filtered out folder for site engineer: $folder');
+            continue;
+          }
+        }
+        
         if (!localFolders.contains(folder)) {
           localFolders.add(folder);
         }
         localSubFolders.putIfAbsent(folder, () => []);
         localDrawingIds.putIfAbsent(folder, () => []);
-        localSubFolders[folder]!.add(entries[i]["name"]);
+        localSubFolders[folder]!.add({"name": entries[i]["pdf"] == 'null' ? entries[i]["name"] : entries[i]["pdf"], "link": entries[i]["name"]});
         localDrawingIds[folder]!.add(entries[i]["doc_id"]);
       }
     }
@@ -332,9 +355,9 @@ class DocumentsState extends State<Documents> {
     final theme = Theme.of(context);
     final canPop = Navigator.of(context).canPop();
     return Scaffold(
-      backgroundColor: AppTheme.backgroundPrimary,
+      backgroundColor: AppTheme.getBackgroundPrimary(context),
       appBar: AppBar(
-        backgroundColor: AppTheme.backgroundSecondary,
+        backgroundColor: AppTheme.getBackgroundSecondary(context),
         automaticallyImplyLeading: canPop,
         leading: canPop
             ? IconButton(
@@ -346,10 +369,14 @@ class DocumentsState extends State<Documents> {
           'Documents',
           style: theme.textTheme.headlineSmall?.copyWith(fontSize: 20),
         ),
+        actions: [
+          DarkModeToggle(showLabel: false),
+          SizedBox(width: 8),
+        ],
       ),
       body: SafeArea(
         child: RefreshIndicator(
-          color: AppTheme.primaryColorConst,
+          color: AppTheme.getPrimaryColor(context),
           onRefresh: () => call(showLoader: false),
           child: ListView(
             physics: const AlwaysScrollableScrollPhysics(),
@@ -362,7 +389,7 @@ class DocumentsState extends State<Documents> {
               const SizedBox(height: 8),
               Text(
                 'Access sanctioned drawings, approvals and shared files in one place.',
-                style: theme.textTheme.bodyMedium?.copyWith(color: AppTheme.textSecondary),
+                style: theme.textTheme.bodyMedium?.copyWith(color: AppTheme.getTextSecondary(context)),
               ),
               const SizedBox(height: 24),
               if (_errorMessage != null && folders.isEmpty)
@@ -420,7 +447,7 @@ class DocumentsState extends State<Documents> {
       margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppTheme.backgroundSecondary,
+        color: AppTheme.getBackgroundSecondary(context),
         borderRadius: BorderRadius.circular(16),
       ),
       child: Column(
@@ -429,13 +456,13 @@ class DocumentsState extends State<Documents> {
           Container(
             width: 160,
             height: 16,
-            color: AppTheme.backgroundPrimaryLight,
+            color: AppTheme.getBackgroundPrimaryLight(context),
           ),
           const SizedBox(height: 12),
           Container(
             width: double.infinity,
             height: 14,
-            color: AppTheme.backgroundPrimaryLight,
+            color: AppTheme.getBackgroundPrimaryLight(context),
           ),
         ],
       ),
@@ -446,22 +473,22 @@ class DocumentsState extends State<Documents> {
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: AppTheme.backgroundSecondary,
+        color: AppTheme.getBackgroundSecondary(context),
         borderRadius: BorderRadius.circular(16),
       ),
       child: Column(
         children: [
-          Icon(Icons.inventory_2_outlined, color: AppTheme.primaryColorConst, size: 32),
+          Icon(Icons.inventory_2_outlined, color: AppTheme.getPrimaryColor(context), size: 32),
           const SizedBox(height: 12),
           Text(
             'No documents shared yet',
-            style: const TextStyle(fontWeight: FontWeight.w600, color: AppTheme.textPrimary),
+            style: TextStyle(fontWeight: FontWeight.w600, color: AppTheme.getTextPrimary(context)),
           ),
           const SizedBox(height: 4),
           Text(
             'Project files uploaded by the team will appear here automatically.',
             textAlign: TextAlign.center,
-            style: TextStyle(color: AppTheme.textSecondary),
+            style: TextStyle(color: AppTheme.getTextSecondary(context)),
           ),
         ],
       ),
@@ -472,7 +499,7 @@ class DocumentsState extends State<Documents> {
     return Container(
       padding: const EdgeInsets.all(32),
       decoration: BoxDecoration(
-        color: AppTheme.backgroundSecondary,
+        color: AppTheme.getBackgroundSecondary(context),
         borderRadius: BorderRadius.circular(20),
       ),
       child: Column(
@@ -481,19 +508,19 @@ class DocumentsState extends State<Documents> {
           const SizedBox(height: 12),
           Text(
             'Something went wrong',
-            style: TextStyle(fontWeight: FontWeight.w600, color: AppTheme.textPrimary),
+            style: TextStyle(fontWeight: FontWeight.w600, color: AppTheme.getTextPrimary(context)),
           ),
           const SizedBox(height: 8),
           Text(
             _errorMessage ?? 'Please try again later.',
             textAlign: TextAlign.center,
-            style: TextStyle(color: AppTheme.textSecondary),
+            style: TextStyle(color: AppTheme.getTextSecondary(context)),
           ),
           const SizedBox(height: 16),
           ElevatedButton(
             onPressed: () => call(),
             style: ElevatedButton.styleFrom(
-              backgroundColor: AppTheme.primaryColorConst,
+              backgroundColor: AppTheme.getPrimaryColor(context),
               foregroundColor: Colors.white,
             ),
             child: const Text('Retry'),

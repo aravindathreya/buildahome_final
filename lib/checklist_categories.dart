@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
 import 'app_theme.dart';
+import 'widgets/dark_mode_toggle.dart';
 import 'checklist_items.dart';
 
 class ChecklistCategoriesLayout extends StatelessWidget {
@@ -13,9 +14,13 @@ class ChecklistCategoriesLayout extends StatelessWidget {
   Widget build(BuildContext context) {
     final canPop = Navigator.of(context).canPop();
     return Scaffold(
-      backgroundColor: AppTheme.backgroundPrimary,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: AppTheme.backgroundSecondary,
+        backgroundColor: Theme.of(context).colorScheme.surface,
+        actions: [
+          DarkModeToggle(showLabel: false),
+          SizedBox(width: 8),
+        ],
         automaticallyImplyLeading: canPop,
         leading: canPop
             ? IconButton(
@@ -76,7 +81,7 @@ class ChecklistCategoriesState extends State<ChecklistCategories> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return RefreshIndicator(
-      color: AppTheme.primaryColorConst,
+      color: AppTheme.getPrimaryColor(context),
       onRefresh: call,
       child: ListView(
         padding: const EdgeInsets.fromLTRB(16, 24, 16, 32),
@@ -88,7 +93,7 @@ class ChecklistCategoriesState extends State<ChecklistCategories> {
           const SizedBox(height: 8),
           Text(
             'Checklists keep track of work-front readiness across project stages.',
-            style: theme.textTheme.bodyMedium?.copyWith(color: AppTheme.textSecondary),
+            style: theme.textTheme.bodyMedium?.copyWith(color: AppTheme.getTextSecondary(context)),
           ),
           const SizedBox(height: 24),
           if (_isLoading && categories.isEmpty)
@@ -106,19 +111,19 @@ class ChecklistCategoriesState extends State<ChecklistCategories> {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
-        color: AppTheme.backgroundSecondary,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppTheme.primaryColorConst.withOpacity(0.08)),
+        border: Border.all(color: AppTheme.getPrimaryColor(context).withOpacity(0.08)),
       ),
       child: ListTile(
         onTap: () {
           Navigator.push(context, MaterialPageRoute(builder: (context) => ChecklistItemsLayout(category)));
         },
-        leading: const Icon(Icons.check_circle_outline, color: AppTheme.primaryColorConst),
+        leading: Icon(Icons.check_circle_outline, color: AppTheme.getPrimaryColor(context)),
         trailing: const Icon(Icons.arrow_forward_ios, size: 16),
         title: Text(
           category,
-          style: const TextStyle(fontWeight: FontWeight.w600, color: AppTheme.textPrimary),
+          style: TextStyle(fontWeight: FontWeight.w600, color: AppTheme.getTextPrimary(context)),
         ),
       ),
     );
@@ -129,7 +134,7 @@ class ChecklistCategoriesState extends State<ChecklistCategories> {
       margin: const EdgeInsets.only(bottom: 12),
       height: 64,
       decoration: BoxDecoration(
-        color: AppTheme.backgroundSecondary,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(12),
       ),
     );
@@ -139,16 +144,16 @@ class ChecklistCategoriesState extends State<ChecklistCategories> {
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: AppTheme.backgroundSecondary,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(16),
       ),
       child: Column(
         children: [
-          Icon(Icons.fact_check_outlined, color: AppTheme.primaryColorConst, size: 32),
+          Icon(Icons.fact_check_outlined, color: AppTheme.getPrimaryColor(context), size: 32),
           const SizedBox(height: 12),
-          const Text(
+          Text(
             'No checklist categories available',
-            style: TextStyle(fontWeight: FontWeight.w600, color: AppTheme.textPrimary),
+            style: TextStyle(fontWeight: FontWeight.w600, color: AppTheme.getTextPrimary(context)),
             textAlign: TextAlign.center,
           ),
         ],

@@ -139,6 +139,8 @@ class TaskItemWidget extends State<TaskItem> with SingleTickerProviderStateMixin
   var note;
   var gradient;
   var height;
+  var _startDate;
+  var _endDate;
 
   @override
   void initState() {
@@ -229,7 +231,8 @@ class TaskItemWidget extends State<TaskItem> with SingleTickerProviderStateMixin
     });
   }
 
-  TaskItemWidget(this._taskName, _icon, _startDate, _endDate, this._color, this.height, this._paymentPercentage, this.status, this.note);
+  TaskItemWidget(this._taskName, _icon, this._startDate, this._endDate, this._color, this.height, this._paymentPercentage,
+      this.status, this.note);
 
   @override
   Widget build(BuildContext context) {
@@ -297,7 +300,23 @@ class TaskItemWidget extends State<TaskItem> with SingleTickerProviderStateMixin
                           child: Text(
                             this.note,
                             style: TextStyle(color: this._textColor, fontWeight: FontWeight.bold),
-                          ))
+                          )),
+                      if ((this._startDate != null && this._startDate.toString().isNotEmpty && this._startDate.toString() != 'null') ||
+                          (this._endDate != null && this._endDate.toString().isNotEmpty && this._endDate.toString() != 'null'))
+                        Container(
+                          alignment: Alignment.centerLeft,
+                          padding: EdgeInsets.only(top: 8),
+                          child: Row(
+                            children: [
+                              Icon(Icons.calendar_today, size: 14, color: this._textColor),
+                              SizedBox(width: 8),
+                              Text(
+                                "${this._startDate.toString() != 'null' ? this._startDate : ''} ${this._startDate.toString() != 'null' && this._endDate.toString() != 'null' ? ' - ' : ''} ${this._endDate.toString() != 'null' ? this._endDate : ''}",
+                                style: TextStyle(color: this._textColor, fontWeight: FontWeight.bold),
+                              ),
+                            ],
+                          ),
+                        ),
                     ],
                   )),
             ]),

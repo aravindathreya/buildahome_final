@@ -20,10 +20,14 @@ class FullScreenProgress extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppTheme.backgroundPrimary,
+      backgroundColor: AppTheme.getBackgroundPrimary(context),
       appBar: AppBar(
-        title: Text(title),
-        backgroundColor: AppTheme.backgroundSecondary,
+        title: Text(
+          title,
+          style: TextStyle(color: AppTheme.getTextPrimary(context)),
+        ),
+        backgroundColor: AppTheme.getBackgroundSecondary(context),
+        iconTheme: IconThemeData(color: AppTheme.getTextPrimary(context)),
         automaticallyImplyLeading: error != null,
         leading: error != null
             ? IconButton(
@@ -42,20 +46,20 @@ class FullScreenProgress extends StatelessWidget {
                 Container(
                   padding: EdgeInsets.all(24),
                   decoration: BoxDecoration(
-                    color: AppTheme.primaryColorConst.withOpacity(0.1),
+                    color: AppTheme.getPrimaryColor(context).withOpacity(0.1),
                     shape: BoxShape.circle,
                   ),
                   child: CircularProgressIndicator(
                     value: progress > 0 ? progress : null,
                     strokeWidth: 4,
-                    valueColor: AlwaysStoppedAnimation<Color>(AppTheme.primaryColorConst),
+                    valueColor: AlwaysStoppedAnimation<Color>(AppTheme.getPrimaryColor(context)),
                   ),
                 ),
                 SizedBox(height: 32),
                 Text(
                   message,
                   style: TextStyle(
-                    color: AppTheme.textPrimary,
+                    color: AppTheme.getTextPrimary(context),
                     fontSize: 18,
                     fontWeight: FontWeight.w600,
                   ),
@@ -68,8 +72,8 @@ class FullScreenProgress extends StatelessWidget {
                     padding: EdgeInsets.symmetric(horizontal: 16),
                     child: LinearProgressIndicator(
                       value: progress,
-                      backgroundColor: AppTheme.backgroundPrimaryLight,
-                      valueColor: AlwaysStoppedAnimation<Color>(AppTheme.primaryColorConst),
+                      backgroundColor: AppTheme.getBackgroundPrimaryLight(context),
+                      valueColor: AlwaysStoppedAnimation<Color>(AppTheme.getPrimaryColor(context)),
                       minHeight: 8,
                     ),
                   ),
@@ -77,7 +81,7 @@ class FullScreenProgress extends StatelessWidget {
                   Text(
                     "${(progress * 100).toStringAsFixed(0)}%",
                     style: TextStyle(
-                      color: AppTheme.textSecondary,
+                      color: AppTheme.getTextSecondary(context),
                       fontSize: 16,
                       fontWeight: FontWeight.w500,
                     ),
@@ -102,7 +106,7 @@ class FullScreenProgress extends StatelessWidget {
                 Text(
                   errorMessage ?? "An error occurred during upload",
                   style: TextStyle(
-                    color: AppTheme.textSecondary,
+                    color: AppTheme.getTextSecondary(context),
                     fontSize: 16,
                   ),
                   textAlign: TextAlign.center,

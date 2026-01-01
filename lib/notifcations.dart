@@ -11,10 +11,7 @@ class Notifications extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Theme(
-      data: AppTheme.darkTheme,
-      child: const _NotificationsShell(),
-    );
+    return const _NotificationsShell();
   }
 }
 
@@ -24,9 +21,10 @@ class _NotificationsShell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppTheme.backgroundPrimary,
+      backgroundColor: AppTheme.getBackgroundPrimary(context),
       appBar: AppBar(
         automaticallyImplyLeading: true,
+        backgroundColor: AppTheme.getBackgroundSecondary(context),
         title: Text(
           'My Notifications',
           style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
@@ -97,7 +95,7 @@ class NotificationPageBodyState extends State<NotificationPageBody> {
       duration: const Duration(milliseconds: 250),
       child: RefreshIndicator(
         key: ValueKey(_isLoading ? 'loading' : 'loaded'),
-        color: AppTheme.primaryColorConst,
+        color: AppTheme.getPrimaryColor(context),
         onRefresh: _handleRefresh,
         child: content,
       ),
@@ -111,10 +109,10 @@ class NotificationPageBodyState extends State<NotificationPageBody> {
 
     return Container(
       decoration: BoxDecoration(
-        color: AppTheme.backgroundSecondary,
+        color: AppTheme.getBackgroundSecondary(context),
         borderRadius: BorderRadius.circular(18),
         border: Border.all(
-          color: isUnread ? AppTheme.primaryColorConst.withOpacity(0.4) : AppTheme.primaryColorConst.withOpacity(0.15),
+          color: isUnread ? AppTheme.getPrimaryColor(context).withOpacity(0.4) : AppTheme.getPrimaryColor(context).withOpacity(0.15),
         ),
         boxShadow: [
           BoxShadow(
@@ -134,13 +132,13 @@ class NotificationPageBodyState extends State<NotificationPageBody> {
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: (isUnread ? AppTheme.primaryColorConst : AppTheme.primaryColorConst.withOpacity(0.15)),
+                  color: (isUnread ? AppTheme.getPrimaryColor(context) : AppTheme.getPrimaryColor(context).withOpacity(0.15)),
                   shape: BoxShape.circle,
                 ),
                 child: Icon(
                   isUnread ? Icons.notifications_active : Icons.notifications_outlined,
                   size: 18,
-                  color: isUnread ? Colors.white : AppTheme.primaryColorConst,
+                  color: isUnread ? Colors.white : AppTheme.getPrimaryColor(context),
                 ),
               ),
               const SizedBox(width: 12),
@@ -152,7 +150,7 @@ class NotificationPageBodyState extends State<NotificationPageBody> {
                       notification['title'] ?? 'Notification',
                       style: theme.textTheme.bodyLarge?.copyWith(
                         fontWeight: FontWeight.w700,
-                        color: AppTheme.textPrimary,
+                        color: AppTheme.getTextPrimary(context),
                       ),
                     ),
                     const SizedBox(height: 6),
@@ -168,11 +166,11 @@ class NotificationPageBodyState extends State<NotificationPageBody> {
           const SizedBox(height: 12),
           Row(
             children: [
-              Icon(Icons.schedule, size: 16, color: AppTheme.textSecondary),
+              Icon(Icons.schedule, size: 16, color: AppTheme.getTextSecondary(context)),
               const SizedBox(width: 6),
               Text(
                 timestamp == '0' ? 'Just now' : timestamp,
-                style: theme.textTheme.bodySmall?.copyWith(color: AppTheme.textSecondary),
+                style: theme.textTheme.bodySmall?.copyWith(color: AppTheme.getTextSecondary(context)),
               ),
             ],
           ),
@@ -186,18 +184,18 @@ class NotificationPageBodyState extends State<NotificationPageBody> {
       physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 80),
       children: [
-        Icon(Icons.notifications_off_outlined, size: 72, color: AppTheme.textSecondary),
+        Icon(Icons.notifications_off_outlined, size: 72, color: AppTheme.getTextSecondary(context)),
         const SizedBox(height: 20),
         Text(
-          'You’re all caught up!',
+          "You're officeht up!",
           textAlign: TextAlign.center,
           style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
         ),
         const SizedBox(height: 8),
         Text(
-          'We’ll let you know when there’s something new.',
+          "We'll let you know when there's something new.",
           textAlign: TextAlign.center,
-          style: theme.textTheme.bodyMedium?.copyWith(color: AppTheme.textSecondary),
+          style: theme.textTheme.bodyMedium?.copyWith(color: AppTheme.getTextSecondary(context)),
         ),
       ],
     );

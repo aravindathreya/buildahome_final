@@ -17,7 +17,7 @@ class LoginScreenNew extends StatefulWidget {
   }
 }
 
-class LoginScreenNewState extends State<LoginScreenNew> {
+class LoginScreenNewState extends State<LoginScreenNew> with SingleTickerProviderStateMixin {
   var imageContainerShrinked = false;
   var userNamefocusNode = FocusNode();
   var passwordfocusNode = FocusNode();
@@ -30,10 +30,25 @@ class LoginScreenNewState extends State<LoginScreenNew> {
   var formBeingSubmitted = false;
   var showIncorrectCredentials = false;
   var showLoginForm = false;
+  late AnimationController _scaleAnimationController;
 
   void initState() {
     super.initState();
+    _scaleAnimationController = AnimationController(
+      vsync: this,
+      duration: Duration(milliseconds: 1500),
+    )..repeat(reverse: true);
     checkIfAlreadyLoggedIn();
+  }
+
+  @override
+  void dispose() {
+    _scaleAnimationController.dispose();
+    userNamefocusNode.dispose();
+    passwordfocusNode.dispose();
+    usernameTextController.dispose();
+    passwordTextController.dispose();
+    super.dispose();
   }
 
   checkIfAlreadyLoggedIn() async {
@@ -44,8 +59,9 @@ class LoginScreenNewState extends State<LoginScreenNew> {
     setState(() {
       if (username != null) {
         this.showLoginForm = false;
-        // Initialize data provider on app load
-        DataProvider().initializeData().then((_) {
+        // Initialize data provider on app load with force reload
+        DataProvider().initializeData(force: true).then((_) {
+          _scaleAnimationController.stop();
           if (role == "Client") {
             Navigator.pushReplacement(
               context,
@@ -59,6 +75,7 @@ class LoginScreenNewState extends State<LoginScreenNew> {
           }
         });
       } else {
+        _scaleAnimationController.stop();
         this.showLoginForm = true;
       }
     });
@@ -126,8 +143,8 @@ class LoginScreenNewState extends State<LoginScreenNew> {
           await setSharedPrefs(usernameTextController.text, jsonDecodedResponse['role'], '', '', '',
               jsonDecodedResponse["user_id"], '', jsonDecodedResponse['api_token']);
 
-          // Initialize data provider after login
-          await DataProvider().initializeData();
+          // Initialize data provider after login with force reload
+          await DataProvider().initializeData(force: true);
 
           Navigator.pushReplacement(
             context,
@@ -147,48 +164,70 @@ class LoginScreenNewState extends State<LoginScreenNew> {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            Colors.white,
-            Color.fromARGB(255, 250, 250, 255),
-          ],
-        ),
-      ),
-      height: MediaQuery.of(context).size.height,
-      width: MediaQuery.of(context).size.width,
-      child: this.showLoginForm
-          ? SingleChildScrollView(
-              child: Column(children: [
-                AnimatedContainer(
-                    height: this.imageContainerShrinked
-                        ? MediaQuery.of(context).size.height * .25
-                        : MediaQuery.of(context).size.height * .5,
-                    duration: Duration(milliseconds: 400),
-                    curve: Curves.easeInOutCubic,
-                    child: Container(
-                      padding: this.imageContainerShrinked ? EdgeInsets.only(top: 40) : EdgeInsets.all(40),
-                      child: TweenAnimationBuilder<double>(
-                        tween: Tween(begin: 0.0, end: 1.0),
-                        duration: Duration(milliseconds: 600),
-                        curve: Curves.easeOut,
-                        builder: (context, value, child) {
-                          return Transform.scale(
-                            scale: value,
-                            child: Opacity(
-                              opacity: value,
-                              child: Image(
-                                image: AssetImage('assets/images/login_illustration.png'),
-                                fit: BoxFit.contain,
-                              ),
-                            ),
-                          );
-                        },
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      body: Stack(
+        children: [
+          // Background image - always visible, edge-to-edge without cropping with opacity 0.3
+          Positioned.fill(
+            child: Opacity(
+              opacity: 0.3,
+              child: Image.asset(
+                'assets/images/Reveal Image.jpg',
+                fit: BoxFit.cover,
+                width: double.infinity,
+                height: double.infinity,
+                errorBuilder: (context, error, stackTrace) {
+                  return Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [
+                          Colors.white,
+                          Color.fromARGB(255, 250, 250, 255),
+                        ],
                       ),
-                    )),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+          // Semi-transparent overlay for better content readability
+          Positioned.fill(
+            child: Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Colors.transparent,
+                    Colors.white.withOpacity(0.7),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          // Content overlay
+          this.showLoginForm
+              ? SingleChildScrollView(
+                  child: Container(
+                    height: MediaQuery.of(context).size.height,
+                    child: Column(
+                      children: [
+                        // Spacer for image area
+                        AnimatedContainer(
+                          height: this.imageContainerShrinked
+                              ? MediaQuery.of(context).size.height * .25
+                              : MediaQuery.of(context).size.height * .5,
+                          duration: Duration(milliseconds: 400),
+                          curve: Curves.easeInOutCubic,
+                          child: Container(
+                            padding: this.imageContainerShrinked ? EdgeInsets.only(top: 40) : EdgeInsets.all(40),
+                          ),
+                        ),
+
                 AnimatedSwitcher(
                   duration: Duration(milliseconds: 300),
                   transitionBuilder: (Widget child, Animation<double> animation) {
@@ -516,37 +555,43 @@ class LoginScreenNewState extends State<LoginScreenNew> {
                       );
                     },
                   ),
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+              : Center(
+                  child: AnimatedBuilder(
+                    animation: _scaleAnimationController,
+                    builder: (context, child) {
+                      // Scale from 1.3 to 1.0 (scale out effect)
+                      final scale = 1.3 - (0.3 * _scaleAnimationController.value);
+                      return Transform.scale(
+                        scale: scale,
+                        child: Opacity(
+                          opacity: 0.9 + (0.1 * _scaleAnimationController.value),
+                          child: Container(
+                            width: MediaQuery.of(context).size.width * 0.75,
+                            height: MediaQuery.of(context).size.width * 0.6,
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                                colors: [
+                                  Colors.white,
+                                  Color.fromARGB(255, 250, 250, 255),
+                                ],
+                              ),
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
                 ),
-              ]),
-            )
-        : Center(
-            child: TweenAnimationBuilder<double>(
-              tween: Tween(begin: 0.0, end: 1.0),
-              duration: Duration(milliseconds: 700),
-              curve: Curves.easeOutCubic,
-              builder: (context, value, child) {
-                final scaleValue = 0.85 + (0.15 * value);
-                return Transform.scale(
-                  scale: scaleValue,
-                  child: Opacity(
-                    opacity: value,
-                    child: child,
-                  ),
-                );
-              },
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Image.asset(
-                    'assets/images/logo-big.png',
-                    width: MediaQuery.of(context).size.width * 0.5,
-                    fit: BoxFit.contain,
-                  ),
-                  
-                ],
-              ),
-            ),
-          ),
+        ],
+      ),
     );
   }
 }

@@ -4,7 +4,7 @@ import 'package:flutter_spinkit/flutter_spinkit.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:buildahome/UserHome.dart';
+import 'package:buildAhome/UserHome.dart';
 import 'app_theme.dart';
 import 'widgets/searchable_select.dart';
 
@@ -96,34 +96,29 @@ class ProjectsModalBody extends State<ProjectsModal> {
         
         // Project Selection Button
         InkWell(
-          onTap: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => SearchableSelect(
-                  title: 'Select Project',
-                  items: projects,
-                  itemLabel: (item) => item['name'] ?? 'Unknown',
-                  selectedItem: selectedProject,
-                  onItemSelected: (item) async {
-                    setState(() {
-                      selectedProject = item;
-                    });
-                    
-                    // Navigate to Home with selected project
-                    SharedPreferences prefs = await SharedPreferences.getInstance();
-                    await prefs.setString("project_id", item['id'].toString());
-                    await prefs.setString("client_name", item['name'].toString());
-
-                    Navigator.pushReplacement(
-                      context,
-                      MaterialPageRoute(builder: (context) => Home()),
-                    );
-                  },
-                  defaultVisibleCount: 5,
-                ),
-              ),
+          onTap: () async {
+            final result = await SearchableSelect.show(
+              context: context,
+              title: 'Select Project',
+              items: projects,
+              itemLabel: (item) => item['name'] ?? 'Unknown',
+              selectedItem: selectedProject,
             );
+            if (result != null) {
+              setState(() {
+                selectedProject = result;
+              });
+              
+              // Navigate to Home with selected project
+              SharedPreferences prefs = await SharedPreferences.getInstance();
+              await prefs.setString("project_id", result['id'].toString());
+              await prefs.setString("client_name", result['name'].toString());
+
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(builder: (context) => Home()),
+              );
+            }
           },
           borderRadius: BorderRadius.circular(16),
           child: Container(

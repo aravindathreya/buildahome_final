@@ -1,0 +1,338 @@
+# BuildAHome - Complete Feature Guide
+
+Welcome to BuildAHome! This document provides a comprehensive overview of all the features available in the app to help you stay connected with your home building project.
+
+---
+
+## 📱 Overview
+
+BuildAHome is your personal project management companion that keeps you informed and engaged throughout your home building journey. Access real-time updates, communicate with your team, track progress, manage documents, and stay on top of payments—all in one convenient mobile application.
+
+---
+
+## 🏠 Dashboard
+
+**Your Project Command Center**
+
+The Dashboard is your home screen where you'll find:
+
+- **Project Overview**: See your project's location, completion percentage, and current status at a glance
+- **Daily Updates**: Get the latest progress updates from your construction team
+- **Quick Access**: Navigate to all major features with ease
+- **Project Summary**: View key project details including project value and current phase
+
+Stay informed about what's happening with your home every day!
+
+---
+
+## 📅 Scheduler
+
+**Track Your Project Timeline**
+
+The Scheduler feature helps you:
+
+- **View Timeline**: See your project's planned schedule and milestones
+- **Task Tracking**: Monitor important tasks and their completion status
+- **Milestone Management**: Keep track of major project phases and deadlines
+- **Progress Monitoring**: Understand where your project stands in the overall timeline
+
+Never miss an important deadline or milestone!
+
+---
+
+## ✅ Tasks Management
+
+**Stay on Top of Project Tasks**
+
+Monitor and track individual tasks throughout your project:
+
+- **Task Overview**: View all tasks related to your project
+- **Task Status**: See the current status of each task (pending, in progress, completed)
+- **Task Details**: Access detailed information about each task
+- **Task Updates**: Get notified when task status changes
+- **Task Filtering**: Filter tasks by status, date, or category
+- **Real-Time Tracking**: See tasks updated in real-time as work progresses
+
+Keep track of every detail and ensure nothing falls through the cracks!
+
+---
+
+## 💰 Payments
+
+**Transparent Financial Tracking**
+
+Manage and monitor all payment-related information:
+
+- **Payment History**: View complete records of all payments made
+- **Payment Status**: Check the status of each payment (pending, completed, etc.)
+- **Payment Details**: Access detailed information about each transaction
+- **Payment Schedule**: See upcoming payment dates and amounts
+- **Receipts**: Access payment receipts and documentation
+
+Stay on top of your financial commitments with complete transparency.
+
+---
+
+## 💳 Non-Tender Payments
+
+**Additional Payment Management**
+
+Track payments that fall outside the standard tender process:
+
+- **Non-Tender Payment Records**: View all non-tender related payments
+- **Payment Tracking**: Monitor these special payment transactions
+- **Documentation**: Access related payment documents
+
+---
+
+## 📸 Gallery
+
+**Visual Progress Documentation**
+
+Watch your home come to life through photos:
+
+- **Project Photos**: Browse through photos of your construction site
+- **Progress Pictures**: See how your home is progressing over time
+- **Organized Collections**: Photos organized by date and project phase
+- **Full-Screen Viewing**: View photos in high detail
+- **Photo Sharing**: Easily share progress photos with family and friends
+
+See your dream home taking shape right before your eyes!
+
+---
+
+## 📄 Documents
+
+**Centralized Document Management**
+
+Access all your project documents in one place:
+
+- **Architectural Drawings**: View floor plans, elevations, and design drawings
+- **Structural Plans**: Access structural engineering documents
+- **Electrical Plans**: Review electrical layouts and schematics
+- **Plumbing Plans**: View plumbing and drainage layouts
+- **Project Documents**: Access contracts, permits, and other important paperwork
+- **Download Options**: Save documents to your device for offline access
+
+All your important documents, organized and accessible whenever you need them.
+
+---
+
+## 💬 ChatBox (Notes & Comments)
+
+**Direct Communication Channel**
+
+Stay connected with your project team:
+
+- **Team Communication**: Send messages and comments to your project team
+- **Ask Questions**: Get answers to your queries directly from the team
+- **Share Feedback**: Provide input and feedback on project decisions
+- **File Attachments**: Share photos or documents in conversations
+- **Message History**: Keep track of all your communications
+
+Communicate seamlessly with everyone involved in building your home.
+
+---
+
+## ✅ Checklist
+
+**Quality Assurance Tracking**
+
+Ensure nothing is missed with comprehensive checklists:
+
+- **Project Checklists**: Access detailed checklists for different project phases
+- **Quality Checks**: Review quality assurance checkpoints
+- **Completion Tracking**: See which items have been completed
+- **Category Organization**: Checklists organized by project category
+- **Progress Monitoring**: Track overall checklist completion
+
+Rest assured that every detail is being carefully monitored.
+
+---
+
+## 🏗️ Request Drawings
+
+**Request Specific Project Drawings**
+
+Need a specific drawing or plan? Request it directly through the app:
+
+### Drawing Categories Available:
+
+**Architectural Drawings:**
+- Working Drawings
+- Miscellaneous Details
+- Filter Slab Layout
+- Sections
+- 2D Elevation
+- Door & Window Details
+- Window Grill Details
+- Flooring Layout Details
+- Toilet & Kitchen Dadoing Details
+- Compound Wall Details
+- Fabrication Details
+- Skylight Details
+- External & Internal Paint Shades
+- Isometric Views
+- 3D Drawings
+
+**Structural Drawings:**
+- Column Marking
+- Footing Layout
+- Underground Sump Details
+- Plinth Beam Layout
+- Staircase Details
+- Floor Form Work, Beam & Slab Reinforcement Details
+- Overhead Tank (OHT) Slab Details
+- Lintel Details
+
+**Electrical Drawings:**
+- Electrical Drawing
+- Conduit Drawing
+
+**Plumbing Drawings:**
+- Water Line Drawing
+- Drainage Line Drawing
+- Rainwater Harvesting (RWH) Details
+
+**How It Works:**
+- Select the category and specific drawing you need
+- Add any special requirements or notes
+- Submit your request
+- Track the status of your request
+- Receive notifications when drawings are ready
+
+Get the exact drawings you need, when you need them!
+
+---
+
+## 🔍 Inspection Requests
+
+**Request Quality Inspections**
+
+Ensure quality standards are met:
+
+- **Request Inspections**: Submit requests for quality inspections at various project stages
+- **Track Status**: Monitor the status of your inspection requests
+- **Inspection Reports**: Access detailed inspection reports
+- **Quality Assurance**: Ensure work meets required standards
+
+---
+
+## 📋 Site Visit Reports
+
+**Detailed Site Documentation**
+
+Access comprehensive reports from site visits:
+
+- **Visit Reports**: Read detailed reports from site visits
+- **Progress Documentation**: See documented progress from each visit
+- **Photo Documentation**: View photos taken during site visits
+- **Date Tracking**: See when visits occurred and what was observed
+- **Issue Tracking**: Review any issues or concerns noted during visits
+
+Stay informed about what's happening on-site even when you can't be there.
+
+---
+
+## 🔔 Notifications
+
+**Stay Updated Instantly**
+
+Never miss important updates:
+
+- **Real-Time Alerts**: Receive instant notifications about important events
+- **Update Notifications**: Get notified about new daily updates
+- **Payment Alerts**: Receive notifications about payment-related activities
+- **Document Notifications**: Be informed when new documents are available
+- **Drawing Requests**: Get updates on your drawing request status
+- **Inspection Alerts**: Receive notifications about inspections
+- **Customizable Settings**: Control what notifications you receive
+
+Stay connected and informed about every aspect of your project.
+
+---
+
+## 📊 Daily Updates
+
+**Regular Progress Reports**
+
+Get regular updates on your project's progress:
+
+- **Daily Progress**: Receive updates about what happened each day
+- **Activity Summary**: See a summary of daily activities
+- **Update History**: Access historical updates to track progress over time
+- **Detailed Information**: Read detailed descriptions of work completed
+- **Date Tracking**: See when updates were posted
+
+Know exactly what's happening with your home every single day.
+
+---
+
+## 🔐 Security & Privacy
+
+**Your Data is Protected**
+
+- **Secure Login**: Protected access to your account
+- **Data Privacy**: Your information is kept confidential
+- **Role-Based Access**: Only authorized personnel can access your project data
+- **Secure Communication**: All communications are encrypted
+
+---
+
+## 📱 Mobile-First Design
+
+**Designed for Your Convenience**
+
+- **Easy Navigation**: Intuitive interface designed for ease of use
+- **Mobile Optimized**: Optimized for smartphones and tablets
+- **Offline Access**: Access certain features even without internet connection
+- **Fast Performance**: Quick loading times and smooth experience
+- **User-Friendly**: Designed with you in mind—no technical knowledge required
+
+---
+
+## 🎯 Key Benefits
+
+**Why BuildAHome Makes a Difference:**
+
+✅ **Transparency**: Complete visibility into your project's progress  
+✅ **Convenience**: Access everything you need from your mobile device  
+✅ **Communication**: Direct line to your project team  
+✅ **Organization**: All documents and information in one place  
+✅ **Peace of Mind**: Stay informed and in control  
+✅ **Time Saving**: No need for multiple phone calls or site visits  
+✅ **Documentation**: Complete record of your project journey  
+
+---
+
+## 📞 Getting Started
+
+1. **Download** the BuildAHome app from your app store
+2. **Login** with your provided credentials
+3. **Explore** the Dashboard to see your project overview
+4. **Navigate** through different sections using the menu
+5. **Stay Connected** by checking daily updates and notifications
+
+---
+
+## 💡 Tips for Best Experience
+
+- **Check Daily**: Visit the app daily to see the latest updates
+- **Use ChatBox**: Don't hesitate to ask questions through the ChatBox feature
+- **Review Documents**: Regularly check the Documents section for new files
+- **Track Payments**: Keep an eye on the Payments section to stay on schedule
+- **Request Drawings**: Use the Request Drawings feature whenever you need specific plans
+- **Enable Notifications**: Turn on notifications to never miss important updates
+
+---
+
+## 🎉 Your Home Building Journey
+
+BuildAHome is designed to make your home building experience smooth, transparent, and enjoyable. From the first day of construction to the final handover, we're here to keep you informed and engaged every step of the way.
+
+**Welcome to BuildAHome—where your dream home becomes a reality!**
+
+---
+
+*For technical support or questions about using the app, please contact your project coordinator or the BuildAHome support team.*
+

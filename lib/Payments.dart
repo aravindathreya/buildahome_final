@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app_theme.dart';
 import 'services/data_provider.dart';
+import 'widgets/dark_mode_toggle.dart';
 
 enum PaymentCategory {
   tender,
@@ -21,10 +22,7 @@ class PaymentTaskWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Theme(
-      data: AppTheme.darkTheme,
-      child: PaymentsDashboard(initialCategory: initialCategory),
-    );
+    return PaymentsDashboard(initialCategory: initialCategory);
   }
 }
 
@@ -46,6 +44,7 @@ class _PaymentsDashboardState extends State<PaymentsDashboard> {
   String _searchQuery = '';
   int _loadRequestId = 0;
   static const Duration _requestTimeout = Duration(seconds: 20);
+  double _zoomLevel = 1.0; // Zoom level: 1.0 = 100%, base is smaller
 
   PaymentSummary tenderSummary = PaymentSummary.empty();
   PaymentSummary nonTenderSummary = PaymentSummary.empty();
@@ -57,12 +56,22 @@ class _PaymentsDashboardState extends State<PaymentsDashboard> {
   @override
   void initState() {
     super.initState();
+    print('[Payments] initState called');
     selectedCategory = widget.initialCategory;
     _loadData();
   }
 
   @override
   void dispose() {
+    print('\n');
+    print('╔════════════════════════════════════════════════════════════════╗');
+    print('║  🔙 ANDROID BACK BUTTON PRESSED - PAYMENTS WIDGET DISPOSED    ║');
+    print('╠════════════════════════════════════════════════════════════════╣');
+    print('║  Widget: PaymentTaskWidget                                     ║');
+    print('║  Status: Widget is being disposed                              ║');
+    print('║  Reason: Android/system back button was pressed                ║');
+    print('╚════════════════════════════════════════════════════════════════╝');
+    print('\n');
     _searchController.dispose();
     _loadRequestId++;
     super.dispose();
@@ -133,13 +142,14 @@ class _PaymentsDashboardState extends State<PaymentsDashboard> {
 
   Future<void> _fetchPaymentsFromApi(String projectId, DataProvider dataProvider, String? userRole, int requestId) async {
     try {
-      final paymentUrl = 'https://office.buildahome.in/API/get_payment?project_id=$projectId';
-      final tenderUrl = 'https://office.buildahome.in/API/get_all_tasks?project_id=$projectId&nt_toggle=0';
-      final nonTenderUrl = 'https://office.buildahome.in/API/get_all_non_tender?project_id=$projectId';
+      final paymentUrl = 'https://office1.buildahome.in/API/get_payment?project_id=$projectId';
+      final tenderUrl = 'https://office1.buildahome.in/API/get_all_tasks?project_id=$projectId&nt_toggle=0';
+      final nonTenderUrl = 'https://office1.buildahome.in/API/get_all_non_tender?project_id=$projectId';
 
       print('[Payments] Loading data for project $projectId');
 
       final paymentResponse = await _fetchWithLogging('payment', paymentUrl);
+      print('[Payments] Payment response: ${paymentResponse.body}');
       if (paymentResponse.statusCode != 200) {
         throw Exception('Unable to load payment summary right now.');
       }
@@ -214,6 +224,8 @@ class _PaymentsDashboardState extends State<PaymentsDashboard> {
                 note: item['p_note']?.toString(),
                 startDate: item['start_date']?.toString(),
                 endDate: item['end_date']?.toString(),
+                markedAsDueOn: item['marked_as_due_on']?.toString(),
+                markedAsPaidOn: item['marked_as_paid_on']?.toString(),
                 isTender: true,
               ))
           .toList();
@@ -223,6 +235,8 @@ class _PaymentsDashboardState extends State<PaymentsDashboard> {
                 name: (item['task_name'] ?? 'Non tender item').toString(),
                 percentage: _toDouble(item['payment']),
                 status: (item['paid'] ?? '').toString(),
+                markedAsDueOn: item['marked_as_due_on']?.toString(),
+                markedAsPaidOn: item['marked_as_paid_on']?.toString(),
                 isTender: false,
                 amountOverride: _toDouble(item['payment']),
               ))
@@ -276,39 +290,61 @@ class _PaymentsDashboardState extends State<PaymentsDashboard> {
 
   @override
   Widget build(BuildContext context) {
-    return PopScope(
-      canPop: true,
-      onPopInvoked: (didPop) {
-        if (!didPop) {
-          // Ensure we can always pop back to the previous screen
-          Navigator.pop(context);
-        }
-      },
-      child: Scaffold(
-        backgroundColor: AppTheme.backgroundPrimary,
+    // Route's willPop() handles back button logging - no need for PopScope
+    return Scaffold(
+        backgroundColor: AppTheme.getBackgroundPrimary(context),
         appBar: AppBar(
-          backgroundColor: AppTheme.backgroundPrimary,
+          backgroundColor: AppTheme.getBackgroundSecondary(context),
           elevation: 0,
           leading: IconButton(
-            icon: Icon(Icons.arrow_back, color: AppTheme.textPrimary),
-            onPressed: () => Navigator.pop(context),
+            icon: Icon(Icons.arrow_back, color: AppTheme.getTextPrimary(context)),
+            onPressed: () {
+              print('[Payments] ========== AppBar back button pressed ==========');
+              print('[Payments] canPop: ${Navigator.of(context).canPop()}');
+              print('[Payments] Calling maybePop()...');
+              // Always pop back to UserDashboard
+              Navigator.of(context).maybePop();
+              print('[Payments] maybePop() called');
+              print('[Payments] =================================================');
+            },
           ),
           title: Text(
             'Payments',
             style: TextStyle(
-              color: AppTheme.textPrimary,
+              color: AppTheme.getTextPrimary(context),
               fontWeight: FontWeight.w600,
             ),
           ),
+          actions: [
+            DarkModeToggle(showLabel: false),
+            SizedBox(width: 8),
+          ],
         ),
-        body: SafeArea(
-          child: AnimatedSwitcher(
-            duration: Duration(milliseconds: 300),
-            child: _buildBody(),
-          ),
+        body: Stack(
+          children: [
+            // Background image with opacity
+            Positioned.fill(
+              child: Opacity(
+                opacity: 0.1,
+                child: Image.asset(
+                  'assets/images/See details.jpg',
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) {
+                    return Container();
+                  },
+                ),
+              ),
+            ),
+            // Content on top
+            SafeArea(
+              child: AnimatedSwitcher(
+                duration: Duration(milliseconds: 300),
+                child: _buildBody(),
+              ),
+            ),
+          ],
         ),
-      ),
-    );
+      );
   }
 
   Widget _buildBody() {
@@ -322,7 +358,7 @@ class _PaymentsDashboardState extends State<PaymentsDashboard> {
 
     return RefreshIndicator(
       onRefresh: () => _loadData(showLoader: false),
-      color: AppTheme.primaryColorConst,
+      color: AppTheme.getPrimaryColor(context),
       child: ListView(
         physics: AlwaysScrollableScrollPhysics(),
         padding: EdgeInsets.symmetric(horizontal: 20, vertical: 16),
@@ -350,14 +386,14 @@ class _PaymentsDashboardState extends State<PaymentsDashboard> {
           style: TextStyle(
             fontSize: 22,
             fontWeight: FontWeight.bold,
-            color: AppTheme.textPrimary,
+            color: AppTheme.getTextPrimary(context),
           ),
         ),
         SizedBox(height: 6),
         Text(
-          'Switch between tender and non tender payments using the filters below.',
+          'Switch between project and non tender payments using the filters below.',
           style: TextStyle(
-            color: AppTheme.textSecondary,
+            color: AppTheme.getTextSecondary(context),
             fontSize: 14,
           ),
         ),
@@ -366,13 +402,19 @@ class _PaymentsDashboardState extends State<PaymentsDashboard> {
   }
 
   Widget _buildFilterChips() {
-    return Wrap(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+     Text('Filter by'),
+     SizedBox(height: 12),
+      Wrap(
       spacing: 12,
       children: [
         _buildChip('Project Payments', PaymentCategory.tender),
         _buildChip('Non Tender Payments', PaymentCategory.nonTender),
       ],
-    );
+    )
+    ],);
   }
 
   Widget _buildSearchField() {
@@ -381,18 +423,18 @@ class _PaymentsDashboardState extends State<PaymentsDashboard> {
       onChanged: (value) => setState(() => _searchQuery = value),
       decoration: InputDecoration(
         hintText: 'Search payments, notes or status',
-        prefixIcon: Icon(Icons.search, color: AppTheme.textSecondary),
+        prefixIcon: Icon(Icons.search, color: AppTheme.getTextSecondary(context)),
         suffixIcon: _searchQuery.isEmpty
             ? null
             : IconButton(
-                icon: Icon(Icons.close, color: AppTheme.textSecondary),
+                icon: Icon(Icons.close, color: AppTheme.getTextSecondary(context)),
                 onPressed: () {
                   _searchController.clear();
                   setState(() => _searchQuery = '');
                 },
               ),
         filled: true,
-        fillColor: AppTheme.backgroundSecondary,
+        fillColor: AppTheme.getBackgroundSecondary(context),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
           borderSide: BorderSide.none,
@@ -404,12 +446,12 @@ class _PaymentsDashboardState extends State<PaymentsDashboard> {
   Widget _buildChip(String label, PaymentCategory category) {
     final bool isSelected = selectedCategory == category;
     return ChoiceChip(
-      label: Text(label),
+      label: Text(label, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
       selected: isSelected,
-      selectedColor: AppTheme.primaryColorConst,
-      backgroundColor: AppTheme.backgroundSecondary,
-      labelStyle: TextStyle(
-        color: isSelected ? Colors.white : AppTheme.textPrimary,
+      selectedColor: AppTheme.getPrimaryColor(context),
+      backgroundColor: Theme.of(context).colorScheme.surface,
+          labelStyle: TextStyle(
+        color: isSelected ? Colors.white : AppTheme.getTextPrimary(context),
         fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
       ),
       onSelected: (value) {
@@ -423,12 +465,37 @@ class _PaymentsDashboardState extends State<PaymentsDashboard> {
   }
 
   Widget _buildSummaryCards(PaymentSummary summary) {
+    final bool isNonTender = selectedCategory == PaymentCategory.nonTender;
+    
+    // Calculate total percentage or total amount based on category
+    double totalPercentageOrAmount = 0.0;
+    if (isNonTender) {
+      // For non-tender: calculate total amount from items that are paid or pending
+      totalPercentageOrAmount = _currentItems.fold(0.0, (sum, item) {
+        final status = item.status.toLowerCase().trim();
+        if (status == 'paid' || status == 'pending') {
+          final amount = item.amountOverride ?? (summary.valueNumeric * (item.percentage / 100));
+          return sum + amount;
+        }
+        return sum;
+      });
+    } else {
+      // For tender: calculate total percentage
+      totalPercentageOrAmount = _currentItems.fold(0.0, (sum, item) {
+        final status = item.status.toLowerCase().trim();
+        if (status == 'paid' || status == 'pending') {
+          return sum + item.percentage;
+        }
+        return sum;
+      });
+    }
+    
     return Wrap(
       spacing: 16,
       runSpacing: 16,
       children: [
         _SummaryCard(
-          title: 'Contract Value',
+          title: isNonTender ? 'NT Value' : 'Contract Value',
           subtitle: 'Total budgeted amount',
           value: _formatCurrency(summary.valueNumeric),
           icon: Icons.account_balance_wallet,
@@ -459,6 +526,19 @@ class _PaymentsDashboardState extends State<PaymentsDashboard> {
             Color(0xFFFFCDD2),
           ],
         ),
+        _SummaryCard(
+          title: isNonTender ? 'Total Amount' : 'Total Percentage',
+          subtitle: isNonTender ? 'Total amount billed' : 'Total percentage billed',
+          value: isNonTender 
+              ? _formatCurrency(totalPercentageOrAmount)
+              : '${totalPercentageOrAmount.toStringAsFixed(1)}%',
+          icon: isNonTender ? Icons.currency_rupee : Icons.percent,
+          valueColor: AppTheme.getPrimaryColor(context),
+          gradient: [
+            AppTheme.getPrimaryColor(context).withOpacity(0.15),
+            AppTheme.getPrimaryColor(context).withOpacity(0.08),
+          ],
+        ),
       ],
     );
   }
@@ -468,50 +548,346 @@ class _PaymentsDashboardState extends State<PaymentsDashboard> {
       return Container(
         padding: EdgeInsets.all(24),
         decoration: BoxDecoration(
-          color: AppTheme.backgroundSecondary,
+          color: AppTheme.getBackgroundSecondary(context),
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: AppTheme.primaryColorConst.withOpacity(0.1)),
+          border: Border.all(color: AppTheme.getPrimaryColor(context).withOpacity(0.1)),
         ),
         child: Column(
           children: [
-            Icon(Icons.inbox_outlined, color: AppTheme.textSecondary, size: 44),
+            Icon(Icons.inbox_outlined, color: AppTheme.getTextSecondary(context), size: 44),
             SizedBox(height: 12),
             Text(
               isSearching ? 'No payments match your search' : 'No payments yet',
               style: TextStyle(
                 fontWeight: FontWeight.w600,
-                color: AppTheme.textPrimary,
+                color: AppTheme.getTextPrimary(context),
               ),
             ),
             SizedBox(height: 4),
             Text(
               isSearching ? 'Try a different keyword or clear the search.' : 'Once payments are scheduled, they will appear here.',
               textAlign: TextAlign.center,
-              style: TextStyle(color: AppTheme.textSecondary),
+              style: TextStyle(color: AppTheme.getTextSecondary(context)),
             ),
           ],
         ),
       );
     }
 
+    // Calculate total percentage billed - only include tasks that are paid or pending
+    double totalPercentage = items.fold(0.0, (sum, item) {
+      final status = item.status.toLowerCase().trim();
+      if (status == 'paid' || status == 'pending') {
+        return sum + item.percentage;
+      }
+      return sum;
+    });
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          selectedCategory == PaymentCategory.tender ? 'Milestone payments' : 'Non tender payments',
-          style: TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.bold,
-            color: AppTheme.textPrimary,
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              selectedCategory == PaymentCategory.tender ? 'Milestone payments' : 'Non tender payments',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: AppTheme.getTextPrimary(context),
+              ),
+            ),
+            _buildZoomControls(),
+          ],
+        ),
+        SizedBox(height: 16),
+        _buildPaymentTable(items, summary, totalPercentage),
+      ],
+    );
+  }
+
+  Widget _buildZoomControls() {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        IconButton(
+          icon: Icon(Icons.zoom_out, color: AppTheme.getTextSecondary(context), size: 20),
+          onPressed: _zoomLevel > 0.8
+              ? () {
+                  setState(() {
+                    _zoomLevel = (_zoomLevel - 0.1).clamp(0.8, 1.5);
+                  });
+                }
+              : null,
+          tooltip: 'Zoom out',
+          padding: EdgeInsets.all(4),
+          constraints: BoxConstraints(),
+        ),
+        Container(
+          padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          decoration: BoxDecoration(
+            color: AppTheme.getBackgroundSecondary(context),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: AppTheme.getPrimaryColor(context).withOpacity(0.2)),
+          ),
+          child: Text(
+            '${(_zoomLevel * 100).toStringAsFixed(0)}%',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: AppTheme.getTextPrimary(context),
+            ),
           ),
         ),
-        SizedBox(height: 12),
-        ...items.map((item) => _PaymentCard(
-              item: item,
-              summary: summary,
-              currencyFormatter: currencyFormatter,
-            )),
+        IconButton(
+          icon: Icon(Icons.zoom_in, color: AppTheme.getTextSecondary(context), size: 20),
+          onPressed: _zoomLevel < 1.5
+              ? () {
+                  setState(() {
+                    _zoomLevel = (_zoomLevel + 0.1).clamp(0.8, 1.5);
+                  });
+                }
+              : null,
+          tooltip: 'Zoom in',
+          padding: EdgeInsets.all(4),
+          constraints: BoxConstraints(),
+        ),
       ],
+    );
+  }
+
+  double _getScaledFontSize(double baseSize) {
+    return baseSize * _zoomLevel;
+  }
+
+  Widget _buildPaymentTable(List<PaymentItem> items, PaymentSummary summary, double totalPercentage) {
+    final headerFontSize = _getScaledFontSize(11);
+    final cellFontSize = _getScaledFontSize(11);
+    final noteFontSize = _getScaledFontSize(10);
+    final statusFontSize = _getScaledFontSize(10);
+    final paddingVertical = 10 * _zoomLevel;
+    final paddingHorizontal = 12 * _zoomLevel;
+    final bool isNonTender = selectedCategory == PaymentCategory.nonTender;
+    
+    final tableContent = Container(
+      decoration: BoxDecoration(
+        color: AppTheme.getBackgroundSecondary(context),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppTheme.getPrimaryColor(context).withOpacity(0.1)),
+      ),
+      child: Column(
+        children: [
+          // Table Header
+          Container(
+            padding: EdgeInsets.symmetric(horizontal: paddingHorizontal, vertical: paddingVertical),
+            decoration: BoxDecoration(
+              color: AppTheme.getPrimaryColor(context).withOpacity(0.1),
+              borderRadius: BorderRadius.only(
+                topLeft: Radius.circular(12),
+                topRight: Radius.circular(12),
+              ),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  flex: 3,
+                  child: Text(
+                    'Stage',
+                    style: TextStyle(
+                      fontSize: headerFontSize,
+                      fontWeight: FontWeight.bold,
+                      color: AppTheme.getTextPrimary(context),
+                    ),
+                  ),
+                ),
+                Expanded(
+                  flex: 2,
+                  child: Text(
+                    'Status',
+                    style: TextStyle(
+                      fontSize: headerFontSize,
+                      fontWeight: FontWeight.bold,
+                      color: AppTheme.getTextPrimary(context),
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+                if (!isNonTender)
+                  Expanded(
+                    flex: 2,
+                    child: Text(
+                      'Percentage',
+                      style: TextStyle(
+                        fontSize: headerFontSize,
+                        fontWeight: FontWeight.bold,
+                        color: AppTheme.getTextPrimary(context),
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                Expanded(
+                  flex: 2,
+                  child: Text(
+                    'Value',
+                    style: TextStyle(
+                      fontSize: headerFontSize,
+                      fontWeight: FontWeight.bold,
+                      color: AppTheme.getTextPrimary(context),
+                    ),
+                    textAlign: TextAlign.right,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          // Table Rows
+          ...items.map((item) {
+            final double amount = item.amountOverride ?? (summary.valueNumeric * (item.percentage / 100));
+            final amountText = amount > 0 ? currencyFormatter.format(amount) : '—';
+            final style = _statusStyle(item.status);
+
+            return Container(
+              decoration: BoxDecoration(
+                border: Border(
+                  bottom: BorderSide(
+                    color: AppTheme.getPrimaryColor(context).withOpacity(0.05),
+                    width: 1,
+                  ),
+                ),
+              ),
+              child: Padding(
+                padding: EdgeInsets.symmetric(horizontal: paddingHorizontal, vertical: paddingVertical),
+                child: Row(
+                  children: [
+                    Expanded(
+                      flex: 3,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            item.name,
+                            style: TextStyle(
+                              fontSize: cellFontSize,
+                              fontWeight: FontWeight.w600,
+                              color: AppTheme.getTextPrimary(context),
+                            ),
+                          ),
+                          if (item.note != null && item.note!.trim().isNotEmpty) ...[
+                            SizedBox(height: 2 * _zoomLevel),
+                            Text(
+                              item.note!.trim(),
+                              style: TextStyle(
+                                fontSize: noteFontSize,
+                                color: AppTheme.getTextSecondary(context),
+                              ),
+                            ),
+                          ],
+                          if (item.markedAsDueOn != null && item.markedAsDueOn!.isNotEmpty && item.markedAsDueOn != 'null') ...[
+                            SizedBox(height: 4 * _zoomLevel),
+                            Text(
+                              'Due on: ${item.markedAsDueOn!}',
+                              style: TextStyle(
+                                fontSize: noteFontSize - 1,
+                                color: AppTheme.getTextSecondary(context),
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                          if (item.markedAsPaidOn != null && item.markedAsPaidOn!.isNotEmpty && item.markedAsPaidOn != 'null') ...[
+                            SizedBox(height: 4 * _zoomLevel),
+                            Text(
+                              'Paid on: ${item.markedAsPaidOn!}',
+                              style: TextStyle(
+                                fontSize: noteFontSize - 1,
+                                color: AppTheme.getTextSecondary(context),
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                    Expanded(
+                      flex: 2,
+                      child: Center(
+                        child: Container(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: 8 * _zoomLevel,
+                            vertical: 4 * _zoomLevel,
+                          ),
+                          decoration: BoxDecoration(
+                            color: style.background,
+                            borderRadius: BorderRadius.circular(10 * _zoomLevel),
+                          ),
+                          child: Text(
+                            style.label,
+                            style: TextStyle(
+                              color: style.foreground,
+                              fontWeight: FontWeight.w600,
+                              fontSize: statusFontSize,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    if (!isNonTender)
+                      Expanded(
+                        flex: 2,
+                        child: Text(
+                          '${item.percentage.toStringAsFixed(1)}%',
+                          style: TextStyle(
+                            fontSize: cellFontSize,
+                            fontWeight: FontWeight.w600,
+                            color: AppTheme.getTextPrimary(context),
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    Expanded(
+                      flex: 2,
+                      child: Text(
+                        amountText,
+                        style: TextStyle(
+                          fontSize: cellFontSize,
+                          fontWeight: FontWeight.w600,
+                          color: AppTheme.getTextPrimary(context),
+                        ),
+                        textAlign: TextAlign.right,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }),
+        ],
+      ),
+    );
+
+    return tableContent;
+  }
+
+
+  _StatusStyle _statusStyle(String status) {
+    final normalized = status.toLowerCase().trim();
+    if (normalized == 'paid') {
+      return _StatusStyle(
+        label: 'Paid',
+        background: Colors.green.withOpacity(0.15),
+        foreground: Colors.green[800]!,
+      );
+    }
+    if (normalized == 'not due' || normalized == 'wip') {
+      return _StatusStyle(
+        label: 'Scheduled',
+        background: Colors.amber.withOpacity(0.2),
+        foreground: Colors.amber[800]!,
+      );
+    }
+    return _StatusStyle(
+      label: 'Pending',
+      background: Colors.red.withOpacity(0.15),
+      foreground: Colors.red[700]!,
     );
   }
 
@@ -535,7 +911,7 @@ class _PaymentsDashboardState extends State<PaymentsDashboard> {
               width: summaryWidth,
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: AppTheme.backgroundSecondary,
+                color: AppTheme.getBackgroundSecondary(context),
                 borderRadius: BorderRadius.circular(18),
               ),
               child: Column(
@@ -560,7 +936,7 @@ class _PaymentsDashboardState extends State<PaymentsDashboard> {
       margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: AppTheme.backgroundSecondary,
+        color: AppTheme.getBackgroundSecondary(context),
         borderRadius: BorderRadius.circular(20),
       ),
       child: Column(
@@ -587,7 +963,7 @@ class _PaymentsDashboardState extends State<PaymentsDashboard> {
       width: width,
       height: height,
       decoration: BoxDecoration(
-        color: AppTheme.backgroundPrimaryLight,
+        color: AppTheme.getBackgroundPrimaryLight(context),
         borderRadius: BorderRadius.circular(radius),
       ),
     );
@@ -606,20 +982,20 @@ class _PaymentsDashboardState extends State<PaymentsDashboard> {
               'Something went wrong',
               style: TextStyle(
                 fontWeight: FontWeight.bold,
-                color: AppTheme.textPrimary,
+                color: AppTheme.getTextPrimary(context),
               ),
             ),
             SizedBox(height: 8),
             Text(
               errorMessage ?? 'Please try again later.',
               textAlign: TextAlign.center,
-              style: TextStyle(color: AppTheme.textSecondary),
+              style: TextStyle(color: AppTheme.getTextSecondary(context)),
             ),
             SizedBox(height: 16),
             ElevatedButton(
               onPressed: _loadData,
               style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.primaryColorConst,
+                backgroundColor: AppTheme.getPrimaryColor(context),
                 foregroundColor: Colors.white,
               ),
               child: Text('Retry'),
@@ -639,11 +1015,18 @@ class _PaymentsDashboardState extends State<PaymentsDashboard> {
   List<PaymentItem> get _filteredItems {
     if (!_isSearching) return _currentItems;
     final query = _searchQuery.trim().toLowerCase();
+    final currentSummary = _currentSummary;
     return _currentItems.where((item) {
       final note = item.note?.toLowerCase() ?? '';
       final status = item.status.toLowerCase();
-      final dates = '${item.startDate ?? ''} ${item.endDate ?? ''}'.toLowerCase();
-      return item.name.toLowerCase().contains(query) || note.contains(query) || status.contains(query) || dates.contains(query);
+      final percentage = '${item.percentage.toStringAsFixed(1)}%'.toLowerCase();
+      final amount = item.amountOverride ?? (currentSummary.valueNumeric * (item.percentage / 100));
+      final amountText = amount > 0 ? currencyFormatter.format(amount).toLowerCase() : '';
+      return item.name.toLowerCase().contains(query) ||
+          note.contains(query) ||
+          status.contains(query) ||
+          percentage.contains(query) ||
+          amountText.contains(query.replaceAll(RegExp(r'[₹,\s]'), ''));
     }).toList();
   }
 
@@ -691,6 +1074,8 @@ class PaymentItem {
   final String? note;
   final String? startDate;
   final String? endDate;
+  final String? markedAsDueOn;
+  final String? markedAsPaidOn;
   final double? amountOverride;
 
   const PaymentItem({
@@ -701,6 +1086,8 @@ class PaymentItem {
     this.note,
     this.startDate,
     this.endDate,
+    this.markedAsDueOn,
+    this.markedAsPaidOn,
     this.amountOverride,
   });
 }
@@ -725,17 +1112,18 @@ class _SummaryCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
+      height: 150,
       width: (MediaQuery.of(context).size.width - 60) / 2,
       padding: EdgeInsets.all(16),
       decoration: BoxDecoration(
-        gradient: LinearGradient(colors: gradient),
+        color: AppTheme.getBackgroundSecondary(context),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: Colors.white.withOpacity(0.4)),
+        border: Border.all(color: AppTheme.getPrimaryColor(context).withOpacity(0.1)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.08),
-            blurRadius: 10,
-            offset: Offset(0, 4),
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 8,
+            offset: Offset(0, 2),
           ),
         ],
       ),
@@ -744,14 +1132,15 @@ class _SummaryCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              Icon(icon, size: 20, color: Colors.black54),
+              Icon(icon, size: 20, color: AppTheme.getTextSecondary(context)),
               SizedBox(width: 8),
               Expanded(
                 child: Text(
                   title,
                   style: TextStyle(
                     fontWeight: FontWeight.w600,
-                    color: Colors.black87,
+                    color: AppTheme.getTextPrimary(context),
+                    fontSize: 12
                   ),
                 ),
               ),
@@ -763,7 +1152,7 @@ class _SummaryCard extends StatelessWidget {
             style: TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.bold,
-              color: valueColor ?? Colors.black,
+              color: valueColor ?? AppTheme.getTextPrimary(context),
             ),
           ),
           SizedBox(height: 4),
@@ -771,215 +1160,7 @@ class _SummaryCard extends StatelessWidget {
             subtitle,
             style: TextStyle(
               fontSize: 12,
-              color: Colors.black54,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _PaymentCard extends StatelessWidget {
-  final PaymentItem item;
-  final PaymentSummary summary;
-  final NumberFormat currencyFormatter;
-
-  const _PaymentCard({
-    required this.item,
-    required this.summary,
-    required this.currencyFormatter,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final style = _statusStyle(item.status);
-    final double amount = item.amountOverride ?? (summary.valueNumeric * (item.percentage / 100));
-    final amountText = amount > 0 ? currencyFormatter.format(amount) : '—';
-
-    return Container(
-      margin: EdgeInsets.only(bottom: 16),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            AppTheme.backgroundSecondary,
-            AppTheme.backgroundPrimaryLight,
-          ],
-        ),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: AppTheme.primaryColorConst.withOpacity(0.08)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 8,
-            offset: Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(18),
-          onTap: () {},
-          child: Padding(
-            padding: EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Container(
-                      padding: EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: style.background,
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Text(
-                        style.label,
-                        style: TextStyle(
-                          color: style.foreground,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                    Spacer(),
-                    Text(
-                      item.isTender ? '${item.percentage.toStringAsFixed(0)}%' : '',
-                      style: TextStyle(
-                        color: AppTheme.textSecondary,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ),
-                SizedBox(height: 10),
-                Text(
-                  item.name,
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: AppTheme.textPrimary,
-                  ),
-                ),
-                if (item.note != null && item.note!.trim().isNotEmpty) ...[
-                  SizedBox(height: 8),
-                  Text(
-                    item.note!.trim(),
-                    style: TextStyle(color: AppTheme.textSecondary, fontSize: 13),
-                  ),
-                ],
-                SizedBox(height: 12),
-                 Container(
-                  width: (MediaQuery.of(context).size.width - 60),
-                  child: _InfoPill(
-                      icon: Icons.payments_outlined,
-                      label: 'Amount',
-                      value: amountText,
-                    ),),
-                    SizedBox(height: 12),
-               
-                Row(
-                  children: [
-                    if (item.startDate != null && item.startDate!.trim().isNotEmpty) ...[
-                      Expanded(
-                        child: _InfoPill(
-                          icon: Icons.event_outlined,
-                          label: 'Start',
-                          value: item.startDate!,
-                        ),
-                      ),
-                    ],
-                    if (item.endDate != null && item.endDate!.trim().isNotEmpty) ...[
-                      SizedBox(width: 12),
-                      Expanded(
-                        child: _InfoPill(
-                          icon: Icons.flag_outlined,
-                          label: 'End',
-                          value: item.endDate!,
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  _StatusStyle _statusStyle(String status) {
-    final normalized = status.toLowerCase().trim();
-    if (normalized == 'paid') {
-      return _StatusStyle(
-        label: 'Paid',
-        background: Colors.green.withOpacity(0.15),
-        foreground: Colors.green[800]!,
-      );
-    }
-    if (normalized == 'not due' || normalized == 'wip') {
-      return _StatusStyle(
-        label: 'Scheduled',
-        background: Colors.amber.withOpacity(0.2),
-        foreground: Colors.amber[800]!,
-      );
-    }
-    return _StatusStyle(
-      label: 'Pending',
-      background: Colors.red.withOpacity(0.15),
-      foreground: Colors.red[700]!,
-    );
-  }
-}
-
-class _InfoPill extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final String value;
-
-  const _InfoPill({
-    required this.icon,
-    required this.label,
-    required this.value,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.6),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.white.withOpacity(0.4)),
-      ),
-      child: Row(
-        children: [
-          Icon(icon, size: 16, color: AppTheme.textSecondary),
-          SizedBox(width: 8),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  label,
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: AppTheme.textSecondary,
-                  ),
-                ),
-                Text(
-                  value,
-                  style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                    fontSize: 13,
-                    color: AppTheme.textPrimary,
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
+              color: AppTheme.getTextSecondary(context),
             ),
           ),
         ],
@@ -1011,12 +1192,14 @@ class TaskItem extends StatefulWidget {
   final status;
   final note;
   final projectValue;
+  final markedAsDueOn;
+  final markedAsPaidOn;
 
-  TaskItem(this._taskName, this._startDate, this._endDate, this._paymentPercentage, this.status, this.note, this.projectValue);
+  TaskItem(this._taskName, this._startDate, this._endDate, this._paymentPercentage, this.status, this.note, this.projectValue, {this.markedAsDueOn, this.markedAsPaidOn});
 
   @override
   TaskItemWidget createState() {
-    return TaskItemWidget(this._taskName, this._icon, this._startDate, this._endDate, this._color, this._height, this._paymentPercentage, this.status, this.note, this.projectValue);
+    return TaskItemWidget(this._taskName, this._icon, this._startDate, this._endDate, this._color, this._height, this._paymentPercentage, this.status, this.note, this.projectValue, markedAsDueOn: markedAsDueOn, markedAsPaidOn: markedAsPaidOn);
   }
 }
 
@@ -1039,6 +1222,8 @@ class TaskItemWidget extends State<TaskItem> with SingleTickerProviderStateMixin
   var note;
   var gradient;
   var projectValue;
+  var markedAsDueOn;
+  var markedAsPaidOn;
 
   @override
   void initState() {
@@ -1122,7 +1307,7 @@ class TaskItemWidget extends State<TaskItem> with SingleTickerProviderStateMixin
     });
   }
 
-  TaskItemWidget(this._taskName, this._icon, this._startDate, this._endDate, this._color, this._height, this._paymentPercentage, this.status, this.note, this.projectValue);
+  TaskItemWidget(this._taskName, this._icon, this._startDate, this._endDate, this._color, this._height, this._paymentPercentage, this.status, this.note, this.projectValue, {this.markedAsDueOn, this.markedAsPaidOn});
 
   @override
   Widget build(BuildContext context) {
@@ -1141,19 +1326,12 @@ class TaskItemWidget extends State<TaskItem> with SingleTickerProviderStateMixin
                   margin: EdgeInsets.only(left: 15, top: 10, right: 15, bottom: 10),
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(16),
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [
-                        Colors.white,
-                        Color.fromARGB(255, 250, 250, 250),
-                      ],
-                    ),
+                    color: AppTheme.getBackgroundSecondary(context),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.08),
-                        blurRadius: 12,
-                        offset: Offset(0, 4),
+                        color: Colors.black.withOpacity(0.05),
+                        blurRadius: 8,
+                        offset: Offset(0, 2),
                       ),
                     ],
                   ),
@@ -1320,6 +1498,52 @@ class TaskItemWidget extends State<TaskItem> with SingleTickerProviderStateMixin
                                             ),
                                           ),
                                         ),
+                                      if (this.markedAsDueOn != null && this.markedAsDueOn.toString().isNotEmpty && this.markedAsDueOn.toString() != 'null')
+                                        Container(
+                                          margin: EdgeInsets.only(top: 8),
+                                          padding: EdgeInsets.all(12),
+                                          decoration: BoxDecoration(
+                                            color: Colors.white.withOpacity(0.2),
+                                            borderRadius: BorderRadius.circular(12),
+                                          ),
+                                          child: Row(
+                                            children: [
+                                              Icon(Icons.event_note, size: 14, color: this._textColor),
+                                              SizedBox(width: 8),
+                                              Text(
+                                                "Due on: ${this.markedAsDueOn}",
+                                                style: TextStyle(
+                                                  color: this._textColor,
+                                                  fontSize: 13,
+                                                  fontWeight: FontWeight.w600,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      if (this.markedAsPaidOn != null && this.markedAsPaidOn.toString().isNotEmpty && this.markedAsPaidOn.toString() != 'null')
+                                        Container(
+                                          margin: EdgeInsets.only(top: 8),
+                                          padding: EdgeInsets.all(12),
+                                          decoration: BoxDecoration(
+                                            color: Colors.white.withOpacity(0.2),
+                                            borderRadius: BorderRadius.circular(12),
+                                          ),
+                                          child: Row(
+                                            children: [
+                                              Icon(Icons.event_available, size: 14, color: this._textColor),
+                                              SizedBox(width: 8),
+                                              Text(
+                                                "Paid on: ${this.markedAsPaidOn}",
+                                                style: TextStyle(
+                                                  color: this._textColor,
+                                                  fontSize: 13,
+                                                  fontWeight: FontWeight.w600,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
                                     ],
                                   )
                                 : SizedBox.shrink(),
@@ -1362,11 +1586,11 @@ class PaymentTasks extends State<PaymentTasksClass> {
   call() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     var id = prefs.getString('project_id');
-    var url = 'https://office.buildahome.in/API/get_all_tasks?project_id=$id&nt_toggle=0';
+    var url = 'https://office1.buildahome.in/API/get_all_tasks?project_id=$id&nt_toggle=0';
     var response = await http.get(Uri.parse(url));
     body = jsonDecode(response.body);
 
-    var url1 = 'https://office.buildahome.in/API/get_payment?project_id=$id';
+    var url1 = 'https://office1.buildahome.in/API/get_payment?project_id=$id';
     var response1 = await http.get(Uri.parse(url1));
     var details = jsonDecode(response1.body);
     outstanding = details[0]['outstanding'];
@@ -1408,7 +1632,7 @@ class PaymentTasks extends State<PaymentTasksClass> {
                         child: Text(
                           "Project Payments",
                           style: TextStyle(
-                            fontSize: 22,
+                            fontSize: 14,
                             fontWeight: FontWeight.bold,
                             color: Color.fromARGB(255, 13, 17, 65),
                           ),
@@ -1653,8 +1877,16 @@ class PaymentTasks extends State<PaymentTasksClass> {
                       direction: index % 2 == 0 ? SlideDirection.leftToRight : SlideDirection.rightToLeft, // Specify the slide direction
                       duration: Duration(milliseconds: 300),
                       child: Container(
-                        child: TaskItem(body[index]['task_name'].toString(), body[index]['start_date'].toString(), body[index]['end_date'].toString(), body[index]['payment'].toString(), body[index]['paid'].toString(),
-                            body[index]['p_note'].toString(), projectValue),
+                        child: TaskItem(
+                            body[index]['task_name'].toString(),
+                            body[index]['start_date'].toString(),
+                            body[index]['end_date'].toString(),
+                            body[index]['payment'].toString(),
+                            body[index]['paid'].toString(),
+                            body[index]['p_note'].toString(),
+                            projectValue,
+                            markedAsDueOn: body[index]['marked_as_due_on']?.toString(),
+                            markedAsPaidOn: body[index]['marked_as_paid_on']?.toString()),
                       ));
                 }),
             ]),

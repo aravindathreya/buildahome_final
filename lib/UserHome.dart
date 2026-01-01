@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'main.dart';
 import 'UserDashboard.dart';
 import 'app_theme.dart';
 import "Scheduler.dart";
@@ -26,13 +25,10 @@ class Home extends StatelessWidget {
       DataProvider().resetProjectData();
     }
     
-    return MaterialApp(
-      theme: ThemeData(fontFamily: App().fontName),
-      home: Scaffold(
-        key: _scaffoldKey,
-        backgroundColor: AppTheme.backgroundPrimary,
-        body: UserDashboardLayout(fromAdminDashboard: fromAdminDashboard),
-      ),
+    return Scaffold(
+      key: _scaffoldKey,
+      backgroundColor: AppTheme.getBackgroundPrimary(context),
+      body: UserDashboardLayout(fromAdminDashboard: fromAdminDashboard),
     );
   }
 }
@@ -106,7 +102,7 @@ class UserHomeScreenState extends State<UserHomeScreen> {
     "Scheduler",
     "Gallery",
     "Documents",
-    "Notes and comments",
+    "ChatBox",
     "Payments",
     "Non tender payments",
   ];
@@ -135,7 +131,7 @@ class UserHomeScreenState extends State<UserHomeScreen> {
         activeTab = 'Documents';
         tabsList = [
           "Documents",
-          "Notes and comments",
+          "ChatBox",
         ];
         widgetList = [
           Documents(),

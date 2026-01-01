@@ -1,28 +1,41 @@
 // Built in packages
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'Skin2/loginPage.dart';
 import 'app_theme.dart';
+import 'UserDashboard.dart';
+import 'providers/theme_provider.dart';
+
+// Global navigator key and observer for the entire app
+final GlobalKey<NavigatorState> globalNavigatorKey = GlobalKey<NavigatorState>();
+final UserDashboardNavigatorObserver globalNavigatorObserver = UserDashboardNavigatorObserver();
 
 void main() => runApp(App());
 
 class App extends StatelessWidget {
   final fontName = 'Mulish-Regular';
 
-  // Used globally for client logins
-  late final project_id;
-  late BuildContext mainContext;
-
   @override
   Widget build(BuildContext context) {
     final appTitle = 'buildAhome';
 
-    return MaterialApp(
-      title: appTitle,
-      debugShowCheckedModeBanner: false,
-      theme: AppTheme.darkTheme,
-      home: Scaffold(
-        backgroundColor: AppTheme.backgroundPrimary,
-        body: LoginScreenNew(),
+    return ChangeNotifierProvider(
+      create: (_) => ThemeProvider(),
+      child: Consumer<ThemeProvider>(
+        builder: (context, themeProvider, child) {
+          return MaterialApp(
+            title: appTitle,
+            debugShowCheckedModeBanner: false,
+            theme: AppTheme.getLightTheme(),
+            darkTheme: AppTheme.getDarkTheme(),
+            themeMode: themeProvider.isDarkMode ? ThemeMode.dark : ThemeMode.light,
+            navigatorKey: globalNavigatorKey,
+            navigatorObservers: [globalNavigatorObserver],
+            home: Scaffold(
+              body: LoginScreenNew(),
+            ),
+          );
+        },
       ),
     );
   }

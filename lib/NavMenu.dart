@@ -1,15 +1,9 @@
-import 'package:buildahome/AdminDashboard.dart';
-import 'package:buildahome/main.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
-import 'UserHome.dart';
-import 'AddDailyUpdate.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'indents_screen.dart';
-import 'notifcations.dart';
-import 'RequestDrawing.dart';
-import 'stock_report.dart';
-import 'checklist_categories.dart';
+import 'services/data_provider.dart';
+import 'Skin2/loginPage.dart';
+import 'app_theme.dart';
 
 class NavMenuItem extends StatelessWidget {
   final String _route;
@@ -18,19 +12,27 @@ class NavMenuItem extends StatelessWidget {
 
   const NavMenuItem(this._route, this._icon, this._routename, {Key? key}) : super(key: key);
 
-  _logout() async {
-    SharedPreferences preferences = await SharedPreferences.getInstance();
-    preferences.clear();
+  _logout() {
+    // Clear data immediately (synchronous)
+    DataProvider().clearData();
+    
+    // Clear SharedPreferences in background (don't wait for it)
+    SharedPreferences.getInstance().then((preferences) {
+      preferences.clear();
+    }).catchError((e) {
+      print('Error clearing SharedPreferences: $e');
+    });
   }
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: isDark ? AppTheme.getBackgroundSecondary(context) : Colors.white,
         shape: BoxShape.rectangle,
         border: Border(
-          bottom: BorderSide(width: 1.0, color: Colors.black12),
+          bottom: BorderSide(width: 1.0, color: isDark ? Colors.white12 : Colors.black12),
         ),
       ),
       width: 400,
@@ -76,7 +78,7 @@ class NavMenuItem extends StatelessWidget {
             children: <Widget>[
               Row(
                 children: [
-                  Icon(this._icon),
+                  Icon(this._icon, color: Theme.of(context).iconTheme.color),
                   Container(
                     padding: EdgeInsets.only(left: 5),
                     child: Text(
@@ -84,7 +86,7 @@ class NavMenuItem extends StatelessWidget {
                       textAlign: TextAlign.left,
                       style: TextStyle(
                         fontSize: 18,
-                        color: Colors.black,
+                        color: Theme.of(context).textTheme.bodyLarge?.color ?? Colors.black,
                       ),
                     ),
                   ),
@@ -203,51 +205,8 @@ class NavMenuWidgetState extends State<NavMenuWidget> {
                 ),
               ),
             ),
-            if (role == 'Client')
-              Container(
-                child: NavMenuItem("Dashboard", Icons.dashboard, Home()),
-              ),
-            if (role != 'Client')
-              Container(
-                child:
-                    NavMenuItem("Dashboard", Icons.dashboard, AdminDashboard()),
-              ),
-            if (role == 'Admin' ||
-                role == 'Project Coordinator' ||
-                role == 'Project Manager' ||
-                role == 'Site Engineer')
-              Container(
-                child: NavMenuItem(
-                    "Add Daily Update", Icons.update, AddDailyUpdate()),
-              ),
-            if (role == 'Admin' ||
-                role == 'Site Engineer' ||
-                role == 'Project Coordinator' ||
-                role == 'Project Manager')
-              Container(
-                child: NavMenuItem(
-                    "Indents", Icons.request_quote, IndentsScreenLayout()),
-              ),
-            if (role != 'Client')
-              Container(
-                child: NavMenuItem(
-                    "Stock report", Icons.inventory, StockReportLayout()),
-              ),
-            if (role == 'Client')
-              Container(
-                child: NavMenuItem("Checklist", Icons.list, ChecklistCategoriesLayout()),
-              ),
-            if (role == 'Client')
-              Container(
-                child: NavMenuItem("Request drawing",
-                    Icons.playlist_add_outlined, RequestDrawingLayout()),
-              ),
             Container(
-              child: NavMenuItem(
-                  "My Notifications", Icons.notifications_on, Notifications()),
-            ),
-            Container(
-              child: NavMenuItem("Log out", Icons.backspace, App()),
+              child: NavMenuItem("Log out", Icons.logout, LoginScreenNew()),
             ),
           ]),
     );

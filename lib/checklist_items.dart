@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'ShowAlert.dart';
 import 'app_theme.dart';
+import 'widgets/dark_mode_toggle.dart';
 
 class ChecklistItemsLayout extends StatelessWidget {
   final String category;
@@ -16,9 +17,13 @@ class ChecklistItemsLayout extends StatelessWidget {
   Widget build(BuildContext context) {
     final canPop = Navigator.of(context).canPop();
     return Scaffold(
-      backgroundColor: AppTheme.backgroundPrimary,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: AppTheme.backgroundSecondary,
+        backgroundColor: Theme.of(context).colorScheme.surface,
+        actions: [
+          DarkModeToggle(showLabel: false),
+          SizedBox(width: 8),
+        ],
         automaticallyImplyLeading: canPop,
         leading: canPop
             ? IconButton(
@@ -88,7 +93,7 @@ class ChecklistItemsState extends State<ChecklistItems> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return RefreshIndicator(
-      color: AppTheme.primaryColorConst,
+      color: AppTheme.getPrimaryColor(context),
       onRefresh: call,
       child: ListView(
         padding: const EdgeInsets.fromLTRB(16, 24, 16, 32),
@@ -136,9 +141,9 @@ class ChecklistItemsState extends State<ChecklistItems> {
       margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppTheme.backgroundSecondary,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppTheme.primaryColorConst.withOpacity(0.08)),
+        border: Border.all(color: AppTheme.getPrimaryColor(context).withOpacity(0.08)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -178,7 +183,7 @@ class ChecklistItemsState extends State<ChecklistItems> {
             const SizedBox(height: 8),
             Text(
               'Checked by buildAhome on ${item[4]}',
-              style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+              style: TextStyle(color: AppTheme.getTextSecondary(context), fontSize: 12),
             ),
           ],
           if (clientChecked) ...[
@@ -188,9 +193,11 @@ class ChecklistItemsState extends State<ChecklistItems> {
               style: const TextStyle(color: Colors.green, fontSize: 12),
             ),
           ],
-          if (bahChecked && !clientChecked && role == 'Client')
+
+          if (role == 'Client' && bahChecked && !clientChecked)
             _buildActionButton(index, isClient: true),
-          if (bahChecked && role != 'Client' && !clientChecked)
+
+          if (role != 'Client' && !bahChecked)
             _buildActionButton(index, isClient: false),
         ],
       ),
@@ -204,7 +211,7 @@ class ChecklistItemsState extends State<ChecklistItems> {
         alignment: Alignment.centerRight,
         child: FilledButton(
           onPressed: () => _confirmCheck(index, isClient: isClient),
-          child: const Text('Mark as checked'),
+          child: const Text('Mark as checked' , style: TextStyle(fontSize: 12, color: Colors.white),),
         ),
       ),
     );
@@ -232,10 +239,11 @@ class ChecklistItemsState extends State<ChecklistItems> {
         'project_id': projectId,
         'checklist_item_id': data[index][0].toString(),
       };
-      if (!isClient) {
-        body['user_id'] = userId ?? '';
-      }
+      body['user_id'] = userId ?? '';
+
+      print("body: $body");
       final response = await http.post(Uri.parse('https://office.buildahome.in/API/$endpoint'), body: body);
+      print("response: ${response.body}");
       if (response.statusCode != 200) {
         throw Exception('Failed to update item');
       }
@@ -255,7 +263,7 @@ class ChecklistItemsState extends State<ChecklistItems> {
       margin: const EdgeInsets.only(bottom: 16),
       height: 96,
       decoration: BoxDecoration(
-        color: AppTheme.backgroundSecondary,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(16),
       ),
     );
@@ -265,21 +273,21 @@ class ChecklistItemsState extends State<ChecklistItems> {
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: AppTheme.backgroundSecondary,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(16),
       ),
       child: Column(
         children: [
-          Icon(Icons.fact_check, color: AppTheme.primaryColorConst, size: 32),
+          Icon(Icons.fact_check, color: AppTheme.getPrimaryColor(context), size: 32),
           const SizedBox(height: 12),
-          const Text(
+          Text(
             'No checklist items yet',
-            style: TextStyle(fontWeight: FontWeight.w600, color: AppTheme.textPrimary),
+            style: TextStyle(fontWeight: FontWeight.w600, color: AppTheme.getTextPrimary(context)),
           ),
           const SizedBox(height: 4),
-          const Text(
+          Text(
             'Items will appear once the project team shares the checklist.',
-            style: TextStyle(color: AppTheme.textSecondary),
+            style: TextStyle(color: AppTheme.getTextSecondary(context)),
             textAlign: TextAlign.center,
           ),
         ],

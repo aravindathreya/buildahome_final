@@ -1,4 +1,4 @@
-name: buildahome
+name: buildAhome
 description: A new Flutter project.
 
 # The following defines the version and build number for your application.
@@ -12,7 +12,7 @@ description: A new Flutter project.
 # In iOS, build-name is used as CFBundleShortVersionString while build-number used as CFBundleVersion.
 # Read more about iOS versioning at
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
-version: 2.2.21+36
+version: 3.0.0+37
 
 environment:
   sdk: ">=2.17.0 <4.0.0"
@@ -37,6 +37,7 @@ dependencies:
   carousel_slider: ^4.2.1
   grouped_buttons_ns:
   shared_preferences: ^2.0.16
+  provider: ^6.1.1
   flutter_launcher_icons: ^0.11.0
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.

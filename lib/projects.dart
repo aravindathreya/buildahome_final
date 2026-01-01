@@ -1,9 +1,7 @@
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_spinkit/flutter_spinkit.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'app_theme.dart';
 
 class ProjectsModal extends StatefulWidget {
   final String id;
@@ -17,6 +15,7 @@ class ProjectsModalBody extends State<ProjectsModal> {
   var id;
   var projects = [];
   var search_data = [];
+  bool _isLoading = true;
 
   @override
   void initState() {
@@ -25,108 +24,228 @@ class ProjectsModalBody extends State<ProjectsModal> {
   }
 
   call() async {
-    var url =
-        "https://office.buildahome.in/API/projects_access?id=${id.toString()}";
-    var response = await http.get(Uri.parse(url));
-    print(response.body);
     setState(() {
-      projects = jsonDecode(response.body);
-      search_data = projects;
-      print(search_data);
+      _isLoading = true;
     });
+    try {
+      var url =
+          "https://office.buildahome.in/API/projects_access?id=${id.toString()}";
+      var response = await http.get(Uri.parse(url));
+      if (mounted) {
+        setState(() {
+          projects = jsonDecode(response.body);
+          search_data = projects;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
   }
 
   ProjectsModalBody(this.id);
 
   Widget build(BuildContext context) {
-    return AlertDialog(
-        contentPadding: EdgeInsets.all(0),
-        content: Column(
+    return Dialog(
+      backgroundColor: AppTheme.backgroundPrimary,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Container(
+        width: MediaQuery.of(context).size.width * 0.9,
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(context).size.height * 0.8,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
+            // Header
             Container(
-                alignment: Alignment.centerLeft,
-                padding: EdgeInsets.all(10),
-                child: Text("Select project")),
-            Container(
-                margin: EdgeInsets.only(bottom: 10, top: 10),
-                color: Colors.white,
-                child: TextFormField(
-                  onChanged: (text) {
-                    setState(() {
-                      if (text.trim() == '') {
-                        search_data = projects;
-                      } else {
-                        search_data = [];
-                        for (int i = 0; i < projects.length; i++) {
-                          if (projects[i]['name']
-                              .toLowerCase()
-                              .contains(text.toLowerCase())) {
-                            search_data.add(projects[i]);
-                          }
-                        }
-                      }
-                    });
-                  },
-                  decoration: InputDecoration(
-                    hintText: 'Search project',
-                    contentPadding: EdgeInsets.all(10),
-                    suffixIcon: InkWell(child: Icon(Icons.search)),
-                  ),
-                )),
-            if (search_data.length == 0)
-              Container(
-                height: 150,
-                width: MediaQuery.of(context).size.width - 20,
-                child: SpinKitRing(
-                  color: Colors.indigo[900]!,
-                  lineWidth: 2,
-                  size: 20,
+              padding: EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: AppTheme.backgroundSecondary,
+                borderRadius: BorderRadius.only(
+                  topLeft: Radius.circular(20),
+                  topRight: Radius.circular(20),
                 ),
               ),
-            if (search_data.length != 0)
-              Container(
-                  height: MediaQuery.of(context).viewInsets.bottom > 0
-                      ? MediaQuery.of(context).size.height * 0.3 // Reduce height when keyboard is active
-                      : MediaQuery.of(context).size.height * 0.7,
-                  width: MediaQuery.of(context).size.width - 20,
-                  child: ListView.builder(
+              child: Row(
+                children: [
+                  Container(
+                    width: 4,
+                    height: 22,
+                    decoration: BoxDecoration(
+                      color: AppTheme.primaryColorConst,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                  SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      "Select project",
+                      style: TextStyle(
+                        color: AppTheme.textPrimary,
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    icon: Icon(Icons.close, color: AppTheme.textSecondary),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ],
+              ),
+            ),
+            
+            // Search Bar
+            Container(
+              padding: EdgeInsets.all(16),
+              child: TextField(
+                onChanged: (text) {
+                  setState(() {
+                    if (text.trim() == '') {
+                      search_data = projects;
+                    } else {
+                      search_data = [];
+                      for (int i = 0; i < projects.length; i++) {
+                        if (projects[i]['name']
+                            .toLowerCase()
+                            .contains(text.toLowerCase())) {
+                          search_data.add(projects[i]);
+                        }
+                      }
+                    }
+                  });
+                },
+                style: TextStyle(color: AppTheme.textPrimary),
+                decoration: InputDecoration(
+                  hintText: 'Search project',
+                  hintStyle: TextStyle(color: AppTheme.textSecondary),
+                  prefixIcon: Icon(Icons.search, color: AppTheme.primaryColorConst),
+                  filled: true,
+                  fillColor: AppTheme.backgroundSecondary,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(
+                      color: AppTheme.primaryColorConst.withOpacity(0.3),
+                    ),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(
+                      color: AppTheme.primaryColorConst.withOpacity(0.3),
+                    ),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(
+                      color: AppTheme.primaryColorConst,
+                      width: 2,
+                    ),
+                  ),
+                  contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                ),
+              ),
+            ),
+            
+            // Loading or Results List
+            Flexible(
+              child: _isLoading
+                  ? Container(
+                      height: 150,
+                      child: Center(
+                        child: CircularProgressIndicator(
+                          valueColor: AlwaysStoppedAnimation<Color>(AppTheme.primaryColorConst),
+                        ),
+                      ),
+                    )
+                  : search_data.length == 0
+                      ? Container(
+                          padding: EdgeInsets.all(40),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.folder_outlined,
+                                size: 64,
+                                color: AppTheme.textSecondary,
+                              ),
+                              SizedBox(height: 16),
+                              Text(
+                                'No projects found',
+                                style: TextStyle(
+                                  color: AppTheme.textSecondary,
+                                  fontSize: 16,
+                                ),
+                              ),
+                            ],
+                          ),
+                        )
+                      : ListView.builder(
                       shrinkWrap: true,
-                      physics: new BouncingScrollPhysics(),
-                      scrollDirection: Axis.vertical,
+                      physics: BouncingScrollPhysics(),
+                      padding: EdgeInsets.symmetric(horizontal: 16),
                       itemCount: search_data.length,
-                      // ignore: missing_return
                       itemBuilder: (BuildContext ctxt, int Index) {
                         if (search_data[Index]['name'].trim().length == 0)
                           return Container();
-                        if (search_data[Index]['name'].trim().length > 0)
-                          return Container(
-                              padding: EdgeInsets.symmetric(
-                                  horizontal: 15, vertical: 20),
-                              decoration: BoxDecoration(
-                                color: Colors.white,
-                                shape: BoxShape.rectangle,
-                                border: Border(
-                                  bottom: BorderSide(
-                                      width: 1.0, color: Colors.grey[300]!),
+                        return Container(
+                          margin: EdgeInsets.only(bottom: 8),
+                          decoration: BoxDecoration(
+                            color: AppTheme.backgroundSecondary,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: AppTheme.primaryColorConst.withOpacity(0.1),
+                            ),
+                          ),
+                          child: Material(
+                            color: Colors.transparent,
+                            child: InkWell(
+                              onTap: () {
+                                Navigator.pop(
+                                    context,
+                                    search_data[Index]['name'] +
+                                        "|" +
+                                        (search_data[Index]['id']).toString());
+                              },
+                              borderRadius: BorderRadius.circular(12),
+                              child: Padding(
+                                padding: EdgeInsets.symmetric(
+                                    horizontal: 16, vertical: 16),
+                                child: Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        search_data[Index]['name'],
+                                        style: TextStyle(
+                                          color: AppTheme.textPrimary,
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ),
+                                    Icon(
+                                      Icons.arrow_forward_ios,
+                                      size: 16,
+                                      color: AppTheme.textSecondary,
+                                    ),
+                                  ],
                                 ),
                               ),
-                              child: InkWell(
-                                  onTap: () {
-                                    print(search_data[Index]['name'] +
-                                        "|" +
-                                        search_data[Index]['id'].toString());
-                                    Navigator.pop(
-                                        context,
-                                        search_data[Index]['name'] +
-                                            "|" +
-                                            (search_data[Index]['id']).toString());
-                                  },
-                                  child: Text(search_data[Index]['name'],
-                                      style: TextStyle(
-                                          fontSize: 18,
-                                          fontWeight: FontWeight.bold))));
-                      }))
+                            ),
+                          ),
+                        );
+                      }),
+            ),
+            SizedBox(height: 16),
           ],
-        ));
+        ),
+      ),
+    );
   }
 }
