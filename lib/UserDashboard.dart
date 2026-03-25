@@ -260,6 +260,16 @@ class UserDashboardLayoutState extends State<UserDashboardLayout> {
         children: [
           Row(
             children: [
+              if (widget.fromAdminDashboard && Navigator.of(context).canPop())
+                IconButton(
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                  icon: Icon(
+                    Icons.arrow_back_ios_new,
+                    color: AppTheme.getTextPrimary(context),
+                  ),
+                  onPressed: () => Navigator.of(context).pop(),
+                ),
               Container(
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
@@ -353,7 +363,26 @@ class UserDashboardLayoutState extends State<UserDashboardLayout> {
       },
       child: Scaffold(
         backgroundColor: AppTheme.getBackgroundPrimary(context),
-        appBar: null,
+        appBar: (!widget.fromAdminDashboard && Navigator.of(context).canPop())
+            ? AppBar(
+                backgroundColor: AppTheme.getBackgroundSecondary(context),
+                elevation: 0,
+                leading: IconButton(
+                  icon: Icon(Icons.arrow_back),
+                  color: AppTheme.getTextPrimary(context),
+                  onPressed: () => Navigator.of(context).pop(),
+                ),
+                title: Text(
+                  'Project',
+                  style: TextStyle(
+                    color: AppTheme.getTextPrimary(context),
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                iconTheme: IconThemeData(color: AppTheme.getTextPrimary(context)),
+              )
+            : null,
         body: Stack(
           children: [
             // Background image with opacity
