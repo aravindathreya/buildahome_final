@@ -31,6 +31,12 @@
 	<true/>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Take progress pictures of house constructon</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Capture live site progress photos for workflow uploads</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Record audio when capturing workflow progress videos</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Your location is used to confirm you are near the project site before uploading workflow files</string>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 	<key>UIBackgroundModes</key>

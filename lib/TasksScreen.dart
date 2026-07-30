@@ -1036,6 +1036,13 @@ class _ViewTasksPageState extends State<ViewTasksPage> {
   // Accordion state - track which tasks have status change expanded
   Set<String> _expandedTaskIds = Set<String>();
 
+  bool _isWorkflowTask(Map task) {
+    return task['is_workflow_task'] == true ||
+        task['category']?.toString() == 'workflow_task' ||
+        task['workflow_item_run_id'] != null ||
+        task['workflow_run_id'] != null;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -1580,6 +1587,16 @@ class _ViewTasksPageState extends State<ViewTasksPage> {
 
   Future<void> _deleteTask(int taskId) async {
     if (_isDeleting) return;
+
+    if (taskId < 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Workflow tasks cannot be deleted from this screen yet.'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
     
     // Show confirmation dialog
     final confirmed = await showDialog<bool>(
@@ -1681,6 +1698,16 @@ class _ViewTasksPageState extends State<ViewTasksPage> {
 
   Future<void> _updateTaskStatus(int taskId, String newStatus) async {
     if (_isUpdating) return;
+
+    if (taskId < 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Workflow tasks cannot be updated from this screen yet.'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
     
     setState(() {
       _isUpdating = true;
@@ -1765,6 +1792,7 @@ class _ViewTasksPageState extends State<ViewTasksPage> {
 
   Widget _buildStatusDropdown(String taskIdStr, String currentStatus) {
     final taskId = int.tryParse(taskIdStr) ?? 0;
+    final isWorkflowTask = taskId < 0;
     final statuses = [
       {'value': 'pending', 'label': 'Pending', 'color': Color(0xFFD97706), 'icon': Icons.pending}, // Darker amber/yellow
       {'value': 'in_progress', 'label': 'In Progress', 'color': Color(0xFF2196F3), 'icon': Icons.work}, // Blue
@@ -1825,7 +1853,7 @@ class _ViewTasksPageState extends State<ViewTasksPage> {
             ),
           );
         }).toList(),
-        onChanged: _isUpdating ? null : (String? newStatus) {
+        onChanged: (_isUpdating || isWorkflowTask) ? null : (String? newStatus) {
           if (newStatus != null && newStatus != currentStatus) {
             _updateTaskStatus(taskId, newStatus);
           }
@@ -1861,6 +1889,8 @@ class _ViewTasksPageState extends State<ViewTasksPage> {
     final status = task['status']?.toString() ?? 'pending';
     final note = task['note']?.toString() ?? '';
     final createdAt = task['created_at']?.toString() ?? '';
+    final isWorkflowTask = _isWorkflowTask(task);
+    final title = isWorkflowTask && note.isNotEmpty ? note : 'Task #$taskId';
     final statusColor = _getStatusColor(status);
     final statusIcon = _getStatusIcon(status);
     final isCreatedByMe = _currentUserId != null && taskUserId == _currentUserId;
@@ -1956,7 +1986,7 @@ class _ViewTasksPageState extends State<ViewTasksPage> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                'Task #$taskId',
+                                title,
                                 style: TextStyle(
                                   color: AppTheme.getTextPrimary(context),
                                   fontSize: 16,
@@ -1988,7 +2018,8 @@ class _ViewTasksPageState extends State<ViewTasksPage> {
                           ),
                         ),
                         // Dropdown menu
-                        PopupMenuButton<String>(
+                        if (!isWorkflowTask)
+                          PopupMenuButton<String>(
                           icon: Icon(Icons.more_vert, color: AppTheme.getTextSecondary(context)),
                           onSelected: (value) {
                             if (value == 'delete') {
@@ -2032,7 +2063,7 @@ class _ViewTasksPageState extends State<ViewTasksPage> {
                   ),
                   
                   // Note section
-                  if (note.isNotEmpty) ...[
+                  if (!isWorkflowTask && note.isNotEmpty) ...[
                     Padding(
                       padding: EdgeInsets.all(16),
                       child: Container(
@@ -2189,66 +2220,66 @@ class _ViewTasksPageState extends State<ViewTasksPage> {
                     SizedBox(height: 12),
                   ],
                   
-                  // Status change section (Accordion)
-                  Container(
-                    decoration: BoxDecoration(
-                      color: AppTheme.getBackgroundPrimary(context),
-                      borderRadius: BorderRadius.only(
-                        bottomLeft: Radius.circular(16),
-                        bottomRight: Radius.circular(16),
-                      ),
-                      border: Border(
-                        top: BorderSide(
-                          color: AppTheme.getPrimaryColor(context).withOpacity(0.1),
-                          width: 1,
+                  if (!isWorkflowTask)
+                    Container(
+                      decoration: BoxDecoration(
+                        color: AppTheme.getBackgroundPrimary(context),
+                        borderRadius: BorderRadius.only(
+                          bottomLeft: Radius.circular(16),
+                          bottomRight: Radius.circular(16),
+                        ),
+                        border: Border(
+                          top: BorderSide(
+                            color: AppTheme.getPrimaryColor(context).withOpacity(0.1),
+                            width: 1,
+                          ),
                         ),
                       ),
-                    ),
-                    child: Column(
-                      children: [
-                        // Accordion header
-                        InkWell(
-                          onTap: () {
-                            setState(() {
-                              if (_expandedTaskIds.contains(taskId)) {
-                                _expandedTaskIds.remove(taskId);
-                              } else {
-                                _expandedTaskIds.add(taskId);
-                              }
-                            });
-                          },
-                          child: Container(
-                            padding: EdgeInsets.all(16),
-                            child: Row(
-                              children: [
-                                Icon(Icons.edit, size: 16, color: AppTheme.getPrimaryColor(context)),
-                                SizedBox(width: 8),
-                                Text(
-                                  'Change Status',
-                                  style: TextStyle(
-                                    color: AppTheme.getTextPrimary(context),
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w600,
+                      child: Column(
+                        children: [
+                          // Accordion header
+                          InkWell(
+                            onTap: () {
+                              setState(() {
+                                if (_expandedTaskIds.contains(taskId)) {
+                                  _expandedTaskIds.remove(taskId);
+                                } else {
+                                  _expandedTaskIds.add(taskId);
+                                }
+                              });
+                            },
+                            child: Container(
+                              padding: EdgeInsets.all(16),
+                              child: Row(
+                                children: [
+                                  Icon(Icons.edit, size: 16, color: AppTheme.getPrimaryColor(context)),
+                                  SizedBox(width: 8),
+                                  Text(
+                                    'Change Status',
+                                    style: TextStyle(
+                                      color: AppTheme.getTextPrimary(context),
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600,
+                                    ),
                                   ),
-                                ),
-                                Spacer(),
-                                Icon(
-                                  isExpanded ? Icons.expand_less : Icons.expand_more,
-                                  color: AppTheme.getTextSecondary(context),
-                                ),
-                              ],
+                                  Spacer(),
+                                  Icon(
+                                    isExpanded ? Icons.expand_less : Icons.expand_more,
+                                    color: AppTheme.getTextSecondary(context),
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
-                        ),
-                        // Accordion content
-                        if (isExpanded)
-                          Container(
-                            padding: EdgeInsets.fromLTRB(16, 0, 16, 16),
-                            child: _buildStatusDropdown(taskId, status),
-                          ),
-                      ],
+                          // Accordion content
+                          if (isExpanded)
+                            Container(
+                              padding: EdgeInsets.fromLTRB(16, 0, 16, 16),
+                              child: _buildStatusDropdown(taskId, status),
+                            ),
+                        ],
+                      ),
                     ),
-                  ),
                 ],
               ),
             ),

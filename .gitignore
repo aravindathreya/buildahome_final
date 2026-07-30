@@ -8,6 +8,7 @@
 .buildlog/
 .history
 .svn/
+Thumbs.db
 
 # IntelliJ related
 *.iml
@@ -15,30 +16,38 @@
 *.iws
 .idea/
 
-# The .vscode folder contains launch configuration and tasks you configure in
-# VS Code which you may wish to be included in version control, so this line
-# is commented out by default.
+# VS Code (optional — uncomment to ignore editor settings)
 #.vscode/
 
-# Flutter/Dart/Pub related
+# Flutter / Dart / Pub
 **/doc/api/
-.dart_tool/
-.flutter-plugins
+**/.dart_tool/
 .packages
 .pub-cache/
 .pub/
+.flutter-plugins
+.flutter-plugins-dependencies
 /build/
+**/build/
+.dart_tool/
 
-# Android related
-**/android/**/gradle-wrapper.jar
-**/android/.gradle
+# Dev tooling (local only)
+devtools_options.yaml
+
+# Android
+**/android/.gradle/
 **/android/captures/
-**/android/gradlew
-**/android/gradlew.bat
 **/android/local.properties
 **/android/**/GeneratedPluginRegistrant.java
+android/build/
+android/app/build/
 
-# iOS/XCode related
+# Android signing secrets — never commit
+**/key.properties
+**/*.jks
+**/*.keystore
+
+# iOS / Xcode
 **/ios/**/*.mode1v3
 **/ios/**/*.mode2v3
 **/ios/**/*.moved-aside
@@ -61,8 +70,15 @@
 **/ios/Flutter/app.flx
 **/ios/Flutter/app.zip
 **/ios/Flutter/flutter_assets/
+**/ios/Flutter/ephemeral/
+**/ios/Flutter/flutter_export_environment.sh
+**/ios/Flutter/Flutter.podspec
 **/ios/ServiceDefinitions.json
 **/ios/Runner/GeneratedPluginRegistrant.*
+
+# Environment / secrets
+.env
+.env.*
 
 # Exceptions to above rules.
 !**/ios/**/default.mode1v3

@@ -23,6 +23,7 @@ import 'services/rbac_service.dart';
 import 'stock_report.dart';
 import 'ViewAllTasksScreen.dart';
 import 'TasksScreen.dart';
+import 'MyTasksScreen.dart';
 import 'Skin2/loginPage.dart';
 import 'widgets/dark_mode_toggle.dart';
 import 'NavMenu.dart';
@@ -66,15 +67,6 @@ class _AdminDashboardState extends State<AdminDashboard> {
 
   @override
   Widget build(BuildContext context) {
-    // Check if state is available after build
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted && _adminHomeKey.currentState != null && _rebuildTrigger == 0) {
-        setState(() {
-          _rebuildTrigger++;
-        });
-      }
-    });
-
     return Scaffold(
       key: _scaffoldKey,
       backgroundColor: AppTheme.getBackgroundPrimary(context),
@@ -90,7 +82,8 @@ class _AdminDashboardState extends State<AdminDashboard> {
                 'assets/images/See details.jpg',
                 fit: BoxFit.cover,
                 errorBuilder: (context, error, stackTrace) {
-                  return Container(color: AppTheme.getBackgroundPrimary(context));
+                  return Container(
+                      color: AppTheme.getBackgroundPrimary(context));
                 },
               ),
             ),
@@ -110,29 +103,9 @@ class _AdminDashboardState extends State<AdminDashboard> {
               }
             },
             behavior: HitTestBehavior.opaque,
-            child: Column(
-              children: [
-                // User avatar header
-                if (_adminHomeKey.currentState != null)
-                  _adminHomeKey.currentState!._buildUserHeader(),
-                // Search field
-                if (_adminHomeKey.currentState != null)
-                Container(
-                  decoration: BoxDecoration(
-                    color: Colors.transparent,
-                    borderRadius: BorderRadius.only(bottomLeft: Radius.circular(12), bottomRight: Radius.circular(12)),
-                    
-                  ),
-                  child: _adminHomeKey.currentState!._buildSearchField(),
-                ),
-                // Main content
-                Expanded(
-                  child: AdminHome(
-                    key: _adminHomeKey,
-                    searchQueryNotifier: _searchQueryNotifier,
-                  ),
-                ),
-              ],
+            child: AdminHome(
+              key: _adminHomeKey,
+              searchQueryNotifier: _searchQueryNotifier,
             ),
           ),
         ],
@@ -190,7 +163,7 @@ class _LogoutButton extends StatelessWidget {
     if (shouldLogout == true) {
       // Clear data immediately (synchronous)
       DataProvider().clearData();
-      
+
       // Navigate immediately without waiting for SharedPreferences.clear()
       if (context.mounted) {
         Navigator.pushAndRemoveUntil(
@@ -199,7 +172,7 @@ class _LogoutButton extends StatelessWidget {
           (route) => false,
         );
       }
-      
+
       // Clear SharedPreferences in background (don't wait for it)
       SharedPreferences.getInstance().then((preferences) {
         preferences.clear();
@@ -232,7 +205,6 @@ class _LogoutButton extends StatelessWidget {
               color: AppTheme.backgroundPrimaryLight,
               size: 14,
             ),
-            
           ],
         ),
       ),
@@ -242,7 +214,7 @@ class _LogoutButton extends StatelessWidget {
 
 class AdminHome extends StatefulWidget {
   final ValueNotifier<String>? searchQueryNotifier;
-  
+
   const AdminHome({Key? key, this.searchQueryNotifier}) : super(key: key);
 
   @override
@@ -273,14 +245,15 @@ class AdminHomeState extends State<AdminHome> {
   Timer? _searchDebounceTimer;
   String _cachedFilterQuery = '';
   ValueNotifier<String>? _searchQueryNotifier;
-  
+
   // Tasks state
   List<dynamic> _tasks = [];
   bool _isLoadingTasks = false;
   bool _hasLoadedTasksOnce = false;
   String? _tasksError;
-  Map<int, Map<String, dynamic>> _previousTasksMap = {}; // Track previous tasks for comparison
-  
+  Map<int, Map<String, dynamic>> _previousTasksMap =
+      {}; // Track previous tasks for comparison
+
   // Navigation state to prevent double-taps
   bool _isNavigating = false;
 
@@ -310,7 +283,8 @@ class AdminHomeState extends State<AdminHome> {
     });
   }
 
-  Future<void> loadProjects({bool force = false, bool showLoader = false}) async {
+  Future<void> loadProjects(
+      {bool force = false, bool showLoader = false}) async {
     if (!mounted) return;
 
     if (showLoader || !showLoader) {
@@ -332,9 +306,9 @@ class AdminHomeState extends State<AdminHome> {
       if (!mounted) return;
       final provider = DataProvider();
       final newProjects = provider.projects;
-      
+
       print('[AdminDashboard] Loaded ${newProjects.length} projects');
-      
+
       setState(() {
         projects = newProjects;
         projectsToShow = projects;
@@ -344,14 +318,15 @@ class AdminHomeState extends State<AdminHome> {
           projectsToShow = projects.where((project) {
             final name = project['name']?.toString().toLowerCase() ?? '';
             final id = project['id']?.toString().toLowerCase() ?? '';
-            final clientName = project['client_name']?.toString().toLowerCase() ?? '';
-            return name.contains(query) || 
-                   id.contains(query) || 
-                   clientName.contains(query);
+            final clientName =
+                project['client_name']?.toString().toLowerCase() ?? '';
+            return name.contains(query) ||
+                id.contains(query) ||
+                clientName.contains(query);
           }).toList();
         }
       });
-      
+
       // Reload tasks after projects are loaded to filter by project IDs
       // Always load tasks, even if projects list is empty (tasks can be assigned directly to users)
       loadTasks();
@@ -359,7 +334,8 @@ class AdminHomeState extends State<AdminHome> {
       print('[AdminDashboard] Error loading projects: $e');
       if (!mounted) return;
       setState(() {
-        _projectsError = 'Unable to refresh projects. Please pull down to retry.';
+        _projectsError =
+            'Unable to refresh projects. Please pull down to retry.';
       });
     } finally {
       if (!mounted) return;
@@ -369,7 +345,6 @@ class AdminHomeState extends State<AdminHome> {
       });
     }
   }
-
 
   @override
   void initState() {
@@ -399,13 +374,14 @@ class AdminHomeState extends State<AdminHome> {
 
   Future<void> loadTasks() async {
     if (!mounted) return;
-    
+
     // Prevent multiple simultaneous calls
     if (_isLoadingTasks) {
-      print('[AdminDashboard] loadTasks already in progress, skipping duplicate call');
+      print(
+          '[AdminDashboard] loadTasks already in progress, skipping duplicate call');
       return;
     }
-    
+
     setState(() {
       _isLoadingTasks = true;
       _tasksError = null;
@@ -417,7 +393,7 @@ class AdminHomeState extends State<AdminHome> {
       String? userId = prefs.getString('userId') ?? prefs.getString('user_id');
       String? apiToken = prefs.getString('api_token');
       print('UserId: $userId');
-      print('Api Token: $apiToken');  
+      print('Api Token: $apiToken');
       if (userId == null || apiToken == null) {
         throw Exception('Missing credentials. Please log in again.');
       }
@@ -428,53 +404,61 @@ class AdminHomeState extends State<AdminHome> {
         'user_id': userId,
         'assigned_to': userId,
       };
-      
+
       List<dynamic> allTasks = [];
-      
+
       // Fetch tasks for user_id and assigned_to
-      Uri uri = Uri.parse("https://office1.buildahome.in/API/get_tasks").replace(
+      Uri uri = Uri.parse("https://office.buildahome.in/API/get_tasks").replace(
         queryParameters: queryParams,
       );
-      
+
       print('Uri ${uri.toString()}');
       var response = await http.get(uri).timeout(const Duration(seconds: 20));
       print('Response ${response.body}');
-      
+
       if (response.statusCode == 200) {
         final decoded = jsonDecode(response.body);
         List<dynamic> fetchedTasks = [];
-        
-        if (decoded is Map && decoded['success'] == true && decoded['tasks'] != null) {
+
+        if (decoded is Map &&
+            decoded['success'] == true &&
+            decoded['tasks'] != null) {
           fetchedTasks = decoded['tasks'] is List ? decoded['tasks'] : [];
         } else if (decoded is Map && decoded['tasks'] != null) {
           fetchedTasks = decoded['tasks'] is List ? decoded['tasks'] : [];
         } else if (decoded is List) {
           fetchedTasks = decoded;
         }
-        
+
         // Add tasks to our list (deduplicate by task id)
         Map<int, dynamic> taskMap = {};
         for (var task in fetchedTasks) {
           if (task is Map && task['id'] != null) {
             int taskId = int.tryParse(task['id'].toString()) ?? 0;
-            if (taskId > 0) {
+            if (taskId != 0) {
               taskMap[taskId] = task;
             }
           }
         }
         allTasks = taskMap.values.toList();
-        
+
+        // API uses OR logic across filters, so keep only tasks assigned to user.
+        allTasks = filterTasksForProjectAndAssignee(
+          allTasks,
+          userId: userId,
+        );
+
         // Check if tasks have changed
         Map<int, Map<String, dynamic>> currentTasksMap = {};
         for (var task in allTasks) {
           if (task is Map && task['id'] != null) {
             int taskId = int.tryParse(task['id'].toString()) ?? 0;
-            if (taskId > 0) {
+            if (taskId != 0) {
               currentTasksMap[taskId] = Map<String, dynamic>.from(task);
             }
           }
         }
-        
+
         // Compare with previous tasks to detect changes
         bool hasChanges = false;
         if (_previousTasksMap.length != currentTasksMap.length) {
@@ -501,7 +485,7 @@ class AdminHomeState extends State<AdminHome> {
             }
           }
         }
-        
+
         // Update UI only if there are changes
         if (hasChanges || !_hasLoadedTasksOnce) {
           allTasks.sort((a, b) {
@@ -510,7 +494,7 @@ class AdminHomeState extends State<AdminHome> {
             String bDate = (b['created_at'] ?? '').toString();
             return bDate.compareTo(aDate);
           });
-          
+
           setState(() {
             _tasks = allTasks;
             _isLoadingTasks = false;
@@ -549,7 +533,24 @@ class AdminHomeState extends State<AdminHome> {
     }
   }
 
+  Future<List<dynamic>> _refreshTasksForMyTasks() async {
+    await loadTasks();
+    return List<dynamic>.from(_tasks);
+  }
+
   Future<void> updateTaskStatus(int taskId, String newStatus) async {
+    if (taskId < 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content:
+              Text('Workflow tasks cannot be updated from this screen yet.'),
+          backgroundColor: Colors.orange,
+          duration: Duration(seconds: 3),
+        ),
+      );
+      return;
+    }
+
     try {
       SharedPreferences prefs = await SharedPreferences.getInstance();
       String? apiToken = prefs.getString('api_token');
@@ -558,7 +559,8 @@ class AdminHomeState extends State<AdminHome> {
         throw Exception('Missing credentials. Please log in again.');
       }
 
-      final uri = Uri.parse("https://office.buildahome.in/API/update_task_status");
+      final uri =
+          Uri.parse("https://office.buildahome.in/API/update_task_status");
       final response = await http.post(
         uri,
         body: {
@@ -586,7 +588,8 @@ class AdminHomeState extends State<AdminHome> {
           throw Exception(decoded['message'] ?? 'Failed to update task status');
         }
       } else {
-        throw Exception('Unable to update task status (code ${response.statusCode})');
+        throw Exception(
+            'Unable to update task status (code ${response.statusCode})');
       }
     } catch (e) {
       if (!mounted) return;
@@ -709,7 +712,7 @@ class AdminHomeState extends State<AdminHome> {
     List<Map<String, dynamic>> menuItems = [];
     final rbac = RBACService();
 
-     // My Projects (non-Client)
+    // My Projects (non-Client)
     if (currentUserRole != 'Client') {
       menuItems.add({
         'title': 'Projects',
@@ -722,6 +725,15 @@ class AdminHomeState extends State<AdminHome> {
         },
       });
     }
+
+    menuItems.add({
+      'title': 'My tasks',
+      'icon': Icons.pending_actions,
+      'route': () => MyTasksScreen(
+            tasks: _tasks,
+            onRefresh: _refreshTasksForMyTasks,
+          ),
+    });
 
     // Add Daily Update - check RBAC
     if (rbac.canViewSync(currentUserRole, RBACService.dailyUpdate)) {
@@ -757,8 +769,8 @@ class AdminHomeState extends State<AdminHome> {
     }
 
     // Test Reports / QC Reports - only for Admin or QC roles
-    if (currentUserRole == 'Admin' || 
-        currentUserRole == 'QC' || 
+    if (currentUserRole == 'Admin' ||
+        currentUserRole == 'QC' ||
         currentUserRole == 'Quality Engineer') {
       menuItems.add({
         'title': 'Test Reports',
@@ -777,7 +789,7 @@ class AdminHomeState extends State<AdminHome> {
     }
 
     // ChatBox - check RBAC but exclude site engineer
-    if (rbac.canViewSync(currentUserRole, RBACService.tasksAndNotes) && 
+    if (rbac.canViewSync(currentUserRole, RBACService.tasksAndNotes) &&
         currentUserRole != 'Site Engineer') {
       menuItems.add({
         'title': 'ChatBox',
@@ -815,7 +827,7 @@ class AdminHomeState extends State<AdminHome> {
     currentWidgetContext = context;
     List<Map<String, dynamic>> menuItems = getMenuItems();
     int totalProjects = projects.length;
-    
+
     return RefreshIndicator(
       onRefresh: () => loadProjects(force: true),
       color: AppTheme.getPrimaryColor(context),
@@ -830,6 +842,17 @@ class AdminHomeState extends State<AdminHome> {
           physics: const AlwaysScrollableScrollPhysics(),
           padding: EdgeInsets.all(20),
           children: [
+            _buildUserHeader(),
+            Container(
+              decoration: BoxDecoration(
+                color: Colors.transparent,
+                borderRadius: BorderRadius.only(
+                    bottomLeft: Radius.circular(12),
+                    bottomRight: Radius.circular(12)),
+              ),
+              child: _buildSearchField(),
+            ),
+            SizedBox(height: 20),
             if (_projectsError != null)
               Container(
                 margin: EdgeInsets.only(bottom: 12),
@@ -870,11 +893,11 @@ class AdminHomeState extends State<AdminHome> {
                       onTap: () async {
                         // Navigate to ProjectPickerScreen (same as Projects tab)
                         if (_isNavigating) return;
-                        
+
                         setState(() {
                           _isNavigating = true;
                         });
-                        
+
                         try {
                           await ProjectPickerScreen.show(context);
                           if (mounted) {
@@ -897,13 +920,18 @@ class AdminHomeState extends State<AdminHome> {
                     child: _buildStatCard(
                       context,
                       'Pending Tasks',
-                      _tasks.where((task) {
-                        if (task is Map) {
-                          final status = task['status']?.toString().toLowerCase() ?? '';
-                          return status == 'pending';
-                        }
-                        return false;
-                      }).length.toString(),
+                      _tasks
+                          .where((task) {
+                            if (task is Map) {
+                              final status =
+                                  task['status']?.toString().toLowerCase() ??
+                                      '';
+                              return status == 'pending';
+                            }
+                            return false;
+                          })
+                          .length
+                          .toString(),
                       Icons.pending_actions_outlined,
                       AppTheme.getPrimaryColor(context),
                       index: 1,
@@ -931,26 +959,25 @@ class AdminHomeState extends State<AdminHome> {
 
             SizedBox(height: 20),
 
-            // Tasks Section - hidden for Client and Billing roles
-            if (currentUserRole != 'Client' && currentUserRole != 'Billing') _buildTasksSection(),
+            // Tasks Section - hidden for Billing roles
+            if (currentUserRole != 'Billing')
+              _buildTasksSection(),
 
             SizedBox(height: 20),
-            Row(
-              children: [
-                
-           Icon(Icons.task_alt_outlined, color: AppTheme.getPrimaryColor(context), size: 24),
-            SizedBox(width: 8),
-            Text(
-              'Quick Actions',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w500,
-                color: AppTheme.getTextPrimary(context),
+            Row(children: [
+              Icon(Icons.task_alt_outlined,
+                  color: AppTheme.getPrimaryColor(context), size: 24),
+              SizedBox(width: 8),
+              Text(
+                'Quick Actions',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w500,
+                  color: AppTheme.getTextPrimary(context),
+                ),
               ),
-            ),
-            Spacer(),
-              ]
-            ),
+              Spacer(),
+            ]),
 
             // GridView for menu items
             GridView.builder(
@@ -968,9 +995,11 @@ class AdminHomeState extends State<AdminHome> {
                 return Material(
                   color: AppTheme.getBackgroundSecondary(context),
                   child: InkWell(
-                    onTap: _isNavigating ? null : () async {
-                      await _handleMenuTap(context, item);
-                    },
+                    onTap: _isNavigating
+                        ? null
+                        : () async {
+                            await _handleMenuTap(context, item);
+                          },
                     borderRadius: BorderRadius.circular(12),
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
@@ -978,15 +1007,18 @@ class AdminHomeState extends State<AdminHome> {
                         Container(
                           padding: EdgeInsets.all(10),
                           decoration: BoxDecoration(
-                            color: item['title'] == 'Log out' 
-                                ? Colors.red.withOpacity(0.15) 
-                                : AppTheme.getPrimaryColor(context).withOpacity(0.15),
+                            color: item['title'] == 'Log out'
+                                ? Colors.red.withOpacity(0.15)
+                                : AppTheme.getPrimaryColor(context)
+                                    .withOpacity(0.15),
                             borderRadius: BorderRadius.circular(10),
                           ),
                           child: Icon(
                             item['icon'],
                             size: 20,
-                            color: item['title'] == 'Log out' ? Colors.red : AppTheme.getPrimaryColor(context),
+                            color: item['title'] == 'Log out'
+                                ? Colors.red
+                                : AppTheme.getPrimaryColor(context),
                           ),
                         ),
                         SizedBox(height: 8),
@@ -1018,60 +1050,59 @@ class AdminHomeState extends State<AdminHome> {
     );
   }
 
-
-
   Widget _buildUserHeader() {
     return Container(
       width: MediaQuery.of(context).size.width,
       padding: EdgeInsets.only(top: 40, left: 16, right: 16, bottom: 12),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Builder(
-            builder: (context) => InkWell(
-              onTap: () {
-                Scaffold.of(context).openDrawer();
-              },
-              borderRadius: BorderRadius.circular(30),
-              child: Row(
-                children: [
-                  Container(
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                    ),
-                    child: CircleAvatar(
-                      radius: 20,
-                      backgroundColor: AppTheme.getPrimaryColor(context),
-                      child: Text(
-                        currentUserName.isNotEmpty 
-                            ? currentUserName[0].toUpperCase() 
-                            : 'U',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 18,
-                          fontWeight: FontWeight.normal,
+          Expanded(
+            child: Builder(
+              builder: (context) => InkWell(
+                onTap: () {
+                  Scaffold.of(context).openDrawer();
+                },
+                borderRadius: BorderRadius.circular(30),
+                child: Row(
+                  children: [
+                    Container(
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                      ),
+                      child: CircleAvatar(
+                        radius: 20,
+                        backgroundColor: AppTheme.getPrimaryColor(context),
+                        child: Text(
+                          currentUserName.isNotEmpty
+                              ? currentUserName[0].toUpperCase()
+                              : 'U',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 18,
+                            fontWeight: FontWeight.normal,
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                  SizedBox(width: 12),
-                  Text(
-                    currentUserName.isNotEmpty ? currentUserName : 'User',
-                    style: TextStyle(
-                      color: AppTheme.getTextPrimary(context),
-                      fontSize: 16,
-                      fontWeight: FontWeight.normal,
+                    SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        currentUserName.isNotEmpty ? currentUserName : 'User',
+                        style: TextStyle(
+                          color: AppTheme.getTextPrimary(context),
+                          fontSize: 16,
+                          fontWeight: FontWeight.normal,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
-          Row(
-            children: [
-              DarkModeToggle(showLabel: false),
-            ],
-          ),
+          DarkModeToggle(showLabel: false),
         ],
       ),
     );
@@ -1083,36 +1114,39 @@ class AdminHomeState extends State<AdminHome> {
       child: Opacity(
         opacity: _isNavigating ? 0.6 : 1.0,
         child: InkWell(
-          onTap: _isNavigating ? null : () async {
-            // Prevent double-tap opening picker twice
-            if (_isNavigating) return;
-            
-            setState(() {
-              _isNavigating = true;
-            });
-            
-            try {
-              await ProjectPickerScreen.show(context);
-              if (mounted) {
-                loadProjects();
-              }
-              // Add delay to prevent tap that closes modal from retriggering
-              await Future.delayed(Duration(milliseconds: 300));
-            } finally {
-              if (mounted) {
-                setState(() {
-                  _isNavigating = false;
-                });
-              }
-            }
-          },
+          onTap: _isNavigating
+              ? null
+              : () async {
+                  // Prevent double-tap opening picker twice
+                  if (_isNavigating) return;
+
+                  setState(() {
+                    _isNavigating = true;
+                  });
+
+                  try {
+                    await ProjectPickerScreen.show(context);
+                    if (mounted) {
+                      loadProjects();
+                    }
+                    // Add delay to prevent tap that closes modal from retriggering
+                    await Future.delayed(Duration(milliseconds: 300));
+                  } finally {
+                    if (mounted) {
+                      setState(() {
+                        _isNavigating = false;
+                      });
+                    }
+                  }
+                },
           borderRadius: BorderRadius.circular(8),
           child: Container(
             padding: EdgeInsets.symmetric(horizontal: 16, vertical: 14),
             decoration: BoxDecoration(
               color: AppTheme.getBackgroundSecondary(context),
               borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: AppTheme.getPrimaryColor(context).withOpacity(0.2)),
+              border: Border.all(
+                  color: AppTheme.getPrimaryColor(context).withOpacity(0.2)),
             ),
             child: Row(
               children: [
@@ -1122,7 +1156,8 @@ class AdminHomeState extends State<AdminHome> {
                     height: 20,
                     child: CircularProgressIndicator(
                       strokeWidth: 2,
-                      valueColor: AlwaysStoppedAnimation<Color>(AppTheme.getPrimaryColor(context)),
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                          AppTheme.getPrimaryColor(context)),
                     ),
                   )
                 else
@@ -1154,7 +1189,6 @@ class AdminHomeState extends State<AdminHome> {
     );
   }
 
-
   Widget _buildSearchResultsSection([String? queryValue]) {
     // Use the provided query value or fall back to controller text
     final query = (queryValue ?? _quickSearchController.text).trim();
@@ -1168,9 +1202,9 @@ class AdminHomeState extends State<AdminHome> {
       final name = project['name']?.toString().toLowerCase() ?? '';
       final id = project['id']?.toString().toLowerCase() ?? '';
       final clientName = project['client_name']?.toString().toLowerCase() ?? '';
-      return name.contains(queryLower) || 
-             id.contains(queryLower) || 
-             clientName.contains(queryLower);
+      return name.contains(queryLower) ||
+          id.contains(queryLower) ||
+          clientName.contains(queryLower);
     }).toList();
 
     return Container(
@@ -1254,17 +1288,19 @@ class AdminHomeState extends State<AdminHome> {
                 itemCount: filteredProjects.length,
                 itemBuilder: (context, index) {
                   final project = filteredProjects[index];
-                  final projectName = project['name']?.toString() ?? 'Unnamed Project';
+                  final projectName =
+                      project['name']?.toString() ?? 'Unnamed Project';
                   final projectId = project['id']?.toString() ?? '';
                   final clientName = project['client_name']?.toString() ?? '';
-                  
+
                   return Container(
                     margin: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                     decoration: BoxDecoration(
                       color: AppTheme.backgroundPrimaryLight,
                       borderRadius: BorderRadius.circular(8),
                       border: Border.all(
-                        color: AppTheme.getPrimaryColor(context).withOpacity(0.2),
+                        color:
+                            AppTheme.getPrimaryColor(context).withOpacity(0.2),
                         width: 1,
                       ),
                     ),
@@ -1278,35 +1314,49 @@ class AdminHomeState extends State<AdminHome> {
                           }
 
                           final projectIdStr = project['id']?.toString();
-                          final projectNameStr = project['name']?.toString() ?? 'Project';
-                          
+                          final projectNameStr =
+                              project['name']?.toString() ?? 'Project';
+
                           if (projectIdStr == null) {
                             ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text('Unable to open this project.')),
+                              SnackBar(
+                                  content:
+                                      Text('Unable to open this project.')),
                             );
                             return;
                           }
-                          
+
                           setState(() {
                             _isNavigating = true;
                           });
 
                           try {
-                            SharedPreferences prefs = await SharedPreferences.getInstance();
+                            SharedPreferences prefs =
+                                await SharedPreferences.getInstance();
                             await prefs.setString("project_id", projectIdStr);
-                            await prefs.setString("client_name", projectNameStr);
-                            
+                            await prefs.setString(
+                                "client_name", projectNameStr);
+
+                            await DataProvider().onProjectSelected(
+                              erpProjectId: projectIdStr,
+                              project: Map<String, dynamic>.from(project),
+                            );
+
                             // Preload project data for non-Client users
                             final role = prefs.getString('role');
                             if (role != null && role != 'Client') {
                               DataProvider().resetProjectData();
-                              DataProvider().loadProjectDataForNonClient(projectIdStr).catchError((e) {
-                                print('[AdminDashboard] Error preloading project data: $e');
+                              DataProvider()
+                                  .loadProjectDataForNonClient(projectIdStr)
+                                  .catchError((e) {
+                                print(
+                                    '[AdminDashboard] Error preloading project data: $e');
                               });
                             }
-                            
+
                             if (!mounted) return;
-                            
+                            _clearQuickSearch();
+
                             await _navigateWithAnimation(
                               context,
                               Home(fromAdminDashboard: true),
@@ -1315,7 +1365,6 @@ class AdminHomeState extends State<AdminHome> {
                                 loadProjects();
                               }
                             });
-                            _clearQuickSearch();
                           } finally {
                             if (mounted) {
                               setState(() {
@@ -1332,7 +1381,8 @@ class AdminHomeState extends State<AdminHome> {
                               Container(
                                 padding: EdgeInsets.all(12),
                                 decoration: BoxDecoration(
-                                  color: AppTheme.getPrimaryColor(context).withOpacity(0.15),
+                                  color: AppTheme.getPrimaryColor(context)
+                                      .withOpacity(0.15),
                                   borderRadius: BorderRadius.circular(8),
                                 ),
                                 child: Icon(
@@ -1361,7 +1411,8 @@ class AdminHomeState extends State<AdminHome> {
                                       Text(
                                         'Client: $clientName',
                                         style: TextStyle(
-                                          color: AppTheme.getTextSecondary(context),
+                                          color: AppTheme.getTextSecondary(
+                                              context),
                                           fontSize: 12,
                                         ),
                                       ),
@@ -1371,7 +1422,8 @@ class AdminHomeState extends State<AdminHome> {
                                       Text(
                                         'ID: $projectId',
                                         style: TextStyle(
-                                          color: AppTheme.getTextSecondary(context),
+                                          color: AppTheme.getTextSecondary(
+                                              context),
                                           fontSize: 11,
                                         ),
                                       ),
@@ -1399,6 +1451,7 @@ class AdminHomeState extends State<AdminHome> {
   }
 
   void _clearQuickSearch() {
+    if (!mounted) return;
     _searchDebounceTimer?.cancel();
     _quickSearchController.clear();
     _quickSearchFocusNode.unfocus();
@@ -1408,7 +1461,6 @@ class AdminHomeState extends State<AdminHome> {
       projectsToShow = projects;
     });
   }
-
 
   // Helper method for smooth animated navigation
   Future<T?> _navigateWithAnimation<T extends Object?>(
@@ -1447,7 +1499,8 @@ class AdminHomeState extends State<AdminHome> {
     );
   }
 
-  Future<void> _handleMenuTap(BuildContext context, Map<String, dynamic> item) async {
+  Future<void> _handleMenuTap(
+      BuildContext context, Map<String, dynamic> item) async {
     // Prevent double-tap navigation
     if (_isNavigating) {
       return;
@@ -1493,7 +1546,9 @@ class AdminHomeState extends State<AdminHome> {
     }
   }
 
-  Widget _buildStatCard(BuildContext context, String title, String value, IconData icon, Color color, {int index = 0, VoidCallback? onTap}) {
+  Widget _buildStatCard(BuildContext context, String title, String value,
+      IconData icon, Color color,
+      {int index = 0, VoidCallback? onTap}) {
     return TweenAnimationBuilder<double>(
       tween: Tween(begin: 0.0, end: 1.0),
       duration: Duration(milliseconds: 600 + (index * 100)),
@@ -1571,6 +1626,9 @@ class AdminHomeState extends State<AdminHome> {
     );
   }
 
+  List<Map<String, dynamic>> get _activeRecentTasks =>
+      filterActiveRecentTasks(_tasks);
+
   Widget _buildTasksSection() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1578,7 +1636,8 @@ class AdminHomeState extends State<AdminHome> {
         // Section Header - minimal
         Row(
           children: [
-            Icon(Icons.task_alt_outlined, color: AppTheme.getPrimaryColor(context), size: 24),
+            Icon(Icons.task_alt_outlined,
+                color: AppTheme.getPrimaryColor(context), size: 24),
             SizedBox(width: 8),
             Text(
               'Recent Tasks',
@@ -1643,7 +1702,7 @@ class AdminHomeState extends State<AdminHome> {
           ],
         ),
         SizedBox(height: 12),
-        
+
         // Error message - compact
         if (_tasksError != null)
           TweenAnimationBuilder<double>(
@@ -1689,149 +1748,167 @@ class AdminHomeState extends State<AdminHome> {
           height: 210,
           child: _isLoadingTasks
               ? // Loading state - skeleton loader (show whenever loading)
-                ListView.builder(
-                    scrollDirection: Axis.horizontal,
-                    padding: EdgeInsets.symmetric(vertical: 8),
-                    itemCount: 5,
-                    itemBuilder: (context, index) {
-                      return Padding(
-                        padding: EdgeInsets.only(
-                          right: index < 4 ? 12 : 0,
-                        ),
-                        child: _buildTaskCardSkeleton(),
-                      );
-                    },
-                  )
-              : _tasks.isEmpty && _tasksError == null
+              ListView.builder(
+                  scrollDirection: Axis.horizontal,
+                  padding: EdgeInsets.symmetric(vertical: 8),
+                  itemCount: 5,
+                  itemBuilder: (context, index) {
+                    return Padding(
+                      padding: EdgeInsets.only(
+                        right: index < 4 ? 12 : 0,
+                      ),
+                      child: _buildTaskCardSkeleton(),
+                    );
+                  },
+                )
+              : _activeRecentTasks.isEmpty && _tasksError == null
                   ? // Empty state - compact with animation
-                    Center(
-                        child: TweenAnimationBuilder<double>(
-                          tween: Tween(begin: 0.0, end: 1.0),
-                          duration: Duration(milliseconds: 500),
-                          curve: Curves.easeOut,
-                          builder: (context, value, child) {
-                            return Opacity(
-                              opacity: value,
-                              child: Transform.scale(
-                                scale: 0.9 + (0.1 * value),
-                                child: Container(
-                                  padding: EdgeInsets.all(24),
-                                  decoration: BoxDecoration(
-                                    color: AppTheme.getBackgroundSecondary(context),
-                                    borderRadius: BorderRadius.circular(10),
-                                    border: Border.all(
-                                      color: AppTheme.getPrimaryColor(context).withOpacity(0.2),
-                                      width: 1,
-                                    ),
+                  Center(
+                      child: TweenAnimationBuilder<double>(
+                        tween: Tween(begin: 0.0, end: 1.0),
+                        duration: Duration(milliseconds: 500),
+                        curve: Curves.easeOut,
+                        builder: (context, value, child) {
+                          return Opacity(
+                            opacity: value,
+                            child: Transform.scale(
+                              scale: 0.9 + (0.1 * value),
+                              child: Container(
+                                padding: EdgeInsets.all(24),
+                                decoration: BoxDecoration(
+                                  color:
+                                      AppTheme.getBackgroundSecondary(context),
+                                  borderRadius: BorderRadius.circular(10),
+                                  border: Border.all(
+                                    color: AppTheme.getPrimaryColor(context)
+                                        .withOpacity(0.2),
+                                    width: 1,
                                   ),
-                                  child: Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Container(
-                                        padding: EdgeInsets.all(12),
-                                        decoration: BoxDecoration(
-                                          color: AppTheme.getPrimaryColor(context).withOpacity(0.15),
-                                          shape: BoxShape.circle,
-                                        ),
-                                        child: Icon(
-                                          Icons.task_alt,
-                                          size: 32,
-                                          color: AppTheme.getPrimaryColor(context),
-                                        ),
+                                ),
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Container(
+                                      padding: EdgeInsets.all(12),
+                                      decoration: BoxDecoration(
+                                        color: AppTheme.getPrimaryColor(context)
+                                            .withOpacity(0.15),
+                                        shape: BoxShape.circle,
                                       ),
-                                      SizedBox(height: 12),
-                                      Text(
-                                        'No tasks found',
-                                        style: TextStyle(
-                                          color: AppTheme.getTextPrimary(context),
-                                          fontSize: 14,
-                                          fontWeight: FontWeight.normal,
-                                        ),
+                                      child: Icon(
+                                        Icons.task_alt,
+                                        size: 32,
+                                        color:
+                                            AppTheme.getPrimaryColor(context),
                                       ),
-                                      SizedBox(height: 4),
-                                      Text(
-                                        'Create your first task',
-                                        style: TextStyle(
-                                          color: AppTheme.getTextSecondary(context),
-                                          fontSize: 12,
-                                        ),
+                                    ),
+                                    SizedBox(height: 12),
+                                    Text(
+                                      'No tasks found',
+                                      style: TextStyle(
+                                        color: AppTheme.getTextPrimary(context),
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.normal,
                                       ),
-                                      SizedBox(height: 12),
-                                      Container(
-                                        decoration: BoxDecoration(
-                                          color: Color(0xFF10B981),
-                                          borderRadius: BorderRadius.circular(6),
-                                        ),
-                                        child: Material(
-                                          color: Colors.transparent,
-                                          child: InkWell(
-                                            onTap: () => _showCreateTaskDialog(),
-                                            borderRadius: BorderRadius.circular(6),
-                                            child: Padding(
-                                              padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                                              child: Row(
-                                                mainAxisSize: MainAxisSize.min,
-                                                children: [
-                                                  Icon(Icons.add, color: Colors.white, size: 14),
-                                                  SizedBox(width: 6),
-                                                  Text(
-                                                    'Create Task',
-                                                    style: TextStyle(
-                                                      color: Colors.white,
-                                                      fontSize: 12,
-                                                      fontWeight: FontWeight.normal,
-                                                    ),
+                                    ),
+                                    SizedBox(height: 4),
+                                    Text(
+                                      'Create your first task',
+                                      style: TextStyle(
+                                        color:
+                                            AppTheme.getTextSecondary(context),
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                    SizedBox(height: 12),
+                                    Container(
+                                      decoration: BoxDecoration(
+                                        color: Color(0xFF10B981),
+                                        borderRadius: BorderRadius.circular(6),
+                                      ),
+                                      child: Material(
+                                        color: Colors.transparent,
+                                        child: InkWell(
+                                          onTap: () => _showCreateTaskDialog(),
+                                          borderRadius:
+                                              BorderRadius.circular(6),
+                                          child: Padding(
+                                            padding: EdgeInsets.symmetric(
+                                                horizontal: 16, vertical: 8),
+                                            child: Row(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                Icon(Icons.add,
+                                                    color: Colors.white,
+                                                    size: 14),
+                                                SizedBox(width: 6),
+                                                Text(
+                                                  'Create Task',
+                                                  style: TextStyle(
+                                                    color: Colors.white,
+                                                    fontSize: 12,
+                                                    fontWeight:
+                                                        FontWeight.normal,
                                                   ),
-                                                ],
-                                              ),
+                                                ),
+                                              ],
                                             ),
                                           ),
                                         ),
                                       ),
-                                    ],
-                                  ),
+                                    ),
+                                  ],
                                 ),
                               ),
-                            );
-                          },
-                        ),
-                      )
-                  : // Tasks list with horizontal scroll view
-                    ListView.builder(
-                        scrollDirection: Axis.horizontal,
-                        padding: EdgeInsets.symmetric(vertical: 8),
-                        itemCount: _tasks.length > 5 ? 5 : _tasks.length,
-                        itemBuilder: (context, index) {
-                          final task = _tasks[index];
-                          if (task is Map<String, dynamic>) {
-                            return TweenAnimationBuilder<double>(
-                              tween: Tween(begin: 0.0, end: 1.0),
-                              duration: Duration(milliseconds: 400 + (index * 100)),
-                              curve: Curves.easeOut,
-                              builder: (context, value, child) {
-                                return Opacity(
-                                  opacity: value,
-                                  child: Transform.scale(
-                                    scale: 0.9 + (0.1 * value),
-                                    child: Padding(
-                                      padding: EdgeInsets.only(
-                                        right: index < (_tasks.length > 5 ? 5 : _tasks.length) - 1 ? 12 : 0,
-                                      ),
-                                      child: _buildTaskCard(task, index),
-                                    ),
-                                  ),
-                                );
-                              },
-                            );
-                          } else {
-                            return SizedBox.shrink();
-                          }
+                            ),
+                          );
                         },
                       ),
+                    )
+                  : // Tasks list with horizontal scroll view
+                  ListView.builder(
+                      scrollDirection: Axis.horizontal,
+                      padding: EdgeInsets.symmetric(vertical: 8),
+                      itemCount: _activeRecentTasks.length > 5
+                          ? 5
+                          : _activeRecentTasks.length,
+                      itemBuilder: (context, index) {
+                        final task = _activeRecentTasks[index];
+                        if (task is Map<String, dynamic>) {
+                          return TweenAnimationBuilder<double>(
+                            tween: Tween(begin: 0.0, end: 1.0),
+                            duration:
+                                Duration(milliseconds: 400 + (index * 100)),
+                            curve: Curves.easeOut,
+                            builder: (context, value, child) {
+                              return Opacity(
+                                opacity: value,
+                                child: Transform.scale(
+                                  scale: 0.9 + (0.1 * value),
+                                  child: Padding(
+                                    padding: EdgeInsets.only(
+                                      right: index <
+                                              (_tasks.length > 5
+                                                      ? 5
+                                                      : _tasks.length) -
+                                                  1
+                                          ? 12
+                                          : 0,
+                                    ),
+                                    child: _buildTaskCard(task, index),
+                                  ),
+                                ),
+                              );
+                            },
+                          );
+                        } else {
+                          return SizedBox.shrink();
+                        }
+                      },
+                    ),
         ),
 
         // View All Tasks button - styled like Create Task button
-
       ],
     );
   }
@@ -1862,6 +1939,56 @@ class AdminHomeState extends State<AdminHome> {
     return colors[index];
   }
 
+  Widget _buildTaskAvatar({
+    required String userName,
+    required String assignedToName,
+    required Color fallbackColor,
+    required IconData fallbackIcon,
+  }) {
+    Widget avatarFor(String name) {
+      return CircleAvatar(
+        radius: 10,
+        backgroundColor: _getColorFromName(name),
+        child: Text(
+          name[0].toUpperCase(),
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 10,
+            fontWeight: FontWeight.normal,
+          ),
+        ),
+      );
+    }
+
+    if (userName.isNotEmpty &&
+        assignedToName.isNotEmpty &&
+        assignedToName != userName) {
+      return SizedBox(
+        width: 34,
+        height: 20,
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            avatarFor(userName),
+            Positioned(
+              left: 14,
+              child: avatarFor(assignedToName),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (userName.isNotEmpty) return avatarFor(userName);
+    if (assignedToName.isNotEmpty) return avatarFor(assignedToName);
+
+    return CircleAvatar(
+      radius: 10,
+      backgroundColor: fallbackColor,
+      child: Icon(fallbackIcon, color: Colors.white, size: 12),
+    );
+  }
+
   Widget _buildTaskCard(Map<String, dynamic> task, int index) {
     final taskId = task['id']?.toString() ?? '';
     final projectId = task['project_id']?.toString() ?? '';
@@ -1869,7 +1996,8 @@ class AdminHomeState extends State<AdminHome> {
     final assignedTo = task['assigned_to']?.toString() ?? '';
     final assignedToName = task['assigned_to_name']?.toString() ?? '';
     final userName = task['user_name']?.toString() ?? '';
-    final userId = task['user_id']?.toString() ?? task['created_by']?.toString() ?? '';
+    final userId =
+        task['user_id']?.toString() ?? task['created_by']?.toString() ?? '';
     final status = task['status']?.toString() ?? 'pending';
     final note = task['note']?.toString() ?? '';
     final createdAt = task['created_at']?.toString() ?? '';
@@ -1877,7 +2005,7 @@ class AdminHomeState extends State<AdminHome> {
     // Get status color - using theme colors where appropriate
     Color statusColor;
     IconData statusIcon;
-    
+
     switch (status.toLowerCase()) {
       case 'completed':
         statusColor = Color(0xFF10B981); // Green
@@ -1896,60 +2024,12 @@ class AdminHomeState extends State<AdminHome> {
         statusIcon = Icons.pending;
     }
 
-    // Build avatar stack - smaller avatars
-    Widget avatarWidget;
-    if (userName.isNotEmpty || assignedToName.isNotEmpty) {
-      List<Widget> avatarList = [];
-      if (userName.isNotEmpty) {
-        avatarList.add(
-          CircleAvatar(
-            radius: 10,
-            backgroundColor: _getColorFromName(userName),
-            child: Text(
-              userName[0].toUpperCase(),
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 10,
-                fontWeight: FontWeight.normal,
-              ),
-            ),
-          ),
-        );
-      }
-      if (assignedToName.isNotEmpty && assignedToName != userName) {
-        avatarList.add(
-          Positioned(
-            left: 14,
-            child: CircleAvatar(
-              radius: 10,
-              backgroundColor: _getColorFromName(assignedToName),
-              child: Text(
-                assignedToName[0].toUpperCase(),
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 10,
-                  fontWeight: FontWeight.normal,
-                ),
-              ),
-            ),
-          ),
-        );
-      }
-      if (avatarList.length == 1) {
-        avatarWidget = avatarList[0];
-      } else {
-        avatarWidget = Stack(
-          clipBehavior: Clip.none,
-          children: avatarList,
-        );
-      }
-    } else {
-      avatarWidget = CircleAvatar(
-        radius: 10,
-        backgroundColor: statusColor,
-        child: Icon(statusIcon, color: Colors.white, size: 12),
-      );
-    }
+    final avatarWidget = _buildTaskAvatar(
+      userName: userName,
+      assignedToName: assignedToName,
+      fallbackColor: statusColor,
+      fallbackIcon: statusIcon,
+    );
 
     return Material(
       color: Colors.transparent,
@@ -2015,7 +2095,8 @@ class AdminHomeState extends State<AdminHome> {
                           Spacer(),
                           // Status indicator
                           Container(
-                            padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            padding: EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 2),
                             decoration: BoxDecoration(
                               color: statusColor.withOpacity(0.15),
                               borderRadius: BorderRadius.circular(8),
@@ -2095,7 +2176,7 @@ class AdminHomeState extends State<AdminHome> {
   Widget _buildTaskCardSkeleton() {
     final baseColor = AppTheme.getBackgroundSecondary(context).withOpacity(0.4);
     final highlightColor = Colors.white.withOpacity(0.35);
-    
+
     return Shimmer.fromColors(
       baseColor: baseColor,
       highlightColor: highlightColor,
@@ -2227,11 +2308,32 @@ class AdminHomeState extends State<AdminHome> {
 
   Widget _buildStatusDropdown(String taskIdStr, String currentStatus) {
     final taskId = int.tryParse(taskIdStr) ?? 0;
+    final isWorkflowTask = taskId < 0;
     final statuses = [
-      {'value': 'pending', 'label': 'Pending', 'color': Color(0xFFD97706), 'icon': Icons.pending},
-      {'value': 'in_progress', 'label': 'In Progress', 'color': AppTheme.getPrimaryColor(context), 'icon': Icons.work},
-      {'value': 'completed', 'label': 'Completed', 'color': Color(0xFF10B981), 'icon': Icons.check_circle},
-      {'value': 'cancelled', 'label': 'Cancelled', 'color': Color(0xFFEF4444), 'icon': Icons.cancel},
+      {
+        'value': 'pending',
+        'label': 'Pending',
+        'color': Color(0xFFD97706),
+        'icon': Icons.pending
+      },
+      {
+        'value': 'in_progress',
+        'label': 'In Progress',
+        'color': AppTheme.getPrimaryColor(context),
+        'icon': Icons.work
+      },
+      {
+        'value': 'completed',
+        'label': 'Completed',
+        'color': Color(0xFF10B981),
+        'icon': Icons.check_circle
+      },
+      {
+        'value': 'cancelled',
+        'label': 'Cancelled',
+        'color': Color(0xFFEF4444),
+        'icon': Icons.cancel
+      },
     ];
 
     final currentStatusData = statuses.firstWhere(
@@ -2258,7 +2360,8 @@ class AdminHomeState extends State<AdminHome> {
           enabledBorder: InputBorder.none,
           focusedBorder: InputBorder.none,
         ),
-        icon: Icon(Icons.arrow_drop_down, color: AppTheme.getTextSecondary(context)),
+        icon: Icon(Icons.arrow_drop_down,
+            color: AppTheme.getTextSecondary(context)),
         dropdownColor: AppTheme.backgroundPrimaryLight,
         style: TextStyle(
           color: AppTheme.getTextPrimary(context),
@@ -2269,7 +2372,7 @@ class AdminHomeState extends State<AdminHome> {
           final label = statusData['label'] as String;
           final color = statusData['color'] as Color;
           final icon = statusData['icon'] as IconData;
-          
+
           return DropdownMenuItem<String>(
             value: status,
             child: Row(
@@ -2287,11 +2390,13 @@ class AdminHomeState extends State<AdminHome> {
             ),
           );
         }).toList(),
-        onChanged: (String? newStatus) {
-          if (newStatus != null && newStatus != currentStatus) {
-            updateTaskStatus(taskId, newStatus);
-          }
-        },
+        onChanged: isWorkflowTask
+            ? null
+            : (String? newStatus) {
+                if (newStatus != null && newStatus != currentStatus) {
+                  updateTaskStatus(taskId, newStatus);
+                }
+              },
         selectedItemBuilder: (BuildContext context) {
           return statuses.map((statusData) {
             final label = statusData['label'] as String;
@@ -2373,7 +2478,9 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
           final name = project['name']?.toString().toLowerCase() ?? '';
           final id = project['id']?.toString() ?? '';
           final client = project['client_name']?.toString().toLowerCase() ?? '';
-          return name.contains(query) || id.contains(query) || client.contains(query);
+          return name.contains(query) ||
+              id.contains(query) ||
+              client.contains(query);
         }).toList();
       }
     });
@@ -2441,7 +2548,9 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
           'project_id': selectedProjectId.toString(),
           'assigned_to': assignedToInt.toString(),
           'status': selectedStatus,
-          'note': noteController.text.trim().isEmpty ? '' : noteController.text.trim(),
+          'note': noteController.text.trim().isEmpty
+              ? ''
+              : noteController.text.trim(),
           'api_token': apiToken,
         },
       ).timeout(const Duration(seconds: 20));
@@ -2503,7 +2612,7 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
   void _showProjectPicker() {
     // Reset search when opening picker
     _searchController.clear();
-    
+
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
@@ -2524,10 +2633,14 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
             final filtered = query.isEmpty
                 ? _projects
                 : _projects.where((project) {
-                    final name = project['name']?.toString().toLowerCase() ?? '';
+                    final name =
+                        project['name']?.toString().toLowerCase() ?? '';
                     final id = project['id']?.toString() ?? '';
-                    final client = project['client_name']?.toString().toLowerCase() ?? '';
-                    return name.contains(query) || id.contains(query) || client.contains(query);
+                    final client =
+                        project['client_name']?.toString().toLowerCase() ?? '';
+                    return name.contains(query) ||
+                        id.contains(query) ||
+                        client.contains(query);
                   }).toList();
 
             return Column(
@@ -2564,7 +2677,8 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
                         ),
                       ),
                       IconButton(
-                        icon: Icon(Icons.close, color: AppTheme.getTextSecondary(context)),
+                        icon: Icon(Icons.close,
+                            color: AppTheme.getTextSecondary(context)),
                         onPressed: () {
                           _searchController.clear();
                           Navigator.pop(context);
@@ -2588,18 +2702,23 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
                   ),
                   child: TextField(
                     controller: _searchController,
-                    style: TextStyle(color: AppTheme.getTextPrimary(context), fontSize: 14),
+                    style: TextStyle(
+                        color: AppTheme.getTextPrimary(context), fontSize: 14),
                     onChanged: (value) {
                       setModalState(() {});
                       _filterProjects();
                     },
                     decoration: InputDecoration(
                       hintText: 'Search projects by name, ID, or client...',
-                      hintStyle: TextStyle(color: AppTheme.getTextSecondary(context)),
-                      prefixIcon: Icon(Icons.search, color: AppTheme.getPrimaryColor(context)),
+                      hintStyle:
+                          TextStyle(color: AppTheme.getTextSecondary(context)),
+                      prefixIcon: Icon(Icons.search,
+                          color: AppTheme.getPrimaryColor(context)),
                       suffixIcon: _searchController.text.isNotEmpty
                           ? IconButton(
-                              icon: Icon(Icons.clear, color: AppTheme.getTextSecondary(context), size: 20),
+                              icon: Icon(Icons.clear,
+                                  color: AppTheme.getTextSecondary(context),
+                                  size: 20),
                               onPressed: () {
                                 _searchController.clear();
                                 setModalState(() {});
@@ -2612,13 +2731,15 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
                         borderSide: BorderSide(
-                          color: AppTheme.getPrimaryColor(context).withOpacity(0.2),
+                          color: AppTheme.getPrimaryColor(context)
+                              .withOpacity(0.2),
                         ),
                       ),
                       enabledBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
                         borderSide: BorderSide(
-                          color: AppTheme.getPrimaryColor(context).withOpacity(0.2),
+                          color: AppTheme.getPrimaryColor(context)
+                              .withOpacity(0.2),
                         ),
                       ),
                       focusedBorder: OutlineInputBorder(
@@ -2628,7 +2749,8 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
                           width: 2,
                         ),
                       ),
-                      contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                      contentPadding:
+                          EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                     ),
                   ),
                 ),
@@ -2639,7 +2761,9 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
                           child: Column(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              Icon(Icons.folder_open, size: 48, color: AppTheme.getTextSecondary(context)),
+                              Icon(Icons.folder_open,
+                                  size: 48,
+                                  color: AppTheme.getTextSecondary(context)),
                               SizedBox(height: 16),
                               Text(
                                 'No projects available',
@@ -2656,7 +2780,10 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
                               child: Column(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
-                                  Icon(Icons.search_off, size: 48, color: AppTheme.getTextSecondary(context)),
+                                  Icon(Icons.search_off,
+                                      size: 48,
+                                      color:
+                                          AppTheme.getTextSecondary(context)),
                                   SizedBox(height: 16),
                                   Text(
                                     'No projects match your search',
@@ -2673,103 +2800,126 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
                               itemCount: filtered.length,
                               itemBuilder: (context, index) {
                                 final project = filtered[index];
-                        final projectId = project['id']?.toString();
-                        final projectName = project['name']?.toString() ?? 'Unnamed Project';
-                        final clientName = project['client_name']?.toString();
-                        final isSelected = selectedProjectId?.toString() == projectId;
+                                final projectId = project['id']?.toString();
+                                final projectName =
+                                    project['name']?.toString() ??
+                                        'Unnamed Project';
+                                final clientName =
+                                    project['client_name']?.toString();
+                                final isSelected =
+                                    selectedProjectId?.toString() == projectId;
 
-                        return Container(
-                          margin: EdgeInsets.only(bottom: 8),
-                          decoration: BoxDecoration(
-                            color: isSelected
-                                ? AppTheme.getPrimaryColor(context).withOpacity(0.1)
-                                : Theme.of(context).scaffoldBackgroundColor,
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(
-                              color: isSelected
-                                  ? AppTheme.primaryColorConst
-                                  : AppTheme.getPrimaryColor(context).withOpacity(0.2),
-                              width: isSelected ? 1.5 : 1,
-                            ),
-                          ),
-                          child: Material(
-                            color: Colors.transparent,
-                            child: InkWell(
-                              onTap: () {
-                                setState(() {
-                                  selectedProjectId = int.tryParse(projectId ?? '');
-                                  selectedProjectName = projectName;
-                                });
-                                _searchController.clear();
-                                Navigator.pop(context);
+                                return Container(
+                                  margin: EdgeInsets.only(bottom: 8),
+                                  decoration: BoxDecoration(
+                                    color: isSelected
+                                        ? AppTheme.getPrimaryColor(context)
+                                            .withOpacity(0.1)
+                                        : Theme.of(context)
+                                            .scaffoldBackgroundColor,
+                                    borderRadius: BorderRadius.circular(10),
+                                    border: Border.all(
+                                      color: isSelected
+                                          ? AppTheme.primaryColorConst
+                                          : AppTheme.getPrimaryColor(context)
+                                              .withOpacity(0.2),
+                                      width: isSelected ? 1.5 : 1,
+                                    ),
+                                  ),
+                                  child: Material(
+                                    color: Colors.transparent,
+                                    child: InkWell(
+                                      onTap: () {
+                                        setState(() {
+                                          selectedProjectId =
+                                              int.tryParse(projectId ?? '');
+                                          selectedProjectName = projectName;
+                                        });
+                                        _searchController.clear();
+                                        Navigator.pop(context);
+                                      },
+                                      borderRadius: BorderRadius.circular(10),
+                                      child: Padding(
+                                        padding: EdgeInsets.all(12),
+                                        child: Row(
+                                          children: [
+                                            Container(
+                                              padding: EdgeInsets.all(6),
+                                              decoration: BoxDecoration(
+                                                color: AppTheme.getPrimaryColor(
+                                                        context)
+                                                    .withOpacity(0.15),
+                                                borderRadius:
+                                                    BorderRadius.circular(6),
+                                              ),
+                                              child: Icon(
+                                                Icons.folder_special,
+                                                color: AppTheme.getPrimaryColor(
+                                                    context),
+                                                size: 16,
+                                              ),
+                                            ),
+                                            SizedBox(width: 12),
+                                            Expanded(
+                                              child: Column(
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.start,
+                                                children: [
+                                                  Text(
+                                                    projectName,
+                                                    style: TextStyle(
+                                                      color: AppTheme
+                                                          .getTextPrimary(
+                                                              context),
+                                                      fontSize: 14,
+                                                      fontWeight:
+                                                          FontWeight.normal,
+                                                    ),
+                                                  ),
+                                                  if (clientName != null &&
+                                                      clientName
+                                                          .isNotEmpty) ...[
+                                                    SizedBox(height: 2),
+                                                    Text(
+                                                      clientName,
+                                                      style: TextStyle(
+                                                        color: AppTheme
+                                                            .getTextSecondary(
+                                                                context),
+                                                        fontSize: 11,
+                                                      ),
+                                                    ),
+                                                  ],
+                                                  if (projectId != null) ...[
+                                                    SizedBox(height: 2),
+                                                    Text(
+                                                      'ID: $projectId',
+                                                      style: TextStyle(
+                                                        color: AppTheme
+                                                            .getTextSecondary(
+                                                                context),
+                                                        fontSize: 10,
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ],
+                                              ),
+                                            ),
+                                            if (isSelected)
+                                              Icon(
+                                                Icons.check_circle,
+                                                color: AppTheme.getPrimaryColor(
+                                                    context),
+                                                size: 20,
+                                              ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                );
                               },
-                              borderRadius: BorderRadius.circular(10),
-                              child: Padding(
-                                padding: EdgeInsets.all(12),
-                                child: Row(
-                                  children: [
-                                    Container(
-                                      padding: EdgeInsets.all(6),
-                                      decoration: BoxDecoration(
-                                        color: AppTheme.getPrimaryColor(context).withOpacity(0.15),
-                                        borderRadius: BorderRadius.circular(6),
-                                      ),
-                                      child: Icon(
-                                        Icons.folder_special,
-                                        color: AppTheme.getPrimaryColor(context),
-                                        size: 16,
-                                      ),
-                                    ),
-                                    SizedBox(width: 12),
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            projectName,
-                                            style: TextStyle(
-                                              color: AppTheme.getTextPrimary(context),
-                                              fontSize: 14,
-                                              fontWeight: FontWeight.normal,
-                                            ),
-                                          ),
-                                          if (clientName != null && clientName.isNotEmpty) ...[
-                                            SizedBox(height: 2),
-                                            Text(
-                                              clientName,
-                                              style: TextStyle(
-                                                color: AppTheme.getTextSecondary(context),
-                                                fontSize: 11,
-                                              ),
-                                            ),
-                                          ],
-                                          if (projectId != null) ...[
-                                            SizedBox(height: 2),
-                                            Text(
-                                              'ID: $projectId',
-                                              style: TextStyle(
-                                                color: AppTheme.getTextSecondary(context),
-                                                fontSize: 10,
-                                              ),
-                                            ),
-                                          ],
-                                        ],
-                                      ),
-                                    ),
-                                    if (isSelected)
-                                      Icon(
-                                        Icons.check_circle,
-                                        color: AppTheme.getPrimaryColor(context),
-                                        size: 20,
-                                      ),
-                                  ],
-                                ),
-                              ),
                             ),
-                          ),
-                        );
-                      },
-                    ),
                 ),
               ],
             );
@@ -2786,7 +2936,7 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
       );
       return;
     }
-    
+
     final result = await UserPickerScreen.show(
       context,
       projectId: selectedProjectId,
@@ -2795,19 +2945,20 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
     if (result != null && mounted) {
       print('[AdminDashboard] User picker result: $result');
       print('[AdminDashboard] Result keys: ${result.keys.toList()}');
-      
+
       setState(() {
         // Try different possible ID field names
-        final userIdStr = result['user_id']?.toString() ?? 
-                         result['id']?.toString() ?? 
-                         result['userId']?.toString() ?? '';
+        final userIdStr = result['user_id']?.toString() ??
+            result['id']?.toString() ??
+            result['userId']?.toString() ??
+            '';
         selectedUserId = userIdStr.isNotEmpty ? int.tryParse(userIdStr) : null;
-        
+
         // Try different possible name field names
-        selectedUserName = result['user_name']?.toString() ?? 
-                          result['name']?.toString() ?? 
-                          result['username']?.toString();
-        
+        selectedUserName = result['user_name']?.toString() ??
+            result['name']?.toString() ??
+            result['username']?.toString();
+
         print('[AdminDashboard] Set selectedUserId: $selectedUserId');
         print('[AdminDashboard] Set selectedUserName: $selectedUserName');
       });
@@ -2816,10 +2967,30 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
 
   Widget _buildStatusDropdownForForm() {
     final statuses = [
-      {'value': 'pending', 'label': 'Pending', 'color': Color(0xFFD97706), 'icon': Icons.pending},
-      {'value': 'in_progress', 'label': 'In Progress', 'color': AppTheme.getPrimaryColor(context), 'icon': Icons.work},
-      {'value': 'completed', 'label': 'Completed', 'color': Color(0xFF10B981), 'icon': Icons.check_circle},
-      {'value': 'cancelled', 'label': 'Cancelled', 'color': Color(0xFFEF4444), 'icon': Icons.cancel},
+      {
+        'value': 'pending',
+        'label': 'Pending',
+        'color': Color(0xFFD97706),
+        'icon': Icons.pending
+      },
+      {
+        'value': 'in_progress',
+        'label': 'In Progress',
+        'color': AppTheme.getPrimaryColor(context),
+        'icon': Icons.work
+      },
+      {
+        'value': 'completed',
+        'label': 'Completed',
+        'color': Color(0xFF10B981),
+        'icon': Icons.check_circle
+      },
+      {
+        'value': 'cancelled',
+        'label': 'Cancelled',
+        'color': Color(0xFFEF4444),
+        'icon': Icons.cancel
+      },
     ];
 
     final currentStatusData = statuses.firstWhere(
@@ -2846,7 +3017,8 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
           enabledBorder: InputBorder.none,
           focusedBorder: InputBorder.none,
         ),
-        icon: Icon(Icons.arrow_drop_down, color: AppTheme.getTextSecondary(context)),
+        icon: Icon(Icons.arrow_drop_down,
+            color: AppTheme.getTextSecondary(context)),
         dropdownColor: AppTheme.backgroundPrimaryLight,
         style: TextStyle(
           color: AppTheme.getTextPrimary(context),
@@ -2857,7 +3029,7 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
           final label = statusData['label'] as String;
           final color = statusData['color'] as Color;
           final icon = statusData['icon'] as IconData;
-          
+
           return DropdownMenuItem<String>(
             value: status,
             child: Row(
@@ -2911,7 +3083,8 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
       appBar: AppBar(
         elevation: 0,
         leading: IconButton(
-          icon: Icon(Icons.arrow_back_ios_new_rounded, color: AppTheme.getTextPrimary(context)),
+          icon: Icon(Icons.arrow_back_ios_new_rounded,
+              color: AppTheme.getTextPrimary(context)),
           onPressed: () => Navigator.of(context).pop(),
         ),
         title: Text(
@@ -2947,7 +3120,7 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
                   color: AppTheme.backgroundPrimaryLight,
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
-                    color: selectedProjectId == null 
+                    color: selectedProjectId == null
                         ? AppTheme.getPrimaryColor(context).withOpacity(0.3)
                         : AppTheme.getPrimaryColor(context).withOpacity(0.5),
                     width: selectedProjectId == null ? 1 : 1.5,
@@ -3013,7 +3186,7 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
                 ),
               ),
             SizedBox(height: 20),
-            
+
             // User Picker (Assign To)
             Text(
               'Assign To',
@@ -3033,7 +3206,7 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
                   color: AppTheme.backgroundPrimaryLight,
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
-                    color: selectedUserId == null 
+                    color: selectedUserId == null
                         ? AppTheme.getPrimaryColor(context).withOpacity(0.3)
                         : AppTheme.getPrimaryColor(context).withOpacity(0.5),
                     width: selectedUserId == null ? 1 : 1.5,
@@ -3075,7 +3248,7 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
               ),
             ),
             SizedBox(height: 20),
-            
+
             // Status Dropdown
             Text(
               'Status',
@@ -3088,7 +3261,7 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
             SizedBox(height: 8),
             _buildStatusDropdownForForm(),
             SizedBox(height: 20),
-            
+
             // Note
             Text(
               'Note / Description',
@@ -3113,26 +3286,32 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
                 fillColor: AppTheme.backgroundPrimaryLight,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(color: AppTheme.getPrimaryColor(context).withOpacity(0.3)),
+                  borderSide: BorderSide(
+                      color:
+                          AppTheme.getPrimaryColor(context).withOpacity(0.3)),
                 ),
                 enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(color: AppTheme.getPrimaryColor(context).withOpacity(0.3)),
+                  borderSide: BorderSide(
+                      color:
+                          AppTheme.getPrimaryColor(context).withOpacity(0.3)),
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(color: AppTheme.getPrimaryColor(context), width: 2),
+                  borderSide: BorderSide(
+                      color: AppTheme.getPrimaryColor(context), width: 2),
                 ),
                 prefixIcon: Padding(
                   padding: EdgeInsets.only(bottom: 40),
-                  child: Icon(Icons.note, color: AppTheme.getPrimaryColor(context)),
+                  child: Icon(Icons.note,
+                      color: AppTheme.getPrimaryColor(context)),
                 ),
                 hintText: 'Enter task description...',
                 labelText: 'Note / Description *',
               ),
             ),
             SizedBox(height: 30),
-            
+
             // Submit Button - Green
             Container(
               decoration: BoxDecoration(
@@ -3153,13 +3332,15 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
                               height: 20,
                               child: CircularProgressIndicator(
                                 strokeWidth: 2,
-                                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                valueColor:
+                                    AlwaysStoppedAnimation<Color>(Colors.white),
                               ),
                             )
                           : Row(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                Icon(Icons.check, color: Colors.white, size: 18),
+                                Icon(Icons.check,
+                                    color: Colors.white, size: 18),
                                 SizedBox(width: 8),
                                 Text(
                                   'Create Task',
@@ -3182,8 +3363,6 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
     );
   }
 }
-
-
 
 class Dashboard extends StatefulWidget {
   @override
@@ -3232,16 +3411,18 @@ class DashboardState extends State<Dashboard> {
   }
 
   void _showProjectPicker() {
+    final parentContext = context;
+    var isClosing = false;
     _searchController.clear();
-    
+
     showModalBottomSheet(
-      context: context,
+      context: parentContext,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
-      builder: (context) => Container(
-        height: MediaQuery.of(context).size.height * 0.8,
+      builder: (sheetContext) => Container(
+        height: MediaQuery.of(sheetContext).size.height * 0.8,
         decoration: BoxDecoration(
-          color: AppTheme.getBackgroundSecondary(context),
+          color: AppTheme.getBackgroundSecondary(sheetContext),
           borderRadius: BorderRadius.only(
             topLeft: Radius.circular(20),
             topRight: Radius.circular(20),
@@ -3253,10 +3434,14 @@ class DashboardState extends State<Dashboard> {
             final filtered = query.isEmpty
                 ? _projects
                 : _projects.where((project) {
-                    final name = project['name']?.toString().toLowerCase() ?? '';
+                    final name =
+                        project['name']?.toString().toLowerCase() ?? '';
                     final id = project['id']?.toString() ?? '';
-                    final client = project['client_name']?.toString().toLowerCase() ?? '';
-                    return name.contains(query) || id.contains(query) || client.contains(query);
+                    final client =
+                        project['client_name']?.toString().toLowerCase() ?? '';
+                    return name.contains(query) ||
+                        id.contains(query) ||
+                        client.contains(query);
                   }).toList();
 
             return Column(
@@ -3292,10 +3477,13 @@ class DashboardState extends State<Dashboard> {
                         ),
                       ),
                       IconButton(
-                        icon: Icon(Icons.close, color: AppTheme.getTextSecondary(context)),
+                        icon: Icon(Icons.close,
+                            color: AppTheme.getTextSecondary(context)),
                         onPressed: () {
+                          isClosing = true;
+                          FocusManager.instance.primaryFocus?.unfocus();
                           _searchController.clear();
-                          Navigator.pop(context);
+                          Navigator.pop(sheetContext);
                         },
                       ),
                     ],
@@ -3307,7 +3495,7 @@ class DashboardState extends State<Dashboard> {
                     color: AppTheme.getBackgroundPrimary(context),
                     boxShadow: [
                       BoxShadow(
-                        color: Theme.of(context).brightness == Brightness.dark 
+                        color: Theme.of(context).brightness == Brightness.dark
                             ? Colors.black.withOpacity(0.3)
                             : Colors.black.withOpacity(0.05),
                         blurRadius: 4,
@@ -3317,18 +3505,25 @@ class DashboardState extends State<Dashboard> {
                   ),
                   child: TextField(
                     controller: _searchController,
-                    style: TextStyle(color: AppTheme.getTextPrimary(context), fontSize: 14),
+                    style: TextStyle(
+                        color: AppTheme.getTextPrimary(context), fontSize: 14),
                     onChanged: (value) {
+                      if (isClosing) return;
                       setModalState(() {});
                     },
                     decoration: InputDecoration(
                       hintText: 'Search projects by name, ID, or client...',
-                      hintStyle: TextStyle(color: AppTheme.getTextSecondary(context)),
-                      prefixIcon: Icon(Icons.search, color: AppTheme.getPrimaryColor(context)),
+                      hintStyle:
+                          TextStyle(color: AppTheme.getTextSecondary(context)),
+                      prefixIcon: Icon(Icons.search,
+                          color: AppTheme.getPrimaryColor(context)),
                       suffixIcon: _searchController.text.isNotEmpty
                           ? IconButton(
-                              icon: Icon(Icons.clear, color: AppTheme.getTextSecondary(context), size: 20),
+                              icon: Icon(Icons.clear,
+                                  color: AppTheme.getTextSecondary(context),
+                                  size: 20),
                               onPressed: () {
+                                if (isClosing) return;
                                 _searchController.clear();
                                 setModalState(() {});
                               },
@@ -3339,13 +3534,15 @@ class DashboardState extends State<Dashboard> {
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
                         borderSide: BorderSide(
-                          color: AppTheme.getPrimaryColor(context).withOpacity(0.2),
+                          color: AppTheme.getPrimaryColor(context)
+                              .withOpacity(0.2),
                         ),
                       ),
                       enabledBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
                         borderSide: BorderSide(
-                          color: AppTheme.getPrimaryColor(context).withOpacity(0.2),
+                          color: AppTheme.getPrimaryColor(context)
+                              .withOpacity(0.2),
                         ),
                       ),
                       focusedBorder: OutlineInputBorder(
@@ -3355,7 +3552,8 @@ class DashboardState extends State<Dashboard> {
                           width: 2,
                         ),
                       ),
-                      contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                      contentPadding:
+                          EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                     ),
                   ),
                 ),
@@ -3365,7 +3563,9 @@ class DashboardState extends State<Dashboard> {
                           child: Column(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              Icon(Icons.folder_open, size: 48, color: AppTheme.getTextSecondary(context)),
+                              Icon(Icons.folder_open,
+                                  size: 48,
+                                  color: AppTheme.getTextSecondary(context)),
                               SizedBox(height: 16),
                               Text(
                                 'No projects available',
@@ -3382,7 +3582,10 @@ class DashboardState extends State<Dashboard> {
                               child: Column(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
-                                  Icon(Icons.search_off, size: 48, color: AppTheme.getTextSecondary(context)),
+                                  Icon(Icons.search_off,
+                                      size: 48,
+                                      color:
+                                          AppTheme.getTextSecondary(context)),
                                   SizedBox(height: 16),
                                   Text(
                                     'No projects match your search',
@@ -3400,16 +3603,21 @@ class DashboardState extends State<Dashboard> {
                               itemBuilder: (context, index) {
                                 final project = filtered[index];
                                 final projectId = project['id']?.toString();
-                                final projectName = project['name']?.toString() ?? 'Unnamed Project';
-                                final clientName = project['client_name']?.toString();
+                                final projectName =
+                                    project['name']?.toString() ??
+                                        'Unnamed Project';
+                                final clientName =
+                                    project['client_name']?.toString();
 
                                 return Container(
                                   margin: EdgeInsets.only(bottom: 8),
                                   decoration: BoxDecoration(
-                                    color: AppTheme.getBackgroundPrimary(context),
+                                    color:
+                                        AppTheme.getBackgroundPrimary(context),
                                     borderRadius: BorderRadius.circular(10),
                                     border: Border.all(
-                                      color: AppTheme.getPrimaryColor(context).withOpacity(0.2),
+                                      color: AppTheme.getPrimaryColor(context)
+                                          .withOpacity(0.2),
                                       width: 1,
                                     ),
                                   ),
@@ -3417,29 +3625,50 @@ class DashboardState extends State<Dashboard> {
                                     color: Colors.transparent,
                                     child: InkWell(
                                       onTap: () async {
-                                        SharedPreferences prefs = await SharedPreferences.getInstance();
-                                        await prefs.setString("project_id", projectId ?? '');
-                                        await prefs.setString("client_name", projectName);
+                                        SharedPreferences prefs =
+                                            await SharedPreferences
+                                                .getInstance();
+                                        await prefs.setString(
+                                            "project_id", projectId ?? '');
+                                        await prefs.setString(
+                                            "client_name", projectName);
 
                                         // Preload project data for non-Client users
                                         final role = prefs.getString('role');
                                         if (role != null && role != 'Client') {
-                                          DataProvider().loadProjectDataForNonClient(projectId ?? '').catchError((e) {
-                                            print('[Dashboard] Error preloading project data: $e');
+                                          DataProvider()
+                                              .loadProjectDataForNonClient(
+                                                  projectId ?? '')
+                                              .catchError((e) {
+                                            print(
+                                                '[Dashboard] Error preloading project data: $e');
                                           });
                                         }
+                                        isClosing = true;
+                                        FocusManager.instance.primaryFocus
+                                            ?.unfocus();
                                         _searchController.clear();
-                                        Navigator.pop(context);
+                                        Navigator.pop(sheetContext);
+                                        await Future.delayed(
+                                          Duration(milliseconds: 120),
+                                        );
+                                        if (!mounted) return;
                                         Navigator.pushReplacement(
-                                          context,
+                                          parentContext,
                                           PageRouteBuilder(
-                                            pageBuilder: (context, animation, secondaryAnimation) => Home(fromAdminDashboard: true),
-                                            transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                                            pageBuilder: (context, animation,
+                                                    secondaryAnimation) =>
+                                                Home(fromAdminDashboard: true),
+                                            transitionsBuilder: (context,
+                                                animation,
+                                                secondaryAnimation,
+                                                child) {
                                               return FadeTransition(
                                                 opacity: animation,
                                                 child: SlideTransition(
                                                   position: Tween<Offset>(
-                                                    begin: const Offset(0.3, 0.0),
+                                                    begin:
+                                                        const Offset(0.3, 0.0),
                                                     end: Offset.zero,
                                                   ).animate(CurvedAnimation(
                                                     parent: animation,
@@ -3449,7 +3678,8 @@ class DashboardState extends State<Dashboard> {
                                                 ),
                                               );
                                             },
-                                            transitionDuration: Duration(milliseconds: 300),
+                                            transitionDuration:
+                                                Duration(milliseconds: 300),
                                           ),
                                         );
                                       },
@@ -3461,34 +3691,46 @@ class DashboardState extends State<Dashboard> {
                                             Container(
                                               padding: EdgeInsets.all(6),
                                               decoration: BoxDecoration(
-                                                color: AppTheme.getPrimaryColor(context).withOpacity(0.15),
-                                                borderRadius: BorderRadius.circular(6),
+                                                color: AppTheme.getPrimaryColor(
+                                                        context)
+                                                    .withOpacity(0.15),
+                                                borderRadius:
+                                                    BorderRadius.circular(6),
                                               ),
                                               child: Icon(
                                                 Icons.folder_special,
-                                                color: AppTheme.getPrimaryColor(context),
+                                                color: AppTheme.getPrimaryColor(
+                                                    context),
                                                 size: 16,
                                               ),
                                             ),
                                             SizedBox(width: 12),
                                             Expanded(
                                               child: Column(
-                                                crossAxisAlignment: CrossAxisAlignment.start,
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.start,
                                                 children: [
                                                   Text(
                                                     projectName,
                                                     style: TextStyle(
-                                                      color: AppTheme.getTextPrimary(context),
+                                                      color: AppTheme
+                                                          .getTextPrimary(
+                                                              context),
                                                       fontSize: 14,
-                                                      fontWeight: FontWeight.w600,
+                                                      fontWeight:
+                                                          FontWeight.w600,
                                                     ),
                                                   ),
-                                                  if (clientName != null && clientName.isNotEmpty) ...[
+                                                  if (clientName != null &&
+                                                      clientName
+                                                          .isNotEmpty) ...[
                                                     SizedBox(height: 2),
                                                     Text(
                                                       clientName,
                                                       style: TextStyle(
-                                                        color: AppTheme.getTextSecondary(context),
+                                                        color: AppTheme
+                                                            .getTextSecondary(
+                                                                context),
                                                         fontSize: 11,
                                                       ),
                                                     ),
@@ -3498,7 +3740,9 @@ class DashboardState extends State<Dashboard> {
                                                     Text(
                                                       'ID: $projectId',
                                                       style: TextStyle(
-                                                        color: AppTheme.getTextSecondary(context),
+                                                        color: AppTheme
+                                                            .getTextSecondary(
+                                                                context),
                                                         fontSize: 10,
                                                       ),
                                                     ),
@@ -3536,17 +3780,22 @@ class DashboardState extends State<Dashboard> {
       String? apiToken = prefs.getString('api_token');
 
       if (userId == null || apiToken == null || role.isEmpty) {
-        throw Exception('Missing credentials to load your projects. Please log in again.');
+        throw Exception(
+            'Missing credentials to load your projects. Please log in again.');
       }
 
       final payload = {"user_id": userId, "role": role, "api_token": apiToken};
-      print('user_id: $userId'); 
-      final uri = Uri.parse("https://office1.buildahome.in/API/get_projects_for_user");
+      print('user_id: $userId');
+      final uri =
+          Uri.parse("https://office1.buildahome.in/API/get_projects_for_user");
       print('[Dashboard] Loading projects with $payload');
-      final response = await http.post(uri, body: payload).timeout(const Duration(seconds: 20));
+      final response = await http
+          .post(uri, body: payload)
+          .timeout(const Duration(seconds: 20));
       print('response: ${response.body}');
       if (response.statusCode != 200) {
-        throw Exception('Unable to load projects right now (code ${response.statusCode}). Pull to refresh to retry.');
+        throw Exception(
+            'Unable to load projects right now (code ${response.statusCode}). Pull to refresh to retry.');
       }
 
       final decoded = jsonDecode(response.body);
@@ -3558,12 +3807,14 @@ class DashboardState extends State<Dashboard> {
       });
     } on TimeoutException {
       setState(() {
-        _errorMessage = 'Request timed out while loading projects. Pull down to retry.';
+        _errorMessage =
+            'Request timed out while loading projects. Pull down to retry.';
       });
     } catch (e) {
       print('[Dashboard] Error loading projects: $e');
       setState(() {
-        _errorMessage = 'Something went wrong while loading your projects. Pull down to retry.';
+        _errorMessage =
+            'Something went wrong while loading your projects. Pull down to retry.';
       });
     } finally {
       if (mounted) {
@@ -3586,8 +3837,10 @@ class DashboardState extends State<Dashboard> {
           Container(
             padding: EdgeInsets.only(bottom: 10),
             margin: EdgeInsets.only(bottom: 10, right: 100),
-            child: Text("Projects handled by you", style: TextStyle(fontSize: 16, fontWeight: FontWeight.normal)),
-            decoration: BoxDecoration(border: Border(bottom: BorderSide(width: 3))),
+            child: Text("Projects handled by you",
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.normal)),
+            decoration:
+                BoxDecoration(border: Border(bottom: BorderSide(width: 3))),
           ),
           if (_errorMessage != null)
             Container(

@@ -117,6 +117,8 @@ class NavMenuWidgetState extends State<NavMenuWidget> {
 
   var username;
   var role;
+  var clientName;
+  var email;
   var location;
 
   call() async {
@@ -125,6 +127,17 @@ class NavMenuWidgetState extends State<NavMenuWidget> {
       username = prefs.getString('username');
       role = prefs.getString('role');
       location = prefs.getString('location');
+      email = username;
+
+      // For clients, `username` looks like email/identifier.
+      // Show a friendly name if we can, otherwise reuse the username.
+      if (prefs.getString('client_name') != null && prefs.getString('client_name')!.trim().isNotEmpty) {
+        clientName = prefs.getString('client_name');
+      } else {
+        final raw = (username?.toString() ?? '').trim();
+        // Common format in this app seems to be `name-...`, so take the first part.
+        clientName = raw.contains('-') ? raw.split('-')[0].trim() : raw;
+      }
     });
   }
 
@@ -156,51 +169,37 @@ class NavMenuWidgetState extends State<NavMenuWidget> {
                           color: Color(0xFFDEEDF0),
                         ),
                       ),
-                      Container(
-                          padding: EdgeInsets.only(left: 15),
-                          alignment: Alignment.centerLeft,
+                      Expanded(
+                        child: Padding(
+                          padding: EdgeInsets.only(left: 15, right: 16),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: <Widget>[
-                              Container(
+                              Text(
+                                (role == "Client" ? clientName : username).toString(),
+                                textAlign: TextAlign.left,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                    fontSize: 22,
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold),
+                              ),
+                              Padding(
+                                padding: EdgeInsets.only(top: 5),
                                 child: Text(
-                                  username.toString(),
-                                  textAlign: TextAlign.left,
+                                  role == "Client" ? (email ?? '').toString() : role.toString(),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
                                   style: TextStyle(
-                                      fontSize: 22,
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.bold),
+                                      color: Colors.white, fontSize: 16),
                                 ),
                               ),
-                              Container(
-                                  padding: EdgeInsets.only(top: 5),
-                                  child: Text(
-                                    role.toString(),
-                                    style: TextStyle(
-                                        color: Colors.white, fontSize: 16),
-                                  ))
                             ],
-                          )),
+                          ),
+                        ),
+                      ),
                     ]),
-                    if (role == "Client")
-                      Container(
-                          margin: EdgeInsets.only(top: 30),
-                          alignment: Alignment.topLeft,
-                          child: Text(
-                            "Building a home at",
-                            style: TextStyle(color: Colors.white, fontSize: 16),
-                          )),
-                    if (role == "Client")
-                      Container(
-                          margin: EdgeInsets.only(top: 10, left: 0),
-                          alignment: Alignment.topLeft,
-                          child: Text(
-                            location.toString(),
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 14,
-                            ),
-                          ))
                   ],
                 ),
               ),

@@ -96,7 +96,7 @@ class LoginScreenNewState extends State<LoginScreenNew> with SingleTickerProvide
     prefs.setString("role", role.toString());
     prefs.setString("userId", userId.toString());
     prefs.setString("user_id", userId.toString());
-    prefs.setString("api_token", apiToken.toString());
+    prefs.setString("api_token", apiToken?.toString().trim() ?? '');
 
     if (role.toString() == 'Client') {
       prefs.setString("project_id", projectId.toString());

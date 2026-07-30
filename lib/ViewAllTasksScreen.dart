@@ -54,6 +54,19 @@ class _ViewAllTasksScreenState extends State<ViewAllTasksScreen> {
   // Check if user can modify tasks (only non-Client users)
   bool get _canModifyTasks => _currentRole != null && _currentRole != 'Client';
 
+  bool _isWorkflowTask(Map task) {
+    return task['is_workflow_task'] == true ||
+        task['category']?.toString() == 'workflow_task' ||
+        task['workflow_item_run_id'] != null ||
+        task['workflow_run_id'] != null;
+  }
+
+  int? _taskIdFrom(dynamic task) {
+    if (task is! Map || task['id'] == null) return null;
+    final taskId = int.tryParse(task['id'].toString());
+    return taskId == 0 ? null : taskId;
+  }
+
   Future<void> _loadAllTasks() async {
     if (_isLoading) return;
     
@@ -74,7 +87,7 @@ class _ViewAllTasksScreenState extends State<ViewAllTasksScreen> {
       if (role != null && role != 'Client') {
         // First, try fetching without any filters to get all tasks
         try {
-          Uri uri = Uri.parse("https://office.buildahome.in/API/get_tasks");
+          Uri uri = Uri.parse("http://192.168.2.32:5000/API/get_tasks");
           var response = await http.get(uri).timeout(const Duration(seconds: 15));
           
           if (response.statusCode == 200) {
@@ -98,7 +111,7 @@ class _ViewAllTasksScreenState extends State<ViewAllTasksScreen> {
         // Also fetch tasks for the user (as backup/complement)
         if (userId != null && userId.isNotEmpty) {
           try {
-            Uri uri = Uri.parse("https://office.buildahome.in/API/get_tasks").replace(
+            Uri uri = Uri.parse("http://192.168.2.32:5000/API/get_tasks").replace(
               queryParameters: {
                 'user_id': userId,
                 'assigned_to': userId,
@@ -158,7 +171,7 @@ class _ViewAllTasksScreenState extends State<ViewAllTasksScreen> {
               // Fetch tasks for each project
               for (String projectId in projectIds) {
                 try {
-                  Uri projectUri = Uri.parse("https://office.buildahome.in/API/get_tasks").replace(
+                  Uri projectUri = Uri.parse("http://192.168.2.32:5000/API/get_tasks").replace(
                     queryParameters: {'project_id': projectId},
                   );
                   var projectResponse = await http.get(projectUri).timeout(const Duration(seconds: 10));
@@ -177,11 +190,9 @@ class _ViewAllTasksScreenState extends State<ViewAllTasksScreen> {
                     
                     // Add tasks to map (deduplicate by ID)
                     for (var task in projectTasks) {
-                      if (task is Map && task['id'] != null) {
-                        int taskId = int.tryParse(task['id'].toString()) ?? 0;
-                        if (taskId > 0) {
-                          taskMap[taskId] = task;
-                        }
+                      final taskId = _taskIdFrom(task);
+                      if (taskId != null) {
+                        taskMap[taskId] = task;
                       }
                     }
                     
@@ -214,7 +225,7 @@ class _ViewAllTasksScreenState extends State<ViewAllTasksScreen> {
         // For Clients, fetch tasks for their project
         String? projectId = prefs.getString('project_id');
         if (projectId != null && projectId.isNotEmpty) {
-          Uri uri = Uri.parse("https://office.buildahome.in/API/get_tasks").replace(
+          Uri uri = Uri.parse("http://192.168.2.32:5000/API/get_tasks").replace(
             queryParameters: {'project_id': projectId},
           );
           var response = await http.get(uri).timeout(const Duration(seconds: 20));
@@ -239,11 +250,9 @@ class _ViewAllTasksScreenState extends State<ViewAllTasksScreen> {
       // Deduplicate tasks by ID (for tasks fetched in initial calls that weren't already added)
       // Note: Project-specific tasks are already in taskMap, so we only need to add initial calls
       for (var task in allFetchedTasks) {
-        if (task is Map && task['id'] != null) {
-          int taskId = int.tryParse(task['id'].toString()) ?? 0;
-          if (taskId > 0 && !taskMap.containsKey(taskId)) {
-            taskMap[taskId] = task;
-          }
+        final taskId = _taskIdFrom(task);
+        if (taskId != null && !taskMap.containsKey(taskId)) {
+          taskMap[taskId] = task;
         }
       }
       
@@ -369,6 +378,16 @@ class _ViewAllTasksScreenState extends State<ViewAllTasksScreen> {
 
   Future<void> _updateTaskStatus(int taskId, String newStatus) async {
     if (_isUpdating) return;
+
+    if (taskId < 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Workflow tasks cannot be updated from this screen yet.'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
     
     setState(() {
       _isUpdating = true;
@@ -441,6 +460,16 @@ class _ViewAllTasksScreenState extends State<ViewAllTasksScreen> {
 
   Future<void> _deleteTask(int taskId) async {
     if (_isDeleting) return;
+
+    if (taskId < 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Workflow tasks cannot be deleted from this screen yet.'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
     
     // Show confirmation dialog
     final confirmed = await showDialog<bool>(
@@ -713,6 +742,7 @@ class _ViewAllTasksScreenState extends State<ViewAllTasksScreen> {
 
   Widget _buildStatusDropdown(String taskIdStr, String currentStatus, {VoidCallback? onStatusChanged}) {
     final taskId = int.tryParse(taskIdStr) ?? 0;
+    final isWorkflowTask = taskId < 0;
     final statuses = [
       {'value': 'pending', 'label': 'Pending', 'color': Color(0xFFD97706), 'icon': Icons.pending}, // Darker amber/yellow
       {'value': 'in_progress', 'label': 'In Progress', 'color': Color(0xFF2196F3), 'icon': Icons.work}, // Blue
@@ -773,7 +803,7 @@ class _ViewAllTasksScreenState extends State<ViewAllTasksScreen> {
             ),
           );
         }).toList(),
-        onChanged: _isUpdating ? null : (String? newStatus) {
+        onChanged: (_isUpdating || isWorkflowTask) ? null : (String? newStatus) {
           if (newStatus != null && newStatus != currentStatus) {
             onStatusChanged?.call();
             _updateTaskStatus(taskId, newStatus);
@@ -1064,6 +1094,8 @@ class _ViewAllTasksScreenState extends State<ViewAllTasksScreen> {
     final status = task['status']?.toString() ?? 'pending';
     final note = task['note']?.toString() ?? '';
     final createdAt = task['created_at']?.toString() ?? '';
+    final isWorkflowTask = _isWorkflowTask(task);
+    final title = isWorkflowTask && note.isNotEmpty ? note : 'Task #$taskId';
     final statusColor = _getStatusColor(status);
     final statusIcon = _getStatusIcon(status);
     final isCreatedByMe = _currentUserId != null && taskUserId == _currentUserId;
@@ -1132,7 +1164,7 @@ class _ViewAllTasksScreenState extends State<ViewAllTasksScreen> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  'Task #$taskId',
+                                  title,
                                   style: TextStyle(
                                     color: AppTheme.getTextPrimary(context),
                                     fontSize: 15,
@@ -1141,7 +1173,7 @@ class _ViewAllTasksScreenState extends State<ViewAllTasksScreen> {
                                     height: 1.2,
                                   ),
                                 ),
-                                if (note.isNotEmpty) ...[
+                                if (!isWorkflowTask && note.isNotEmpty) ...[
                                   SizedBox(height: 6),
                                   Text(
                                     note,
@@ -1186,7 +1218,7 @@ class _ViewAllTasksScreenState extends State<ViewAllTasksScreen> {
                               ],
                             ),
                           ),
-                          if (_canModifyTasks) ...[
+                          if (_canModifyTasks && !isWorkflowTask) ...[
                             SizedBox(width: 6),
                             PopupMenuButton<String>(
                               icon: Icon(Icons.more_vert, color: AppTheme.getTextSecondary(context).withOpacity(0.6), size: 20),
@@ -1289,11 +1321,11 @@ class _ViewAllTasksScreenState extends State<ViewAllTasksScreen> {
               ),
             ),
           
-          // Comments Section - cleaner design
-          Padding(
-            padding: EdgeInsets.fromLTRB(14, 0, 14, 12),
-            child: _buildCommentsSection(taskId),
-          ),
+          if (!isWorkflowTask)
+            Padding(
+              padding: EdgeInsets.fromLTRB(14, 0, 14, 12),
+              child: _buildCommentsSection(taskId),
+            ),
         ],
       ),
     );

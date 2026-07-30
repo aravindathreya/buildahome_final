@@ -23,6 +23,8 @@ class ProjectPickerScreen {
     
     _isShowing = true;
     final searchController = TextEditingController();
+    final parentContext = context;
+    var isClosing = false;
     
     try {
       List<dynamic> projects = [];
@@ -38,15 +40,15 @@ class ProjectPickerScreen {
       }
       
       await showModalBottomSheet(
-      context: context,
+      context: parentContext,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
       isDismissible: true,
       enableDrag: true,
-      builder: (context) => Container(
-        height: MediaQuery.of(context).size.height * 0.8,
+      builder: (sheetContext) => Container(
+        height: MediaQuery.of(sheetContext).size.height * 0.8,
         decoration: BoxDecoration(
-          color: AppTheme.getBackgroundSecondary(context),
+          color: AppTheme.getBackgroundSecondary(sheetContext),
           borderRadius: BorderRadius.only(
             topLeft: Radius.circular(20),
             topRight: Radius.circular(20),
@@ -99,8 +101,10 @@ class ProjectPickerScreen {
                       IconButton(
                         icon: Icon(Icons.close, color: AppTheme.getTextSecondary(context)),
                         onPressed: () {
+                          isClosing = true;
+                          FocusManager.instance.primaryFocus?.unfocus();
                           searchController.clear();
-                          Navigator.pop(context);
+                          Navigator.pop(sheetContext);
                         },
                       ),
                     ],
@@ -124,6 +128,7 @@ class ProjectPickerScreen {
                     controller: searchController,
                     style: TextStyle(color: AppTheme.getTextPrimary(context), fontSize: 14),
                     onChanged: (value) {
+                      if (isClosing) return;
                       setModalState(() {});
                     },
                     decoration: InputDecoration(
@@ -134,6 +139,7 @@ class ProjectPickerScreen {
                           ? IconButton(
                               icon: Icon(Icons.clear, color: AppTheme.getTextSecondary(context), size: 20),
                               onPressed: () {
+                                if (isClosing) return;
                                 searchController.clear();
                                 setModalState(() {});
                               },
@@ -233,19 +239,30 @@ class ProjectPickerScreen {
                                             SharedPreferences prefs = await SharedPreferences.getInstance();
                                             await prefs.setString("project_id", projectId);
                                             await prefs.setString("client_name", projectName);
+
+                                            await DataProvider().onProjectSelected(
+                                              erpProjectId: projectId,
+                                              project: Map<String, dynamic>.from(project),
+                                            );
                                             
                                             final role = prefs.getString('role');
                                             if (role != null && role != 'Client') {
                                               DataProvider().resetProjectData();
-                                              await DataProvider().loadProjectDataForNonClient(projectId).catchError((e) {
+                                              DataProvider().loadProjectDataForNonClient(projectId).catchError((e) {
                                                 print('[ProjectPicker] Error preloading project data: $e');
                                               });
                                             }
                                             
+                                            isClosing = true;
+                                            FocusManager.instance.primaryFocus?.unfocus();
                                             searchController.clear();
-                                            Navigator.pop(context);
-                                            
-                                            Navigator.of(context).push(
+                                            Navigator.pop(sheetContext);
+
+                                            await Future.delayed(
+                                              const Duration(milliseconds: 120),
+                                            );
+                                            if (!parentContext.mounted) return;
+                                            Navigator.of(parentContext).push(
                                               PageRouteBuilder(
                                                 transitionDuration: Duration(milliseconds: 320),
                                                 reverseTransitionDuration: Duration(milliseconds: 240),
@@ -347,6 +364,7 @@ class ProjectPickerScreen {
     } finally {
       _isShowing = false;
       _lastClosedTime = DateTime.now();
+      await Future.delayed(const Duration(milliseconds: 400));
       searchController.dispose();
     }
   }

@@ -6,7 +6,7 @@ buildscript {
     }
 
     dependencies {
-        classpath "com.android.tools.build:gradle:8.7.2"
+        classpath "com.android.tools.build:gradle:8.9.1"
         classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
         classpath 'com.google.gms:google-services:4.3.2'
     }
@@ -38,6 +38,39 @@ subprojects {
                     && !details.requested.name.contains('multidex') ) {
                 details.useVersion "26.1.0"
             }
+        }
+    }
+}
+
+// Fix for AGP builds failing with:
+// "defaultConfig contains custom BuildConfig fields, but the feature is disabled."
+// This can happen inside Flutter plugin modules like `:firebase_core`.
+//
+// Use plugin callbacks (safe at configuration-time) instead of `afterEvaluate`
+// to avoid: "Cannot run Project.afterEvaluate(...) when the project is already evaluated."
+subprojects { proj ->
+    proj.plugins.withId('com.android.application') {
+        proj.android.buildFeatures.buildConfig = true
+    }
+    proj.plugins.withId('com.android.library') {
+        proj.android.buildFeatures.buildConfig = true
+        // AGP8+ requires `namespace` for every android module.
+        // Some older Flutter plugins don't set it; their AndroidManifest.xml still has
+        // the deprecated `package="..."` attribute, so we copy that into `namespace`.
+        try {
+            def currentNamespace = proj.android.namespace
+            if (currentNamespace == null || currentNamespace.toString().trim().isEmpty()) {
+                def manifestFile = proj.file('src/main/AndroidManifest.xml')
+                if (manifestFile.exists()) {
+                    def manifest = new XmlSlurper().parse(manifestFile)
+                    def pkg = manifest.@package?.toString()
+                    if (pkg != null && !pkg.trim().isEmpty()) {
+                        proj.android.namespace = pkg.trim()
+                    }
+                }
+            }
+        } catch (ignored) {
+            // If manifest doesn't exist or namespace is already set, do nothing.
         }
     }
 }
