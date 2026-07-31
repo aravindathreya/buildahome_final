@@ -20,6 +20,8 @@ import 'project_picker.dart';
 import 'user_picker.dart';
 import 'services/data_provider.dart';
 import 'services/rbac_service.dart';
+import 'services/api_http.dart';
+import 'services/session_manager.dart';
 import 'stock_report.dart';
 import 'ViewAllTasksScreen.dart';
 import 'TasksScreen.dart';
@@ -413,7 +415,7 @@ class AdminHomeState extends State<AdminHome> {
       );
 
       print('Uri ${uri.toString()}');
-      var response = await http.get(uri).timeout(const Duration(seconds: 20));
+      var response = await ApiHttp.get(uri).timeout(const Duration(seconds: 20));
       print('Response ${response.body}');
 
       if (response.statusCode == 200) {
@@ -521,6 +523,7 @@ class AdminHomeState extends State<AdminHome> {
         throw Exception('Unable to load tasks (code ${response.body})');
       }
     } catch (e) {
+      if (e is SessionInvalidatedException) return;
       if (!mounted) return;
       print('[AdminDashboard] Error loading tasks: $e');
       setState(() {

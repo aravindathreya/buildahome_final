@@ -17,7 +17,9 @@ import 'package:url_launcher/url_launcher.dart';
 
 import 'app_theme.dart';
 import 'FullScreenImage.dart';
+import 'services/api_http.dart';
 import 'services/data_provider.dart';
+import 'services/session_manager.dart';
 
 const String _workflowApiBaseUrl = 'https://office.buildahome.in';
 const Color _premiumBackground = Color(0xFFF8F9FC);
@@ -234,8 +236,7 @@ Future<Map<String, dynamic>> mergeWorkflowTaskDetail(
       },
     );
 
-    final response = await http
-        .get(
+    final response = await ApiHttp.get(
           uri,
           headers: {'X-Api-Token': apiToken},
         )
@@ -276,6 +277,7 @@ Future<Map<String, dynamic>> mergeWorkflowTaskDetail(
 
     return merged;
   } catch (e) {
+    if (e is SessionInvalidatedException) rethrow;
     print('[WorkflowTaskDetail] fetch failed: $e');
     return task;
   }
@@ -1223,9 +1225,17 @@ class _WorkflowManagerApprovalSectionState
 
   Future<void> _showSnackBar(String message, {bool isError = false}) async {
     if (!mounted) return;
+    final cleaned = message.replaceAll('Exception: ', '').trim();
+    if (cleaned.isEmpty) return;
+    if (cleaned == SessionManager.logoutMessage ||
+        cleaned.toLowerCase().contains('invalid api token') ||
+        cleaned.toLowerCase().contains('signed in on another device') ||
+        cleaned.toLowerCase().contains('two devices')) {
+      return;
+    }
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(message),
+        content: Text(cleaned),
         backgroundColor: isError ? Colors.red : Colors.green,
       ),
     );
@@ -1290,8 +1300,7 @@ class _WorkflowManagerApprovalSectionState
         payload['reason'] = note.trim();
       }
 
-      final response = await http
-          .post(
+      final response = await ApiHttp.post(
             Uri.parse('$_workflowApiBaseUrl$endpoint'),
             headers: {
               'Content-Type': 'application/json',
@@ -1901,8 +1910,7 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
         },
       );
 
-      final response = await http
-          .get(
+      final response = await ApiHttp.get(
             uri,
             headers: {'X-Api-Token': credentials.apiToken},
           )
@@ -2165,8 +2173,7 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
 
     try {
       final credentials = await _credentials();
-      final response = await http
-          .post(
+      final response = await ApiHttp.post(
             Uri.parse('$_workflowApiBaseUrl$endpoint'),
             headers: {
               'Content-Type': 'application/json',
@@ -2279,8 +2286,7 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
         payload['line_quantities'] = lineQuantities;
       }
 
-      final response = await http
-          .post(
+      final response = await ApiHttp.post(
             Uri.parse(_absoluteWorkflowUrl(endpoint)),
             headers: {
               'Content-Type': 'application/json',
@@ -2507,8 +2513,7 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
         payload['indent_purpose'] = indentPurpose;
       }
 
-      final response = await http
-          .post(
+      final response = await ApiHttp.post(
             Uri.parse(_absoluteWorkflowUrl(submitEndpoint)),
             headers: {
               'Content-Type': 'application/json',
@@ -2694,8 +2699,7 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
       );
 
       if (!hasFiles) {
-        final response = await http
-            .post(
+        final response = await ApiHttp.post(
               uri,
               headers: {'Content-Type': 'application/json'},
               body: jsonEncode({
@@ -2733,7 +2737,7 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
       }
 
       final streamedResponse =
-          await request.send().timeout(Duration(seconds: 60));
+          await ApiHttp.send(request).timeout(Duration(seconds: 60));
       final response = await http.Response.fromStream(streamedResponse);
       final message = _successMessageOrThrow(
         response,
@@ -3229,7 +3233,7 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
                 _appendWorkflowVideoDurationField(request, selectedFiles);
 
                 final streamedResponse =
-                    await request.send().timeout(Duration(seconds: 60));
+                    await ApiHttp.send(request).timeout(Duration(seconds: 60));
                 final response =
                     await http.Response.fromStream(streamedResponse);
                 final message = _successMessageOrThrow(
@@ -3903,7 +3907,7 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
                 _appendWorkflowVideoDurationField(request, [pendingFile!]);
 
                 final streamedResponse =
-                    await request.send().timeout(const Duration(seconds: 60));
+                    await ApiHttp.send(request).timeout(const Duration(seconds: 60));
                 final response =
                     await http.Response.fromStream(streamedResponse);
                 final message = _successMessageOrThrow(
@@ -4020,7 +4024,7 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
                 }
 
                 final streamedResponse =
-                    await request.send().timeout(const Duration(seconds: 60));
+                    await ApiHttp.send(request).timeout(const Duration(seconds: 60));
                 final response =
                     await http.Response.fromStream(streamedResponse);
                 final message = _successMessageOrThrow(
@@ -4466,8 +4470,10 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
 
   Future<void> _showUserChecklistSheet() async {
     final allowComment = action['allow_comment_per_item'] == true;
-    final allowImage = action['allow_image_per_item'] == true;
-    final allowVideo = action['allow_video_per_item'] == true;
+    final uploadSources = _resolveUserChecklistUploadSources(action);
+    final maxVideoDurationSeconds =
+        _intValue(action['max_video_duration_seconds']) ?? 60;
+    final maxVideoSizeMb = _intValue(action['max_video_size_mb']) ?? 50;
     final submitLabel =
         action['submit_button_label']?.toString().trim().isNotEmpty == true
             ? action['submit_button_label'].toString().trim()
@@ -4482,16 +4488,14 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
         icon: Icons.playlist_add_check,
         child: _UserChecklistSheet(
           allowComment: allowComment,
-          allowImage: allowImage,
-          allowVideo: allowVideo,
-          uploadSources: _resolveWorkflowUploadSources(
-            action,
-            allowedFormats: allowImage
-                ? const ['jpg', 'jpeg', 'png', 'webp', 'gif']
-                : const [],
-          ),
+          uploadSources: uploadSources,
+          maxVideoDurationSeconds: maxVideoDurationSeconds,
+          maxVideoSizeMb: maxVideoSizeMb,
           submitLabel: submitLabel,
-          onSubmit: _submitUserChecklistRows,
+          onSubmit: (rows) => _submitUserChecklistRows(
+            rows,
+            uploadSources: uploadSources,
+          ),
         ),
       ),
     );
@@ -4505,9 +4509,16 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
   }
 
   Future<bool> _submitUserChecklistRows(
-      List<_UserChecklistRow> validRows) async {
+    List<_UserChecklistRow> validRows, {
+    required _WorkflowUploadSourceConfig uploadSources,
+  }) async {
     try {
       final credentials = await _credentials();
+      final allowImage =
+          uploadSources.allowGallery || uploadSources.allowCamera;
+      final allowVideo = uploadSources.allowVideo;
+      final allowDocument = uploadSources.allowDocument;
+
       final items = validRows
           .map((row) => {
                 'id': row.id,
@@ -4517,14 +4528,20 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
               })
           .toList();
 
-      final hasImages = validRows.any(
-        (row) => row.file != null && row.file!.path.isNotEmpty,
-      );
-      final hasVideos = validRows.any(
-        (row) => row.videoFile != null && row.videoFile!.path.isNotEmpty,
-      );
+      final hasImages = allowImage &&
+          validRows.any(
+            (row) => row.file != null && row.file!.path.isNotEmpty,
+          );
+      final hasVideos = allowVideo &&
+          validRows.any(
+            (row) => row.videoFile != null && row.videoFile!.path.isNotEmpty,
+          );
+      final hasDocuments = allowDocument &&
+          validRows.any(
+            (row) => row.docFile != null && row.docFile!.path.isNotEmpty,
+          );
 
-      if (hasImages || hasVideos) {
+      if (hasImages || hasVideos || hasDocuments) {
         final request = http.MultipartRequest(
           'POST',
           Uri.parse(
@@ -4537,27 +4554,49 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
         request.fields['items'] = jsonEncode(items);
 
         for (final row in validRows) {
-          if (row.file != null && row.file!.path.isNotEmpty) {
+          if (allowImage &&
+              row.file != null &&
+              row.file!.path.isNotEmpty &&
+              _isAllowedWorkflowUploadFile(row.file!, uploadSources)) {
             request.files.add(
               await http.MultipartFile.fromPath(
                 'ucl_file_${row.id}',
                 row.file!.path,
                 filename: row.file!.name,
+                contentType: _workflowUploadMediaType(row.file!),
               ),
             );
           }
-          if (row.videoFile != null && row.videoFile!.path.isNotEmpty) {
+          if (allowVideo &&
+              row.videoFile != null &&
+              row.videoFile!.path.isNotEmpty &&
+              _isAllowedWorkflowUploadFile(row.videoFile!, uploadSources)) {
             request.files.add(
               await http.MultipartFile.fromPath(
                 'ucl_video_${row.id}',
                 row.videoFile!.path,
                 filename: row.videoFile!.name,
+                contentType: _workflowUploadMediaType(row.videoFile!),
+              ),
+            );
+          }
+          if (allowDocument &&
+              row.docFile != null &&
+              row.docFile!.path.isNotEmpty &&
+              _isAllowedWorkflowUploadFile(row.docFile!, uploadSources)) {
+            request.files.add(
+              await http.MultipartFile.fromPath(
+                'ucl_doc_${row.id}',
+                row.docFile!.path,
+                filename: row.docFile!.name,
+                contentType: _workflowUploadMediaType(row.docFile!),
               ),
             );
           }
         }
 
-        final streamed = await request.send().timeout(Duration(seconds: 60));
+        final streamed =
+            await ApiHttp.send(request).timeout(Duration(seconds: 60));
         final response = await http.Response.fromStream(streamed);
         final message = _successMessageOrThrow(
           response,
@@ -4567,8 +4606,7 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
         return true;
       }
 
-      final response = await http
-          .post(
+      final response = await ApiHttp.post(
             Uri.parse(
               '$_workflowApiBaseUrl/API/workflow/item-runs/$_resolvedWorkflowItemRunId/user-checklist',
             ),
@@ -4798,8 +4836,7 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
                   payload['note'] = noteController.text.trim();
                 }
 
-                final response = await http
-                    .post(
+                final response = await ApiHttp.post(
                       Uri.parse(endpoint),
                       headers: {
                         'Content-Type': 'application/json',
@@ -5457,8 +5494,7 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
         body['note'] = note.trim();
       }
 
-      final response = await http
-          .post(
+      final response = await ApiHttp.post(
             Uri.parse(_absoluteWorkflowUrl(endpoint)),
             headers: {
               'Content-Type': 'application/x-www-form-urlencoded',
@@ -5556,6 +5592,16 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
   }
 
   String _successMessageOrThrow(http.Response response, String fallback) {
+    // Safety net: if ApiHttp somehow returned an invalid-token body (e.g. the
+    // soft confirm probe failed), still show the popup and log the user out.
+    if (SessionManager.instance.isSessionInvalidResponse(response)) {
+      SessionManager.instance.handleResponse(
+        response,
+        confirmBeforeLogout: false,
+      );
+      throw SessionInvalidatedException();
+    }
+
     dynamic decoded;
     try {
       decoded = jsonDecode(response.body);
@@ -5563,7 +5609,8 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
 
     if (response.statusCode >= 200 && response.statusCode < 300) {
       if (decoded is Map && decoded['success'] == false) {
-        throw Exception(decoded['message'] ?? 'Action failed');
+        final message = decoded['message']?.toString() ?? 'Action failed';
+        throw Exception(message);
       }
       if (decoded is Map && decoded['message'] != null) {
         return decoded['message'].toString();
@@ -5605,9 +5652,18 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
 
   void _showSnackBar(String message, {bool isError = false}) {
     if (!mounted) return;
+    final cleaned = message.replaceAll('Exception: ', '').trim();
+    if (cleaned.isEmpty) return;
+    if (cleaned == SessionManager.logoutMessage ||
+        cleaned == SessionManager.logoutDialogTitle ||
+        cleaned.toLowerCase().contains('invalid api token') ||
+        cleaned.toLowerCase().contains('signed in on another device') ||
+        cleaned.toLowerCase().contains('two devices')) {
+      return;
+    }
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(message),
+        content: Text(cleaned),
         backgroundColor: isError ? Colors.red : Colors.green,
       ),
     );
@@ -9026,6 +9082,91 @@ _WorkflowUploadSourceConfig _resolveWorkflowUploadSources(
   );
 }
 
+/// Resolves Build checklist (user_checklist) upload sources.
+/// Prefer upload_sources / allow_* flags (same as Upload). Fall back to
+/// allowed_formats, then legacy allow_*_per_item flags.
+_WorkflowUploadSourceConfig _resolveUserChecklistUploadSources(
+  Map<String, dynamic> action,
+) {
+  final hasUploadSources = _stringList(action['upload_sources']).isNotEmpty;
+  final hasModernFlags = action.containsKey('allow_gallery_upload') ||
+      action.containsKey('allow_live_image') ||
+      action.containsKey('allow_document_upload') ||
+      action.containsKey('allow_video_upload');
+
+  if (hasUploadSources || hasModernFlags) {
+    return _resolveWorkflowUploadSources(action);
+  }
+
+  if (action.containsKey('allowed_formats')) {
+    final allowedFormats =
+        _normalizeAllowedFormats(_stringList(action['allowed_formats']));
+    if (allowedFormats.isEmpty) {
+      return const _WorkflowUploadSourceConfig(
+        allowGallery: false,
+        allowCamera: false,
+        allowDocument: false,
+        allowVideo: false,
+      );
+    }
+
+    final resolved = _resolveWorkflowUploadSources(
+      action,
+      allowedFormats: allowedFormats,
+    );
+    final profile = _classifyAllowedFormats(allowedFormats);
+    final imageFormats = resolved.imageFormats.isNotEmpty
+        ? resolved.imageFormats
+        : allowedFormats
+            .where((format) => _workflowImageFormats.contains(format))
+            .toList();
+    final documentFormats = allowedFormats
+        .where(
+          (format) =>
+              _workflowDocumentFormats.contains(format) ||
+              (!_workflowImageFormats.contains(format) &&
+                  !_workflowVideoFormats.contains(format)),
+        )
+        .toList();
+    final videoFormats = allowedFormats
+        .where((format) => _workflowVideoFormats.contains(format))
+        .toList();
+
+    // Drive sources strictly from allowed_formats for checklist.
+    // Image formats → gallery + camera (acceptance).
+    return _WorkflowUploadSourceConfig(
+      allowGallery: profile.hasImages,
+      allowCamera: profile.hasImages,
+      allowDocument: profile.hasDocuments,
+      allowVideo: profile.hasVideos,
+      imageFormats: imageFormats,
+      documentFormats: documentFormats,
+      videoFormats: videoFormats,
+    );
+  }
+
+  // Legacy actions without allowed_formats / upload hints.
+  final allowImage = action['allow_image_per_item'] == true;
+  final allowVideo = action['allow_video_per_item'] == true;
+  final allowDocument = action['allow_document_per_item'] == true;
+
+  return _WorkflowUploadSourceConfig(
+    allowGallery: allowImage,
+    allowCamera: allowImage,
+    allowDocument: allowDocument,
+    allowVideo: allowVideo,
+    imageFormats: allowImage
+        ? _workflowImageFormats.toList(growable: false)
+        : const [],
+    documentFormats: allowDocument
+        ? _workflowDocumentFormats.toList(growable: false)
+        : const [],
+    videoFormats: allowVideo
+        ? _workflowVideoFormats.toList(growable: false)
+        : const [],
+  );
+}
+
 bool _isAllowedUploadFormat(String fileName, List<String> allowedFormats) {
   if (allowedFormats.isEmpty) return true;
   final parts = fileName.split('.');
@@ -9734,8 +9875,12 @@ class _WorkflowUploadSourceButtons extends StatelessWidget {
 
 class _SelectedUploadPreview extends StatelessWidget {
   final _SelectedUploadFile file;
+  final VoidCallback? onRemove;
 
-  const _SelectedUploadPreview({required this.file});
+  const _SelectedUploadPreview({
+    required this.file,
+    this.onRemove,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -9804,6 +9949,13 @@ class _SelectedUploadPreview extends StatelessWidget {
               ],
             ),
           ),
+          if (onRemove != null)
+            IconButton(
+              onPressed: onRemove,
+              icon: const Icon(Icons.close, size: 18),
+              color: _premiumMuted,
+              visualDensity: VisualDensity.compact,
+            ),
         ],
       ),
     );
@@ -12917,6 +13069,7 @@ class _UserChecklistRow {
   bool checked = true;
   _SelectedUploadFile? file;
   _SelectedUploadFile? videoFile;
+  _SelectedUploadFile? docFile;
 
   void dispose() {
     labelController.dispose();
@@ -12926,17 +13079,17 @@ class _UserChecklistRow {
 
 class _UserChecklistSheet extends StatefulWidget {
   final bool allowComment;
-  final bool allowImage;
-  final bool allowVideo;
   final _WorkflowUploadSourceConfig uploadSources;
+  final int maxVideoDurationSeconds;
+  final int maxVideoSizeMb;
   final String submitLabel;
   final Future<bool> Function(List<_UserChecklistRow> validRows) onSubmit;
 
   const _UserChecklistSheet({
     required this.allowComment,
-    required this.allowImage,
-    required this.allowVideo,
     required this.uploadSources,
+    required this.maxVideoDurationSeconds,
+    required this.maxVideoSizeMb,
     required this.submitLabel,
     required this.onSubmit,
   });
@@ -12957,23 +13110,25 @@ class _UserChecklistSheetState extends State<_UserChecklistSheet> {
     super.dispose();
   }
 
-  static const List<String> _imageFormats = [
-    'jpg',
-    'jpeg',
-    'png',
-    'webp',
-    'gif',
-  ];
-
-  Future<void> _setRowFile(_UserChecklistRow row, _SelectedUploadFile? file) async {
-    if (file != null && !_isAllowedUploadFormat(file.name, _imageFormats)) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Only jpg, jpeg, png, webp, and gif images are allowed.'),
-          backgroundColor: Colors.red,
+  Future<void> _rejectDisallowed(_SelectedUploadFile file) async {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'File type not allowed. Allowed: ${_allowedFormatsMessage(widget.uploadSources)}',
         ),
-      );
+        backgroundColor: Colors.red,
+      ),
+    );
+  }
+
+  Future<void> _setRowImage(
+    _UserChecklistRow row,
+    _SelectedUploadFile? file,
+  ) async {
+    if (file != null &&
+        !_isAllowedWorkflowUploadFile(file, widget.uploadSources)) {
+      await _rejectDisallowed(file);
       return;
     }
     if (!mounted) return;
@@ -12982,50 +13137,68 @@ class _UserChecklistSheetState extends State<_UserChecklistSheet> {
     });
   }
 
+  Future<void> _setRowVideo(
+    _UserChecklistRow row,
+    _SelectedUploadFile? file,
+  ) async {
+    if (file != null &&
+        !_isAllowedWorkflowUploadFile(file, widget.uploadSources)) {
+      await _rejectDisallowed(file);
+      return;
+    }
+    if (!mounted) return;
+    setState(() {
+      row.videoFile = file;
+    });
+  }
+
+  Future<void> _setRowDocument(
+    _UserChecklistRow row,
+    _SelectedUploadFile? file,
+  ) async {
+    if (file != null &&
+        !_isAllowedWorkflowUploadFile(file, widget.uploadSources)) {
+      await _rejectDisallowed(file);
+      return;
+    }
+    if (!mounted) return;
+    setState(() {
+      row.docFile = file;
+    });
+  }
+
   Future<void> _pickGallery(_UserChecklistRow row) async {
     final picked = await _pickWorkflowGalleryFile(
-      allowedFormats: _imageFormats,
+      allowedFormats: widget.uploadSources.imageFormats,
     );
     if (picked == null) return;
-    await _setRowFile(row, picked);
+    await _setRowImage(row, picked);
   }
 
   Future<void> _pickCamera(_UserChecklistRow row) async {
     final picked = await _pickWorkflowCameraFile();
     if (picked == null) return;
-    await _setRowFile(row, picked);
+    await _setRowImage(row, picked);
+  }
+
+  Future<void> _pickDocument(_UserChecklistRow row) async {
+    final picked = await _pickWorkflowDocumentFile(
+      documentFormats: widget.uploadSources.documentFormats,
+    );
+    if (picked == null) return;
+    await _setRowDocument(row, picked);
   }
 
   Future<void> _pickVideo(_UserChecklistRow row) async {
-    final picked = await ImagePicker().pickVideo(source: ImageSource.gallery);
+    final picked = await _recordWorkflowVideoFile(
+      context: context,
+      videoFormats: widget.uploadSources.videoFormats,
+      maxDurationSeconds: widget.maxVideoDurationSeconds,
+      maxSizeMb: widget.maxVideoSizeMb,
+    );
     if (picked == null) return;
-    final name = picked.name.trim().isNotEmpty
-        ? picked.name
-        : picked.path.split(Platform.pathSeparator).last;
-    if (!_isAllowedUploadFormat(name, _videoFormats)) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Only mp4, mov, webm, avi, mkv, and m4v videos are allowed.'),
-          backgroundColor: Colors.red,
-        ),
-      );
-      return;
-    }
-    if (!mounted) return;
-    setState(() {
-      row.videoFile = _SelectedUploadFile(path: picked.path, name: name);
-    });
+    await _setRowVideo(row, picked);
   }
-
-  static const List<String> _videoFormats = [
-    'mp4',
-    'mov',
-    'webm',
-    'avi',
-    'mkv',
-    'm4v',
-  ];
 
   Future<void> _submit() async {
     if (_isSubmitting) return;
@@ -13069,13 +13242,15 @@ class _UserChecklistSheetState extends State<_UserChecklistSheet> {
           (row) => _UserChecklistRowWidget(
             row: row,
             allowComment: widget.allowComment,
-            allowImage: widget.allowImage,
-            allowVideo: widget.allowVideo,
             uploadSources: widget.uploadSources,
             onChanged: () => setState(() {}),
             onPickGallery: () => _pickGallery(row),
             onPickCamera: () => _pickCamera(row),
+            onPickDocument: () => _pickDocument(row),
             onPickVideo: () => _pickVideo(row),
+            onClearImage: () => setState(() => row.file = null),
+            onClearVideo: () => setState(() => row.videoFile = null),
+            onClearDocument: () => setState(() => row.docFile = null),
             onRemove: _rows.length == 1
                 ? null
                 : () {
@@ -13111,30 +13286,36 @@ class _UserChecklistSheetState extends State<_UserChecklistSheet> {
 class _UserChecklistRowWidget extends StatelessWidget {
   final _UserChecklistRow row;
   final bool allowComment;
-  final bool allowImage;
-  final bool allowVideo;
   final _WorkflowUploadSourceConfig uploadSources;
   final VoidCallback onChanged;
   final VoidCallback onPickGallery;
   final VoidCallback onPickCamera;
+  final VoidCallback onPickDocument;
   final VoidCallback onPickVideo;
+  final VoidCallback onClearImage;
+  final VoidCallback onClearVideo;
+  final VoidCallback onClearDocument;
   final VoidCallback? onRemove;
 
   const _UserChecklistRowWidget({
     required this.row,
     required this.allowComment,
-    required this.allowImage,
-    required this.allowVideo,
     required this.uploadSources,
     required this.onChanged,
     required this.onPickGallery,
     required this.onPickCamera,
+    required this.onPickDocument,
     required this.onPickVideo,
+    required this.onClearImage,
+    required this.onClearVideo,
+    required this.onClearDocument,
     this.onRemove,
   });
 
   @override
   Widget build(BuildContext context) {
+    final showMedia = uploadSources.hasAnySource;
+
     return Container(
       margin: EdgeInsets.only(bottom: 12),
       padding: EdgeInsets.all(12),
@@ -13143,6 +13324,7 @@ class _UserChecklistRowWidget extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
@@ -13176,28 +13358,35 @@ class _UserChecklistRowWidget extends StatelessWidget {
               maxLines: 2,
             ),
           ],
-          if (allowImage) ...[
+          if (showMedia) ...[
             SizedBox(height: 10),
             _WorkflowUploadSourceButtons(
               sources: uploadSources,
               onPickGallery: onPickGallery,
               onPickCamera: onPickCamera,
+              onPickDocument: onPickDocument,
+              onPickVideo: onPickVideo,
             ),
             if (row.file != null) ...[
               SizedBox(height: 10),
-              _SelectedUploadPreview(file: row.file!),
+              _SelectedUploadPreview(
+                file: row.file!,
+                onRemove: onClearImage,
+              ),
             ],
-          ],
-          if (allowVideo) ...[
-            SizedBox(height: 10),
-            OutlinedButton.icon(
-              onPressed: onPickVideo,
-              icon: Icon(Icons.videocam_outlined),
-              label: Text('Attach video'),
-            ),
             if (row.videoFile != null) ...[
               SizedBox(height: 10),
-              _SelectedUploadPreview(file: row.videoFile!),
+              _SelectedUploadPreview(
+                file: row.videoFile!,
+                onRemove: onClearVideo,
+              ),
+            ],
+            if (row.docFile != null) ...[
+              SizedBox(height: 10),
+              _SelectedUploadPreview(
+                file: row.docFile!,
+                onRemove: onClearDocument,
+              ),
             ],
           ],
         ],
@@ -14566,8 +14755,7 @@ Future<http.Response> _postWorkflowMultipart({
 
   writeLine('--$boundary--');
 
-  return http
-      .post(
+  return ApiHttp.post(
         uri,
         headers: {
           'Content-Type': 'multipart/form-data; boundary=$boundary',

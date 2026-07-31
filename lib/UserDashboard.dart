@@ -15,8 +15,10 @@ import 'Gallery.dart' hide TimelineGallery;
 import 'TimelineGallery.dart';
 import 'NotesAndComments.dart';
 import 'checklist_categories.dart';
+import 'services/api_http.dart';
 import 'services/data_provider.dart';
 import 'services/rbac_service.dart';
+import 'services/session_manager.dart';
 import 'AdminDashboard.dart';
 import 'RequestDrawing.dart';
 import 'InspectionRequest.dart';
@@ -758,7 +760,7 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
       );
 
       print('[UserDashboard] Fetching tasks with filters: $queryParams');
-      var response = await http.get(uri).timeout(const Duration(seconds: 20));
+      var response = await ApiHttp.get(uri).timeout(const Duration(seconds: 20));
 
       if (response.statusCode == 200) {
         final decoded = jsonDecode(response.body);
@@ -822,6 +824,7 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
         throw Exception('Unable to load tasks (code ${response.statusCode})');
       }
     } catch (e) {
+      if (e is SessionInvalidatedException) return;
       if (!mounted) return;
       print('[UserDashboard] Error loading tasks: $e');
       setState(() {

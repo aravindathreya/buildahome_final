@@ -2,6 +2,9 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'api_http.dart';
+import 'session_manager.dart';
+
 class DataProvider {
   static final DataProvider _instance = DataProvider._internal();
   factory DataProvider() => _instance;
@@ -90,8 +93,7 @@ class DataProvider {
         "api_token": currentApiToken!,
       };
       print('[DataProvider] Loading projects with $payload');
-      var response = await http
-          .post(
+      var response = await ApiHttp.post(
             Uri.parse(
                 "https://office1.buildahome.in/API/get_projects_for_user"),
             body: payload,
@@ -115,6 +117,7 @@ class DataProvider {
         projects = []; // Clear projects on error
       }
     } catch (e) {
+      if (e is SessionInvalidatedException) rethrow;
       print('[DataProvider] Error loading projects: $e');
       projects = []; // Clear projects on error
     } finally {
@@ -414,7 +417,7 @@ class DataProvider {
               Map<String, String>.from(attempt['query'] as Map<String, String>),
         );
         print('[DataProvider] Loading project timeline: $uri');
-        final response = await http.get(
+        final response = await ApiHttp.get(
           uri,
           headers: _apiAuthHeaders(apiToken),
         ).timeout(Duration(seconds: 20));
@@ -673,7 +676,7 @@ class DataProvider {
       for (final query in queryAttempts) {
         try {
           final uri = Uri.parse(basePath).replace(queryParameters: query);
-          final response = await http.get(
+          final response = await ApiHttp.get(
             uri,
             headers: _apiAuthHeaders(apiToken),
           ).timeout(Duration(seconds: 20));
@@ -790,7 +793,7 @@ class DataProvider {
           queryParameters:
               Map<String, String>.from(attempt['query'] as Map<String, String>),
         );
-        final response = await http.get(
+        final response = await ApiHttp.get(
           uri,
           headers: _apiAuthHeaders(apiToken),
         ).timeout(Duration(seconds: 20));
@@ -825,7 +828,7 @@ class DataProvider {
     try {
       var locationUrl =
           'https://office.buildahome.in/API/get_project_location?id=${projectId}';
-      var locResponse = await http.get(Uri.parse(locationUrl));
+      var locResponse = await ApiHttp.get(Uri.parse(locationUrl));
       if (locResponse.statusCode == 200 && locResponse.body.trim().isNotEmpty) {
         clientProjectLocation = locResponse.body.trim();
       }
@@ -840,7 +843,7 @@ class DataProvider {
     try {
       var percUrl =
           'https://office.buildahome.in/API/get_project_percentage?id=${projectId}';
-      var percResponse = await http.get(Uri.parse(percUrl));
+      var percResponse = await ApiHttp.get(Uri.parse(percUrl));
       print('percentage response: ${percResponse.body}');
       if (percResponse.statusCode == 200) {
         clientProjectCompletion = percResponse.body;
@@ -895,7 +898,7 @@ class DataProvider {
       var updatesUrl =
           'https://office.buildahome.in/API/latest_update?id=${projectId}';
       var updatesResponse =
-          await http.get(Uri.parse(updatesUrl)).timeout(Duration(seconds: 15));
+          await ApiHttp.get(Uri.parse(updatesUrl)).timeout(Duration(seconds: 15));
 
       if (updatesResponse.statusCode == 200 &&
           updatesResponse.body.trim() != "No updates") {
@@ -987,7 +990,7 @@ class DataProvider {
     try {
       var statusUrl =
           'https://office.buildahome.in/API/get_project_block_status?project_id=${projectId}';
-      var statusResponse = await http.get(Uri.parse(statusUrl));
+      var statusResponse = await ApiHttp.get(Uri.parse(statusUrl));
       if (statusResponse.statusCode == 200) {
         var statusResponseBody = jsonDecode(statusResponse.body);
         if (statusResponseBody['status'] == 'blocked') {
@@ -1051,7 +1054,7 @@ class DataProvider {
       final paymentUrl =
           'https://office.buildahome.in/API/get_payment?project_id=$projectId';
       final paymentResponse =
-          await http.get(Uri.parse(paymentUrl)).timeout(Duration(seconds: 15));
+          await ApiHttp.get(Uri.parse(paymentUrl)).timeout(Duration(seconds: 15));
       if (paymentResponse.statusCode == 200) {
         final data = jsonDecode(paymentResponse.body);
         cachedPayments = (data is List && data.isNotEmpty) ? data[0] : {};
@@ -1067,7 +1070,7 @@ class DataProvider {
       final url =
           'https://office.buildahome.in/API/get_gallery_data?id=$projectId';
       final response =
-          await http.get(Uri.parse(url)).timeout(Duration(seconds: 15));
+          await ApiHttp.get(Uri.parse(url)).timeout(Duration(seconds: 15));
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         cachedGallery = data is List ? data : [];
@@ -1083,7 +1086,7 @@ class DataProvider {
       final url =
           'https://office.buildahome.in/API/get_all_tasks?project_id=$projectId&nt_toggle=0';
       final response =
-          await http.get(Uri.parse(url)).timeout(Duration(seconds: 15));
+          await ApiHttp.get(Uri.parse(url)).timeout(Duration(seconds: 15));
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         cachedSchedule = data is List ? data : [];
@@ -1099,7 +1102,7 @@ class DataProvider {
       final url =
           'https://office.buildahome.in/API/get_notes?project_id=$projectId';
       final response =
-          await http.get(Uri.parse(url)).timeout(Duration(seconds: 15));
+          await ApiHttp.get(Uri.parse(url)).timeout(Duration(seconds: 15));
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         cachedNotes = data is List ? data : [];
@@ -1115,7 +1118,7 @@ class DataProvider {
       final url =
           'https://office.buildahome.in/API/view_all_documents?id=$projectId';
       final response =
-          await http.get(Uri.parse(url)).timeout(Duration(seconds: 15));
+          await ApiHttp.get(Uri.parse(url)).timeout(Duration(seconds: 15));
       if (response.statusCode == 200 && response.body.isNotEmpty) {
         final data = jsonDecode(response.body);
         cachedDocuments = data is List ? data : [];
