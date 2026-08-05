@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'app_theme.dart';
+import 'widgets/skeleton_loader.dart';
 
 class ProjectsModal extends StatefulWidget {
   final String id;
@@ -156,13 +157,9 @@ class ProjectsModalBody extends State<ProjectsModal> {
             // Loading or Results List
             Flexible(
               child: _isLoading
-                  ? Container(
-                      height: 150,
-                      child: Center(
-                        child: CircularProgressIndicator(
-                          valueColor: AlwaysStoppedAnimation<Color>(AppTheme.primaryColorConst),
-                        ),
-                      ),
+                  ? const SizedBox(
+                      height: 220,
+                      child: SkeletonSheetLoader(itemCount: 4),
                     )
                   : search_data.length == 0
                       ? Container(

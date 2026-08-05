@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -14,9 +13,8 @@ import 'widgets/searchable_select.dart';
 import 'widgets/full_screen_message.dart';
 import 'widgets/full_screen_progress.dart';
 import 'widgets/full_screen_error_summary.dart';
+import 'widgets/themed_scaffold.dart';
 import 'AdminDashboard.dart';
-import 'package:provider/provider.dart';
-import 'providers/theme_provider.dart';
 
 class FullScreenImage extends StatefulWidget {
   final id;
@@ -33,31 +31,11 @@ class FullScreenFlutterImage extends State<FullScreenImage> {
   FullScreenFlutterImage(this.image);
 
   @override
-  Widget build(BuildContext context1) {
-    return Consumer<ThemeProvider>(
-      builder: (context, themeProvider, child) {
-        return MaterialApp(
-          theme: AppTheme.getLightTheme(),
-          darkTheme: AppTheme.getDarkTheme(),
-          themeMode: themeProvider.isDarkMode ? ThemeMode.dark : ThemeMode.light,
-          home: Scaffold(
-            appBar: AppBar(
-              automaticallyImplyLeading: true,
-              title: Text(
-                'buildAhome',
-                style: TextStyle(color: AppTheme.getTextPrimary(context1)),
-              ),
-              leading: new IconButton(
-                icon: new Icon(Icons.chevron_left),
-                onPressed: () => {Navigator.pop(context1)},
-              ),
-              backgroundColor: AppTheme.getBackgroundSecondary(context1),
-              iconTheme: IconThemeData(color: AppTheme.getTextPrimary(context1)),
-            ),
-            body: ImageOnly(this.image),
-          ),
-        );
-      },
+  Widget build(BuildContext context) {
+    return ThemedScaffold(
+      title: 'Photo',
+      backgroundColor: Colors.black,
+      body: ImageOnly(this.image),
     );
   }
 }
@@ -68,16 +46,10 @@ class ImageOnly extends StatelessWidget {
   ImageOnly(this.image);
 
   Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        border: Border.all(
-          color: AppTheme.getTextSecondary(context).withOpacity(0.3),
-        ),
-      ),
-      child: PhotoView(
-        minScale: PhotoViewComputedScale.contained,
-        imageProvider: this.image,
-      ),
+    return PhotoView(
+      minScale: PhotoViewComputedScale.contained,
+      backgroundDecoration: const BoxDecoration(color: Colors.black),
+      imageProvider: this.image,
     );
   }
 }
@@ -89,34 +61,12 @@ class AddDailyUpdate extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Consumer<ThemeProvider>(
-      builder: (context, themeProvider, child) {
-        return MaterialApp(
-          title: 'buildAhome',
-          theme: AppTheme.getLightTheme(),
-          darkTheme: AppTheme.getDarkTheme(),
-          themeMode: themeProvider.isDarkMode ? ThemeMode.dark : ThemeMode.light,
-          home: Scaffold(
-            backgroundColor: AppTheme.getBackgroundPrimary(context),
-            appBar: AppBar(
-              title: Text(
-                'Add Daily Update',
-                style: TextStyle(color: AppTheme.getTextPrimary(context)),
-              ),
-              automaticallyImplyLeading: true,
-              backgroundColor: AppTheme.getBackgroundSecondary(context),
-              iconTheme: IconThemeData(color: AppTheme.getTextPrimary(context)),
-              leading: IconButton(
-                icon: Icon(Icons.arrow_back),
-                onPressed: () {
-                  Navigator.pop(context);
-                },
-              ),
-            ),
-            body: AddDailyUpdateForm(returnToAdminDashboard: returnToAdminDashboard),
-          ),
-        );
-      },
+    return ThemedScaffold(
+      title: 'Add Daily Update',
+      backgroundColor: const Color(0xFFF7F8FB),
+      body: SafeArea(
+        child: AddDailyUpdateForm(returnToAdminDashboard: returnToAdminDashboard),
+      ),
     );
   }
 }
@@ -133,6 +83,14 @@ class AddDailyUpdateForm extends StatefulWidget {
 }
 
 class AddDailyUpdateState extends State<AddDailyUpdateForm> {
+  static const Color _navy = AppTheme.navy;
+  static const Color _mutedGrey = AppTheme.mutedGrey;
+  static const Color _cardBorder = AppTheme.border;
+  static const Color _softShadow = AppTheme.softShadow;
+  static const Color _pageBg = Color(0xFFF7F8FB);
+  static const Color _success = Color(0xFF16A34A);
+  static const Color _successBg = Color(0xFFDCFCE7);
+
   var textFieldFocused = false;
   var attachPictureButtonText = 'Add picture from phone';
   var dailyUpdateTextController = new TextEditingController();
@@ -164,6 +122,21 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
   int _currentStep = 0;
   final int _totalSteps = 5;
 
+  BoxDecoration _surfaceCard({Color? borderColor}) {
+    return BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(18),
+      border: Border.all(color: borderColor ?? _cardBorder),
+      boxShadow: const [
+        BoxShadow(
+          color: _softShadow,
+          blurRadius: 18,
+          offset: Offset(0, 8),
+        ),
+      ],
+    );
+  }
+
   @override
   void initState() {
     super.initState();
@@ -178,8 +151,16 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
     super.dispose();
   }
 
+  void _dismissKeyboard() {
+    FocusManager.instance.primaryFocus?.unfocus();
+  }
+
   void _nextStep() {
     if (_currentStep < _totalSteps - 1) {
+      // Leaving the daily update text step → preview: close keyboard first
+      if (_currentStep + 1 == _totalSteps - 1) {
+        _dismissKeyboard();
+      }
       _pageController.nextPage(
         duration: Duration(milliseconds: 300),
         curve: Curves.easeInOut,
@@ -203,115 +184,58 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
     });
   }
 
+  /// Camera needs an explicit permission. Gallery uses the system photo picker
+  /// (PHPicker / Android Photo Picker), so pre-checking Permission.photos is
+  /// unnecessary and incorrectly blocks Limited Photo Access on iOS.
   Future<bool> checkPermissionStatus({required bool forCamera}) async {
-    try {
-      PermissionStatus status;
-      if (forCamera) {
-        try {
-          status = await Permission.camera.status;
-          if (!status.isGranted) {
-            status = await Permission.camera.request();
-          }
-        } catch (e) {
-          print('[AddDailyUpdate] Camera permission error: $e');
-          // If permission_handler fails, try to proceed anyway (image_picker might handle it)
-          // Show dialog to inform user they may need to grant permission manually
-          if (mounted) {
-            await _showPermissionDeniedDialog(forCamera: true);
-          }
-          return false;
-        }
-      } else {
-        // For gallery/photos - handle both Android storage and photos permissions
-        try {
-          // Try photos first (Android 13+)
-          status = await Permission.photos.status;
-          if (!status.isGranted) {
-            status = await Permission.photos.request();
-          }
-          
-          // If photos permission is not available (older Android), try storage
-          if (!status.isGranted && Platform.isAndroid) {
-            try {
-              final storageStatus = await Permission.storage.status;
-              if (!storageStatus.isGranted) {
-                await Permission.storage.request();
-              }
-              // On Android, image_picker can work without explicit permission in some cases
-              // Return true to let image_picker handle it
-              return true;
-            } catch (storageError) {
-              print('[AddDailyUpdate] Storage permission error: $storageError');
-              // If storage permission also fails, try to proceed anyway
-              return true;
-            }
-          }
-        } catch (e) {
-          print('[AddDailyUpdate] Photos permission error: $e');
-          // If permission_handler fails, try to proceed anyway (image_picker might handle it)
-          // On Android, image_picker can work without explicit permission in some cases
-          if (Platform.isAndroid) {
-            return true;
-          }
-          if (mounted) {
-            await _showPermissionDeniedDialog(forCamera: false);
-          }
-          return false;
-        }
-      }
+    if (!forCamera) return true;
 
-      if (status.isGranted) {
-        return true;
-      } else if (status.isPermanentlyDenied) {
-        if (mounted) {
-          await _showPermissionDeniedDialog(forCamera: forCamera);
-        }
-        return false;
-      } else {
-        if (mounted) {
-          await _showPermissionDeniedDialog(forCamera: forCamera);
-        }
-        return false;
-      }
-    } catch (e) {
-      print('[AddDailyUpdate] Error checking permissions: $e');
-      // On some platforms, permissions might not be required
-      // Return true to let image_picker handle it
-      if (Platform.isAndroid && !forCamera) {
-        return true;
-      }
-      // For camera, show dialog since it's required
-      if (mounted && forCamera) {
+    try {
+      var status = await Permission.camera.status;
+      if (status.isGranted) return true;
+
+      status = await Permission.camera.request();
+      if (status.isGranted) return true;
+
+      if (mounted) {
         await _showPermissionDeniedDialog(forCamera: true);
       }
       return false;
+    } catch (e) {
+      print('[AddDailyUpdate] Camera permission error: $e');
+      // Let image_picker attempt the request itself.
+      return true;
     }
   }
 
   Future<void> _showPermissionDeniedDialog({required bool forCamera}) async {
     if (!mounted) return;
-    
-    final permissionStatus = forCamera 
+
+    final permissionStatus = forCamera
         ? await Permission.camera.status
         : await Permission.photos.status;
-    
     final isPermanentlyDenied = permissionStatus.isPermanentlyDenied;
-    
+
     await showDialog(
       context: context,
-      builder: (BuildContext context) {
+      builder: (BuildContext dialogContext) {
         return AlertDialog(
-          backgroundColor: AppTheme.getBackgroundSecondary(context),
+          backgroundColor: Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
           title: Row(
             children: [
-              Icon(Icons.camera_alt, color: Colors.orange, size: 24),
-              SizedBox(width: 12),
-              Expanded(
+              Icon(
+                forCamera ? Icons.photo_camera_rounded : Icons.photo_library_rounded,
+                color: const Color(0xFFEA580C),
+                size: 24,
+              ),
+              const SizedBox(width: 12),
+              const Expanded(
                 child: Text(
                   'Permission Required',
                   style: TextStyle(
-                    color: AppTheme.getTextPrimary(context),
-                    fontWeight: FontWeight.bold,
+                    color: AppTheme.navy,
+                    fontWeight: FontWeight.w800,
                   ),
                 ),
               ),
@@ -319,107 +243,60 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
           ),
           content: Text(
             forCamera
-                ? 'Camera permission is required to take photos. ${isPermanentlyDenied ? 'Please enable it in your device settings.' : 'Would you like to grant permission?'}'
-                : 'Photo library permission is required to select images. ${isPermanentlyDenied ? 'Please enable it in your device settings.' : 'Would you like to grant permission?'}',
-            style: TextStyle(color: AppTheme.getTextSecondary(context)),
+                ? 'Camera permission is required to take photos. ${isPermanentlyDenied ? 'Please enable it in your device settings.' : 'Please allow camera access when prompted.'}'
+                : 'Photo access is needed to select images. ${isPermanentlyDenied ? 'Please enable it in your device settings.' : 'Please allow access when prompted.'}',
+            style: const TextStyle(
+              color: AppTheme.mutedGrey,
+              fontWeight: FontWeight.w500,
+              height: 1.4,
+            ),
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: Text(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text(
                 'Cancel',
-                style: TextStyle(color: AppTheme.getTextSecondary(context)),
+                style: TextStyle(
+                  color: AppTheme.mutedGrey,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
             ),
-            if (!isPermanentlyDenied)
+            if (!isPermanentlyDenied && forCamera)
               TextButton(
                 onPressed: () async {
-                  Navigator.of(context).pop();
-                  // Request permission again
-                  if (forCamera) {
-                    try {
-                      final status = await Permission.camera.request();
-                      if (status.isGranted && mounted) {
-                        // Permission granted, proceed with camera action
-                        await _takePhotoFromCamera();
-                      } else if (mounted) {
-                        // Permission still denied, show dialog again
-                        await _showPermissionDeniedDialog(forCamera: true);
-                      }
-                    } catch (e) {
-                      print('[AddDailyUpdate] Error requesting camera permission: $e');
-                      // If permission request fails, try to open settings
-                      if (mounted) {
-                        await openAppSettings();
-                      }
-                    }
-                  } else {
-                    // For gallery, try photos permission first
-                    try {
-                      var status = await Permission.photos.request();
-                      // If photos permission not available, try storage on Android
-                      if (!status.isGranted && Platform.isAndroid) {
-                        try {
-                          status = await Permission.storage.request();
-                        } catch (storageError) {
-                          print('[AddDailyUpdate] Error requesting storage permission: $storageError');
-                          // If storage permission also fails, try to proceed anyway
-                          if (mounted) {
-                            // On Android, image_picker might work without explicit permission
-                            await _selectPicturesFromGallery();
-                            return;
-                          }
-                        }
-                      }
-                      if (status.isGranted && mounted) {
-                        // Permission granted, proceed with gallery action
-                        await _selectPicturesFromGallery();
-                      } else if (mounted) {
-                        // Permission still denied or not granted, but on Android we can try anyway
-                        if (Platform.isAndroid) {
-                          // On Android, image_picker can work without explicit permission
-                          await _selectPicturesFromGallery();
-                        } else {
-                          // On iOS, show dialog again
-                          await _showPermissionDeniedDialog(forCamera: false);
-                        }
-                      }
-                    } catch (e) {
-                      print('[AddDailyUpdate] Error requesting photos permission: $e');
-                      // If permission request fails, on Android try to proceed anyway
-                      if (mounted) {
-                        if (Platform.isAndroid) {
-                          // On Android, image_picker might work without explicit permission
-                          await _selectPicturesFromGallery();
-                        } else {
-                          // On iOS, open settings
-                          await openAppSettings();
-                        }
-                      }
-                    }
+                  Navigator.of(dialogContext).pop();
+                  final status = await Permission.camera.request();
+                  if (status.isGranted && mounted) {
+                    await _takePhotoFromCamera();
+                  } else if (mounted) {
+                    await openAppSettings();
                   }
                 },
-                child: Text(
+                child: const Text(
                   'Grant Permission',
                   style: TextStyle(
-                    color: AppTheme.getPrimaryColor(context),
-                    fontWeight: FontWeight.w600,
+                    color: AppTheme.navy,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
               ),
-              SizedBox(height: 10),
             ElevatedButton(
               onPressed: () async {
-                Navigator.of(context).pop();
-                // Open app settings
+                Navigator.of(dialogContext).pop();
                 await openAppSettings();
               },
               style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.getPrimaryColor(context),
-                padding: EdgeInsets.symmetric(vertical: 10, horizontal: 20),
-                foregroundColor: AppTheme.getBackgroundPrimary(context),
+                backgroundColor: AppTheme.navy,
+                foregroundColor: Colors.white,
+                elevation: 0,
+                padding:
+                    const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
               ),
-              child: Text('Open Settings'),
+              child: const Text('Open Settings'),
             ),
           ],
         );
@@ -522,25 +399,54 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
       context: context,
       builder: (BuildContext context) {
         return AlertDialog(
-          backgroundColor: AppTheme.getBackgroundSecondary(context),
-          title: Text(
+          backgroundColor: Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Text(
             'Select Image Source',
-            style: TextStyle(color: AppTheme.getTextPrimary(context), fontWeight: FontWeight.bold),
+            style: TextStyle(
+              color: _navy,
+              fontWeight: FontWeight.w800,
+              fontSize: 17,
+            ),
           ),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               ListTile(
-                leading: Icon(Icons.camera_alt, color: AppTheme.getPrimaryColor(context)),
-                title: Text('Take Photo', style: TextStyle(color: AppTheme.getTextPrimary(context))),
+                contentPadding: EdgeInsets.zero,
+                leading: Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFEEF2FF),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(Icons.photo_camera_rounded, color: _navy, size: 20),
+                ),
+                title: const Text(
+                  'Take Photo',
+                  style: TextStyle(color: _navy, fontWeight: FontWeight.w700),
+                ),
                 onTap: () {
                   Navigator.pop(context);
                   _takePhotoFromCamera();
                 },
               ),
               ListTile(
-                leading: Icon(Icons.photo_library, color: AppTheme.getPrimaryColor(context)),
-                title: Text('Choose from Gallery', style: TextStyle(color: AppTheme.getTextPrimary(context))),
+                contentPadding: EdgeInsets.zero,
+                leading: Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFEEF2FF),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(Icons.photo_library_rounded, color: _navy, size: 20),
+                ),
+                title: const Text(
+                  'Choose from Gallery',
+                  style: TextStyle(color: _navy, fontWeight: FontWeight.w700),
+                ),
                 onTap: () {
                   Navigator.pop(context);
                   _selectPicturesFromGallery();
@@ -641,13 +547,9 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
   Future<void> _selectPicturesFromGallery() async {
     try {
       if (!mounted) return;
-      
-      // Check gallery permission
-      final hasPermission = await checkPermissionStatus(forCamera: false);
-      if (!hasPermission) {
-        return;
-      }
 
+      // Do not pre-check Permission.photos — the system gallery picker handles
+      // access, and a strict photos check incorrectly fails for Limited Access.
       final picker = ImagePicker();
       final pickedFiles = await picker.pickMultiImage(
         maxWidth: maxImageWidth.toDouble(),
@@ -770,121 +672,123 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
   Widget _buildStepIndicator() {
     final stepTitles = _getStepTitles();
     final stepInstructions = _getStepInstructions();
-    
+    final progress = (_currentStep + 1) / _totalSteps;
+
     return Container(
-      padding: EdgeInsets.symmetric(horizontal: 12, vertical: 16),
-      decoration: BoxDecoration(
-        color: AppTheme.getBackgroundSecondary(context),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 4,
-            offset: Offset(0, 2),
-          ),
-        ],
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 14),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        border: Border(bottom: BorderSide(color: _cardBorder)),
       ),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: List.generate(_totalSteps, (index) {
-            final isActive = index == _currentStep;
-            final isCompleted = _isStepCompleted(index);
-            final isLast = index == _totalSteps - 1;
-            
-            return Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Step circle and text
-                Container(
-                  width: MediaQuery.of(context).size.width / _totalSteps - 20,
-                  constraints: BoxConstraints(minWidth: 80, maxWidth: 120),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Container(
-                        width: 36,
-                        height: 36,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: isCompleted
-                              ? Colors.green
-                              : isActive
-                                  ? AppTheme.getPrimaryColor(context)
-                                  : AppTheme.getBackgroundSecondary(context),
-                          border: Border.all(
-                            color: isCompleted
-                                ? Colors.green
-                                : isActive
-                                    ? AppTheme.getPrimaryColor(context)
-                                    : AppTheme.getTextSecondary(context).withOpacity(0.3),
-                            width: 2.5,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(
+                'Step ${_currentStep + 1} of $_totalSteps',
+                style: const TextStyle(
+                  color: _mutedGrey,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.3,
+                ),
+              ),
+              const Spacer(),
+              Text(
+                stepTitles[_currentStep],
+                style: const TextStyle(
+                  color: _navy,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(999),
+            child: LinearProgressIndicator(
+              value: progress,
+              minHeight: 6,
+              backgroundColor: const Color(0xFFEEF2F7),
+              valueColor: const AlwaysStoppedAnimation<Color>(_navy),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            stepInstructions[_currentStep],
+            style: const TextStyle(
+              color: _mutedGrey,
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+              height: 1.35,
+            ),
+          ),
+          const SizedBox(height: 14),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: List.generate(_totalSteps, (index) {
+                final isActive = index == _currentStep;
+                final isCompleted = _isStepCompleted(index);
+                return Padding(
+                  padding: EdgeInsets.only(right: index == _totalSteps - 1 ? 0 : 8),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: isActive
+                          ? _navy
+                          : isCompleted
+                              ? _successBg
+                              : const Color(0xFFF1F4F8),
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(
+                        color: isActive
+                            ? _navy
+                            : isCompleted
+                                ? const Color(0xFFBBF7D0)
+                                : _cardBorder,
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (isCompleted && !isActive) ...[
+                          const Icon(Icons.check_rounded, size: 14, color: _success),
+                          const SizedBox(width: 4),
+                        ] else ...[
+                          Text(
+                            '${index + 1}',
+                            style: TextStyle(
+                              color: isActive ? Colors.white : _mutedGrey,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          const SizedBox(width: 5),
+                        ],
+                        Text(
+                          stepTitles[index],
+                          style: TextStyle(
+                            color: isActive
+                                ? Colors.white
+                                : isCompleted
+                                    ? _success
+                                    : _mutedGrey,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
                           ),
                         ),
-                        child: Center(
-                          child: isCompleted
-                              ? Icon(Icons.check, color: Colors.white, size: 18)
-                              : Text(
-                                  '${index + 1}',
-                                  style: TextStyle(
-                                    color: isActive
-                                        ? Colors.white
-                                        : AppTheme.getTextSecondary(context),
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                        ),
-                      ),
-                      SizedBox(height: 6),
-                      // Step title
-                      Text(
-                        stepTitles[index],
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: isActive ? FontWeight.bold : FontWeight.w500,
-                          color: isCompleted
-                              ? Colors.green
-                              : isActive
-                                  ? AppTheme.getPrimaryColor(context)
-                                  : AppTheme.getTextSecondary(context),
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      SizedBox(height: 3),
-                      // Step instruction
-                      Text(
-                        stepInstructions[index],
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: 9,
-                          color: AppTheme.getTextSecondary(context),
-                          height: 1.2,
-                        ),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                  ),
-                ),
-                // Connector line
-                if (!isLast)
-                  Container(
-                    width: 20,
-                    height: 2,
-                    margin: EdgeInsets.only(top: 17, left: 4, right: 4),
-                    decoration: BoxDecoration(
-                      color: isCompleted
-                          ? Colors.green
-                          : AppTheme.getTextSecondary(context).withOpacity(0.2),
+                      ],
                     ),
                   ),
-              ],
-            );
-          }),
-        ),
+                );
+              }),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -919,6 +823,9 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
           child: PageView(
             controller: _pageController,
             onPageChanged: (index) {
+              if (index == _totalSteps - 1) {
+                _dismissKeyboard();
+              }
               setState(() {
                 _currentStep = index;
               });
@@ -940,148 +847,91 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
 
   Widget _buildNavigationButtons() {
     return Container(
-      padding: EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: AppTheme.getBackgroundSecondary(context),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.1),
-            blurRadius: 8,
-            offset: Offset(0, -2),
-          ),
-        ],
+      padding: const EdgeInsets.fromLTRB(20, 14, 20, 20),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        border: Border(top: BorderSide(color: _cardBorder)),
       ),
       child: Row(
         children: [
           if (_currentStep > 0)
             Expanded(
-              child: Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  onTap: _previousStep,
-                  borderRadius: BorderRadius.circular(12),
-                  child: Container(
-                    padding: EdgeInsets.symmetric(vertical: 14),
-                    decoration: BoxDecoration(
-                      color: AppTheme.getBackgroundPrimary(context),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: AppTheme.getPrimaryColor(context).withOpacity(0.3),
-                      ),
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          Icons.arrow_back,
-                          color: AppTheme.getPrimaryColor(context),
-                          size: 20,
-                        ),
-                        SizedBox(width: 8),
-                        Text(
-                          'Back',
-                          style: TextStyle(
-                            color: AppTheme.getPrimaryColor(context),
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ),
+              child: OutlinedButton(
+                onPressed: _previousStep,
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: _navy,
+                  side: const BorderSide(color: _cardBorder),
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
                   ),
+                ),
+                child: const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.arrow_back_rounded, size: 18),
+                    SizedBox(width: 8),
+                    Text(
+                      'Back',
+                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+                    ),
+                  ],
                 ),
               ),
             ),
-          if (_currentStep > 0) SizedBox(width: 12),
+          if (_currentStep > 0) const SizedBox(width: 12),
           Expanded(
-            flex: _currentStep == 0 ? 1 : 1,
-            child: Material(
-              color: Colors.transparent,
-              child: InkWell(
-                onTap: isUploading
-                    ? null
-                    : (_currentStep == _totalSteps - 1
-                        ? () async {
-                            // Submit logic
-                            await _handleSubmit();
-                          }
-                        : _nextStep),
-                borderRadius: BorderRadius.circular(12),
-                child: Container(
-                  padding: EdgeInsets.symmetric(vertical: 14),
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [
-                        AppTheme.getPrimaryColor(context),
-                        AppTheme.primaryColorConstDark,
-                      ],
-                    ),
-                    borderRadius: BorderRadius.circular(12),
-                    boxShadow: [
-                      BoxShadow(
-                        color: AppTheme.getPrimaryColor(context).withOpacity(0.3),
-                        blurRadius: 8,
-                        offset: Offset(0, 4),
-                      ),
-                    ],
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      if (isUploading) ...[
-                        SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                          ),
-                        ),
-                        SizedBox(width: 12),
-                        Text(
-                          'Uploading...',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ] else if (_currentStep == _totalSteps - 1) ...[
-                        Icon(
-                          Icons.cloud_upload,
-                          color: Colors.white,
-                          size: 20,
-                        ),
-                        SizedBox(width: 8),
-                        Text(
-                          'Submit',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ] else ...[
-                        Text(
-                          'Next',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        SizedBox(width: 8),
-                        Icon(
-                          Icons.arrow_forward,
-                          color: Colors.white,
-                          size: 20,
-                        ),
-                      ],
-                    ],
-                  ),
+            child: ElevatedButton(
+              onPressed: isUploading
+                  ? null
+                  : (_currentStep == _totalSteps - 1
+                      ? () async {
+                          await _handleSubmit();
+                        }
+                      : _nextStep),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _navy,
+                foregroundColor: Colors.white,
+                disabledBackgroundColor: _navy.withValues(alpha: 0.55),
+                elevation: 0,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
                 ),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  if (isUploading) ...[
+                    const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    const Text(
+                      'Uploading...',
+                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
+                    ),
+                  ] else if (_currentStep == _totalSteps - 1) ...[
+                    const Icon(Icons.cloud_upload_rounded, size: 18),
+                    const SizedBox(width: 8),
+                    const Text(
+                      'Submit',
+                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
+                    ),
+                  ] else ...[
+                    const Text(
+                      'Next',
+                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
+                    ),
+                    const SizedBox(width: 8),
+                    const Icon(Icons.arrow_forward_rounded, size: 18),
+                  ],
+                ],
               ),
             ),
           ),
@@ -1482,17 +1332,17 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
 
   Widget _buildStep1Project() {
     return SingleChildScrollView(
-      padding: EdgeInsets.all(20),
+      padding: const EdgeInsets.all(20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           _buildSectionHeader(
             'Select Project',
-            Icons.folder_special,
+            Icons.folder_special_rounded,
             isCompleted: selectedProject != null,
             instruction: 'Choose the project for this daily update from the list below',
           ),
-          SizedBox(height: 20),
+          const SizedBox(height: 18),
           InkWell(
             onTap: () async {
               final result = await SearchableSelect.show(
@@ -1509,50 +1359,56 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
                 });
               }
             },
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(18),
             child: Container(
-              padding: EdgeInsets.symmetric(horizontal: 16, vertical: 18),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    AppTheme.getBackgroundSecondary(context),
-                    AppTheme.getBackgroundPrimaryLight(context),
-                  ],
-                ),
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.2),
-                    blurRadius: 8,
-                    offset: Offset(0, 4),
-                  ),
-                ],
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+              decoration: _surfaceCard(
+                borderColor: selectedProject != null
+                    ? const Color(0xFFBBF7D0)
+                    : _cardBorder,
               ),
               child: Row(
                 children: [
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFEEF2FF),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(Icons.apartment_rounded, color: _navy),
+                  ),
+                  const SizedBox(width: 12),
                   Expanded(
-                    child: Text(
-                      selectedProject != null
-                          ? (selectedProject['name'] ?? 'Unknown')
-                          : 'Select a project',
-                      style: TextStyle(
-                        color: selectedProject != null
-                            ? AppTheme.getTextPrimary(context)
-                            : AppTheme.getTextSecondary(context),
-                        fontSize: 16,
-                        fontWeight: selectedProject != null
-                            ? FontWeight.w500
-                            : FontWeight.normal,
-                      ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          selectedProject != null ? 'Selected project' : 'Project',
+                          style: const TextStyle(
+                            color: _mutedGrey,
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0.4,
+                          ),
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          selectedProject != null
+                              ? (selectedProject['name'] ?? 'Unknown')
+                              : 'Tap to select a project',
+                          style: TextStyle(
+                            color: selectedProject != null ? _navy : _mutedGrey,
+                            fontSize: 15.5,
+                            fontWeight: selectedProject != null
+                                ? FontWeight.w800
+                                : FontWeight.w600,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  Icon(
-                    Icons.arrow_forward_ios,
-                    color: AppTheme.getPrimaryColor(context),
-                    size: 18,
-                  ),
+                  const Icon(Icons.chevron_right_rounded, color: _mutedGrey),
                 ],
               ),
             ),
@@ -1564,177 +1420,156 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
 
   Widget _buildStep2Pictures() {
     return SingleChildScrollView(
-      padding: EdgeInsets.all(20),
+      padding: const EdgeInsets.all(20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           _buildSectionHeader(
             'Add Pictures',
-            Icons.add_a_photo,
-            isCompleted: selectedPictures.length > 0,
-            instruction: 'Add photos of the work completed today. You can take new photos or select from your gallery',
+            Icons.add_a_photo_rounded,
+            isCompleted: selectedPictures.isNotEmpty,
+            instruction:
+                'Add photos of the work completed today. You can take new photos or select from your gallery',
           ),
-          SizedBox(height: 20),
-          Container(
-            margin: EdgeInsets.only(bottom: 20),
-            child: InkWell(
-              onTap: () async => selectPicturesFromPhone(),
-              borderRadius: BorderRadius.circular(16),
-              child: Container(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      AppTheme.getBackgroundSecondary(context),
-                      AppTheme.getBackgroundPrimaryLight(context),
-                    ],
+          const SizedBox(height: 18),
+          InkWell(
+            onTap: () async => selectPicturesFromPhone(),
+            borderRadius: BorderRadius.circular(18),
+            child: Container(
+              margin: const EdgeInsets.only(bottom: 20),
+              decoration: _surfaceCard(),
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: <Widget>[
+                  Container(
+                    width: 48,
+                    height: 48,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFEEF2FF),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: const Icon(
+                      Icons.add_a_photo_rounded,
+                      size: 22,
+                      color: _navy,
+                    ),
                   ),
-                  borderRadius: BorderRadius.circular(16),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.2),
-                      blurRadius: 8,
-                      offset: Offset(0, 4),
-                    ),
-                  ],
-                ),
-                padding: EdgeInsets.all(18),
-                child: Row(
-                  children: <Widget>[
-                    Container(
-                      padding: EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: AppTheme.getPrimaryColor(context).withOpacity(0.2),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Icon(
-                        Icons.add_a_photo,
-                        size: 24,
-                        color: AppTheme.getPrimaryColor(context),
-                      ),
-                    ),
-                    SizedBox(width: 16),
-                    Expanded(
-                      child: Text(
-                        attachPictureButtonText,
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                          color: AppTheme.getTextPrimary(context),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          attachPictureButtonText,
+                          style: const TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w800,
+                            color: _navy,
+                          ),
                         ),
-                      ),
+                        const SizedBox(height: 3),
+                        const Text(
+                          'Camera or gallery',
+                          style: TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w500,
+                            color: _mutedGrey,
+                          ),
+                        ),
+                      ],
                     ),
-                    Icon(
-                      Icons.chevron_right,
-                      color: AppTheme.getTextSecondary(context),
-                    ),
-                  ],
-                ),
+                  ),
+                  const Icon(Icons.chevron_right_rounded, color: _mutedGrey),
+                ],
               ),
             ),
           ),
-
-          //List of images stacked horizontally
-          if (selectedPictures.length != 0)
-            Container(
-              margin: EdgeInsets.only(bottom: 20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Padding(
-                    padding: EdgeInsets.only(bottom: 12),
-                    child: Text(
-                      'Selected Images (${selectedPictures.length})',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                        color: AppTheme.getTextPrimary(context),
-                      ),
-                    ),
+          if (selectedPictures.isNotEmpty)
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Selected images (${selectedPictures.length})',
+                  style: const TextStyle(
+                    fontSize: 14.5,
+                    fontWeight: FontWeight.w800,
+                    color: _navy,
                   ),
-                  Container(
-                    height: 150,
-                    child: ListView.builder(
-                      shrinkWrap: true,
-                      scrollDirection: Axis.horizontal,
-                      itemCount: selectedPictures.length,
-                      itemBuilder: (BuildContext ctxt, int index) {
-                        return Container(
-                          margin: EdgeInsets.only(right: 12),
-                          child: Stack(
-                            children: [
-                              InkWell(
-                                onTap: () async {
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (context) => FullScreenImage(
-                                        selectedPictures[index],
-                                      ),
+                ),
+                const SizedBox(height: 12),
+                SizedBox(
+                  height: 148,
+                  child: ListView.builder(
+                    scrollDirection: Axis.horizontal,
+                    itemCount: selectedPictures.length,
+                    itemBuilder: (BuildContext ctxt, int index) {
+                      return Container(
+                        margin: const EdgeInsets.only(right: 12),
+                        child: Stack(
+                          children: [
+                            InkWell(
+                              onTap: () async {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) => FullScreenImage(
+                                      selectedPictures[index],
                                     ),
-                                  );
+                                  ),
+                                );
+                              },
+                              borderRadius: BorderRadius.circular(16),
+                              child: Container(
+                                height: 148,
+                                width: 148,
+                                decoration: BoxDecoration(
+                                  image: DecorationImage(
+                                    image: selectedPictures[index],
+                                    fit: BoxFit.cover,
+                                  ),
+                                  border: Border.all(color: _cardBorder),
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                              ),
+                            ),
+                            Positioned(
+                              top: 8,
+                              right: 8,
+                              child: InkWell(
+                                onTap: () {
+                                  setState(() {
+                                    selectedPictures.removeAt(index);
+                                    selectedPictureFilenames.removeAt(index);
+                                    selectedPictureFilePaths.removeAt(index);
+                                    if (selectedPictures.isEmpty) {
+                                      attachPictureButtonText =
+                                          'Add picture from phone';
+                                    }
+                                  });
                                 },
                                 child: Container(
-                                  height: 150,
-                                  width: 150,
+                                  height: 30,
+                                  width: 30,
                                   decoration: BoxDecoration(
-                                    image: DecorationImage(
-                                      image: selectedPictures[index],
-                                      fit: BoxFit.cover,
-                                    ),
-                                    border: Border.all(
-                                      color: AppTheme.getPrimaryColor(context).withOpacity(0.3),
-                                      width: 2,
-                                    ),
-                                    borderRadius: BorderRadius.circular(16),
+                                    color: const Color(0xFFDC2626),
+                                    shape: BoxShape.circle,
+                                    border: Border.all(color: Colors.white, width: 2),
+                                  ),
+                                  child: const Icon(
+                                    Icons.close_rounded,
+                                    size: 16,
+                                    color: Colors.white,
                                   ),
                                 ),
                               ),
-                              Positioned(
-                                top: 8,
-                                right: 8,
-                                child: InkWell(
-                                  onTap: () {
-                                    setState(() {
-                                      selectedPictures.removeAt(index);
-                                      selectedPictureFilenames.removeAt(index);
-                                      selectedPictureFilePaths.removeAt(index);
-                                      if (selectedPictures.length == 0) {
-                                        attachPictureButtonText = "Add picture from phone";
-                                      }
-                                    });
-                                  },
-                                  child: Container(
-                                    height: 32,
-                                    width: 32,
-                                    decoration: BoxDecoration(
-                                      color: Colors.red,
-                                      shape: BoxShape.circle,
-                                      boxShadow: [
-                                        BoxShadow(
-                                          color: Colors.black.withOpacity(0.3),
-                                          blurRadius: 4,
-                                          offset: Offset(0, 2),
-                                        ),
-                                      ],
-                                    ),
-                                    child: Icon(
-                                      Icons.close,
-                                      size: 18,
-                                      color: Colors.white,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        );
-                      },
-                    ),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
         ],
       ),
@@ -1743,17 +1578,18 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
 
   Widget _buildStep3Tradesmen() {
     return SingleChildScrollView(
-      padding: EdgeInsets.all(20),
+      padding: const EdgeInsets.all(20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           _buildSectionHeader(
             'Select Tradesmen',
-            Icons.people,
+            Icons.groups_rounded,
             isCompleted: selectedTradesmen.isNotEmpty,
-            instruction: 'Select the tradesmen who worked today and specify the count for each',
+            instruction:
+                'Select the tradesmen who worked today and specify the count for each',
           ),
-          SizedBox(height: 20),
+          const SizedBox(height: 18),
           InkWell(
             onTap: () async {
               final selectedTradesmenItem = await SearchableSelect.show(
@@ -1766,102 +1602,96 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
                 _showTradesmenCountDialog(selectedTradesmenItem.toString());
               }
             },
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(18),
             child: Container(
-              margin: EdgeInsets.only(bottom: 20),
-              padding: EdgeInsets.symmetric(horizontal: 16, vertical: 18),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    AppTheme.getBackgroundSecondary(context),
-                    AppTheme.getBackgroundPrimaryLight(context),
-                  ],
-                ),
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.2),
-                    blurRadius: 8,
-                    offset: Offset(0, 4),
-                  ),
-                ],
+              margin: const EdgeInsets.only(bottom: 20),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+              decoration: _surfaceCard(
+                borderColor: selectedTradesmen.isNotEmpty
+                    ? const Color(0xFFBBF7D0)
+                    : _cardBorder,
               ),
               child: Row(
                 children: [
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFEEF2FF),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(Icons.groups_rounded, color: _navy),
+                  ),
+                  const SizedBox(width: 12),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
                           selectedTradesmen.isEmpty
-                              ? 'Select tradesmen'
+                              ? 'Tap to add tradesmen'
                               : '${selectedTradesmen.length} tradesmen selected',
                           style: TextStyle(
-                            color: selectedTradesmen.isEmpty
-                                ? AppTheme.getTextSecondary(context)
-                                : AppTheme.getTextPrimary(context),
-                            fontSize: 16,
+                            color: selectedTradesmen.isEmpty ? _mutedGrey : _navy,
+                            fontSize: 15,
                             fontWeight: selectedTradesmen.isEmpty
-                                ? FontWeight.normal
-                                : FontWeight.w500,
+                                ? FontWeight.w600
+                                : FontWeight.w800,
                           ),
                         ),
                         if (selectedTradesmen.isNotEmpty) ...[
-                          SizedBox(height: 8),
+                          const SizedBox(height: 10),
                           Wrap(
                             spacing: 8,
                             runSpacing: 8,
                             children: selectedTradesmen.entries.map((entry) {
                               return Container(
-                                padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 10, vertical: 6),
                                 decoration: BoxDecoration(
-                                  color: AppTheme.getPrimaryColor(context).withOpacity(0.2),
-                                  borderRadius: BorderRadius.circular(20),
-                                  border: Border.all(
-                                    color: AppTheme.getPrimaryColor(context).withOpacity(0.5),
-                                    width: 1,
-                                  ),
+                                  color: const Color(0xFFEEF2FF),
+                                  borderRadius: BorderRadius.circular(999),
+                                  border: Border.all(color: _cardBorder),
                                 ),
                                 child: Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
                                     Text(
                                       entry.key,
-                                      style: TextStyle(
-                                        color: AppTheme.getPrimaryColor(context),
+                                      style: const TextStyle(
+                                        color: _navy,
                                         fontSize: 12,
-                                        fontWeight: FontWeight.w600,
+                                        fontWeight: FontWeight.w700,
                                       ),
                                     ),
-                                    SizedBox(width: 6),
+                                    const SizedBox(width: 6),
                                     Container(
-                                      padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 6, vertical: 2),
                                       decoration: BoxDecoration(
-                                        color: AppTheme.getPrimaryColor(context),
-                                        borderRadius: BorderRadius.circular(10),
+                                        color: _navy,
+                                        borderRadius: BorderRadius.circular(999),
                                       ),
                                       child: Text(
                                         entry.value,
-                                        style: TextStyle(
+                                        style: const TextStyle(
                                           color: Colors.white,
                                           fontSize: 11,
-                                          fontWeight: FontWeight.bold,
+                                          fontWeight: FontWeight.w800,
                                         ),
                                       ),
                                     ),
-                                    SizedBox(width: 6),
+                                    const SizedBox(width: 4),
                                     InkWell(
                                       onTap: () {
                                         setState(() {
                                           selectedTradesmen.remove(entry.key);
                                         });
                                       },
-                                      child: Icon(
-                                        Icons.close,
-                                        size: 16,
-                                        color: AppTheme.getPrimaryColor(context),
+                                      child: const Icon(
+                                        Icons.close_rounded,
+                                        size: 15,
+                                        color: _mutedGrey,
                                       ),
                                     ),
                                   ],
@@ -1873,12 +1703,8 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
                       ],
                     ),
                   ),
-                  SizedBox(width: 12),
-                  Icon(
-                    Icons.arrow_forward_ios,
-                    color: AppTheme.getPrimaryColor(context),
-                    size: 18,
-                  ),
+                  const SizedBox(width: 8),
+                  const Icon(Icons.chevron_right_rounded, color: _mutedGrey),
                 ],
               ),
             ),
@@ -1890,99 +1716,95 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
 
   Widget _buildStep4DailyUpdate() {
     return SingleChildScrollView(
-      padding: EdgeInsets.all(20),
+      padding: const EdgeInsets.all(20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           _buildSectionHeader(
             'Daily Update',
-            Icons.edit_note,
+            Icons.edit_note_rounded,
             isCompleted: dailyUpdateTextController.text.trim().isNotEmpty,
-            instruction: 'Write a detailed description of what was accomplished today. Be specific about the work done',
+            instruction:
+                'Write a detailed description of what was accomplished today. Be specific about the work done',
           ),
-          SizedBox(height: 20),
+          const SizedBox(height: 18),
           Container(
-            margin: EdgeInsets.only(bottom: 20),
-            padding: EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  AppTheme.getBackgroundSecondary(context),
-                  AppTheme.getBackgroundPrimaryLight(context),
-                ],
-              ),
-              borderRadius: BorderRadius.circular(16),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.2),
-                  blurRadius: 8,
-                  offset: Offset(0, 4),
-                ),
-              ],
+            margin: const EdgeInsets.only(bottom: 20),
+            padding: const EdgeInsets.all(16),
+            decoration: _surfaceCard(
+              borderColor: dailyUpdateTextController.text.trim().isNotEmpty
+                  ? const Color(0xFFBBF7D0)
+                  : _cardBorder,
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
                   children: [
-                    Icon(
-                      Icons.calendar_today,
-                      size: 16,
-                      color: AppTheme.getTextSecondary(context),
-                    ),
-                    SizedBox(width: 8),
-                    Text(
-                      DateFormat("dd MMMM yyyy").format(DateTime.now()),
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: AppTheme.getTextSecondary(context),
-                        fontWeight: FontWeight.w500,
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF1F4F8),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.calendar_today_rounded,
+                              size: 14, color: _mutedGrey),
+                          const SizedBox(width: 6),
+                          Text(
+                            DateFormat('dd MMMM yyyy').format(DateTime.now()),
+                            style: const TextStyle(
+                              fontSize: 12.5,
+                              color: _mutedGrey,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ],
                 ),
-                SizedBox(height: 16),
+                const SizedBox(height: 14),
                 TextFormField(
                   autocorrect: true,
                   controller: dailyUpdateTextController,
                   keyboardType: TextInputType.multiline,
                   textCapitalization: TextCapitalization.sentences,
                   maxLines: 8,
-                  style: TextStyle(
-                    fontSize: 16,
-                    color: AppTheme.getTextPrimary(context),
+                  style: const TextStyle(
+                    fontSize: 15.5,
+                    color: _navy,
+                    fontWeight: FontWeight.w500,
+                    height: 1.45,
                   ),
                   onChanged: (value) {
-                    setState(() {
-                      // Update UI to show checkmark when text is entered
-                    });
+                    setState(() {});
                   },
                   decoration: InputDecoration(
-                    focusColor: AppTheme.getPrimaryColor(context),
                     floatingLabelBehavior: FloatingLabelBehavior.never,
                     errorBorder: OutlineInputBorder(
-                      borderSide: BorderSide(color: Colors.red, width: 1.0),
-                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(color: Color(0xFFDC2626)),
+                      borderRadius: BorderRadius.circular(14),
                     ),
                     focusedBorder: OutlineInputBorder(
-                      borderSide: BorderSide(color: AppTheme.getPrimaryColor(context), width: 2.0),
-                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(color: _navy, width: 1.5),
+                      borderRadius: BorderRadius.circular(14),
                     ),
                     enabledBorder: OutlineInputBorder(
-                      borderSide: BorderSide(
-                        color: AppTheme.getPrimaryColor(context).withOpacity(0.3),
-                        width: 1.0,
-                      ),
-                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(color: _cardBorder),
+                      borderRadius: BorderRadius.circular(14),
                     ),
                     filled: true,
                     hintText: "What's done today?",
-                    hintStyle: TextStyle(color: AppTheme.getTextSecondary(context)),
+                    hintStyle: const TextStyle(
+                      color: _mutedGrey,
+                      fontWeight: FontWeight.w500,
+                    ),
                     alignLabelWithHint: true,
-                    fillColor: AppTheme.getBackgroundPrimary(context),
-                    contentPadding: EdgeInsets.all(16),
+                    fillColor: _pageBg,
+                    contentPadding: const EdgeInsets.all(16),
                   ),
                   validator: (value) {
                     if (value!.isEmpty) {
@@ -2007,51 +1829,43 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
         children: <Widget>[
           _buildSectionHeader(
             'Preview',
-            Icons.preview,
+            Icons.preview_rounded,
             isCompleted: false,
             instruction: 'Review all information before submitting',
           ),
-          SizedBox(height: 24),
-          
-          // Project Preview
+          const SizedBox(height: 20),
           _buildPreviewCard(
-            icon: Icons.folder_special,
+            icon: Icons.folder_special_rounded,
             title: 'Project',
             content: selectedProject != null
                 ? (selectedProject['name'] ?? 'Unknown')
                 : 'Not selected',
             isComplete: selectedProject != null,
           ),
-          SizedBox(height: 16),
-          
-          // Pictures Preview
+          const SizedBox(height: 12),
           _buildPreviewCard(
-            icon: Icons.add_a_photo,
+            icon: Icons.add_a_photo_rounded,
             title: 'Pictures',
             content: selectedPictures.isEmpty
                 ? 'No pictures added'
                 : '${selectedPictures.length} picture${selectedPictures.length > 1 ? 's' : ''} selected',
             isComplete: selectedPictures.isNotEmpty,
             child: selectedPictures.isNotEmpty
-                ? Container(
-                    height: 100,
-                    margin: EdgeInsets.only(top: 12),
+                ? SizedBox(
+                    height: 96,
                     child: ListView.builder(
                       scrollDirection: Axis.horizontal,
                       itemCount: selectedPictures.length,
                       itemBuilder: (context, index) {
                         return Container(
-                          margin: EdgeInsets.only(right: 8),
-                          width: 100,
+                          margin: const EdgeInsets.only(right: 8),
+                          width: 96,
                           decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(
-                              color: AppTheme.getPrimaryColor(context).withOpacity(0.3),
-                              width: 1,
-                            ),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: _cardBorder),
                           ),
                           child: ClipRRect(
-                            borderRadius: BorderRadius.circular(8),
+                            borderRadius: BorderRadius.circular(12),
                             child: Image(
                               image: selectedPictures[index],
                               fit: BoxFit.cover,
@@ -2063,11 +1877,9 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
                   )
                 : null,
           ),
-          SizedBox(height: 16),
-          
-          // Tradesmen Preview
+          const SizedBox(height: 12),
           _buildPreviewCard(
-            icon: Icons.people,
+            icon: Icons.groups_rounded,
             title: 'Tradesmen',
             content: selectedTradesmen.isEmpty
                 ? 'No tradesmen selected'
@@ -2079,39 +1891,38 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
                     runSpacing: 8,
                     children: selectedTradesmen.entries.map((entry) {
                       return Container(
-                        padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 6),
                         decoration: BoxDecoration(
-                          color: AppTheme.getPrimaryColor(context).withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(
-                            color: AppTheme.getPrimaryColor(context).withOpacity(0.3),
-                            width: 1,
-                          ),
+                          color: const Color(0xFFEEF2FF),
+                          borderRadius: BorderRadius.circular(999),
+                          border: Border.all(color: _cardBorder),
                         ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Text(
                               entry.key,
-                              style: TextStyle(
-                                color: AppTheme.getPrimaryColor(context),
+                              style: const TextStyle(
+                                color: _navy,
                                 fontSize: 12,
-                                fontWeight: FontWeight.w600,
+                                fontWeight: FontWeight.w700,
                               ),
                             ),
-                            SizedBox(width: 6),
+                            const SizedBox(width: 6),
                             Container(
-                              padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 6, vertical: 2),
                               decoration: BoxDecoration(
-                                color: AppTheme.getPrimaryColor(context),
-                                borderRadius: BorderRadius.circular(10),
+                                color: _navy,
+                                borderRadius: BorderRadius.circular(999),
                               ),
                               child: Text(
                                 entry.value,
-                                style: TextStyle(
+                                style: const TextStyle(
                                   color: Colors.white,
                                   fontSize: 11,
-                                  fontWeight: FontWeight.bold,
+                                  fontWeight: FontWeight.w800,
                                 ),
                               ),
                             ),
@@ -2122,11 +1933,9 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
                   )
                 : null,
           ),
-          SizedBox(height: 16),
-          
-          // Daily Update Preview
+          const SizedBox(height: 12),
           _buildPreviewCard(
-            icon: Icons.edit_note,
+            icon: Icons.edit_note_rounded,
             title: 'Daily Update',
             content: dailyUpdateTextController.text.trim().isEmpty
                 ? 'No update text entered'
@@ -2134,13 +1943,11 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
             isComplete: dailyUpdateTextController.text.trim().isNotEmpty,
             isTextContent: true,
           ),
-          SizedBox(height: 16),
-          
-          // Date Preview
+          const SizedBox(height: 12),
           _buildPreviewCard(
-            icon: Icons.calendar_today,
+            icon: Icons.calendar_today_rounded,
             title: 'Date',
-            content: DateFormat("dd MMMM yyyy").format(DateTime.now()),
+            content: DateFormat('dd MMMM yyyy').format(DateTime.now()),
             isComplete: true,
           ),
         ],
@@ -2157,30 +1964,9 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
     bool isTextContent = false,
   }) {
     return Container(
-      padding: EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            AppTheme.getBackgroundSecondary(context),
-            AppTheme.getBackgroundPrimaryLight(context),
-          ],
-        ),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: isComplete
-              ? Colors.green.withOpacity(0.3)
-              : AppTheme.getPrimaryColor(context).withOpacity(0.2),
-          width: 1.5,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.1),
-            blurRadius: 8,
-            offset: Offset(0, 4),
-          ),
-        ],
+      padding: const EdgeInsets.all(16),
+      decoration: _surfaceCard(
+        borderColor: isComplete ? const Color(0xFFBBF7D0) : _cardBorder,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -2188,54 +1974,50 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
           Row(
             children: [
               Container(
-                padding: EdgeInsets.all(8),
+                width: 40,
+                height: 40,
                 decoration: BoxDecoration(
-                  color: isComplete
-                      ? Colors.green.withOpacity(0.2)
-                      : AppTheme.getPrimaryColor(context).withOpacity(0.15),
-                  borderRadius: BorderRadius.circular(8),
+                  color: isComplete ? _successBg : const Color(0xFFEEF2FF),
+                  borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(
                   icon,
                   size: 20,
-                  color: isComplete
-                      ? Colors.green
-                      : AppTheme.getPrimaryColor(context),
+                  color: isComplete ? _success : _navy,
                 ),
               ),
-              SizedBox(width: 12),
+              const SizedBox(width: 12),
               Expanded(
                 child: Text(
                   title,
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: AppTheme.getTextPrimary(context),
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                    color: _navy,
                   ),
                 ),
               ),
               if (isComplete)
-                Icon(
-                  Icons.check_circle,
-                  color: Colors.green,
-                  size: 20,
-                ),
+                const Icon(Icons.check_circle_rounded, color: _success, size: 20),
             ],
           ),
-          SizedBox(height: 12),
+          const SizedBox(height: 12),
           if (isTextContent)
             Container(
-              padding: EdgeInsets.all(12),
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: AppTheme.getBackgroundPrimary(context),
+                color: _pageBg,
                 borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: _cardBorder),
               ),
               child: Text(
                 content,
-                style: TextStyle(
+                style: const TextStyle(
                   fontSize: 14,
-                  color: AppTheme.getTextPrimary(context),
+                  color: _navy,
                   height: 1.5,
+                  fontWeight: FontWeight.w500,
                 ),
               ),
             )
@@ -2244,14 +2026,12 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
               content,
               style: TextStyle(
                 fontSize: 14,
-                color: isComplete
-                    ? AppTheme.getTextPrimary(context)
-                    : AppTheme.getTextSecondary(context),
-                fontWeight: isComplete ? FontWeight.w500 : FontWeight.normal,
+                color: isComplete ? _navy : _mutedGrey,
+                fontWeight: isComplete ? FontWeight.w600 : FontWeight.w500,
               ),
             ),
           if (child != null) ...[
-            SizedBox(height: 12),
+            const SizedBox(height: 12),
             child,
           ],
         ],
@@ -2280,45 +2060,43 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
         Row(
           children: [
             Container(
-              padding: EdgeInsets.all(8),
+              width: 42,
+              height: 42,
               decoration: BoxDecoration(
-                color: isCompleted
-                    ? Colors.green.withOpacity(0.2)
-                    : AppTheme.getPrimaryColor(context).withOpacity(0.15),
-                borderRadius: BorderRadius.circular(8),
+                color: isCompleted ? _successBg : const Color(0xFFEEF2FF),
+                borderRadius: BorderRadius.circular(12),
               ),
               child: Icon(
-                isCompleted ? Icons.check : icon,
+                isCompleted ? Icons.check_rounded : icon,
                 size: 20,
-                color: isCompleted ? Colors.green : AppTheme.getPrimaryColor(context),
+                color: isCompleted ? _success : _navy,
               ),
             ),
-            SizedBox(width: 12),
+            const SizedBox(width: 12),
             Expanded(
               child: Text(
                 title,
                 style: TextStyle(
                   fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: isCompleted
-                      ? Colors.green
-                      : AppTheme.getTextPrimary(context),
-                  letterSpacing: 0.5,
+                  fontWeight: FontWeight.w800,
+                  color: isCompleted ? _success : _navy,
+                  letterSpacing: -0.2,
                 ),
               ),
             ),
           ],
         ),
         if (instruction != null) ...[
-          SizedBox(height: 8),
+          const SizedBox(height: 8),
           Padding(
-            padding: EdgeInsets.only(left: 44),
+            padding: const EdgeInsets.only(left: 54),
             child: Text(
               instruction,
-              style: TextStyle(
-                fontSize: 14,
-                color: AppTheme.getTextSecondary(context),
+              style: const TextStyle(
+                fontSize: 13.5,
+                color: _mutedGrey,
                 height: 1.4,
+                fontWeight: FontWeight.w500,
               ),
             ),
           ),
@@ -2332,176 +2110,129 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => Scaffold(
-          backgroundColor: AppTheme.getBackgroundPrimary(context),
-          appBar: AppBar(
-            title: Text(
-              'Enter Count',
-              style: TextStyle(color: AppTheme.getTextPrimary(context)),
-            ),
-            backgroundColor: AppTheme.getBackgroundSecondary(context),
-            iconTheme: IconThemeData(color: AppTheme.getTextPrimary(context)),
-            leading: IconButton(
-              icon: Icon(Icons.arrow_back),
-              onPressed: () => Navigator.pop(context),
-            ),
-          ),
+        builder: (context) => ThemedScaffold(
+          title: 'Enter Count',
+          backgroundColor: _pageBg,
           body: Padding(
-            padding: EdgeInsets.all(20),
+            padding: const EdgeInsets.all(20),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Container(
-                  padding: EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [
-                        AppTheme.getBackgroundSecondary(context),
-                        AppTheme.getBackgroundPrimaryLight(context),
-                      ],
-                    ),
-                    borderRadius: BorderRadius.circular(16),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.2),
-                        blurRadius: 8,
-                        offset: Offset(0, 4),
-                      ),
-                    ],
-                  ),
+                  padding: const EdgeInsets.all(18),
+                  decoration: _surfaceCard(),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Row(
                         children: [
                           Container(
-                            padding: EdgeInsets.all(10),
+                            width: 44,
+                            height: 44,
                             decoration: BoxDecoration(
-                              color: AppTheme.getPrimaryColor(context).withOpacity(0.2),
-                              borderRadius: BorderRadius.circular(10),
+                              color: const Color(0xFFEEF2FF),
+                              borderRadius: BorderRadius.circular(12),
                             ),
-                            child: Icon(
-                              Icons.people,
-                              color: AppTheme.getPrimaryColor(context),
-                              size: 24,
+                            child: const Icon(
+                              Icons.groups_rounded,
+                              color: _navy,
+                              size: 22,
                             ),
                           ),
-                          SizedBox(width: 12),
+                          const SizedBox(width: 12),
                           Expanded(
                             child: Text(
                               tradesmenName,
-                              style: TextStyle(
-                                color: AppTheme.getTextPrimary(context),
-                                fontSize: 20,
-                                fontWeight: FontWeight.bold,
+                              style: const TextStyle(
+                                color: _navy,
+                                fontSize: 18,
+                                fontWeight: FontWeight.w800,
                               ),
                             ),
                           ),
                         ],
                       ),
-                      SizedBox(height: 24),
-                      Text(
+                      const SizedBox(height: 22),
+                      const Text(
                         'Number of workers',
                         style: TextStyle(
-                          color: AppTheme.getTextSecondary(context),
-                          fontSize: 14,
-                          fontWeight: FontWeight.w500,
+                          color: _mutedGrey,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
                         ),
                       ),
-                      SizedBox(height: 12),
+                      const SizedBox(height: 10),
                       TextField(
                         controller: countController,
                         keyboardType: TextInputType.number,
-                        style: TextStyle(
-                          color: AppTheme.getTextPrimary(context),
+                        style: const TextStyle(
+                          color: _navy,
                           fontSize: 18,
+                          fontWeight: FontWeight.w700,
                         ),
                         decoration: InputDecoration(
                           hintText: 'Enter count',
-                          hintStyle: TextStyle(color: AppTheme.getTextSecondary(context)),
+                          hintStyle: const TextStyle(
+                            color: _mutedGrey,
+                            fontWeight: FontWeight.w500,
+                          ),
                           filled: true,
-                          fillColor: AppTheme.getBackgroundPrimary(context),
+                          fillColor: _pageBg,
                           border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide(
-                              color: AppTheme.getPrimaryColor(context).withOpacity(0.3),
-                            ),
+                            borderRadius: BorderRadius.circular(14),
+                            borderSide: const BorderSide(color: _cardBorder),
                           ),
                           enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide(
-                              color: AppTheme.getPrimaryColor(context).withOpacity(0.3),
-                            ),
+                            borderRadius: BorderRadius.circular(14),
+                            borderSide: const BorderSide(color: _cardBorder),
                           ),
                           focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide(
-                              color: AppTheme.getPrimaryColor(context),
-                              width: 2,
-                            ),
+                            borderRadius: BorderRadius.circular(14),
+                            borderSide: const BorderSide(color: _navy, width: 1.5),
                           ),
-                          contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+                          contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 16, vertical: 16),
                         ),
                         autofocus: true,
                       ),
                     ],
                   ),
                 ),
-                SizedBox(height: 24),
-                Material(
-                  color: Colors.transparent,
-                  child: InkWell(
-                    onTap: () {
+                const SizedBox(height: 20),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: () {
                       if (countController.text.trim().isNotEmpty) {
                         setState(() {
-                          selectedTradesmen[tradesmenName] = countController.text.trim();
+                          selectedTradesmen[tradesmenName] =
+                              countController.text.trim();
                         });
                         Navigator.pop(context);
                       }
                     },
-                    borderRadius: BorderRadius.circular(16),
-                    child: Container(
-                      width: double.infinity,
-                      padding: EdgeInsets.symmetric(vertical: 18),
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                          colors: [
-                            AppTheme.getPrimaryColor(context),
-                            AppTheme.primaryColorConstDark,
-                          ],
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: _navy,
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                    ),
+                    child: const Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.check_rounded, size: 20),
+                        SizedBox(width: 8),
+                        Text(
+                          'Add Tradesmen',
+                          style: TextStyle(
+                            fontSize: 15.5,
+                            fontWeight: FontWeight.w800,
+                          ),
                         ),
-                        borderRadius: BorderRadius.circular(16),
-                        boxShadow: [
-                          BoxShadow(
-                            color: AppTheme.getPrimaryColor(context).withOpacity(0.3),
-                            blurRadius: 12,
-                            offset: Offset(0, 4),
-                          ),
-                        ],
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            Icons.check,
-                            color: Colors.white,
-                            size: 24,
-                          ),
-                          SizedBox(width: 12),
-                          Text(
-                            'Add Tradesmen',
-                            style: TextStyle(
-                              fontSize: 18,
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ],
-                      ),
+                      ],
                     ),
                   ),
                 ),

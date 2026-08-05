@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import '../app_theme.dart';
 
 class App extends StatelessWidget {
   final fontName = 'Mulish-Regular';
@@ -11,7 +12,7 @@ class App extends StatelessWidget {
 
     return MaterialApp(
       title: appTitle,
-      theme: ThemeData(fontFamily: fontName),
+      theme: AppTheme.getLightTheme(),
       home: Scaffold(),
     );
   }

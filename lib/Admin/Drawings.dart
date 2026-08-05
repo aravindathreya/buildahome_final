@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../app_theme.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -95,7 +96,7 @@ class DocumentObjectState extends State<DocumentObject> {
                             margin: EdgeInsets.only(top: 20),
                             child: Text(
                               children[x].toString(),
-                              style: TextStyle(color: Colors.indigo[900], fontWeight: FontWeight.bold),
+                              style: TextStyle(color: AppTheme.navy, fontWeight: FontWeight.bold),
                             ),
                           ))
                   ],
@@ -171,8 +172,10 @@ class DocumentsState extends State<Documents> {
     final GlobalKey<ScaffoldState> _scaffoldKey = new GlobalKey<ScaffoldState>();
     return MaterialApp(
       title: appTitle,
+      theme: AppTheme.getLightTheme(),
       home: Scaffold(
           key: _scaffoldKey,
+          backgroundColor: Colors.white,
           appBar: AppBar(
             automaticallyImplyLeading: false,
             title: Text(appTitle),
@@ -181,11 +184,15 @@ class DocumentsState extends State<Documents> {
                 onPressed: () => {
                       Navigator.pop(context),
                     }),
-            backgroundColor: Color(0xFF000055),
+            backgroundColor: Colors.white,
+            foregroundColor: AppTheme.navy,
+            elevation: 0,
+            iconTheme: const IconThemeData(color: AppTheme.navy),
+            titleTextStyle: const TextStyle(color: AppTheme.navy, fontSize: 18, fontWeight: FontWeight.w800),
           ),
           bottomNavigationBar: BottomNavigationBar(
             currentIndex: 1,
-            selectedItemColor: Colors.indigo[900],
+            selectedItemColor: AppTheme.navy,
             onTap: (int index) {
               if (index == 0) {
                 Navigator.pushReplacement(

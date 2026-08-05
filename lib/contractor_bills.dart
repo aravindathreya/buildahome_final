@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'app_theme.dart';
 import 'package:http/http.dart' as http;
 import 'NavMenu.dart';
 import 'dart:convert';
@@ -54,13 +55,18 @@ class ContractorBillsState extends State<ContractorBills> {
         new GlobalKey<ScaffoldState>();
     return Scaffold(
         key: _scaffoldKey,
+        backgroundColor: Colors.white,
         appBar: AppBar(
           automaticallyImplyLeading: true,
           title: Text(appTitle),
           leading: new IconButton(
               icon: new Icon(Icons.chevron_left),
               onPressed: () => {Navigator.pop(context)}),
-          backgroundColor: Color(0xFF000055),
+          backgroundColor: Colors.white,
+          foregroundColor: AppTheme.navy,
+          elevation: 0,
+          iconTheme: const IconThemeData(color: AppTheme.navy),
+          titleTextStyle: const TextStyle(color: AppTheme.navy, fontSize: 18, fontWeight: FontWeight.w800),
         ),
         drawer: NavMenuWidget(),
         body: ListView(

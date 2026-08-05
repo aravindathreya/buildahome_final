@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
+import '../app_theme.dart';
 import 'package:http/http.dart' as http;
 import '../NavMenu.dart';
 import 'dart:convert';
-import '../main.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../ShowAlert.dart';
 import 'Scheduler.dart';
@@ -73,9 +73,10 @@ class DprState extends State<Dpr> {
     final GlobalKey<ScaffoldState> _scaffoldKey = new GlobalKey<ScaffoldState>();
     return MaterialApp(
       title: appTitle,
-      theme: ThemeData(fontFamily: App().fontName),
+      theme: AppTheme.getLightTheme(),
       home: Scaffold(
         key: _scaffoldKey,
+        backgroundColor: Colors.white,
         appBar: AppBar(
           automaticallyImplyLeading: false,
           title: Text(appTitle),
@@ -84,12 +85,16 @@ class DprState extends State<Dpr> {
               onPressed: () => {
                     Navigator.pop(context),
                   }),
-          backgroundColor: Color(0xFF000055),
+          backgroundColor: Colors.white,
+          foregroundColor: AppTheme.navy,
+          elevation: 0,
+          iconTheme: const IconThemeData(color: AppTheme.navy),
+          titleTextStyle: const TextStyle(color: AppTheme.navy, fontSize: 18, fontWeight: FontWeight.w800),
         ),
         drawer: NavMenuWidget(),
         bottomNavigationBar: BottomNavigationBar(
           currentIndex: 0,
-          selectedItemColor: Colors.indigo[900],
+          selectedItemColor: AppTheme.navy,
           onTap: (int index) {
             if (index == 0) {
               Navigator.pushReplacement(

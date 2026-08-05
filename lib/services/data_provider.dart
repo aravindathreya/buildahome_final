@@ -79,9 +79,9 @@ class DataProvider {
       return; // Don't load projects for clients
     }
 
-    // If forcing reload, clear existing projects first
+    // Force refreshes credentials/cache timestamp but keeps the current list
+    // visible so pickers can open immediately while data reloads.
     if (force) {
-      projects = [];
       lastProjectsLoad = null;
     }
 
@@ -479,6 +479,96 @@ class DataProvider {
     throw Exception(
       lastError?.toString().replaceFirst('Exception: ', '') ??
           'Unable to load project timeline right now.',
+    );
+  }
+
+  /// Fetches a sales SOP card:
+  /// GET /api/sales_sop_details/{id}/cards/{cardKey}
+  Future<Map<String, dynamic>> loadSalesSopCard(String cardKey) async {
+    final prefs = await SharedPreferences.getInstance();
+    final projectId = prefs.getString('project_id');
+    final role = prefs.getString('role');
+    final apiToken = _normalizeApiToken(prefs.getString('api_token'));
+    currentApiToken = apiToken;
+    currentRole = role;
+
+    if (apiToken == null) {
+      throw Exception(
+        'API token missing. Please log out and log in again.',
+      );
+    }
+
+    final salesSopId = await resolveSalesSopId(
+      projectId: projectId,
+      apiToken: apiToken,
+    );
+    final isClient = role == 'Client';
+
+    if (salesSopId == null || salesSopId.isEmpty) {
+      if (!isClient) {
+        throw Exception(
+          'Could not resolve sales SOP id for this project. '
+          'Try selecting the project again or contact support.',
+        );
+      }
+      throw Exception('Sales SOP details are not available yet.');
+    }
+
+    final cardPaths = [
+      'https://office.buildahome.in/api/sales_sop_details/$salesSopId/cards/$cardKey',
+      'https://office.buildahome.in/API/sales_sop_details/$salesSopId/cards/$cardKey',
+    ];
+
+    Object? lastError;
+    int? lastStatusCode;
+    for (final path in cardPaths) {
+      try {
+        final uri = Uri.parse(path).replace(
+          queryParameters: {'api_token': apiToken},
+        );
+        print('[DataProvider] Loading sales SOP card: $uri');
+        final response = await http.get(
+          uri,
+          headers: _apiAuthHeaders(apiToken),
+        ).timeout(const Duration(seconds: 20));
+
+        lastStatusCode = response.statusCode;
+        if (response.statusCode != 200) {
+          lastError = _timelineErrorMessage(response);
+          if (response.statusCode == 401) break;
+          continue;
+        }
+
+        final body = jsonDecode(response.body);
+        if (body is! Map || body['success'] != true) {
+          lastError = _timelineErrorMessageFromBody(body) ??
+              'Unable to load $cardKey card.';
+          continue;
+        }
+
+        final decoded = Map<String, dynamic>.from(body);
+        await _cacheSalesSopIdFromPayload(decoded, projectId);
+
+        final convertedId = _stringValue(decoded['converted_project_id']);
+        if (convertedId != null) {
+          await _cacheSalesSopId(salesSopId, convertedId);
+        }
+
+        return decoded;
+      } catch (e) {
+        lastError = e;
+        print('[DataProvider] Sales SOP card attempt skipped: $e');
+      }
+    }
+
+    if (lastStatusCode == 401) {
+      throw Exception(
+        'Unauthorized. Your API token is missing or expired. Please log out and log in again.',
+      );
+    }
+    throw Exception(
+      lastError?.toString().replaceFirst('Exception: ', '') ??
+          'Unable to load $cardKey right now.',
     );
   }
 

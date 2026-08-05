@@ -1,12 +1,12 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_spinkit/flutter_spinkit.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:buildAhome/UserHome.dart';
 import 'app_theme.dart';
 import 'widgets/searchable_select.dart';
+import 'widgets/skeleton_loader.dart';
 
 class MyProjects extends StatelessWidget {
   @override
@@ -15,7 +15,7 @@ class MyProjects extends StatelessWidget {
     final GlobalKey<ScaffoldState> _scaffoldKey = new GlobalKey<ScaffoldState>();
     return MaterialApp(
       title: appTitle,
-      theme: AppTheme.darkTheme,
+      theme: AppTheme.getLightTheme(),
       home: Scaffold(
         key: _scaffoldKey,
         backgroundColor: AppTheme.backgroundPrimary,
@@ -272,28 +272,12 @@ class ProjectsModalBody extends State<ProjectsModal> {
             );
           }).toList(),
         ] else ...[
-          Center(
-            child: Padding(
-              padding: EdgeInsets.all(40),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  SpinKitRing(
-                    color: AppTheme.primaryColorConst,
-                    lineWidth: 2,
-                    size: 40,
-                  ),
-                  SizedBox(height: 16),
-                  Text(
-                    'Loading projects...',
-                    style: TextStyle(
-                      color: AppTheme.textSecondary,
-                      fontSize: 16,
-                    ),
-                  ),
-                ],
-              ),
-            ),
+          const SkeletonListLoader(
+            showSummary: false,
+            cardCount: 4,
+            shrinkWrap: true,
+            physics: NeverScrollableScrollPhysics(),
+            padding: EdgeInsets.symmetric(vertical: 8),
           ),
         ],
       ],

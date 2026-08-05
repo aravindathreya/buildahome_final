@@ -12,40 +12,33 @@ import 'services/data_provider.dart';
 import 'widgets/searchable_select.dart';
 import 'widgets/full_screen_message.dart';
 import 'widgets/full_screen_progress.dart';
-import 'package:provider/provider.dart';
-import 'providers/theme_provider.dart';
 
 class CreateIndentLayout extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    return Consumer<ThemeProvider>(
-      builder: (context, themeProvider, child) {
     return MaterialApp(
-          title: 'buildAhome',
-          theme: AppTheme.getLightTheme(),
-          darkTheme: AppTheme.getDarkTheme(),
-          themeMode: themeProvider.isDarkMode ? ThemeMode.dark : ThemeMode.light,
+      title: 'buildAhome',
+      theme: AppTheme.getLightTheme(),
+      themeMode: ThemeMode.light,
       home: Scaffold(
-            backgroundColor: AppTheme.getBackgroundPrimary(context),
+        backgroundColor: AppTheme.getBackgroundPrimary(context),
         appBar: AppBar(
-              title: Text(
-                'Create Indent',
-                style: TextStyle(color: AppTheme.getTextPrimary(context)),
-              ),
-              automaticallyImplyLeading: true,
-              backgroundColor: AppTheme.getBackgroundSecondary(context),
-              iconTheme: IconThemeData(color: AppTheme.getTextPrimary(context)),
-              leading: IconButton(
-                icon: Icon(Icons.arrow_back),
-                onPressed: () {
-                  Navigator.pop(context);
-                },
-              ),
-            ),
+          title: Text(
+            'Create Indent',
+            style: TextStyle(color: AppTheme.getTextPrimary(context)),
+          ),
+          automaticallyImplyLeading: true,
+          backgroundColor: AppTheme.getBackgroundSecondary(context),
+          iconTheme: IconThemeData(color: AppTheme.getTextPrimary(context)),
+          leading: IconButton(
+            icon: Icon(Icons.arrow_back),
+            onPressed: () {
+              Navigator.pop(context);
+            },
+          ),
+        ),
         body: CreateIndent(),
       ),
-        );
-      },
     );
   }
 }

@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'main.dart';
 import 'contractor_bills.dart';
+import 'app_theme.dart';
 
 class POAndBills extends StatefulWidget {
   @override
@@ -100,7 +101,7 @@ class POAndBillObjectState extends State<POAndBillObject> {
                             child: Text(
                               children[x].toString(),
                               style: TextStyle(
-                                  color: Colors.indigo[900],
+                                  color: AppTheme.navy,
                                   fontWeight: FontWeight.bold),
                             ),
                           ))
@@ -193,7 +194,7 @@ class POAndBillsState extends State<POAndBills> {
                           ' of ' +
                           purchase_orders[Index][1],
                       style: TextStyle(
-                          color: Colors.indigo[900],
+                          color: AppTheme.navy,
                           fontWeight: FontWeight.w600),
                     ),
                   ),
@@ -231,7 +232,7 @@ class POAndBillsState extends State<POAndBills> {
                     child: Text(
                       work_orders[Index][4] + " work order",
                       style: TextStyle(
-                          color: Colors.indigo[900],
+                          color: AppTheme.navy,
                           fontWeight: FontWeight.w600),
                     ),
                   ),
@@ -269,7 +270,7 @@ class POAndBillsState extends State<POAndBills> {
                     child: Text(
                       work_orders[Index][1],
                       style: TextStyle(
-                          color: Colors.indigo[900],
+                          color: AppTheme.navy,
                           fontWeight: FontWeight.w600),
                     ),
                   ),

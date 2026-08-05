@@ -6,7 +6,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'ShowAlert.dart';
 import 'app_theme.dart';
-import 'widgets/dark_mode_toggle.dart';
 
 class ChecklistItemsLayout extends StatelessWidget {
   final String category;
@@ -20,10 +19,6 @@ class ChecklistItemsLayout extends StatelessWidget {
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         backgroundColor: Theme.of(context).colorScheme.surface,
-        actions: [
-          DarkModeToggle(showLabel: false),
-          SizedBox(width: 8),
-        ],
         automaticallyImplyLeading: canPop,
         leading: canPop
             ? IconButton(

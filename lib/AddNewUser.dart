@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 import 'NavMenu.dart';
 import "ShowAlert.dart";
 import 'dart:convert';
+import 'app_theme.dart';
 
 class Users extends StatefulWidget {
   @override
@@ -44,9 +45,10 @@ class UsersState extends State<Users> {
         new GlobalKey<ScaffoldState>();
     return MaterialApp(
       title: appTitle,
-      theme: ThemeData(fontFamily: 'Varela'),
+      theme: AppTheme.getLightTheme(),
       home: Scaffold(
         key: _scaffoldKey,
+        backgroundColor: Colors.white,
         // ADD THIS LINE
         appBar: AppBar(
           automaticallyImplyLeading: false,
@@ -54,7 +56,11 @@ class UsersState extends State<Users> {
           leading: new IconButton(
               icon: new Icon(Icons.menu),
               onPressed: () => _scaffoldKey.currentState?.openDrawer()),
-          backgroundColor: Colors.indigo[900]!,
+          backgroundColor: Colors.white,
+          foregroundColor: AppTheme.navy,
+          elevation: 0,
+          iconTheme: const IconThemeData(color: AppTheme.navy),
+          titleTextStyle: const TextStyle(color: AppTheme.navy, fontSize: 18, fontWeight: FontWeight.w800),
         ),
         drawer: NavMenuWidget(),
 
@@ -247,7 +253,7 @@ class UsersState extends State<Users> {
                                   "Super Admin",
                                   "Client"
                                 ],
-                                activeColor: Colors.indigo[900]!,
+                                activeColor: AppTheme.navy,
                                 onSelected: (String label) => role.text = label,
                                 labelStyle:
                                 TextStyle(fontSize: 16, color: Colors.black87),
@@ -281,10 +287,10 @@ class UsersState extends State<Users> {
                                 // Colors are easy thanks to Flutter's Colors class.
 
                                 //Colors.blue,
-                                Colors.indigo[900]!,
-                                Colors.indigo[700]!,
-                                //Colors.indigo[700]!,
-                                Colors.indigo[900]!,
+                                AppTheme.navy,
+                                AppTheme.navySoft,
+                                //AppTheme.navySoft,
+                                AppTheme.navy,
                               ],
                             ),
                             border: Border.all(color: Colors.black, width: 1),

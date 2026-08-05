@@ -1,16 +1,17 @@
 import 'package:flutter/material.dart';
+import '../app_theme.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../NavMenu.dart';
 import 'package:photo_view/photo_view.dart';
 import 'dart:typed_data';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../main.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import "Dpr.dart";
 import "Scheduler.dart";
 import "Payments.dart";
 import "Drawings.dart";
+import '../widgets/skeleton_loader.dart';
 
 var images = {};
 
@@ -49,8 +50,9 @@ class Gallery extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: "buildAhome",
-      theme: ThemeData(fontFamily: App().fontName),
+      theme: AppTheme.getLightTheme(),
       home: Scaffold(
+        backgroundColor: Colors.white,
         drawer: NavMenuWidget(),
         appBar: AppBar(
           automaticallyImplyLeading: false,
@@ -60,12 +62,16 @@ class Gallery extends StatelessWidget {
               onPressed: () => {
                     Navigator.pop(context),
                   }),
-          backgroundColor: Color(0xFF000055),
+          backgroundColor: Colors.white,
+          foregroundColor: AppTheme.navy,
+          elevation: 0,
+          iconTheme: const IconThemeData(color: AppTheme.navy),
+          titleTextStyle: const TextStyle(color: AppTheme.navy, fontSize: 18, fontWeight: FontWeight.w800),
         ),
         body: GalleryForm(this.id, context),
         bottomNavigationBar: BottomNavigationBar(
           currentIndex: 2,
-          selectedItemColor: Colors.indigo[900],
+          selectedItemColor: AppTheme.navy,
           onTap: (int index) {
             if (index == 0) {
               Navigator.pushReplacement(
@@ -191,12 +197,7 @@ class GalleryState extends State<GalleryForm> {
             );
           });
     } else {
-      return Container(
-          padding: EdgeInsets.all(30),
-          width: 100,
-          height: 100,
-          color: Colors.grey[100],
-          child: CircularProgressIndicator());
+      return const SkeletonImage(width: 100, height: 100, radius: 8);
     }
   }
 
@@ -290,7 +291,7 @@ class GalleryState extends State<GalleryForm> {
                                                                   margin: EdgeInsets.only(left: 15),
                                                                   padding: EdgeInsets.all(10),
                                                                   decoration: BoxDecoration(
-                                                                    color: Colors.indigo[900],
+                                                                    color: AppTheme.navy,
                                                                     borderRadius: BorderRadius.circular(5),
                                                                   ),
                                                                   child: Text(

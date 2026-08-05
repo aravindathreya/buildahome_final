@@ -1,5 +1,6 @@
 import 'package:buildAhome/edit_indent.dart';
 import 'package:flutter/material.dart';
+import 'app_theme.dart';
 import 'package:flutter/rendering.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
@@ -20,16 +21,21 @@ class ViewIndentsLayout extends StatelessWidget {
         new GlobalKey<ScaffoldState>();
     return MaterialApp(
       title: appTitle,
-      theme: ThemeData(fontFamily: App().fontName),
+      theme: AppTheme.getLightTheme(),
       home: Scaffold(
         key: _scaffoldKey, // ADD THIS LINE
+        backgroundColor: Colors.white,
         appBar: AppBar(
           automaticallyImplyLeading: false,
           title: Text(appTitle),
           leading: new IconButton(
               icon: new Icon(Icons.menu),
               onPressed: () => _scaffoldKey.currentState!.openDrawer()),
-          backgroundColor: Color(0xFF000055),
+          backgroundColor: Colors.white,
+          foregroundColor: AppTheme.navy,
+          elevation: 0,
+          iconTheme: const IconThemeData(color: AppTheme.navy),
+          titleTextStyle: const TextStyle(color: AppTheme.navy, fontSize: 18, fontWeight: FontWeight.w800),
         ),
         drawer: NavMenuWidget(),
         body: ViewIndents(),
@@ -225,7 +231,7 @@ class ViewIndentsState extends State<ViewIndents> {
                                         decoration: BoxDecoration(
                                             borderRadius:
                                                 BorderRadius.circular(5),
-                                            color: Colors.indigo[900]),
+                                            color: AppTheme.navy),
                                         child: Text("Edit",
                                             style: TextStyle(
                                                 color: Colors.white))),

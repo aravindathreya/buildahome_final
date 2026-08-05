@@ -1,5 +1,6 @@
 import 'package:buildAhome/widgets/material_units.dart';
 import 'package:flutter/material.dart';
+import 'app_theme.dart';
 import 'package:flutter/rendering.dart';
 import 'package:http/http.dart' as http;
 import 'indents_screen.dart';
@@ -25,16 +26,21 @@ class EditIndentLayout extends StatelessWidget {
         new GlobalKey<ScaffoldState>();
     return MaterialApp(
       title: appTitle,
-      theme: ThemeData(fontFamily: App().fontName),
+      theme: AppTheme.getLightTheme(),
       home: Scaffold(
         key: _scaffoldKey, // ADD THIS LINE
+        backgroundColor: Colors.white,
         appBar: AppBar(
           automaticallyImplyLeading: true,
           title: Text(appTitle),
           leading: new IconButton(
               icon: new Icon(Icons.chevron_left),
               onPressed: () => {Navigator.pop(context)}),
-          backgroundColor: Color(0xFF000055),
+          backgroundColor: Colors.white,
+          foregroundColor: AppTheme.navy,
+          elevation: 0,
+          iconTheme: const IconThemeData(color: AppTheme.navy),
+          titleTextStyle: const TextStyle(color: AppTheme.navy, fontSize: 18, fontWeight: FontWeight.w800),
         ),
 
         body: EditIndent(this.indent),
@@ -253,10 +259,10 @@ class EditIndentState extends State<EditIndent> {
                   // Colors are easy thanks to Flutter's Colors class.
 
                   //Colors.blue,
-                  Colors.indigo[900]!,
-                  Colors.indigo[700]!,
-                  //Colors.indigo[700]!,
-                  Colors.indigo[900]!,
+                  AppTheme.navy,
+                  AppTheme.navySoft,
+                  //AppTheme.navySoft,
+                  AppTheme.navy,
                 ],
               ),
               border: Border.all(color: Colors.black, width: 1),

@@ -5,6 +5,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart';
 import "NavMenu.dart";
+import 'app_theme.dart';
 
 image_func(image_bytes) {
     if (image_bytes != null) {
@@ -28,16 +29,21 @@ class Update extends StatelessWidget {
     new GlobalKey<ScaffoldState>();
     return MaterialApp(
       title: appTitle,
-      theme: ThemeData(fontFamily: 'Raleway'),
+      theme: AppTheme.getLightTheme(),
       home: Scaffold(
         key: _scaffoldKey, // ADD THIS LINE
+        backgroundColor: Colors.white,
         appBar: AppBar(
           automaticallyImplyLeading: false,
           title: Text(appTitle),
           leading: new IconButton(
               icon: new Icon(Icons.menu),
               onPressed: () => _scaffoldKey.currentState!.openDrawer()),
-          backgroundColor: Colors.indigo[900],
+          backgroundColor: Colors.white,
+          foregroundColor: AppTheme.navy,
+          elevation: 0,
+          iconTheme: const IconThemeData(color: AppTheme.navy),
+          titleTextStyle: const TextStyle(color: AppTheme.navy, fontSize: 18, fontWeight: FontWeight.w800),
         ),
 
         drawer: NavMenuWidget(),

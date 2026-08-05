@@ -15,7 +15,7 @@ import 'Scheduler.dart';
 import 'ShowAlert.dart';
 import 'app_theme.dart';
 import 'services/data_provider.dart';
-import 'widgets/dark_mode_toggle.dart';
+import 'widgets/themed_scaffold.dart';
 import 'AddDailyUpdate.dart'; // For FullScreenImage if needed, or I can implement it here
 
 class NotesAndComments extends StatefulWidget {
@@ -343,27 +343,8 @@ class NotesAndCommentsState extends State<NotesAndComments> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final canPop = Navigator.of(context).canPop();
-    return Scaffold(
-      backgroundColor: AppTheme.getBackgroundPrimary(context),
-      appBar: AppBar(
-        backgroundColor: AppTheme.getBackgroundSecondary(context),
-        automaticallyImplyLeading: canPop,
-        leading: canPop
-            ? IconButton(
-                icon: const Icon(Icons.arrow_back_ios_new_rounded),
-                onPressed: () => Navigator.of(context).maybePop(),
-              )
-            : null,
-        title: Text(
-          'ChatBox',
-          style: theme.textTheme.headlineSmall?.copyWith(fontSize: 20),
-        ),
-        actions: [
-          DarkModeToggle(showLabel: false),
-          
-        ],
-      ),
+    return ThemedScaffold(
+      title: 'ChatBox',
       body: SafeArea(
         child: RefreshIndicator(
           color: AppTheme.getPrimaryColor(context),

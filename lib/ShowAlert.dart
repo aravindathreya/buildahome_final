@@ -1,6 +1,7 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_spinkit/flutter_spinkit.dart';
+import 'app_theme.dart';
 
 class ShowAlert extends StatelessWidget{
   String mesaage;
@@ -34,7 +35,7 @@ class ShowAlert extends StatelessWidget{
                 Container(
                   padding: EdgeInsets.only(top: 20),
                   child: SpinKitThreeBounce(
-                    color: Colors.indigo[900],
+                    color: AppTheme.navy,
                     size: 30.0,
                   ),
                 )

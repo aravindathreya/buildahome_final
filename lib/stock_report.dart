@@ -7,26 +7,17 @@ import 'app_theme.dart';
 import 'widgets/searchable_select.dart';
 import 'widgets/full_screen_message.dart';
 import 'widgets/full_screen_progress.dart';
+import 'widgets/themed_scaffold.dart';
 import 'services/data_provider.dart';
-import 'package:provider/provider.dart';
-import 'providers/theme_provider.dart';
 
 class StockReportLayout extends StatelessWidget {
   const StockReportLayout({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppTheme.getBackgroundPrimary(context),
-      appBar: AppBar(
-        automaticallyImplyLeading: true,
-        backgroundColor: AppTheme.getBackgroundSecondary(context),
-        title: Text(
-          'Stock Report',
-          style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
-        ),
-      ),
-      body: const SafeArea(child: StockReport()),
+    return const ThemedScaffold(
+      title: 'Stock Report',
+      body: SafeArea(child: StockReport()),
     );
   }
 }
@@ -123,119 +114,115 @@ class StockReportState extends State<StockReport> {
   }
 
   Widget _buildStepIndicator() {
-    return Consumer<ThemeProvider>(
-      builder: (context, themeProvider, child) {
-        return Container(
-          padding: EdgeInsets.symmetric(vertical: 16, horizontal: 12),
-          decoration: BoxDecoration(
-            color: AppTheme.getBackgroundSecondary(context),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.05),
-                blurRadius: 4,
-                offset: Offset(0, 2),
-              ),
-            ],
+    return Container(
+      padding: EdgeInsets.symmetric(vertical: 16, horizontal: 12),
+      decoration: BoxDecoration(
+        color: AppTheme.getBackgroundSecondary(context),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 4,
+            offset: Offset(0, 2),
           ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: List.generate(_totalSteps, (index) {
-              final isActive = _currentStep == index;
-              final isCompleted = _isStepCompleted(index);
-              final isLast = index == _totalSteps - 1;
-              final stepTitles = _getStepTitles();
-              final stepInstructions = _getStepInstructions();
+        ],
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: List.generate(_totalSteps, (index) {
+          final isActive = _currentStep == index;
+          final isCompleted = _isStepCompleted(index);
+          final isLast = index == _totalSteps - 1;
+          final stepTitles = _getStepTitles();
+          final stepInstructions = _getStepInstructions();
 
-              return Row(
-                children: [
-                  Container(
-                    width: MediaQuery.of(context).size.width / _totalSteps - 40,
-                    constraints: BoxConstraints(minWidth: 80, maxWidth: 120),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Container(
-                          width: 36,
-                          height: 36,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: isCompleted
-                                ? Colors.green
-                                : isActive
-                                    ? AppTheme.getPrimaryColor(context)
-                                    : AppTheme.getBackgroundSecondary(context),
-                            border: Border.all(
-                              color: isCompleted
-                                  ? Colors.green
-                                  : isActive
-                                      ? AppTheme.getPrimaryColor(context)
-                                      : AppTheme.getTextSecondary(context).withOpacity(0.3),
-                              width: 2.5,
-                            ),
-                          ),
-                          child: Center(
-                            child: isCompleted
-                                ? Icon(Icons.check, color: Colors.white, size: 18)
-                                : Text(
-                                    '${index + 1}',
-                                    style: TextStyle(
-                                      color: isActive
-                                          ? Colors.white
-                                          : AppTheme.getTextSecondary(context),
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                          ),
-                        ),
-                        SizedBox(height: 6),
-                        Text(
-                          stepTitles[index],
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: isActive ? FontWeight.bold : FontWeight.w500,
-                            color: isCompleted
-                                ? Colors.green
-                                : isActive
-                                    ? AppTheme.getPrimaryColor(context)
-                                    : AppTheme.getTextSecondary(context),
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        SizedBox(height: 3),
-                        Text(
-                          stepInstructions[index],
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontSize: 9,
-                            color: AppTheme.getTextSecondary(context),
-                            height: 1.2,
-                          ),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
-                    ),
-                  ),
-                  if (!isLast)
+          return Row(
+            children: [
+              Container(
+                width: MediaQuery.of(context).size.width / _totalSteps - 40,
+                constraints: BoxConstraints(minWidth: 80, maxWidth: 120),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
                     Container(
-                      width: 20,
-                      height: 2,
-                      margin: EdgeInsets.only(top: 17, left: 4, right: 4),
+                      width: 36,
+                      height: 36,
                       decoration: BoxDecoration(
+                        shape: BoxShape.circle,
                         color: isCompleted
                             ? Colors.green
-                            : AppTheme.getTextSecondary(context).withOpacity(0.2),
+                            : isActive
+                                ? AppTheme.getPrimaryColor(context)
+                                : AppTheme.getBackgroundSecondary(context),
+                        border: Border.all(
+                          color: isCompleted
+                              ? Colors.green
+                              : isActive
+                                  ? AppTheme.getPrimaryColor(context)
+                                  : AppTheme.getTextSecondary(context).withOpacity(0.3),
+                          width: 2.5,
+                        ),
+                      ),
+                      child: Center(
+                        child: isCompleted
+                            ? Icon(Icons.check, color: Colors.white, size: 18)
+                            : Text(
+                                '${index + 1}',
+                                style: TextStyle(
+                                  color: isActive
+                                      ? Colors.white
+                                      : AppTheme.getTextSecondary(context),
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
                       ),
                     ),
-                ],
-              );
-            }),
-          ),
-        );
-      },
+                    SizedBox(height: 6),
+                    Text(
+                      stepTitles[index],
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: isActive ? FontWeight.bold : FontWeight.w500,
+                        color: isCompleted
+                            ? Colors.green
+                            : isActive
+                                ? AppTheme.getPrimaryColor(context)
+                                : AppTheme.getTextSecondary(context),
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    SizedBox(height: 3),
+                    Text(
+                      stepInstructions[index],
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 9,
+                        color: AppTheme.getTextSecondary(context),
+                        height: 1.2,
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+              if (!isLast)
+                Container(
+                  width: 20,
+                  height: 2,
+                  margin: EdgeInsets.only(top: 17, left: 4, right: 4),
+                  decoration: BoxDecoration(
+                    color: isCompleted
+                        ? Colors.green
+                        : AppTheme.getTextSecondary(context).withOpacity(0.2),
+                  ),
+                ),
+            ],
+          );
+        }),
+      ),
     );
   }
 
@@ -259,30 +246,26 @@ class StockReportState extends State<StockReport> {
 
   @override
   Widget build(BuildContext context) {
-    return Consumer<ThemeProvider>(
-      builder: (context, themeProvider, child) {
-        return Column(
-          children: [
-            _buildStepIndicator(),
-            Expanded(
-              child: PageView(
-                controller: _pageController,
-                onPageChanged: (index) {
-                  setState(() {
-                    _currentStep = index;
-                  });
-                },
-                children: [
-                  _buildStep1Project(),
-                  _buildStep2Materials(),
-                  _buildStep3Preview(),
-                ],
-              ),
-            ),
-            _buildNavigationButtons(),
-          ],
-        );
-      },
+    return Column(
+      children: [
+        _buildStepIndicator(),
+        Expanded(
+          child: PageView(
+            controller: _pageController,
+            onPageChanged: (index) {
+              setState(() {
+                _currentStep = index;
+              });
+            },
+            children: [
+              _buildStep1Project(),
+              _buildStep2Materials(),
+              _buildStep3Preview(),
+            ],
+          ),
+        ),
+        _buildNavigationButtons(),
+      ],
     );
   }
 

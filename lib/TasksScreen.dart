@@ -7,7 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'app_theme.dart';
 import 'user_picker.dart';
 import 'services/data_provider.dart';
-import 'widgets/dark_mode_toggle.dart';
+import 'widgets/modern_task_card.dart';
 
 class TasksLayout extends StatefulWidget {
   final List<dynamic> initialTasks;
@@ -39,32 +39,56 @@ class _TasksLayoutState extends State<TasksLayout> with SingleTickerProviderStat
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppTheme.getBackgroundPrimary(context),
+      backgroundColor: const Color(0xFFF7F8FB),
       appBar: AppBar(
         automaticallyImplyLeading: true,
-        backgroundColor: AppTheme.getBackgroundSecondary(context),
+        backgroundColor: Colors.white,
         elevation: 0,
-        title: Text(
+        iconTheme: const IconThemeData(color: kTaskNavy),
+        title: const Text(
           'Tasks',
           style: TextStyle(
-            color: AppTheme.getTextPrimary(context),
-            fontSize: 18,
-            fontWeight: FontWeight.w600,
+            color: kTaskNavy,
+            fontSize: 20,
+            fontWeight: FontWeight.w800,
           ),
         ),
-        actions: [
-          DarkModeToggle(showLabel: false),
-          SizedBox(width: 8),
-        ],
-        bottom: TabBar(
-          controller: _tabController,
-          indicatorColor: AppTheme.getPrimaryColor(context),
-          labelColor: AppTheme.getTextPrimary(context),
-          unselectedLabelColor: AppTheme.getTextSecondary(context),
-          tabs: const [
-            Tab(text: 'Create'),
-            Tab(text: 'View'),
-          ],
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(66),
+          child: Container(
+            color: Colors.white,
+            padding: const EdgeInsets.fromLTRB(18, 0, 18, 14),
+            child: Container(
+              height: 48,
+              padding: const EdgeInsets.all(4),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF1F4F8),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: TabBar(
+                controller: _tabController,
+                indicatorSize: TabBarIndicatorSize.tab,
+                dividerColor: Colors.transparent,
+                splashFactory: NoSplash.splashFactory,
+                overlayColor: WidgetStateProperty.all(Colors.transparent),
+                labelPadding: EdgeInsets.zero,
+                indicator: BoxDecoration(
+                  color: kTaskNavy,
+                  borderRadius: BorderRadius.circular(11),
+                ),
+                labelColor: Colors.white,
+                unselectedLabelColor: kTaskMuted,
+                labelStyle:
+                    const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+                unselectedLabelStyle:
+                    const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                tabs: const [
+                  SizedBox(height: 40, child: Center(child: Text('Create'))),
+                  SizedBox(height: 40, child: Center(child: Text('View'))),
+                ],
+              ),
+            ),
+          ),
         ),
       ),
       body: SafeArea(
@@ -393,7 +417,7 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
                       SizedBox(width: 12),
                       Expanded(
                         child: Text(
-                          'Select Project',
+                          'Select project',
                           style: TextStyle(
                             color: AppTheme.getTextPrimary(context),
                             fontSize: 16,
@@ -512,7 +536,7 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
                               itemBuilder: (context, index) {
                                 final project = filtered[index];
                                 final projectId = project['id']?.toString();
-                                final projectName = project['name']?.toString() ?? 'Unnamed Project';
+                                final projectName = project['name']?.toString() ?? 'Unnamed project';
                                 final clientName = project['client_name']?.toString();
                                 final isSelected = selectedProjectId?.toString() == projectId;
 
@@ -659,92 +683,13 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
   }
 
   Widget _buildStatusDropdownForForm() {
-    final statuses = [
-      {'value': 'pending', 'label': 'Pending', 'color': Color(0xFFD97706), 'icon': Icons.pending},
-      {'value': 'in_progress', 'label': 'In Progress', 'color': AppTheme.primaryColorConst, 'icon': Icons.work},
-      {'value': 'completed', 'label': 'Completed', 'color': Color(0xFF10B981), 'icon': Icons.check_circle},
-      {'value': 'cancelled', 'label': 'Cancelled', 'color': Color(0xFFEF4444), 'icon': Icons.cancel},
-    ];
-
-    final currentStatusData = statuses.firstWhere(
-      (s) => s['value'] == selectedStatus,
-      orElse: () => statuses[0],
-    );
-    final currentColor = currentStatusData['color'] as Color;
-    final currentIcon = currentStatusData['icon'] as IconData;
-
-    return Container(
-      decoration: BoxDecoration(
-        color: AppTheme.getBackgroundPrimaryLight(context),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: AppTheme.getPrimaryColor(context).withOpacity(0.2),
-          width: 1,
-        ),
-      ),
-      child: DropdownButtonFormField<String>(
-        value: selectedStatus,
-        decoration: InputDecoration(
-          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          border: InputBorder.none,
-          enabledBorder: InputBorder.none,
-          focusedBorder: InputBorder.none,
-        ),
-        icon: Icon(Icons.arrow_drop_down, color: AppTheme.getTextSecondary(context)),
-        dropdownColor: AppTheme.getBackgroundPrimaryLight(context),
-        style: TextStyle(
-          color: AppTheme.getTextPrimary(context),
-          fontSize: 14,
-        ),
-        items: statuses.map((statusData) {
-          final status = statusData['value'] as String;
-          final label = statusData['label'] as String;
-          final color = statusData['color'] as Color;
-          final icon = statusData['icon'] as IconData;
-          
-          return DropdownMenuItem<String>(
-            value: status,
-            child: Row(
-              children: [
-                Icon(icon, size: 16, color: color),
-                SizedBox(width: 8),
-                Text(
-                  label,
-                  style: TextStyle(
-                    color: AppTheme.getTextPrimary(context),
-                    fontSize: 14,
-                  ),
-                ),
-              ],
-            ),
-          );
-        }).toList(),
-        onChanged: (String? newStatus) {
-          if (newStatus != null) {
-            setState(() {
-              selectedStatus = newStatus;
-            });
-          }
-        },
-        selectedItemBuilder: (BuildContext context) {
-          return statuses.map((statusData) {
-            final label = statusData['label'] as String;
-            return Row(
-              children: [
-                Icon(currentIcon, size: 16, color: currentColor),
-                SizedBox(width: 8),
-                Text(
-                  label,
-                  style: TextStyle(
-                    color: AppTheme.getTextPrimary(context),
-                    fontSize: 14,
-                  ),
-                ),
-              ],
-            );
-          }).toList();
-        },
-      ),
+    return TaskStatusChipSet(
+      currentStatus: selectedStatus,
+      onStatusSelected: (newStatus) {
+        setState(() {
+          selectedStatus = newStatus;
+        });
+      },
     );
   }
 
@@ -843,7 +788,7 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
           
           // User Picker (Assign To)
           Text(
-            'Assign To',
+            'Assign to',
             style: TextStyle(
               color: AppTheme.getTextPrimary(context),
               fontSize: 14,
@@ -990,7 +935,7 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
                               Icon(Icons.check, color: Colors.white, size: 18),
                               SizedBox(width: 8),
                               Text(
-                                'Create Task',
+                                'Create task',
                                 style: TextStyle(
                                   color: Colors.white,
                                   fontSize: 16,
@@ -1208,7 +1153,7 @@ class _ViewTasksPageState extends State<ViewTasksPage> {
                               SizedBox(width: 12),
                               Expanded(
                                 child: Text(
-                                  'All Projects',
+                                  'All projects',
                                   style: TextStyle(
                                     color: AppTheme.getTextPrimary(context),
                                     fontSize: 14,
@@ -1228,7 +1173,7 @@ class _ViewTasksPageState extends State<ViewTasksPage> {
                 
                 final project = projects[index - 1];
                 final projectId = project['id']?.toString();
-                final projectName = project['name']?.toString() ?? 'Unnamed Project';
+                final projectName = project['name']?.toString() ?? 'Unnamed project';
                 final isSelected = _selectedProjectId == projectId;
                 
                 return Container(
@@ -1356,7 +1301,7 @@ class _ViewTasksPageState extends State<ViewTasksPage> {
                           ),
                           SizedBox(width: 6),
                           Text(
-                            _selectedProjectName ?? 'All Projects',
+                            _selectedProjectName ?? 'All projects',
                             style: TextStyle(
                               color: _selectedProjectId != null
                                   ? AppTheme.getPrimaryColor(context)
@@ -1549,8 +1494,7 @@ class _ViewTasksPageState extends State<ViewTasksPage> {
   String _formatDateTime(String dateTimeStr) {
     try {
       final dateTime = DateTime.parse(dateTimeStr);
-      final formatter = DateFormat('MMM d, y • h:mm a');
-      return formatter.format(dateTime);
+      return DateFormat('dd MMM yyyy, hh:mm a').format(dateTime);
     } catch (e) {
       return dateTimeStr;
     }
@@ -1559,13 +1503,13 @@ class _ViewTasksPageState extends State<ViewTasksPage> {
   Color _getStatusColor(String status) {
     switch (status.toLowerCase()) {
       case 'completed':
-        return Color(0xFF10B981);
+        return const Color(0xFF047857);
       case 'in_progress':
         return AppTheme.primaryColorConst;
       case 'cancelled':
-        return Color(0xFFEF4444);
+        return const Color(0xFFB91C1C);
       default:
-        return Color(0xFFD97706);
+        return const Color(0xFFB45309);
     }
   }
 
@@ -1603,7 +1547,7 @@ class _ViewTasksPageState extends State<ViewTasksPage> {
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: AppTheme.getBackgroundSecondary(context),
-        title: Text('Delete Task', style: TextStyle(color: AppTheme.getTextPrimary(context))),
+        title: Text('Delete task', style: TextStyle(color: AppTheme.getTextPrimary(context))),
         content: Text('Are you sure you want to delete this task? This action cannot be undone.', style: TextStyle(color: AppTheme.getTextPrimary(context))),
         actions: [
           TextButton(
@@ -1793,90 +1737,10 @@ class _ViewTasksPageState extends State<ViewTasksPage> {
   Widget _buildStatusDropdown(String taskIdStr, String currentStatus) {
     final taskId = int.tryParse(taskIdStr) ?? 0;
     final isWorkflowTask = taskId < 0;
-    final statuses = [
-      {'value': 'pending', 'label': 'Pending', 'color': Color(0xFFD97706), 'icon': Icons.pending}, // Darker amber/yellow
-      {'value': 'in_progress', 'label': 'In Progress', 'color': Color(0xFF2196F3), 'icon': Icons.work}, // Blue
-      {'value': 'completed', 'label': 'Completed', 'color': Color(0xFF10B981), 'icon': Icons.check_circle}, // Green
-      {'value': 'cancelled', 'label': 'Cancelled', 'color': Color(0xFFEF4444), 'icon': Icons.cancel}, // Red
-    ];
-
-    final currentStatusData = statuses.firstWhere(
-      (s) => s['value'] == currentStatus,
-      orElse: () => statuses[0],
-    );
-    final currentColor = currentStatusData['color'] as Color;
-    final currentIcon = currentStatusData['icon'] as IconData;
-
-    return Container(
-      decoration: BoxDecoration(
-        color: AppTheme.getBackgroundPrimaryLight(context),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: AppTheme.getPrimaryColor(context).withOpacity(0.2),
-          width: 1,
-        ),
-      ),
-      child: DropdownButtonFormField<String>(
-        value: currentStatus,
-        decoration: InputDecoration(
-          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          border: InputBorder.none,
-          enabledBorder: InputBorder.none,
-          focusedBorder: InputBorder.none,
-        ),
-        icon: Icon(Icons.arrow_drop_down, color: AppTheme.getTextSecondary(context)),
-        dropdownColor: AppTheme.getBackgroundPrimaryLight(context),
-        style: TextStyle(
-          color: AppTheme.getTextPrimary(context),
-          fontSize: 14,
-        ),
-        items: statuses.map((statusData) {
-          final status = statusData['value'] as String;
-          final label = statusData['label'] as String;
-          final color = statusData['color'] as Color;
-          final icon = statusData['icon'] as IconData;
-          
-          return DropdownMenuItem<String>(
-            value: status,
-            child: Row(
-              children: [
-                Icon(icon, size: 16, color: color),
-                SizedBox(width: 8),
-                Text(
-                  label,
-                  style: TextStyle(
-                    color: AppTheme.getTextPrimary(context),
-                    fontSize: 14,
-                  ),
-                ),
-              ],
-            ),
-          );
-        }).toList(),
-        onChanged: (_isUpdating || isWorkflowTask) ? null : (String? newStatus) {
-          if (newStatus != null && newStatus != currentStatus) {
-            _updateTaskStatus(taskId, newStatus);
-          }
-        },
-        selectedItemBuilder: (BuildContext context) {
-          return statuses.map((statusData) {
-            final label = statusData['label'] as String;
-            return Row(
-              children: [
-                Icon(currentIcon, size: 16, color: currentColor),
-                SizedBox(width: 8),
-                Text(
-                  label,
-                  style: TextStyle(
-                    color: AppTheme.getTextPrimary(context),
-                    fontSize: 14,
-                  ),
-                ),
-              ],
-            );
-          }).toList();
-        },
-      ),
+    return TaskStatusChipSet(
+      currentStatus: currentStatus,
+      enabled: !_isUpdating && !isWorkflowTask,
+      onStatusSelected: (newStatus) => _updateTaskStatus(taskId, newStatus),
     );
   }
 
@@ -1885,407 +1749,63 @@ class _ViewTasksPageState extends State<ViewTasksPage> {
     final taskUserId = task['user_id']?.toString() ?? '';
     final projectName = task['project_name']?.toString() ?? '';
     final assignedToName = task['assigned_to_name']?.toString() ?? '';
-    final userName = task['user_name']?.toString() ?? '';
     final status = task['status']?.toString() ?? 'pending';
     final note = task['note']?.toString() ?? '';
     final createdAt = task['created_at']?.toString() ?? '';
     final isWorkflowTask = _isWorkflowTask(task);
-    final title = isWorkflowTask && note.isNotEmpty ? note : 'Task #$taskId';
-    final statusColor = _getStatusColor(status);
-    final statusIcon = _getStatusIcon(status);
-    final isCreatedByMe = _currentUserId != null && taskUserId == _currentUserId;
+    final title = note.trim().isNotEmpty
+        ? note.trim()
+        : 'Task #$taskId';
+    final isCreatedByMe =
+        _currentUserId != null && taskUserId == _currentUserId;
     final isExpanded = _expandedTaskIds.contains(taskId);
+    final accentIndex = int.tryParse(taskId.replaceAll(RegExp(r'[^0-9]'), '')) ??
+        taskId.hashCode;
 
-    return TweenAnimationBuilder<double>(
-      tween: Tween(begin: 0.0, end: 1.0),
-      duration: Duration(milliseconds: 300),
-      curve: Curves.easeOut,
-      builder: (context, value, child) {
-        return Opacity(
-          opacity: value,
-          child: Transform.translate(
-            offset: Offset(0, 20 * (1 - value)),
-            child: Container(
-              margin: EdgeInsets.only(bottom: 16),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    AppTheme.getBackgroundSecondary(context),
-                    AppTheme.getBackgroundPrimary(context),
-                  ],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
+    return ModernTaskCard(
+      title: title,
+      projectName: projectName,
+      assigneeName: assignedToName,
+      dateLabel: createdAt.isNotEmpty ? _formatDateTime(createdAt) : null,
+      status: status,
+      accentIndex: accentIndex.abs(),
+      menu: isWorkflowTask
+          ? null
+          : PopupMenuButton<String>(
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+              iconSize: 20,
+              icon: const Icon(Icons.more_horiz_rounded,
+                  color: kTaskMuted, size: 20),
+              onSelected: (value) {
+                if (value == 'delete') {
+                  _deleteTask(int.tryParse(taskId) ?? 0);
+                } else if (value == 'change_status') {
+                  setState(() {
+                    if (_expandedTaskIds.contains(taskId)) {
+                      _expandedTaskIds.remove(taskId);
+                    } else {
+                      _expandedTaskIds.add(taskId);
+                    }
+                  });
+                }
+              },
+              itemBuilder: (context) => [
+                const PopupMenuItem(
+                  value: 'change_status',
+                  child: Text('Change status'),
                 ),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(
-                  color: statusColor.withOpacity(0.3),
-                  width: 1.5,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: statusColor.withOpacity(0.15),
-                    blurRadius: 8,
-                    offset: Offset(0, 4),
+                if (isCreatedByMe)
+                  const PopupMenuItem(
+                    value: 'delete',
+                    child: Text('Delete task',
+                        style: TextStyle(color: Colors.red)),
                   ),
-                  BoxShadow(
-                    color: AppTheme.getPrimaryColor(context).withOpacity(0.1),
-                    blurRadius: 4,
-                    offset: Offset(0, 2),
-                  ),
-                ],
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Header with status icon in box
-                  Container(
-                    padding: EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [
-                          statusColor.withOpacity(0.1),
-                          statusColor.withOpacity(0.05),
-                        ],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
-                      borderRadius: BorderRadius.only(
-                        topLeft: Radius.circular(16),
-                        topRight: Radius.circular(16),
-                      ),
-                    ),
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 56,
-                          height: 56,
-                          decoration: BoxDecoration(
-                            color: statusColor.withOpacity(0.2),
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(
-                              color: statusColor.withOpacity(0.4),
-                              width: 2,
-                            ),
-                            boxShadow: [
-                              BoxShadow(
-                                color: statusColor.withOpacity(0.2),
-                                blurRadius: 8,
-                                offset: Offset(0, 2),
-                              ),
-                            ],
-                          ),
-                          child: Icon(
-                            statusIcon,
-                            color: statusColor,
-                            size: 28,
-                          ),
-                        ),
-                        SizedBox(width: 16),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                title,
-                                style: TextStyle(
-                                  color: AppTheme.getTextPrimary(context),
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                              SizedBox(height: 4),
-                              Container(
-                                padding: EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                decoration: BoxDecoration(
-                                  color: statusColor.withOpacity(0.2),
-                                  borderRadius: BorderRadius.circular(12),
-                                  border: Border.all(
-                                    color: statusColor.withOpacity(0.4),
-                                    width: 1,
-                                  ),
-                                ),
-                                child: Text(
-                                  status.toUpperCase(),
-                                  style: TextStyle(
-                                    color: statusColor,
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w700,
-                                    letterSpacing: 0.5,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        // Dropdown menu
-                        if (!isWorkflowTask)
-                          PopupMenuButton<String>(
-                          icon: Icon(Icons.more_vert, color: AppTheme.getTextSecondary(context)),
-                          onSelected: (value) {
-                            if (value == 'delete') {
-                              _deleteTask(int.tryParse(taskId) ?? 0);
-                            } else if (value == 'change_status') {
-                              setState(() {
-                                if (_expandedTaskIds.contains(taskId)) {
-                                  _expandedTaskIds.remove(taskId);
-                                } else {
-                                  _expandedTaskIds.add(taskId);
-                                }
-                              });
-                            }
-                          },
-                          itemBuilder: (context) => [
-                            PopupMenuItem(
-                              value: 'change_status',
-                              child: Row(
-                                children: [
-                                  Icon(Icons.edit, size: 18, color: AppTheme.getTextPrimary(context)),
-                                  SizedBox(width: 8),
-                                  Text('Change Status', style: TextStyle(color: AppTheme.getTextPrimary(context))),
-                                ],
-                              ),
-                            ),
-                            if (isCreatedByMe)
-                              PopupMenuItem(
-                                value: 'delete',
-                                child: Row(
-                                  children: [
-                                    Icon(Icons.delete, size: 18, color: Colors.red),
-                                    SizedBox(width: 8),
-                                    Text('Delete Task', style: TextStyle(color: Colors.red)),
-                                  ],
-                                ),
-                              ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                  
-                  // Note section
-                  if (!isWorkflowTask && note.isNotEmpty) ...[
-                    Padding(
-                      padding: EdgeInsets.all(16),
-                      child: Container(
-                        padding: EdgeInsets.all(14),
-                        decoration: BoxDecoration(
-                          color: AppTheme.getBackgroundPrimary(context),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: AppTheme.getPrimaryColor(context).withOpacity(0.2),
-                            width: 1,
-                          ),
-                        ),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Container(
-                              padding: EdgeInsets.all(8),
-                              decoration: BoxDecoration(
-                                color: AppTheme.getPrimaryColor(context).withOpacity(0.15),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Icon(
-                                Icons.note_alt,
-                                color: AppTheme.getPrimaryColor(context),
-                                size: 20,
-                              ),
-                            ),
-                            SizedBox(width: 12),
-                            Expanded(
-                              child: Text(
-                                note,
-                                style: TextStyle(
-                                  color: AppTheme.getTextPrimary(context),
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w600,
-                                  height: 1.4,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
-                  
-                  // Task info section
-                  if (projectName.isNotEmpty || assignedToName.isNotEmpty || userName.isNotEmpty || createdAt.isNotEmpty) ...[
-                    Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 16),
-                      child: Container(
-                        padding: EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: AppTheme.getBackgroundPrimary(context).withOpacity(0.5),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Wrap(
-                          spacing: 16,
-                          runSpacing: 12,
-                          children: [
-                            if (projectName.isNotEmpty)
-                              Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Container(
-                                    padding: EdgeInsets.all(6),
-                                    decoration: BoxDecoration(
-                                      color: AppTheme.getPrimaryColor(context).withOpacity(0.15),
-                                      borderRadius: BorderRadius.circular(6),
-                                    ),
-                                    child: Icon(Icons.folder_special, size: 14, color: AppTheme.getPrimaryColor(context)),
-                                  ),
-                                  SizedBox(width: 8),
-                                  Text(
-                                    projectName,
-                                    style: TextStyle(
-                                      color: AppTheme.getTextPrimary(context),
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            if (assignedToName.isNotEmpty)
-                              Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Container(
-                                    padding: EdgeInsets.all(6),
-                                    decoration: BoxDecoration(
-                                      color: AppTheme.getPrimaryColor(context).withOpacity(0.15),
-                                      borderRadius: BorderRadius.circular(6),
-                                    ),
-                                    child: Icon(Icons.person, size: 14, color: AppTheme.getPrimaryColor(context)),
-                                  ),
-                                  SizedBox(width: 8),
-                                  Text(
-                                    assignedToName,
-                                    style: TextStyle(
-                                      color: AppTheme.getTextPrimary(context),
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            if (userName.isNotEmpty)
-                              Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Container(
-                                    padding: EdgeInsets.all(6),
-                                    decoration: BoxDecoration(
-                                      color: AppTheme.getPrimaryColor(context).withOpacity(0.15),
-                                      borderRadius: BorderRadius.circular(6),
-                                    ),
-                                    child: Icon(Icons.account_circle, size: 14, color: AppTheme.getPrimaryColor(context)),
-                                  ),
-                                  SizedBox(width: 8),
-                                  Text(
-                                    'Created by: $userName',
-                                    style: TextStyle(
-                                      color: AppTheme.getTextSecondary(context),
-                                      fontSize: 12,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            if (createdAt.isNotEmpty)
-                              Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Container(
-                                    padding: EdgeInsets.all(6),
-                                    decoration: BoxDecoration(
-                                      color: AppTheme.getPrimaryColor(context).withOpacity(0.15),
-                                      borderRadius: BorderRadius.circular(6),
-                                    ),
-                                    child: Icon(Icons.access_time, size: 14, color: AppTheme.getPrimaryColor(context)),
-                                  ),
-                                  SizedBox(width: 8),
-                                  Text(
-                                    _formatDateTime(createdAt),
-                                    style: TextStyle(
-                                      color: AppTheme.getTextSecondary(context),
-                                      fontSize: 12,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    SizedBox(height: 12),
-                  ],
-                  
-                  if (!isWorkflowTask)
-                    Container(
-                      decoration: BoxDecoration(
-                        color: AppTheme.getBackgroundPrimary(context),
-                        borderRadius: BorderRadius.only(
-                          bottomLeft: Radius.circular(16),
-                          bottomRight: Radius.circular(16),
-                        ),
-                        border: Border(
-                          top: BorderSide(
-                            color: AppTheme.getPrimaryColor(context).withOpacity(0.1),
-                            width: 1,
-                          ),
-                        ),
-                      ),
-                      child: Column(
-                        children: [
-                          // Accordion header
-                          InkWell(
-                            onTap: () {
-                              setState(() {
-                                if (_expandedTaskIds.contains(taskId)) {
-                                  _expandedTaskIds.remove(taskId);
-                                } else {
-                                  _expandedTaskIds.add(taskId);
-                                }
-                              });
-                            },
-                            child: Container(
-                              padding: EdgeInsets.all(16),
-                              child: Row(
-                                children: [
-                                  Icon(Icons.edit, size: 16, color: AppTheme.getPrimaryColor(context)),
-                                  SizedBox(width: 8),
-                                  Text(
-                                    'Change Status',
-                                    style: TextStyle(
-                                      color: AppTheme.getTextPrimary(context),
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                  Spacer(),
-                                  Icon(
-                                    isExpanded ? Icons.expand_less : Icons.expand_more,
-                                    color: AppTheme.getTextSecondary(context),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                          // Accordion content
-                          if (isExpanded)
-                            Container(
-                              padding: EdgeInsets.fromLTRB(16, 0, 16, 16),
-                              child: _buildStatusDropdown(taskId, status),
-                            ),
-                        ],
-                      ),
-                    ),
-                ],
-              ),
+              ],
             ),
-          ),
-        );
-      },
+      footer: !isWorkflowTask && isExpanded
+          ? _buildStatusDropdown(taskId, status)
+          : null,
     );
   }
 }

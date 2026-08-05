@@ -9,7 +9,7 @@ import 'dart:convert';
 import 'ShowAlert.dart';
 import 'app_theme.dart';
 import 'projects.dart';
-import 'widgets/dark_mode_toggle.dart';
+import 'widgets/skeleton_loader.dart';
 
 class RequestDrawingLayout extends StatefulWidget {
   @override
@@ -42,10 +42,6 @@ class _RequestDrawingLayoutState extends State<RequestDrawingLayout> with Single
         backgroundColor: AppTheme.getBackgroundSecondary(context),
         elevation: 0,
         title: Text('Request Drawings'),
-        actions: [
-          DarkModeToggle(showLabel: false),
-          SizedBox(width: 8),
-        ],
         bottom: TabBar(
           controller: _tabController,
           indicatorColor: AppTheme.getPrimaryColor(context),
@@ -139,11 +135,7 @@ class RequestDrawingState extends State<RequestDrawing> {
   @override
   Widget build(BuildContext context) {
     if (_isLoadingPrefs) {
-      return Center(
-        child: CircularProgressIndicator(
-          valueColor: AlwaysStoppedAnimation<Color>(AppTheme.primaryColorConst),
-        ),
-      );
+      return const SkeletonListLoader(cardCount: 4);
     }
 
     return TabBarView(

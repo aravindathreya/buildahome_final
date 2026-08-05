@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
 import 'app_theme.dart';
-import 'widgets/dark_mode_toggle.dart';
+import 'widgets/themed_scaffold.dart';
 import 'checklist_items.dart';
 
 class ChecklistCategoriesLayout extends StatelessWidget {
@@ -12,25 +12,9 @@ class ChecklistCategoriesLayout extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final canPop = Navigator.of(context).canPop();
-    return Scaffold(
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      appBar: AppBar(
-        backgroundColor: Theme.of(context).colorScheme.surface,
-        actions: [
-          DarkModeToggle(showLabel: false),
-          SizedBox(width: 8),
-        ],
-        automaticallyImplyLeading: canPop,
-        leading: canPop
-            ? IconButton(
-                icon: const Icon(Icons.arrow_back_ios_new_rounded),
-                onPressed: () => Navigator.of(context).maybePop(),
-              )
-            : null,
-        title: const Text('Checklist'),
-      ),
-      body: const ChecklistCategories(),
+    return const ThemedScaffold(
+      title: 'Checklist',
+      body: ChecklistCategories(),
     );
   }
 }

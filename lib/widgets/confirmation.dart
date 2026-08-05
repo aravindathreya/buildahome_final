@@ -1,5 +1,6 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import '../app_theme.dart';
 
 class Confirmation extends StatelessWidget{
   String message;
@@ -23,7 +24,7 @@ class Confirmation extends StatelessWidget{
                 child: Container(
                   padding: EdgeInsets.all(10),
                   margin: EdgeInsets.only(right: 10),
-                  child: Text('Cancel', style: TextStyle(color: Colors.indigo[900]),)
+                  child: Text('Cancel', style: TextStyle(color: AppTheme.navy),)
                 ),
                 onTap: () {
                   Navigator.pop(context, 'Cancel');
@@ -34,7 +35,7 @@ class Confirmation extends StatelessWidget{
                     padding: EdgeInsets.all(10),
                     margin: EdgeInsets.only(left: 10),
                     decoration: BoxDecoration(
-                      color: Colors.indigo[900],
+                      color: AppTheme.navy,
                       borderRadius: BorderRadius.circular(5)
                     ),
                     child: Text('Confirm', style: TextStyle(color: Colors.white),)

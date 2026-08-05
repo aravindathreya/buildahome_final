@@ -49,7 +49,7 @@ class chipSetNavigationState extends State<chipSetNavigation> {
   }
 
   var activeDecoration = BoxDecoration(
-    color: Color(0xFF000055),
+    color: AppTheme.navy,
   );
 
   var inactiveDecoration = BoxDecoration(color: const Color.fromARGB(255, 0, 0, 0), borderRadius: BorderRadius.circular(2));
@@ -119,7 +119,7 @@ class UserHomeScreenState extends State<UserHomeScreen> {
   var blocked = false;
   var block_reason = '';
 
-  var activeDecoration = BoxDecoration(color: Color(0xFF000055), borderRadius: BorderRadius.circular(5));
+  var activeDecoration = BoxDecoration(color: AppTheme.navy, borderRadius: BorderRadius.circular(5));
 
   var inactiveDecoration = BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(5), border: Border.all(color: Color.fromARGB(255, 100, 100, 100)));
 
@@ -146,7 +146,7 @@ class UserHomeScreenState extends State<UserHomeScreen> {
         widgetList.add(POAndBills());
 
         tabsList.insert(1, "DPR Updates");
-        widgetList.insert(1, DprScreen());
+        widgetList.insert(1, const DprScreen(embedded: true));
 
         tabsList.insert(2, "Checklist");
         widgetList.insert(2, ChecklistCategories());

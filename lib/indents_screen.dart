@@ -15,6 +15,7 @@ import 'app_theme.dart';
 import 'widgets/searchable_select.dart';
 import 'widgets/full_screen_message.dart';
 import 'widgets/full_screen_progress.dart';
+import 'widgets/themed_scaffold.dart';
 import 'services/data_provider.dart';
 
 class IndentsScreenLayout extends StatelessWidget {
@@ -24,61 +25,10 @@ class IndentsScreenLayout extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final appTitle = 'buildAhome';
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return MaterialApp(
-      title: appTitle,
-      theme: AppTheme.getLightTheme(),
-      darkTheme: AppTheme.getDarkTheme(),
-      themeMode: isDark ? ThemeMode.dark : ThemeMode.light,
-      home: Scaffold(
-        backgroundColor: AppTheme.getBackgroundPrimary(context),
-        body: SafeArea(
-          child: Column(
-            children: [
-              // Back button header
-              Container(
-                padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                child: Row(
-                  children: [
-                    InkWell(
-                      onTap: () => Navigator.pop(context),
-                      borderRadius: BorderRadius.circular(12),
-                      child: Container(
-                        padding: EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: AppTheme.getBackgroundSecondary(context),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: AppTheme.getPrimaryColor(context).withOpacity(0.3),
-                            width: 1,
-                          ),
-                        ),
-                        child: Icon(
-                          Icons.arrow_back,
-                          color: AppTheme.getTextPrimary(context),
-                          size: 20,
-                        ),
-                      ),
-                    ),
-                    SizedBox(width: 16),
-                    Text(
-                      'Indents',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                        color: AppTheme.getTextPrimary(context),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Expanded(
-                child: IndentsScreen(initialTab: initialTab),
-              ),
-            ],
-          ),
-        ),
+    return ThemedScaffold(
+      title: 'Indents',
+      body: SafeArea(
+        child: IndentsScreen(initialTab: initialTab),
       ),
     );
   }

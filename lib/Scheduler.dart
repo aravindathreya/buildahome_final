@@ -9,49 +9,16 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app_theme.dart';
 import 'services/data_provider.dart';
+import 'widgets/themed_scaffold.dart';
 
 class TaskWidget extends StatelessWidget {
   const TaskWidget({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final canPop = Navigator.of(context).canPop();
-    return Scaffold(
-      backgroundColor: AppTheme.getBackgroundPrimary(context),
-      appBar: AppBar(
-        backgroundColor: AppTheme.getBackgroundSecondary(context),
-        automaticallyImplyLeading: true,
-        title: Text(
-          'Schedule',
-          style: theme.textTheme.headlineSmall?.copyWith(fontSize: 20),
-        ),
-        leading: canPop
-            ? IconButton(
-                icon: const Icon(Icons.arrow_back_ios_new_rounded),
-                onPressed: () => Navigator.of(context).maybePop(),
-              )
-            : null,
-      ),
-      body: Stack(
-        children: [
-          // Background image with opacity
-          Positioned.fill(
-            child: Opacity(
-              opacity: 0.3,
-              child: Image.asset(
-                'assets/images/See details.jpg',
-                fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) {
-                  return Container();
-                },
-              ),
-            ),
-          ),
-          // Content on top
-          const TaskScreenClass(),
-        ],
-      ),
+    return const ThemedScaffold(
+      title: 'Schedule',
+      body: TaskScreenClass(),
     );
   }
 }
@@ -245,20 +212,27 @@ class TaskScreen extends State<TaskScreenClass> {
   }
 
   Widget _buildHeader(ThemeData theme) {
-    return Column(
+    return const Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           'Home construction schedule',
-          style: theme.textTheme.headlineSmall?.copyWith(
-            color: AppTheme.getTextPrimary(context),
-            fontWeight: FontWeight.w700,
+          style: TextStyle(
+            color: AppTheme.navy,
+            fontSize: 18,
+            fontWeight: FontWeight.w800,
+            letterSpacing: -0.2,
           ),
         ),
-        const SizedBox(height: 6),
+        SizedBox(height: 6),
         Text(
           'Preview milestone timelines, monitor progress and stay aligned with buildAhome.',
-          style: theme.textTheme.bodyMedium?.copyWith(color: AppTheme.getTextSecondary(context)),
+          style: TextStyle(
+            color: AppTheme.mutedGrey,
+            fontSize: 13.5,
+            fontWeight: FontWeight.w500,
+            height: 1.35,
+          ),
         ),
       ],
     );
@@ -334,23 +308,36 @@ class TaskScreen extends State<TaskScreenClass> {
     return TextField(
       controller: _searchController,
       onChanged: (value) => setState(() => _searchQuery = value),
+      style: const TextStyle(color: AppTheme.navy, fontWeight: FontWeight.w600),
       decoration: InputDecoration(
         hintText: 'Search tasks, notes or dates',
-        prefixIcon: Icon(Icons.search, color: AppTheme.getTextSecondary(context)),
+        hintStyle: const TextStyle(
+          color: AppTheme.mutedGrey,
+          fontWeight: FontWeight.w500,
+        ),
+        prefixIcon: const Icon(Icons.search_rounded, color: AppTheme.mutedGrey),
         suffixIcon: _searchQuery.isEmpty
             ? null
             : IconButton(
-                icon: Icon(Icons.close, color: AppTheme.getTextSecondary(context)),
+                icon: const Icon(Icons.close_rounded, color: AppTheme.mutedGrey),
                 onPressed: () {
                   _searchController.clear();
                   setState(() => _searchQuery = '');
                 },
               ),
         filled: true,
-        fillColor: AppTheme.getBackgroundSecondary(context),
+        fillColor: Colors.white,
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: AppTheme.border),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: AppTheme.navy, width: 1.5),
+        ),
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
-          borderSide: BorderSide.none,
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: AppTheme.border),
         ),
       ),
     );
@@ -611,14 +598,14 @@ class _SummaryCard extends StatelessWidget {
       width: targetWidth < 120 ? double.infinity : targetWidth,
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: AppTheme.getBackgroundSecondary(context),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AppTheme.getPrimaryColor(context).withOpacity(0.1)),
-        boxShadow: [
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppTheme.border),
+        boxShadow: const [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
+            color: AppTheme.softShadow,
+            blurRadius: 18,
+            offset: Offset(0, 8),
           ),
         ],
       ),
@@ -628,20 +615,23 @@ class _SummaryCard extends StatelessWidget {
           Row(
             children: [
               Container(
-                padding: const EdgeInsets.all(10),
+                width: 42,
+                height: 42,
                 decoration: BoxDecoration(
-                  color: AppTheme.getBackgroundPrimary(context),
-                  borderRadius: BorderRadius.circular(16),
+                  color: gradient.isNotEmpty
+                      ? gradient.first
+                      : const Color(0xFFEEF2FF),
+                  borderRadius: BorderRadius.circular(12),
                 ),
-                child: Icon(icon, color: AppTheme.getPrimaryColor(context)),
+                child: Icon(icon, color: AppTheme.navy, size: 22),
               ),
               const Spacer(),
               Text(
                 value,
                 style: TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                  color: valueColor ?? AppTheme.getTextPrimary(context),
+                  fontSize: 22,
+                  fontWeight: FontWeight.w800,
+                  color: valueColor ?? AppTheme.navy,
                 ),
               ),
             ],
@@ -649,12 +639,20 @@ class _SummaryCard extends StatelessWidget {
           const SizedBox(height: 12),
           Text(
             title,
-            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+            style: const TextStyle(
+              fontSize: 14.5,
+              fontWeight: FontWeight.w800,
+              color: AppTheme.navy,
+            ),
           ),
           const SizedBox(height: 4),
           Text(
             subtitle,
-            style: TextStyle(color: AppTheme.getTextSecondary(context), fontSize: 12),
+            style: const TextStyle(
+              color: AppTheme.mutedGrey,
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+            ),
           ),
         ],
       ),

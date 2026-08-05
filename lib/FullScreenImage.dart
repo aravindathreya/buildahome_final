@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:photo_view/photo_view.dart';
 
 import 'app_theme.dart';
+import 'widgets/skeleton_loader.dart';
 
 class FullScreenImage extends StatefulWidget {
   final String id;
@@ -100,7 +101,11 @@ class _FullScreenImageState extends State<FullScreenImage> {
                       minScale: PhotoViewComputedScale.contained,
                       imageProvider: _imageProvider(urls[index]),
                       loadingBuilder: (context, event) => const Center(
-                        child: CircularProgressIndicator(color: Colors.white),
+                        child: SizedBox(
+                          width: 120,
+                          height: 120,
+                          child: SkeletonImage(radius: 16),
+                        ),
                       ),
                       errorBuilder: (context, error, stackTrace) => Center(
                         child: Column(

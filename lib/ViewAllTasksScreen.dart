@@ -4,7 +4,8 @@ import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'app_theme.dart';
-import 'widgets/dark_mode_toggle.dart';
+import 'widgets/modern_task_card.dart';
+import 'widgets/skeleton_loader.dart';
 
 class ViewAllTasksScreen extends StatefulWidget {
   final List<dynamic> tasks;
@@ -353,13 +354,13 @@ class _ViewAllTasksScreenState extends State<ViewAllTasksScreen> {
   Color _getStatusColor(String status) {
     switch (status.toLowerCase()) {
       case 'completed':
-        return Color(0xFF10B981); // Green
+        return const Color(0xFF047857);
       case 'in_progress':
-        return Color(0xFF2196F3); // Blue
+        return AppTheme.accentBlue;
       case 'cancelled':
-        return Color(0xFFEF4444); // Red
+        return const Color(0xFFB91C1C);
       default:
-        return Color(0xFFD97706); // Darker amber/yellow
+        return const Color(0xFFB45309);
     }
   }
 
@@ -476,7 +477,7 @@ class _ViewAllTasksScreenState extends State<ViewAllTasksScreen> {
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: AppTheme.getBackgroundSecondary(context),
-        title: Text('Delete Task', style: TextStyle(color: AppTheme.getTextPrimary(context))),
+        title: Text('Delete task', style: TextStyle(color: AppTheme.getTextPrimary(context))),
         content: Text('Are you sure you want to delete this task? This action cannot be undone.', style: TextStyle(color: AppTheme.getTextPrimary(context))),
         actions: [
           TextButton(
@@ -646,7 +647,7 @@ class _ViewAllTasksScreenState extends State<ViewAllTasksScreen> {
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: AppTheme.getBackgroundSecondary(context),
-        title: Text('Delete Comment', style: TextStyle(color: AppTheme.getTextPrimary(context))),
+        title: Text('Delete comment', style: TextStyle(color: AppTheme.getTextPrimary(context))),
         content: Text('Are you sure you want to delete this comment?', style: TextStyle(color: AppTheme.getTextPrimary(context))),
         actions: [
           TextButton(
@@ -696,7 +697,7 @@ class _ViewAllTasksScreenState extends State<ViewAllTasksScreen> {
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: AppTheme.getBackgroundSecondary(context),
-        title: Text('Add Comment', style: TextStyle(color: AppTheme.getTextPrimary(context))),
+        title: Text('Add comment', style: TextStyle(color: AppTheme.getTextPrimary(context))),
         content: TextField(
           controller: _commentController,
           style: TextStyle(color: AppTheme.getTextPrimary(context)),
@@ -733,7 +734,7 @@ class _ViewAllTasksScreenState extends State<ViewAllTasksScreen> {
               _addComment(taskId, note);
             },
             style: ElevatedButton.styleFrom(backgroundColor: AppTheme.getPrimaryColor(context)),
-            child: Text('Add Comment', style: TextStyle(color: Colors.white)),
+            child: Text('Add comment', style: TextStyle(color: Colors.white)),
           ),
         ],
       ),
@@ -743,91 +744,13 @@ class _ViewAllTasksScreenState extends State<ViewAllTasksScreen> {
   Widget _buildStatusDropdown(String taskIdStr, String currentStatus, {VoidCallback? onStatusChanged}) {
     final taskId = int.tryParse(taskIdStr) ?? 0;
     final isWorkflowTask = taskId < 0;
-    final statuses = [
-      {'value': 'pending', 'label': 'Pending', 'color': Color(0xFFD97706), 'icon': Icons.pending}, // Darker amber/yellow
-      {'value': 'in_progress', 'label': 'In Progress', 'color': Color(0xFF2196F3), 'icon': Icons.work}, // Blue
-      {'value': 'completed', 'label': 'Completed', 'color': Color(0xFF10B981), 'icon': Icons.check_circle}, // Green
-      {'value': 'cancelled', 'label': 'Cancelled', 'color': Color(0xFFEF4444), 'icon': Icons.cancel}, // Red
-    ];
-
-    final currentStatusData = statuses.firstWhere(
-      (s) => s['value'] == currentStatus,
-      orElse: () => statuses[0],
-    );
-    final currentColor = currentStatusData['color'] as Color;
-    final currentIcon = currentStatusData['icon'] as IconData;
-
-    return Container(
-      decoration: BoxDecoration(
-        color: AppTheme.getBackgroundPrimaryLight(context),
-        borderRadius: BorderRadius.circular(6),
-        border: Border.all(
-          color: AppTheme.getPrimaryColor(context).withOpacity(0.15),
-          width: 1,
-        ),
-      ),
-      child: DropdownButtonFormField<String>(
-        value: currentStatus,
-        decoration: InputDecoration(
-          contentPadding: EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-          border: InputBorder.none,
-          enabledBorder: InputBorder.none,
-          focusedBorder: InputBorder.none,
-        ),
-        icon: Icon(Icons.arrow_drop_down, color: AppTheme.getTextSecondary(context), size: 16),
-        dropdownColor: AppTheme.getBackgroundPrimaryLight(context),
-        style: TextStyle(
-          color: AppTheme.getTextPrimary(context),
-          fontSize: 11,
-        ),
-        items: statuses.map((statusData) {
-          final status = statusData['value'] as String;
-          final label = statusData['label'] as String;
-          final color = statusData['color'] as Color;
-          final icon = statusData['icon'] as IconData;
-          
-          return DropdownMenuItem<String>(
-            value: status,
-            child: Row(
-              children: [
-                Icon(icon, size: 12, color: color),
-                SizedBox(width: 6),
-                Text(
-                  label,
-                  style: TextStyle(
-                    color: AppTheme.getTextPrimary(context),
-                    fontSize: 11,
-                  ),
-                ),
-              ],
-            ),
-          );
-        }).toList(),
-        onChanged: (_isUpdating || isWorkflowTask) ? null : (String? newStatus) {
-          if (newStatus != null && newStatus != currentStatus) {
-            onStatusChanged?.call();
-            _updateTaskStatus(taskId, newStatus);
-          }
-        },
-        selectedItemBuilder: (BuildContext context) {
-          return statuses.map((statusData) {
-            final label = statusData['label'] as String;
-            return Row(
-              children: [
-                Icon(currentIcon, size: 12, color: currentColor),
-                SizedBox(width: 6),
-                Text(
-                  label,
-                  style: TextStyle(
-                    color: AppTheme.getTextPrimary(context),
-                    fontSize: 11,
-                  ),
-                ),
-              ],
-            );
-          }).toList();
-        },
-      ),
+    return TaskStatusChipSet(
+      currentStatus: currentStatus,
+      enabled: !_isUpdating && !isWorkflowTask,
+      onStatusSelected: (newStatus) {
+        onStatusChanged?.call();
+        _updateTaskStatus(taskId, newStatus);
+      },
     );
   }
 
@@ -1232,7 +1155,7 @@ class _ViewAllTasksScreenState extends State<ViewAllTasksScreen> {
                                     context: context,
                                     builder: (dialogContext) => AlertDialog(
                                       backgroundColor: AppTheme.getBackgroundSecondary(context),
-                                      title: Text('Change Status', style: TextStyle(color: AppTheme.getTextPrimary(context))),
+                                      title: Text('Change status', style: TextStyle(color: AppTheme.getTextPrimary(context))),
                                       content: _buildStatusDropdown(taskId, status, onStatusChanged: () {
                                         Navigator.pop(dialogContext);
                                       }),
@@ -1253,7 +1176,7 @@ class _ViewAllTasksScreenState extends State<ViewAllTasksScreen> {
                                     children: [
                                       Icon(Icons.edit, size: 16, color: AppTheme.getTextPrimary(context)),
                                       SizedBox(width: 8),
-                                      Text('Change Status', style: TextStyle(color: AppTheme.getTextPrimary(context), fontSize: 13)),
+                                      Text('Change status', style: TextStyle(color: AppTheme.getTextPrimary(context), fontSize: 13)),
                                     ],
                                   ),
                                 ),
@@ -1264,7 +1187,7 @@ class _ViewAllTasksScreenState extends State<ViewAllTasksScreen> {
                                       children: [
                                         Icon(Icons.delete, size: 16, color: Colors.red),
                                         SizedBox(width: 8),
-                                        Text('Delete Task', style: TextStyle(color: Colors.red, fontSize: 13)),
+                                        Text('Delete task', style: TextStyle(color: Colors.red, fontSize: 13)),
                                       ],
                                     ),
                                   ),
@@ -1334,40 +1257,24 @@ class _ViewAllTasksScreenState extends State<ViewAllTasksScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      backgroundColor: AppTheme.getBackgroundPrimary(context),
       appBar: AppBar(
+        backgroundColor: AppTheme.getBackgroundSecondary(context),
+        foregroundColor: AppTheme.navy,
         elevation: 0,
+        iconTheme: const IconThemeData(color: AppTheme.navy),
+        actionsIconTheme: const IconThemeData(color: AppTheme.navy),
         leading: IconButton(
           icon: Icon(Icons.arrow_back),
           onPressed: () => Navigator.pop(context),
         ),
-        title: Text(
-          'All Tasks',
+        title: const Text(
+          'All tasks',
+          style: TextStyle(color: AppTheme.navy, fontWeight: FontWeight.w800),
         ),
-        actions: [
-          DarkModeToggle(showLabel: false),
-          SizedBox(width: 8),
-        ],
       ),
       body: _isLoading && _tasks.isEmpty
-          ? Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  CircularProgressIndicator(
-                    valueColor: AlwaysStoppedAnimation<Color>(AppTheme.primaryColorConst),
-                  ),
-                  SizedBox(height: 16),
-                  Text(
-                    'Loading all tasks...',
-                    style: TextStyle(
-                      color: AppTheme.getTextSecondary(context),
-                      fontSize: 14,
-                    ),
-                  ),
-                ],
-              ),
-            )
+          ? const SkeletonListLoader(showSummary: false, cardCount: 5)
           : _tasks.isEmpty
               ? RefreshIndicator(
                   onRefresh: () async {

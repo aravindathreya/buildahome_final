@@ -5,6 +5,7 @@ import 'dart:typed_data';
 
 import 'package:camera/camera.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
@@ -17,15 +18,21 @@ import 'package:url_launcher/url_launcher.dart';
 
 import 'app_theme.dart';
 import 'FullScreenImage.dart';
+import 'NotesAndComments.dart';
+import 'TasksScreen.dart';
 import 'services/api_http.dart';
 import 'services/data_provider.dart';
 import 'services/session_manager.dart';
+import 'widgets/dashboard_chrome.dart';
+import 'widgets/modern_task_card.dart';
+import 'widgets/themed_scaffold.dart';
+import 'widgets/skeleton_loader.dart';
 
 const String _workflowApiBaseUrl = 'https://office.buildahome.in';
-const Color _premiumBackground = Color(0xFFF8F9FC);
+const Color _premiumBackground = Color(0xFFF7F8FB);
 const Color _premiumSurface = Colors.white;
-const Color _premiumInk = Color(0xFF111827);
-const Color _premiumMuted = Color(0xFF6B7280);
+const Color _premiumInk = Color(0xFF1B254B);
+const Color _premiumMuted = Color(0xFF8A94A6);
 
 const Set<String> kCompletedTaskStatuses = {
   'completed',
@@ -350,12 +357,14 @@ class MyTasksScreen extends StatefulWidget {
   final List<dynamic> tasks;
   final Future<List<dynamic>> Function()? onRefresh;
   final int initialTabIndex;
+  final String? focusTaskId;
 
   const MyTasksScreen({
     Key? key,
     required this.tasks,
     this.onRefresh,
     this.initialTabIndex = 0,
+    this.focusTaskId,
   }) : super(key: key);
 
   @override
@@ -367,6 +376,16 @@ class _MyTasksScreenState extends State<MyTasksScreen>
   late final TabController _tabController;
   late List<dynamic> _tasks;
   bool _isRefreshing = false;
+  String? _tasksSignature;
+
+  final TextEditingController _searchController = TextEditingController();
+  final FocusNode _searchFocusNode = FocusNode();
+  bool _isSearchVisible = false;
+  String? _currentUserId;
+  String? _selectedProjectId;
+  String? _selectedProjectName;
+  bool _showAssignedToMeOnly = false;
+  bool _showCreatedByMeOnly = false;
 
   static const Set<String> _pendingStatuses = {
     'pending',
@@ -378,58 +397,440 @@ class _MyTasksScreenState extends State<MyTasksScreen>
   };
   static const Set<String> _completedStatuses = kCompletedTaskStatuses;
 
+  bool get _hasActiveFilters =>
+      _selectedProjectId != null ||
+      _showAssignedToMeOnly ||
+      _showCreatedByMeOnly;
+
+  String _tasksListSignature(List<dynamic> tasks) {
+    return tasks.whereType<Map>().map((task) {
+      return [
+        task['id'],
+        task['status'],
+        task['workflow_status'],
+        task['note'],
+        task['updated_at'],
+        task['can_update_workflow_task'],
+        task['can_approve_workflow_task'],
+        jsonEncode(task['workflow_task_actions'] ?? const []),
+        jsonEncode(task['workflow_actions'] ?? const []),
+        jsonEncode(task['workflow_delay_gate'] ?? const {}),
+      ].join('|');
+    }).join('||');
+  }
+
   @override
   void initState() {
     super.initState();
-    final initialIndex = widget.initialTabIndex.clamp(0, 1);
+    final focusId = widget.focusTaskId?.toString().trim() ?? '';
+    var initialIndex = widget.initialTabIndex.clamp(0, 1);
+    if (focusId.isNotEmpty) {
+      final focusedTask = widget.tasks.whereType<Map>().cast<Map>().firstWhere(
+            (task) => task['id']?.toString() == focusId,
+            orElse: () => <String, dynamic>{},
+          );
+      if (focusedTask.isNotEmpty) {
+        initialIndex =
+            _completedStatuses.contains(_taskStatus(focusedTask)) ? 1 : 0;
+      }
+    }
     _tabController = TabController(
       length: 2,
       vsync: this,
       initialIndex: initialIndex,
     );
     _tasks = List<dynamic>.from(widget.tasks);
+    _tasksSignature = _tasksListSignature(_tasks);
+    _searchController.addListener(() {
+      if (mounted) setState(() {});
+    });
+    _loadCurrentUserId();
+  }
+
+  Future<void> _loadCurrentUserId() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    setState(() {
+      _currentUserId =
+          prefs.getString('userId') ?? prefs.getString('user_id');
+    });
   }
 
   @override
   void dispose() {
+    _searchController.dispose();
+    _searchFocusNode.dispose();
     _tabController.dispose();
     super.dispose();
   }
 
-  List<Map<String, dynamic>> get _pendingTasks => _tasks
-      .whereType<Map>()
-      .where((task) => _pendingStatuses.contains(_taskStatus(task)))
-      .map((task) => Map<String, dynamic>.from(task))
-      .toList();
+  List<Map<String, dynamic>> _applyTaskFilters(
+    Iterable<Map> source,
+  ) {
+    final query = _searchController.text.toLowerCase().trim();
+    return source
+        .where((task) {
+          if (_selectedProjectId != null) {
+            final taskProjectId = task['project_id']?.toString() ?? '';
+            if (taskProjectId != _selectedProjectId) return false;
+          }
 
-  List<Map<String, dynamic>> get _completedTasks => _tasks
-      .whereType<Map>()
-      .where((task) => _completedStatuses.contains(_taskStatus(task)))
-      .map((task) => Map<String, dynamic>.from(task))
-      .toList();
+          if (_showAssignedToMeOnly && _currentUserId != null) {
+            final assignedTo = task['assigned_to']?.toString() ?? '';
+            if (assignedTo != _currentUserId) return false;
+          }
+
+          if (_showCreatedByMeOnly && _currentUserId != null) {
+            final userId = task['user_id']?.toString() ??
+                task['created_by']?.toString() ??
+                '';
+            if (userId != _currentUserId) return false;
+          }
+
+          if (query.isNotEmpty) {
+            final haystack = [
+              task['note'],
+              task['s_note'],
+              task['project_name'],
+              task['assigned_to_name'],
+              task['assignee_name'],
+              task['id'],
+              task['status'],
+              task['workflow_status'],
+            ].map((value) => value?.toString().toLowerCase() ?? '').join(' ');
+            if (!haystack.contains(query)) return false;
+          }
+
+          return true;
+        })
+        .map((task) => Map<String, dynamic>.from(task))
+        .toList();
+  }
+
+  List<Map<String, dynamic>> get _pendingTasks => _applyTaskFilters(
+        _tasks
+            .whereType<Map>()
+            .where((task) => _pendingStatuses.contains(_taskStatus(task))),
+      );
+
+  List<Map<String, dynamic>> get _completedTasks => _applyTaskFilters(
+        _tasks
+            .whereType<Map>()
+            .where((task) => _completedStatuses.contains(_taskStatus(task))),
+      );
 
   String _taskStatus(Map task) => normalizeTaskStatusValue(task);
+
+  void _toggleSearch() {
+    setState(() {
+      _isSearchVisible = !_isSearchVisible;
+      if (!_isSearchVisible) {
+        _searchController.clear();
+        _searchFocusNode.unfocus();
+      }
+    });
+    if (_isSearchVisible) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _searchFocusNode.requestFocus();
+      });
+    }
+  }
+
+  Future<void> _showFilterSheet() async {
+    await DataProvider().reloadData(force: false);
+    if (!mounted) return;
+    final projects = List<dynamic>.from(DataProvider().projects);
+
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (sheetContext) {
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            Widget filterChip({
+              required String label,
+              required IconData icon,
+              required bool selected,
+              required VoidCallback onTap,
+            }) {
+              return InkWell(
+                onTap: onTap,
+                borderRadius: BorderRadius.circular(20),
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: selected
+                        ? kTaskNavy.withValues(alpha: 0.12)
+                        : const Color(0xFFF1F4F8),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: selected
+                          ? kTaskNavy
+                          : kTaskBorder,
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        icon,
+                        size: 14,
+                        color: selected ? kTaskNavy : _premiumMuted,
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        label,
+                        style: TextStyle(
+                          color: selected ? kTaskNavy : _premiumMuted,
+                          fontSize: 12,
+                          fontWeight:
+                              selected ? FontWeight.w700 : FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }
+
+            return Container(
+              height: MediaQuery.of(context).size.height * 0.7,
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+              ),
+              child: Column(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(18, 14, 8, 8),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 4,
+                          height: 20,
+                          decoration: BoxDecoration(
+                            color: kTaskNavy,
+                            borderRadius: BorderRadius.circular(2),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        const Expanded(
+                          child: Text(
+                            'Filter tasks',
+                            style: TextStyle(
+                              color: _premiumInk,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ),
+                        if (_hasActiveFilters)
+                          TextButton(
+                            onPressed: () {
+                              setSheetState(() {
+                                _selectedProjectId = null;
+                                _selectedProjectName = null;
+                                _showAssignedToMeOnly = false;
+                                _showCreatedByMeOnly = false;
+                              });
+                              setState(() {});
+                            },
+                            child: const Text(
+                              'Clear',
+                              style: TextStyle(
+                                color: Color(0xFF2563EB),
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                        IconButton(
+                          icon: const Icon(Icons.close_rounded,
+                              color: _premiumMuted),
+                          onPressed: () => Navigator.pop(context),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(18, 4, 18, 12),
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          filterChip(
+                            label: 'Assigned to me',
+                            icon: Icons.person_outline_rounded,
+                            selected: _showAssignedToMeOnly,
+                            onTap: () {
+                              setSheetState(() {
+                                _showAssignedToMeOnly = !_showAssignedToMeOnly;
+                              });
+                              setState(() {});
+                            },
+                          ),
+                          filterChip(
+                            label: 'Created by me',
+                            icon: Icons.edit_outlined,
+                            selected: _showCreatedByMeOnly,
+                            onTap: () {
+                              setSheetState(() {
+                                _showCreatedByMeOnly = !_showCreatedByMeOnly;
+                              });
+                              setState(() {});
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const Padding(
+                    padding: EdgeInsets.fromLTRB(18, 0, 18, 8),
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        'Project',
+                        style: TextStyle(
+                          color: _premiumInk,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    child: ListView.builder(
+                      padding: const EdgeInsets.fromLTRB(18, 0, 18, 24),
+                      itemCount: projects.length + 1,
+                      itemBuilder: (context, index) {
+                        final isAll = index == 0;
+                        final project =
+                            isAll ? null : projects[index - 1] as Map?;
+                        final projectId =
+                            isAll ? null : project?['id']?.toString();
+                        final projectName = isAll
+                            ? 'All projects'
+                            : (project?['name']?.toString() ??
+                                'Unnamed project');
+                        final isSelected = isAll
+                            ? _selectedProjectId == null
+                            : _selectedProjectId == projectId;
+
+                        return Container(
+                          margin: const EdgeInsets.only(bottom: 8),
+                          decoration: BoxDecoration(
+                            color: isSelected
+                                ? kTaskNavy.withValues(alpha: 0.08)
+                                : const Color(0xFFF7F8FB),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: isSelected ? kTaskNavy : kTaskBorder,
+                              width: isSelected ? 1.5 : 1,
+                            ),
+                          ),
+                          child: Material(
+                            color: Colors.transparent,
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(12),
+                              onTap: () {
+                                setSheetState(() {
+                                  _selectedProjectId = projectId;
+                                  _selectedProjectName =
+                                      isAll ? null : projectName;
+                                });
+                                setState(() {});
+                                Navigator.pop(context);
+                              },
+                              child: Padding(
+                                padding: const EdgeInsets.all(12),
+                                child: Row(
+                                  children: [
+                                    Icon(
+                                      isAll
+                                          ? Icons.clear_all_rounded
+                                          : Icons.folder_special_outlined,
+                                      size: 20,
+                                      color: kTaskNavy,
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Text(
+                                        projectName,
+                                        style: const TextStyle(
+                                          color: _premiumInk,
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ),
+                                    if (isSelected)
+                                      const Icon(
+                                        Icons.check_circle_rounded,
+                                        size: 20,
+                                        color: kTaskNavy,
+                                      ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
 
   Future<void> _refreshTasks() async {
     if (widget.onRefresh == null || _isRefreshing) return;
 
-    setState(() {
-      _isRefreshing = true;
-    });
+    _isRefreshing = true;
 
     try {
       final updatedTasks = await widget.onRefresh!();
       if (!mounted) return;
-      setState(() {
-        _tasks = List<dynamic>.from(updatedTasks);
-      });
-    } finally {
-      if (mounted) {
+      final nextTasks = List<dynamic>.from(updatedTasks);
+      final nextSignature = _tasksListSignature(nextTasks);
+      if (nextSignature != _tasksSignature) {
         setState(() {
+          _tasks = nextTasks;
+          _tasksSignature = nextSignature;
           _isRefreshing = false;
         });
+      } else {
+        _isRefreshing = false;
+      }
+    } catch (_) {
+      if (mounted) {
+        _isRefreshing = false;
       }
     }
+  }
+
+  Future<void> _openCreateTask() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => TasksLayout(
+          initialTasks: _tasks,
+          initialTabIndex: 0,
+          onTaskUpdated: () {
+            _refreshTasks();
+          },
+          loadTasksCallback: widget.onRefresh,
+        ),
+      ),
+    );
+    await _refreshTasks();
   }
 
   @override
@@ -437,171 +838,354 @@ class _MyTasksScreenState extends State<MyTasksScreen>
     final pendingTasks = _pendingTasks;
     final completedTasks = _completedTasks;
 
-    return Scaffold(
+    final isAdminChrome =
+        DashboardChrome.of(context) == DashboardChromeStyle.admin;
+    final appBarFg = isAdminChrome ? Colors.white : _premiumInk;
+
+    final hasSearchQuery = _searchController.text.trim().isNotEmpty;
+    final emptyPendingMessage = hasSearchQuery || _hasActiveFilters
+        ? 'No pending tasks match your search or filters.'
+        : 'Pending tasks for this project will appear here.';
+    final emptyCompletedMessage = hasSearchQuery || _hasActiveFilters
+        ? 'No completed tasks match your search or filters.'
+        : 'Completed tasks will appear here once they are finished.';
+
+    return ThemedScaffold(
+      title: 'My tasks',
       backgroundColor: _premiumBackground,
-      appBar: AppBar(
-        backgroundColor: _premiumBackground,
-        elevation: 0,
-        scrolledUnderElevation: 0,
-        toolbarHeight: 62,
-        centerTitle: false,
-        leadingWidth: 46,
-        leading: IconButton(
-          icon: Icon(Icons.arrow_back_ios_new_rounded,
-              color: _premiumInk, size: 20),
-          onPressed: () => Navigator.maybePop(context),
-        ),
-        titleSpacing: 0,
-        title: Text(
-          'My Tasks',
-          style: TextStyle(
-            color: _premiumInk,
-            fontSize: 22,
-            fontWeight: FontWeight.w800,
-            letterSpacing: -0.5,
+      actions: [
+        IconButton(
+          tooltip: _isSearchVisible ? 'Close search' : 'Search',
+          onPressed: _toggleSearch,
+          icon: Icon(
+            _isSearchVisible ? Icons.close_rounded : Icons.search_rounded,
+            color: appBarFg,
+            size: 22,
           ),
         ),
-        actions: [
-          if (widget.onRefresh != null)
-            Container(
-              width: 42,
-              height: 42,
-              margin: EdgeInsets.only(right: 8),
-              decoration: BoxDecoration(
-                color: _premiumSurface,
-                shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.045),
-                    blurRadius: 14,
-                    offset: Offset(0, 6),
+        IconButton(
+          tooltip: 'Filter',
+          onPressed: _showFilterSheet,
+          icon: Badge(
+            isLabelVisible: _hasActiveFilters,
+            smallSize: 8,
+            backgroundColor: const Color(0xFF2563EB),
+            child: Icon(Icons.tune_rounded, color: appBarFg, size: 22),
+          ),
+        ),
+        if (widget.onRefresh != null)
+          IconButton(
+            tooltip: 'Refresh',
+            onPressed: _isRefreshing ? null : _refreshTasks,
+            icon: _isRefreshing
+                ? SizedBox(
+                    height: 18,
+                    width: 18,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation<Color>(appBarFg),
+                    ),
+                  )
+                : Icon(Icons.refresh_rounded, color: appBarFg, size: 22),
+          ),
+        const SizedBox(width: 4),
+      ],
+      bottom: PreferredSize(
+        preferredSize: Size.fromHeight(_isSearchVisible ? 126 : 66),
+        child: Container(
+          color: Colors.white,
+          padding: const EdgeInsets.fromLTRB(18, 0, 18, 14),
+          child: Column(
+            children: [
+              if (_isSearchVisible) ...[
+                TextField(
+                  controller: _searchController,
+                  focusNode: _searchFocusNode,
+                  textInputAction: TextInputAction.search,
+                  style: const TextStyle(
+                    color: _premiumInk,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
                   ),
-                ],
-              ),
-              child: IconButton(
-                tooltip: 'Refresh tasks',
-                onPressed: _isRefreshing ? null : _refreshTasks,
-                icon: _isRefreshing
-                    ? SizedBox(
-                        height: 17,
-                        width: 17,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          valueColor: AlwaysStoppedAnimation<Color>(
-                            _premiumInk,
-                          ),
-                        ),
-                      )
-                    : Icon(
-                        Icons.refresh_rounded,
-                        color: _premiumInk,
-                        size: 20,
-                      ),
-              ),
-            ),
-          Container(
-            width: 42,
-            height: 42,
-            margin: EdgeInsets.only(right: 14),
-            decoration: BoxDecoration(
-              color: _premiumSurface,
-              shape: BoxShape.circle,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.05),
-                  blurRadius: 14,
-                  offset: Offset(0, 6),
+                  decoration: InputDecoration(
+                    hintText: 'Search by task, project, or assignee',
+                    hintStyle: const TextStyle(
+                      color: _premiumMuted,
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w500,
+                    ),
+                    prefixIcon: const Icon(
+                      Icons.search_rounded,
+                      color: _premiumMuted,
+                      size: 20,
+                    ),
+                    suffixIcon: hasSearchQuery
+                        ? IconButton(
+                            tooltip: 'Clear',
+                            onPressed: () => _searchController.clear(),
+                            icon: const Icon(
+                              Icons.cancel_rounded,
+                              color: _premiumMuted,
+                              size: 18,
+                            ),
+                          )
+                        : null,
+                    filled: true,
+                    fillColor: const Color(0xFFF1F4F8),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 10,
+                    ),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none,
+                    ),
+                  ),
                 ),
+                const SizedBox(height: 10),
               ],
-            ),
-            child: IconButton(
-              tooltip: 'More',
-              onPressed: () {},
-              icon:
-                  Icon(Icons.more_horiz_rounded, color: _premiumInk, size: 21),
-            ),
-          ),
-        ],
-        bottom: PreferredSize(
-          preferredSize: Size.fromHeight(70),
-          child: Container(
-            height: 54,
-            margin: EdgeInsets.fromLTRB(18, 2, 18, 14),
-            padding: EdgeInsets.all(6),
-            decoration: BoxDecoration(
-              color: _premiumSurface,
-              borderRadius: BorderRadius.circular(24),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.06),
-                  blurRadius: 24,
-                  offset: Offset(0, 8),
+              Container(
+                height: 48,
+                padding: const EdgeInsets.all(4),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF1F4F8),
+                  borderRadius: BorderRadius.circular(14),
                 ),
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.04),
-                  blurRadius: 8,
-                  offset: Offset(0, 2),
+                child: TabBar(
+                  controller: _tabController,
+                  indicatorSize: TabBarIndicatorSize.tab,
+                  dividerColor: Colors.transparent,
+                  splashFactory: NoSplash.splashFactory,
+                  overlayColor: WidgetStateProperty.all(Colors.transparent),
+                  labelPadding: EdgeInsets.zero,
+                  indicator: BoxDecoration(
+                    color: kTaskNavy,
+                    borderRadius: BorderRadius.circular(11),
+                  ),
+                  labelColor: Colors.white,
+                  unselectedLabelColor: _premiumMuted,
+                  labelStyle: const TextStyle(
+                      fontSize: 13, fontWeight: FontWeight.w700),
+                  unselectedLabelStyle: const TextStyle(
+                      fontSize: 13, fontWeight: FontWeight.w600),
+                  tabs: [
+                    SizedBox(
+                      height: 40,
+                      child: Center(
+                          child: Text('Pending (${pendingTasks.length})')),
+                    ),
+                    SizedBox(
+                      height: 40,
+                      child: Center(
+                          child:
+                              Text('Completed (${completedTasks.length})')),
+                    ),
+                  ],
                 ),
-              ],
-            ),
-            child: TabBar(
-              controller: _tabController,
-              indicatorSize: TabBarIndicatorSize.tab,
-              dividerColor: Colors.transparent,
-              splashFactory: NoSplash.splashFactory,
-              overlayColor: MaterialStateProperty.all(Colors.transparent),
-              labelPadding: EdgeInsets.zero,
-              indicator: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [Color(0xFF111827), Color(0xFF374151)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                borderRadius: BorderRadius.circular(18),
               ),
-              labelColor: Colors.white,
-              unselectedLabelColor: _premiumMuted,
-              labelStyle: TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
-              unselectedLabelStyle:
-                  TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-              tabs: [
-                SizedBox(
-                  height: 42,
-                  child:
-                      Center(child: Text('Pending (${pendingTasks.length})')),
-                ),
-                SizedBox(
-                  height: 42,
-                  child: Center(
-                      child: Text('Completed (${completedTasks.length})')),
-                ),
-              ],
-            ),
+            ],
           ),
         ),
       ),
-      body: SafeArea(
-        child: TabBarView(
-          controller: _tabController,
-          children: [
-            _TaskList(
-              tasks: pendingTasks,
-              emptyTitle: 'No pending tasks',
-              emptyMessage: 'Pending tasks for this project will appear here.',
-              emptyIcon: Icons.pending_actions,
-              onWorkflowActionCompleted: _refreshTasks,
+      body: Column(
+        children: [
+          if (_hasActiveFilters || hasSearchQuery)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(18, 12, 18, 0),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    if (hasSearchQuery)
+                      _ActiveFilterChip(
+                        label: 'Search: ${_searchController.text.trim()}',
+                        onClear: () => _searchController.clear(),
+                      ),
+                    if (_selectedProjectName != null)
+                      _ActiveFilterChip(
+                        label: _selectedProjectName!,
+                        onClear: () {
+                          setState(() {
+                            _selectedProjectId = null;
+                            _selectedProjectName = null;
+                          });
+                        },
+                      ),
+                    if (_showAssignedToMeOnly)
+                      _ActiveFilterChip(
+                        label: 'Assigned to me',
+                        onClear: () {
+                          setState(() => _showAssignedToMeOnly = false);
+                        },
+                      ),
+                    if (_showCreatedByMeOnly)
+                      _ActiveFilterChip(
+                        label: 'Created by me',
+                        onClear: () {
+                          setState(() => _showCreatedByMeOnly = false);
+                        },
+                      ),
+                  ],
+                ),
+              ),
             ),
-            _TaskList(
-              tasks: completedTasks,
-              emptyTitle: 'No completed tasks',
-              emptyMessage:
-                  'Completed tasks will appear here once they are finished.',
-              emptyIcon: Icons.task_alt,
-              onWorkflowActionCompleted: _refreshTasks,
-              showWorkflowActions: false,
+          Padding(
+            padding: const EdgeInsets.fromLTRB(18, 14, 18, 0),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TaskSummaryStatCard(
+                    value: '${pendingTasks.length}',
+                    label: 'Pending tasks',
+                    icon: Icons.assignment_outlined,
+                    iconColor: const Color(0xFFEAB308),
+                    iconBg: const Color(0xFFFFF1D6),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: TaskSummaryStatCard(
+                    value: '${completedTasks.length}',
+                    label: 'Completed tasks',
+                    icon: Icons.check_circle_outline_rounded,
+                    iconColor: const Color(0xFF16A34A),
+                    iconBg: const Color(0xFFDCFCE7),
+                  ),
+                ),
+              ],
             ),
-          ],
-        ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(18, 18, 18, 8),
+            child: AnimatedBuilder(
+              animation: _tabController,
+              builder: (context, _) {
+                final isPending = _tabController.index == 0;
+                return Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        isPending ? 'All pending tasks' : 'All completed tasks',
+                        style: const TextStyle(
+                          color: _premiumInk,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                    Material(
+                      color: kTaskNavy,
+                      borderRadius: BorderRadius.circular(10),
+                      child: InkWell(
+                        onTap: _openCreateTask,
+                        borderRadius: BorderRadius.circular(10),
+                        child: const Padding(
+                          padding:
+                              EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.add, color: Colors.white, size: 16),
+                              SizedBox(width: 4),
+                              Text(
+                                'New task',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 12.5,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              },
+            ),
+          ),
+          Expanded(
+            child: TabBarView(
+              controller: _tabController,
+              children: [
+                _TaskList(
+                  tasks: pendingTasks,
+                  emptyTitle: 'No pending tasks',
+                  emptyMessage: emptyPendingMessage,
+                  emptyIcon: Icons.pending_actions,
+                  onWorkflowActionCompleted: _refreshTasks,
+                  onCreateTask: _openCreateTask,
+                  focusTaskId: widget.focusTaskId,
+                ),
+                _TaskList(
+                  tasks: completedTasks,
+                  emptyTitle: 'No completed tasks',
+                  emptyMessage: emptyCompletedMessage,
+                  emptyIcon: Icons.task_alt,
+                  onWorkflowActionCompleted: _refreshTasks,
+                  showWorkflowActions: false,
+                  onCreateTask: _openCreateTask,
+                  focusTaskId: widget.focusTaskId,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ActiveFilterChip extends StatelessWidget {
+  final String label;
+  final VoidCallback onClear;
+
+  const _ActiveFilterChip({
+    required this.label,
+    required this.onClear,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.only(left: 10, right: 4, top: 5, bottom: 5),
+      decoration: BoxDecoration(
+        color: const Color(0xFFDBEAFE),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 180),
+            child: Text(
+              label,
+              style: const TextStyle(
+                color: Color(0xFF2563EB),
+                fontSize: 11.5,
+                fontWeight: FontWeight.w700,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          const SizedBox(width: 2),
+          InkWell(
+            onTap: onClear,
+            borderRadius: BorderRadius.circular(999),
+            child: const Padding(
+              padding: EdgeInsets.all(2),
+              child: Icon(
+                Icons.close_rounded,
+                size: 14,
+                color: Color(0xFF2563EB),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -614,6 +1198,8 @@ class _TaskList extends StatelessWidget {
   final IconData emptyIcon;
   final Future<void> Function() onWorkflowActionCompleted;
   final bool showWorkflowActions;
+  final VoidCallback? onCreateTask;
+  final String? focusTaskId;
 
   const _TaskList({
     required this.tasks,
@@ -622,27 +1208,58 @@ class _TaskList extends StatelessWidget {
     required this.emptyIcon,
     required this.onWorkflowActionCompleted,
     this.showWorkflowActions = true,
+    this.onCreateTask,
+    this.focusTaskId,
   });
 
   @override
   Widget build(BuildContext context) {
     if (tasks.isEmpty) {
-      return _EmptyTasksState(
-        title: emptyTitle,
-        message: emptyMessage,
-        icon: emptyIcon,
+      return ListView(
+        padding: const EdgeInsets.fromLTRB(18, 8, 18, 28),
+        children: [
+          _EmptyTasksState(
+            title: emptyTitle,
+            message: emptyMessage,
+            icon: emptyIcon,
+          ),
+          TaskHelpBanner(
+            onChat: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => NotesAndComments()),
+              );
+            },
+          ),
+        ],
       );
     }
 
-    return ListView.separated(
-      padding: EdgeInsets.fromLTRB(20, 18, 20, 28),
-      itemBuilder: (context, index) => _TaskCard(
-        task: tasks[index],
-        onWorkflowActionCompleted: onWorkflowActionCompleted,
-        showWorkflowActions: showWorkflowActions,
-      ),
-      separatorBuilder: (_, __) => SizedBox(height: 18),
-      itemCount: tasks.length,
+    return ListView.builder(
+      padding: const EdgeInsets.fromLTRB(18, 4, 18, 28),
+      itemCount: tasks.length + 1,
+      itemBuilder: (context, index) {
+        if (index == tasks.length) {
+          return TaskHelpBanner(
+            onChat: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => NotesAndComments()),
+              );
+            },
+          );
+        }
+        final task = tasks[index];
+        final focusId = focusTaskId?.toString().trim() ?? '';
+        return _TaskCard(
+          task: task,
+          accentIndex: index,
+          onWorkflowActionCompleted: onWorkflowActionCompleted,
+          showWorkflowActions: showWorkflowActions,
+          isSelected:
+              focusId.isNotEmpty && task['id']?.toString() == focusId,
+        );
+      },
     );
   }
 }
@@ -651,11 +1268,15 @@ class _TaskCard extends StatefulWidget {
   final Map<String, dynamic> task;
   final Future<void> Function() onWorkflowActionCompleted;
   final bool showWorkflowActions;
+  final int accentIndex;
+  final bool isSelected;
 
   const _TaskCard({
     required this.task,
     required this.onWorkflowActionCompleted,
     this.showWorkflowActions = true,
+    this.accentIndex = 0,
+    this.isSelected = false,
   });
 
   @override
@@ -666,18 +1287,48 @@ class _TaskCardState extends State<_TaskCard> {
   late Map<String, dynamic> _task;
   bool _isLoadingWorkflowDetail = false;
   bool _isRefreshingAfterDelay = false;
+  bool _statusExpanded = false;
+  bool _isUpdatingStatus = false;
+  bool _isDeleting = false;
+  bool _isSwipeCompleting = false;
+  String? _currentUserId;
 
   @override
   void initState() {
     super.initState();
     _task = Map<String, dynamic>.from(widget.task);
+    _loadCurrentUserId();
     _loadWorkflowDetail();
+  }
+
+  Future<void> _loadCurrentUserId() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    setState(() {
+      _currentUserId =
+          prefs.getString('userId') ?? prefs.getString('user_id');
+    });
+  }
+
+  String _taskIdentity(Map task) {
+    return [
+      task['id'],
+      task['status'],
+      task['workflow_status'],
+      task['updated_at'],
+      task['can_update_workflow_task'],
+      task['can_approve_workflow_task'],
+      jsonEncode(task['workflow_task_actions'] ?? const []),
+      jsonEncode(task['workflow_actions'] ?? const []),
+      jsonEncode(task['workflow_delay_gate'] ?? const {}),
+    ].join('|');
   }
 
   @override
   void didUpdateWidget(covariant _TaskCard oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.task != widget.task) {
+    // Only re-merge workflow detail when task data actually changed.
+    if (_taskIdentity(oldWidget.task) != _taskIdentity(widget.task)) {
       _task = Map<String, dynamic>.from(widget.task);
       _loadWorkflowDetail();
     }
@@ -732,186 +1383,390 @@ class _TaskCardState extends State<_TaskCard> {
     final statusColor = delayGated
         ? const Color(0xFF6366F1)
         : _statusColor(status);
-    final statusIcon =
-        delayGated ? Icons.schedule_rounded : _statusIcon(status);
     final workflowActions =
         filterVisibleWorkflowActions(task, _workflowActions);
     final title = _taskTitle(note, taskId, _workflowActions);
     final uploadedPhotos = _uploadedPhotos;
     final showApprovalButtons = shouldShowWorkflowApprovalButtons(task);
+    final completeAction = _findSwipeCompleteAction(workflowActions);
 
-    return Container(
-      decoration: BoxDecoration(
-        color: _premiumSurface,
-        borderRadius: BorderRadius.circular(28),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.06),
-            blurRadius: 24,
-            offset: Offset(0, 8),
-          ),
-          BoxShadow(
-            color: Colors.black.withOpacity(0.04),
-            blurRadius: 8,
-            offset: Offset(0, 2),
-          ),
-        ],
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(28),
-        child: Stack(
+    final taskUserId =
+        (task['user_id'] ?? task['created_by'])?.toString() ?? '';
+    final isCreatedByMe =
+        _currentUserId != null && taskUserId == _currentUserId;
+    final showStatusEditor = !_isWorkflowTask && _statusExpanded;
+
+    final footerChildren = <Widget>[
+      if (showStatusEditor) _buildStatusDropdown(taskId, status),
+      if (delayGated && delayGateData != null) ...[
+        if (showStatusEditor) const SizedBox(height: 10),
+        Row(
           children: [
-            Positioned(
-              right: -12,
-              top: -10,
-              child: Icon(
-                Icons.architecture_rounded,
-                size: 118,
-                color: statusColor.withOpacity(0.04),
-              ),
-            ),
-            Padding(
-              padding: EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Container(
-                        height: 58,
-                        width: 58,
-                        decoration: BoxDecoration(
-                          color: statusColor.withOpacity(0.10),
-                          borderRadius: BorderRadius.circular(18),
-                        ),
-                        child: Icon(statusIcon, color: statusColor, size: 29),
-                      ),
-                      SizedBox(width: 14),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              title,
-                              style: TextStyle(
-                                color: _premiumInk,
-                                fontSize: 18,
-                                fontWeight: FontWeight.w800,
-                                letterSpacing: -0.3,
-                                height: 1.2,
-                              ),
-                            ),
-                            if (delayGated && delayGateData != null) ...[
-                              SizedBox(height: 6),
-                              Row(
-                                children: [
-                                  Icon(
-                                    Icons.timer_outlined,
-                                    size: 15,
-                                    color: statusColor,
-                                  ),
-                                  SizedBox(width: 6),
-                                  WorkflowDelayCountdownText(
-                                    gateData: delayGateData,
-                                    onExpired: _handleDelayExpired,
-                                    style: TextStyle(
-                                      color: statusColor,
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ],
-                        ),
-                      ),
-                      SizedBox(width: 10),
-                      _StatusPill(
-                        status: status,
-                        displayLabel: statusLabel,
-                        color: statusColor,
-                      ),
-                    ],
-                  ),
-                  SizedBox(height: 22),
-                  Container(
-                    padding: EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: _premiumBackground,
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Column(
-                      children: [
-                        if (projectName.isNotEmpty)
-                          _InfoRow(
-                            icon: Icons.folder_outlined,
-                            label: 'Project',
-                            value: projectName,
-                          ),
-                        if (assignedToName.isNotEmpty)
-                          _InfoRow(
-                            icon: Icons.person_outline,
-                            label: 'Assigned To',
-                            value: assignedToName,
-                          ),
-                        if (createdAt.isNotEmpty)
-                          _InfoRow(
-                            icon: Icons.schedule_rounded,
-                            label: 'Date',
-                            value: _formatDate(createdAt),
-                          ),
-                      ],
-                    ),
-                  ),
-                  SizedBox(height: 18),
-                  _UploadedPhotosSection(photos: uploadedPhotos),
-                  if (delayGated && delayGateData != null) ...[
-                    SizedBox(height: 18),
-                    _WorkflowDelayGateCard(
-                      gateData: delayGateData,
-                      onExpired: _handleDelayExpired,
-                    ),
-                  ],
-                  if (_isLoadingWorkflowDetail) ...[
-                    SizedBox(height: 14),
-                    Center(
-                      child: SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      ),
-                    ),
-                  ],
-                  if (showApprovalButtons) ...[
-                    SizedBox(height: 18),
-                    _WorkflowManagerApprovalSection(
-                      task: task,
-                      onActionCompleted: _handleWorkflowActionCompleted,
-                    ),
-                  ],
-                  if (widget.showWorkflowActions &&
-                      _isWorkflowTask &&
-                      workflowActions.isNotEmpty) ...[
-                    SizedBox(height: 18),
-                    _WorkflowActionsSection(
-                      task: task,
-                      actions: workflowActions,
-                      onActionCompleted: _handleWorkflowActionCompleted,
-                      onDelayExpired: _handleDelayExpired,
-                    ),
-                  ],
-                ],
+            Icon(Icons.timer_outlined, size: 15, color: statusColor),
+            const SizedBox(width: 6),
+            WorkflowDelayCountdownText(
+              gateData: delayGateData,
+              onExpired: _handleDelayExpired,
+              style: TextStyle(
+                color: statusColor,
+                fontSize: 12.5,
+                fontWeight: FontWeight.w700,
               ),
             ),
           ],
         ),
-      ),
+        const SizedBox(height: 10),
+        _WorkflowDelayGateCard(
+          gateData: delayGateData,
+          onExpired: _handleDelayExpired,
+        ),
+      ],
+      if (uploadedPhotos.isNotEmpty) ...[
+        if (showStatusEditor || (delayGated && delayGateData != null))
+          const SizedBox(height: 10),
+        _UploadedPhotosSection(photos: uploadedPhotos),
+      ],
+      if (_isLoadingWorkflowDetail) ...[
+        const SizedBox(height: 10),
+        const Center(
+          child: SizedBox(
+            width: 18,
+            height: 18,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+        ),
+      ],
+      if (showApprovalButtons) ...[
+        const SizedBox(height: 10),
+        _WorkflowManagerApprovalSection(
+          task: task,
+          onActionCompleted: _handleWorkflowActionCompleted,
+        ),
+      ],
+      if (widget.showWorkflowActions &&
+          _isWorkflowTask &&
+          workflowActions.isNotEmpty) ...[
+        const SizedBox(height: 10),
+        _WorkflowActionsSection(
+          task: task,
+          actions: workflowActions,
+          onActionCompleted: _handleWorkflowActionCompleted,
+          onDelayExpired: _handleDelayExpired,
+        ),
+      ],
+    ];
+
+    return ModernTaskCard(
+      title: title,
+      projectName: projectName,
+      assigneeName: assignedToName,
+      dateLabel: createdAt.isNotEmpty ? _formatDate(createdAt) : null,
+      status: status,
+      statusLabel: statusLabel,
+      accentIndex: widget.accentIndex,
+      isSelected: widget.isSelected,
+      onSwipeComplete: completeAction == null
+          ? null
+          : () => _handleSwipeComplete(completeAction),
+      swipeCompleteLabel: completeAction == null
+          ? 'Swipe to complete'
+          : _swipeCompleteLabel(completeAction),
+      menu: _isWorkflowTask
+          ? null
+          : PopupMenuButton<String>(
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+              iconSize: 20,
+              icon: const Icon(Icons.more_horiz_rounded,
+                  color: kTaskMuted, size: 20),
+              onSelected: (value) {
+                if (value == 'delete') {
+                  _deleteTask(int.tryParse(taskId) ?? 0);
+                } else if (value == 'change_status') {
+                  setState(() {
+                    _statusExpanded = !_statusExpanded;
+                  });
+                }
+              },
+              itemBuilder: (context) => [
+                const PopupMenuItem(
+                  value: 'change_status',
+                  child: Text('Change status'),
+                ),
+                if (isCreatedByMe)
+                  const PopupMenuItem(
+                    value: 'delete',
+                    child: Text(
+                      'Delete task',
+                      style: TextStyle(color: Colors.red),
+                    ),
+                  ),
+              ],
+            ),
+      footer: footerChildren.isEmpty
+          ? null
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: footerChildren,
+            ),
     );
   }
 
+  Map<String, dynamic>? _findSwipeCompleteAction(
+    List<Map<String, dynamic>> actions,
+  ) {
+    if (!widget.showWorkflowActions || !_isWorkflowTask) return null;
+    if (!canUpdateWorkflowTask(_task)) return null;
+
+    for (final action in actions) {
+      if (action['type']?.toString() != 'complete_button') continue;
+      if (action['blocked'] == true) continue;
+      return action;
+    }
+    return null;
+  }
+
+  String _swipeCompleteLabel(Map<String, dynamic> action) {
+    final label = action['label']?.toString().trim() ?? '';
+    if (label.isEmpty) return 'Swipe to complete';
+    return 'Swipe to ${toSentenceCaseLabel(label).toLowerCase()}';
+  }
+
+  String _resolvedWorkflowItemRunIdFor(
+    Map<String, dynamic> task,
+    Map<String, dynamic> action,
+  ) {
+    final fromTask = task['workflow_item_run_id']?.toString().trim() ?? '';
+    if (fromTask.isNotEmpty) return fromTask;
+
+    final taskId = int.tryParse(task['id']?.toString() ?? '');
+    if (taskId != null && taskId < 0) return taskId.abs().toString();
+
+    return action['workflow_item_run_id']?.toString().trim() ?? '';
+  }
+
+  Future<bool> _handleSwipeComplete(Map<String, dynamic> action) async {
+    if (_isSwipeCompleting) return false;
+
+    final runId = _resolvedWorkflowItemRunIdFor(_task, action);
+    final actionId = action['id'];
+    if (runId.isEmpty || actionId == null) {
+      if (!mounted) return false;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Missing workflow item run id.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return false;
+    }
+
+    setState(() => _isSwipeCompleting = true);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final userId = prefs.getString('userId') ?? prefs.getString('user_id');
+      final apiToken = prefs.getString('api_token');
+      if (userId == null ||
+          userId.isEmpty ||
+          apiToken == null ||
+          apiToken.isEmpty) {
+        throw Exception('Missing credentials. Please log in again.');
+      }
+
+      final response = await http
+          .post(
+            Uri.parse(
+              '$_workflowApiBaseUrl/API/workflow/item-runs/$runId/complete',
+            ),
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Api-Token': apiToken,
+            },
+            body: jsonEncode({
+              'user_id': userId,
+              'api_token': apiToken,
+              'action_id': actionId,
+            }),
+          )
+          .timeout(const Duration(seconds: 30));
+
+      dynamic decoded;
+      try {
+        decoded = jsonDecode(response.body);
+      } catch (_) {}
+
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        final message = decoded is Map && decoded['message'] != null
+            ? decoded['message'].toString()
+            : 'Server error: ${response.statusCode}';
+        throw Exception(message);
+      }
+      if (decoded is Map && decoded['success'] == false) {
+        throw Exception(decoded['message'] ?? 'Action failed');
+      }
+
+      if (!mounted) return true;
+      final message = decoded is Map && decoded['message'] != null
+          ? decoded['message'].toString()
+          : 'Workflow task updated';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message), backgroundColor: Colors.green),
+      );
+      await _handleWorkflowActionCompleted();
+      return true;
+    } catch (e) {
+      if (!mounted) return false;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e.toString().replaceAll('Exception: ', '')),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return false;
+    } finally {
+      if (mounted) setState(() => _isSwipeCompleting = false);
+    }
+  }
+
   bool get _isWorkflowTask => _task['is_workflow_task'] == true;
+
+  Widget _buildStatusDropdown(String taskIdStr, String currentStatus) {
+    final taskId = int.tryParse(taskIdStr) ?? 0;
+    return TaskStatusChipSet(
+      currentStatus: currentStatus,
+      enabled: !_isUpdatingStatus,
+      onStatusSelected: (newStatus) => _updateTaskStatus(taskId, newStatus),
+    );
+  }
+
+  Future<void> _deleteTask(int taskId) async {
+    if (_isDeleting || taskId <= 0) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete task'),
+        content: const Text(
+          'Are you sure you want to delete this task? This action cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _isDeleting = true);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final apiToken = prefs.getString('api_token');
+      if (apiToken == null) {
+        throw Exception('Missing credentials. Please log in again.');
+      }
+
+      final response = await http
+          .post(
+            Uri.parse('https://office.buildahome.in/API/delete_task'),
+            body: {
+              'task_id': taskId.toString(),
+              'api_token': apiToken,
+            },
+          )
+          .timeout(const Duration(seconds: 20));
+
+      final decoded = response.statusCode == 200 ? jsonDecode(response.body) : null;
+      if (decoded is! Map || decoded['success'] != true) {
+        throw Exception(
+          decoded is Map
+              ? (decoded['message'] ?? 'Failed to delete task')
+              : 'Unable to delete task (code ${response.statusCode})',
+        );
+      }
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Task deleted successfully'),
+          backgroundColor: Colors.green,
+        ),
+      );
+      await widget.onWorkflowActionCompleted();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e.toString().replaceAll('Exception: ', '')),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _isDeleting = false);
+    }
+  }
+
+  Future<void> _updateTaskStatus(int taskId, String newStatus) async {
+    if (_isUpdatingStatus || taskId <= 0) return;
+
+    setState(() => _isUpdatingStatus = true);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final apiToken = prefs.getString('api_token');
+      if (apiToken == null) {
+        throw Exception('Missing credentials. Please log in again.');
+      }
+
+      final response = await http
+          .post(
+            Uri.parse('https://office.buildahome.in/API/update_task_status'),
+            body: {
+              'task_id': taskId.toString(),
+              'status': newStatus,
+              'api_token': apiToken,
+            },
+          )
+          .timeout(const Duration(seconds: 20));
+
+      final decoded = response.statusCode == 200 ? jsonDecode(response.body) : null;
+      if (decoded is! Map || decoded['success'] != true) {
+        throw Exception(
+          decoded is Map
+              ? (decoded['message'] ?? 'Failed to update status')
+              : 'Unable to update status (code ${response.statusCode})',
+        );
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _task = Map<String, dynamic>.from(_task)..['status'] = newStatus;
+        _statusExpanded = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Status updated'),
+          backgroundColor: Colors.green,
+        ),
+      );
+      await widget.onWorkflowActionCompleted();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e.toString().replaceAll('Exception: ', '')),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _isUpdatingStatus = false);
+    }
+  }
 
   List<Map<String, dynamic>> get _workflowActions {
     // Prefer workflow_actions from GET .../item-runs/{id}/actions (merged in
@@ -975,39 +1830,18 @@ class _TaskCardState extends State<_TaskCard> {
       case 'done':
       case 'finished':
       case 'skipped':
-        return Color(0xFF10B981);
+        return const Color(0xFF047857);
       case 'in_progress':
       case 'ready':
+        return AppTheme.accentBlue;
       case 'waiting_approval':
-        return Color(0xFF2196F3);
       case 'scheduled':
-        return Color(0xFF6366F1);
+        return AppTheme.navySoft;
       case 'cancelled':
       case 'rejected':
-        return Color(0xFFEF4444);
+        return const Color(0xFFB91C1C);
       default:
-        return Color(0xFFD97706);
-    }
-  }
-
-  IconData _statusIcon(String status) {
-    switch (status.toLowerCase()) {
-      case 'completed':
-      case 'done':
-      case 'finished':
-      case 'skipped':
-        return Icons.check_circle;
-      case 'in_progress':
-      case 'ready':
-      case 'waiting_approval':
-        return Icons.work;
-      case 'scheduled':
-        return Icons.schedule_rounded;
-      case 'cancelled':
-      case 'rejected':
-        return Icons.cancel;
-      default:
-        return Icons.pending_actions;
+        return const Color(0xFFB45309);
     }
   }
 
@@ -1349,7 +2183,7 @@ class _WorkflowManagerApprovalSectionState
       title: 'Approve task',
       message: 'Approve this task and mark it as completed?',
       confirmLabel: 'Approve',
-      confirmColor: Color(0xFF10B981),
+      confirmColor: AppTheme.primaryColorConst,
     );
     if (!confirmed || !mounted) return;
 
@@ -1464,7 +2298,7 @@ class _WorkflowManagerApprovalSectionState
                       : Icon(Icons.check_circle_outline_rounded, size: 18),
                   label: Text(_isApproving ? 'Approving...' : 'Approve'),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Color(0xFF10B981),
+                    backgroundColor: AppTheme.primaryColorConst,
                     foregroundColor: Colors.white,
                     elevation: 0,
                     shape: RoundedRectangleBorder(
@@ -1489,8 +2323,8 @@ class _WorkflowManagerApprovalSectionState
                       : Icon(Icons.close_rounded, size: 18),
                   label: Text(_isRejecting ? 'Rejecting...' : 'Reject'),
                   style: OutlinedButton.styleFrom(
-                    foregroundColor: Color(0xFFEF4444),
-                    side: BorderSide(color: Color(0xFFEF4444)),
+                    foregroundColor: const Color(0xFFB91C1C),
+                    side: const BorderSide(color: Color(0xFFB91C1C)),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(16),
                     ),
@@ -1864,7 +2698,7 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
 
   String _label(String fallback) {
     final label = action['label']?.toString().trim() ?? '';
-    return label.isEmpty ? fallback : label;
+    return toSentenceCaseLabel(label.isEmpty ? fallback : label);
   }
 
   dynamic _slotActionValue(String key, {Map<String, dynamic>? source}) {
@@ -1976,72 +2810,80 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
   }
 
   _WorkflowButtonData? _buttonData(String type) {
+    // Muted, navy-family tones that match AppTheme (avoid neon fills).
+    const success = Color(0xFF047857);
+    const warn = Color(0xFFB45309);
+    const info = AppTheme.accentBlue;
+    const primary = AppTheme.primaryColorConst;
+    const secondary = AppTheme.navySoft;
+    const tertiary = Color(0xFF334155);
+
     switch (type) {
       case 'upload':
         return _WorkflowButtonData(
-          defaultLabel: 'Upload File',
+          defaultLabel: 'Upload file',
           icon: Icons.upload_file,
-          color: Color(0xFFF59E0B),
+          color: warn,
         );
       case 'complete_button':
         return _WorkflowButtonData(
           defaultLabel: 'Complete task',
           icon: Icons.check_circle,
-          color: Color(0xFF10B981),
+          color: success,
         );
       case 'update_status':
         return _WorkflowButtonData(
           defaultLabel: 'Update status',
           icon: Icons.sync,
-          color: Color(0xFF2196F3),
+          color: info,
         );
       case 'yes_no':
         return _WorkflowButtonData(
-          defaultLabel: 'Yes / No',
+          defaultLabel: 'Yes / no',
           icon: Icons.rule,
-          color: Color(0xFF0D9488),
+          color: secondary,
         );
       case 'checklist':
         return _WorkflowButtonData(
           defaultLabel: 'Checklist',
           icon: Icons.checklist,
-          color: Color(0xFF7C3AED),
+          color: primary,
         );
       case 'user_checklist':
         return _WorkflowButtonData(
           defaultLabel: 'User checklist',
           icon: Icons.playlist_add_check,
-          color: Color(0xFF4F46E5),
+          color: secondary,
         );
       case 'user_checklist_followup':
         return _WorkflowButtonData(
           defaultLabel: 'Checklist follow-up',
           icon: Icons.assignment_turned_in_outlined,
-          color: Color(0xFF2563EB),
+          color: info,
         );
       case 'slot_selection':
         return _WorkflowButtonData(
           defaultLabel: 'Select slots',
           icon: Icons.event_available_outlined,
-          color: Color(0xFF2563EB),
+          color: info,
         );
       case 'slot_confirmation':
         return _WorkflowButtonData(
           defaultLabel: 'Confirm slot',
           icon: Icons.event_available_outlined,
-          color: Color(0xFF10B981),
+          color: success,
         );
       case 'kyp_material_shift':
         return _WorkflowButtonData(
-          defaultLabel: 'Shift Material',
+          defaultLabel: 'Shift material',
           icon: Icons.move_up_outlined,
-          color: Color(0xFF0D9488),
+          color: tertiary,
         );
       case 'redirect_button':
         return _WorkflowButtonData(
           defaultLabel: 'Open',
           icon: Icons.open_in_new,
-          color: AppTheme.primaryColorConst,
+          color: primary,
         );
       case 'view_prior_response':
       case 'yes_no_summary':
@@ -2051,26 +2893,26 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
         return _WorkflowButtonData(
           defaultLabel: 'View response',
           icon: Icons.visibility_outlined,
-          color: Colors.grey,
+          color: AppTheme.mutedGrey,
           outlined: true,
         );
       case 'text_list':
         return _WorkflowButtonData(
           defaultLabel: 'Material request',
           icon: Icons.format_list_bulleted,
-          color: Color(0xFF2563EB),
+          color: info,
         );
       case 'picture_choice_list':
         return _WorkflowButtonData(
           defaultLabel: 'Send options to client',
           icon: Icons.palette_outlined,
-          color: Color(0xFF7C3AED),
+          color: secondary,
         );
       case 'picture_choice_pick':
         return _WorkflowButtonData(
           defaultLabel: 'Submit choice',
           icon: Icons.color_lens_outlined,
-          color: Color(0xFF0D9488),
+          color: primary,
         );
       default:
         return null;
@@ -2564,7 +3406,7 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
     final materials = _kypMaterialShiftItems(action);
     final title = action['heading']?.toString().trim().isNotEmpty == true
         ? action['heading'].toString().trim()
-        : _label('Shift Material');
+        : _label('Shift material');
     final submitLabel =
         action['submit_button_label']?.toString().trim().isNotEmpty == true
             ? action['submit_button_label'].toString().trim()
@@ -2862,84 +3704,93 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
     }
 
     Future<_NearSiteCheckResult> checkNearSite() async {
-      if (!needsGps) {
-        return const _NearSiteCheckResult(ok: true);
-      }
-      if (requireNearSite &&
-          (!siteLocationAvailable || siteLocation == null)) {
-        return const _NearSiteCheckResult(
-          ok: false,
-          error: 'Project site map coordinates are not configured.',
-        );
-      }
-
-      final permission = await _ensureLocationPermission();
-      if (!permission.ok) {
-        return _NearSiteCheckResult(
-          ok: false,
-          error: permission.error ??
-              'Your device location is required to upload near the site.',
-          openSettings: permission.openSettings,
-        );
-      }
-
-      try {
-        final position = await Geolocator.getCurrentPosition(
-          locationSettings: const LocationSettings(
-            accuracy: LocationAccuracy.high,
-          ),
-        ).timeout(const Duration(seconds: 15));
-        final distance = siteLocation == null
-            ? 0.0
-            : Geolocator.distanceBetween(
-                position.latitude,
-                position.longitude,
-                siteLocation.latitude,
-                siteLocation.longitude,
-              );
-        final roundedDistance = distance.round();
-        if (requireNearSite && siteLocation != null) {
-          _logNearSiteDistanceCheck(
-            itemRunId: _resolvedWorkflowItemRunId,
-            projectId: task['project_id']?.toString() ?? '',
-            siteLatitude: siteLocation.latitude,
-            siteLongitude: siteLocation.longitude,
-            deviceLatitude: position.latitude,
-            deviceLongitude: position.longitude,
-            distanceMeters: distance,
-            nearSiteRadiusMeters: nearSiteRadiusMeters,
-            withinRadius: distance <= nearSiteRadiusMeters,
-          );
-          if (distance > nearSiteRadiusMeters) {
-            return _NearSiteCheckResult(
-              ok: false,
-              error:
-                  'You must be within $nearSiteRadiusMeters m of the project site (you are about $roundedDistance m away). '
-                  'Site reference: ${siteLocation.latitude.toStringAsFixed(7)}, '
-                  '${siteLocation.longitude.toStringAsFixed(7)}',
-              distanceMeters: distance,
-              latitude: position.latitude,
-              longitude: position.longitude,
-            );
-          }
+      Future<_NearSiteCheckResult> runCheck() async {
+        if (!needsGps) {
+          return const _NearSiteCheckResult(ok: true);
         }
-        return _NearSiteCheckResult(
-          ok: true,
-          distanceMeters: siteLocation == null ? null : distance,
-          latitude: position.latitude,
-          longitude: position.longitude,
-        );
-      } on TimeoutException {
-        return const _NearSiteCheckResult(
-          ok: false,
-          error: 'Could not get your location in time. Please try again.',
-        );
-      } catch (e) {
-        return _NearSiteCheckResult(
-          ok: false,
-          error: e.toString().replaceAll('Exception: ', ''),
-        );
+        if (requireNearSite &&
+            (!siteLocationAvailable || siteLocation == null)) {
+          return const _NearSiteCheckResult(
+            ok: false,
+            error: 'Project site map coordinates are not configured.',
+          );
+        }
+
+        final permission = await _ensureLocationPermission();
+        if (!permission.ok) {
+          return _NearSiteCheckResult(
+            ok: false,
+            error: permission.error ??
+                'Your device location is required to upload near the site.',
+            openSettings: permission.openSettings,
+          );
+        }
+
+        try {
+          final position = await Geolocator.getCurrentPosition(
+            locationSettings: const LocationSettings(
+              accuracy: LocationAccuracy.high,
+            ),
+          ).timeout(const Duration(seconds: 15));
+          final distance = siteLocation == null
+              ? 0.0
+              : Geolocator.distanceBetween(
+                  position.latitude,
+                  position.longitude,
+                  siteLocation.latitude,
+                  siteLocation.longitude,
+                );
+          final roundedDistance = distance.round();
+          if (requireNearSite && siteLocation != null) {
+            _logNearSiteDistanceCheck(
+              itemRunId: _resolvedWorkflowItemRunId,
+              projectId: task['project_id']?.toString() ?? '',
+              siteLatitude: siteLocation.latitude,
+              siteLongitude: siteLocation.longitude,
+              deviceLatitude: position.latitude,
+              deviceLongitude: position.longitude,
+              distanceMeters: distance,
+              nearSiteRadiusMeters: nearSiteRadiusMeters,
+              withinRadius: distance <= nearSiteRadiusMeters,
+            );
+            if (distance > nearSiteRadiusMeters) {
+              return _NearSiteCheckResult(
+                ok: false,
+                error:
+                    'You must be within $nearSiteRadiusMeters m of the project site (you are about $roundedDistance m away). '
+                    'Site reference: ${siteLocation.latitude.toStringAsFixed(7)}, '
+                    '${siteLocation.longitude.toStringAsFixed(7)}',
+                distanceMeters: distance,
+                latitude: position.latitude,
+                longitude: position.longitude,
+              );
+            }
+          }
+          return _NearSiteCheckResult(
+            ok: true,
+            distanceMeters: siteLocation == null ? null : distance,
+            latitude: position.latitude,
+            longitude: position.longitude,
+          );
+        } on TimeoutException {
+          return const _NearSiteCheckResult(
+            ok: false,
+            error: 'Could not get your location in time. Please try again.',
+          );
+        } catch (e) {
+          return _NearSiteCheckResult(
+            ok: false,
+            error: e.toString().replaceAll('Exception: ', ''),
+          );
+        }
       }
+
+      final result = await runCheck();
+      return _applyDebugNearSiteOverrideIfNeeded(
+        context,
+        result,
+        siteLocation: siteLocation,
+      );
     }
 
     void applyNearSiteResult(_NearSiteCheckResult result) {
@@ -3129,6 +3980,7 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
             }
 
             Future<void> submit() async {
+              FocusManager.instance.primaryFocus?.unfocus();
               var closeSheet = false;
               if (allowFileUpload && selectedFiles.length < minFiles) {
                 _showSnackBar('Please select at least $minFiles file(s).',
@@ -3338,20 +4190,21 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
                     ),
                   ],
                   if (selectedFiles.isNotEmpty) ...[
-                    SizedBox(height: 8),
-                    ...selectedFiles.map(
-                      (file) => Padding(
-                        padding: EdgeInsets.only(bottom: 4),
-                        child: Text(
-                          file.capturedAt == null
-                              ? file.name
-                              : '${file.name} • ${DateFormat('dd MMM, hh:mm a').format(file.capturedAt!)}',
-                          style: TextStyle(
-                            color: _premiumInk,
-                            fontSize: 12,
-                          ),
-                        ),
-                      ),
+                    SizedBox(height: 12),
+                    _SelectedUploadFilesPreview(
+                      files: selectedFiles,
+                      onRemove: isSubmitting
+                          ? null
+                          : (index) {
+                              setSheetState(() {
+                                if (index >= 0 && index < selectedFiles.length) {
+                                  selectedFiles =
+                                      List<_SelectedUploadFile>.from(
+                                          selectedFiles)
+                                        ..removeAt(index);
+                                }
+                              });
+                            },
                     ),
                   ],
                   if (allowComment) ...[
@@ -3398,6 +4251,29 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
 
     final commentController = TextEditingController();
     final percentController = TextEditingController();
+    final percentFocusNode = FocusNode();
+    final saveDocumentKey = GlobalKey();
+    final sheetScrollController = ScrollController();
+
+    void ensureSaveDocumentVisible() {
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        await Future<void>.delayed(const Duration(milliseconds: 300));
+        final targetContext = saveDocumentKey.currentContext;
+        if (targetContext == null) return;
+        await Scrollable.ensureVisible(
+          targetContext,
+          duration: const Duration(milliseconds: 250),
+          curve: Curves.easeOut,
+          alignment: 1.0,
+        );
+      });
+    }
+
+    percentFocusNode.addListener(() {
+      if (percentFocusNode.hasFocus) {
+        ensureSaveDocumentVisible();
+      }
+    });
     final uploadSources = _resolveWorkflowUploadSources(uploadAction);
     final cameraOnly = uploadSources.cameraOnly;
     final allowComment = uploadAction['allow_comment'] == true;
@@ -3435,6 +4311,7 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
     bool isFinalizing = false;
     bool isDeleting = false;
     int? deletingIndex;
+    int? confirmDeleteIndex;
     bool refreshAfterClose = false;
     bool isCheckingLocation = needsGps;
     String? nearSiteError;
@@ -3468,71 +4345,80 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
     }
 
     Future<_NearSiteCheckResult> checkNearSite() async {
-      if (!needsGps) {
-        return const _NearSiteCheckResult(ok: true);
-      }
-      if (requireNearSite &&
-          (!siteLocationAvailable || siteLocation == null)) {
-        return const _NearSiteCheckResult(
-          ok: false,
-          error: 'Project site map coordinates are not configured.',
-        );
-      }
-
-      final permission = await _ensureLocationPermission();
-      if (!permission.ok) {
-        return _NearSiteCheckResult(
-          ok: false,
-          error: permission.error ??
-              'Your device location is required to upload near the site.',
-          openSettings: permission.openSettings,
-        );
-      }
-
-      try {
-        final position = await Geolocator.getCurrentPosition(
-          locationSettings: const LocationSettings(
-            accuracy: LocationAccuracy.high,
-          ),
-        ).timeout(const Duration(seconds: 15));
-        final distance = siteLocation == null
-            ? 0.0
-            : Geolocator.distanceBetween(
-                position.latitude,
-                position.longitude,
-                siteLocation.latitude,
-                siteLocation.longitude,
-              );
-        if (requireNearSite && siteLocation != null) {
-          if (distance > nearSiteRadiusMeters) {
-            final roundedDistance = distance.round();
-            return _NearSiteCheckResult(
-              ok: false,
-              error:
-                  'You must be within $nearSiteRadiusMeters m of the project site (you are about $roundedDistance m away).',
-              distanceMeters: distance,
-              latitude: position.latitude,
-              longitude: position.longitude,
-            );
-          }
+      Future<_NearSiteCheckResult> runCheck() async {
+        if (!needsGps) {
+          return const _NearSiteCheckResult(ok: true);
         }
-        return _NearSiteCheckResult(
-          ok: true,
-          distanceMeters: siteLocation == null ? null : distance,
-          latitude: position.latitude,
-          longitude: position.longitude,
-        );
-      } on TimeoutException {
-        return const _NearSiteCheckResult(
-          ok: false,
-          error: 'Could not get your location in time. Please try again.',
-        );
-      } catch (e) {
-        return _NearSiteCheckResult(
-          ok: false,
-          error: e.toString().replaceAll('Exception: ', ''),
-        );
+        if (requireNearSite &&
+            (!siteLocationAvailable || siteLocation == null)) {
+          return const _NearSiteCheckResult(
+            ok: false,
+            error: 'Project site map coordinates are not configured.',
+          );
+        }
+
+        final permission = await _ensureLocationPermission();
+        if (!permission.ok) {
+          return _NearSiteCheckResult(
+            ok: false,
+            error: permission.error ??
+                'Your device location is required to upload near the site.',
+            openSettings: permission.openSettings,
+          );
+        }
+
+        try {
+          final position = await Geolocator.getCurrentPosition(
+            locationSettings: const LocationSettings(
+              accuracy: LocationAccuracy.high,
+            ),
+          ).timeout(const Duration(seconds: 15));
+          final distance = siteLocation == null
+              ? 0.0
+              : Geolocator.distanceBetween(
+                  position.latitude,
+                  position.longitude,
+                  siteLocation.latitude,
+                  siteLocation.longitude,
+                );
+          if (requireNearSite && siteLocation != null) {
+            if (distance > nearSiteRadiusMeters) {
+              final roundedDistance = distance.round();
+              return _NearSiteCheckResult(
+                ok: false,
+                error:
+                    'You must be within $nearSiteRadiusMeters m of the project site (you are about $roundedDistance m away).',
+                distanceMeters: distance,
+                latitude: position.latitude,
+                longitude: position.longitude,
+              );
+            }
+          }
+          return _NearSiteCheckResult(
+            ok: true,
+            distanceMeters: siteLocation == null ? null : distance,
+            latitude: position.latitude,
+            longitude: position.longitude,
+          );
+        } on TimeoutException {
+          return const _NearSiteCheckResult(
+            ok: false,
+            error: 'Could not get your location in time. Please try again.',
+          );
+        } catch (e) {
+          return _NearSiteCheckResult(
+            ok: false,
+            error: e.toString().replaceAll('Exception: ', ''),
+          );
+        }
       }
+
+      final result = await runCheck();
+      return _applyDebugNearSiteOverrideIfNeeded(
+        context,
+        result,
+        siteLocation: siteLocation,
+      );
     }
 
     void applyNearSiteResult(_NearSiteCheckResult result) {
@@ -3597,6 +4483,18 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
       }
     }
 
+    void scrollSheetToActions() {
+      // Keep the attach/submit section in view after picking a file.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!sheetScrollController.hasClients) return;
+        sheetScrollController.animateTo(
+          0,
+          duration: const Duration(milliseconds: 240),
+          curve: Curves.easeOut,
+        );
+      });
+    }
+
     Future<void> pickGallery(void Function(void Function()) setSheetState) async {
       try {
         await ensureGpsForPick(setSheetState);
@@ -3613,6 +4511,7 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
         percentError = null;
         formError = null;
       });
+      scrollSheetToActions();
     }
 
     Future<void> pickCamera(void Function(void Function()) setSheetState) async {
@@ -3629,6 +4528,7 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
         percentError = null;
         formError = null;
       });
+      scrollSheetToActions();
     }
 
     Future<void> pickDocument(void Function(void Function()) setSheetState) async {
@@ -3647,6 +4547,7 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
         percentError = null;
         formError = null;
       });
+      scrollSheetToActions();
     }
 
     Future<void> pickVideo(void Function(void Function()) setSheetState) async {
@@ -3672,6 +4573,7 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
         percentError = null;
         formError = null;
       });
+      scrollSheetToActions();
     }
 
     String? validatePercentInput(String raw, int previousPercent) {
@@ -3703,8 +4605,12 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
                 isSaving || isFinalizing || isCheckingLocation || isDeleting;
             final withinNearSite =
                 !needsGps || (nearSiteError == null && deviceLatitude != null);
-            final canAddDocument =
-                canUpdate && currentPercent < 100 && withinNearSite && !isBusy;
+            // Keep the selected-file UI visible while a save is in flight so the
+            // image preview and progress bar stay on screen after upload starts.
+            final canAddDocument = canUpdate &&
+                currentPercent < 100 &&
+                withinNearSite &&
+                (!isBusy || (isSaving && pendingFile != null));
             final canFinalize =
                 canUpdate && currentPercent >= 100 && withinNearSite && !isBusy;
             final showCommentOnFinalize = allowComment && currentPercent >= 100;
@@ -3722,34 +4628,50 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
               });
             }
 
-            Future<void> deleteSavedDocument(int index) async {
-              if (index < 0 || index >= progressEntries.length) return;
+            List<Map<String, dynamic>> imageFilesForEntry(
+              Map<String, dynamic> entry,
+            ) {
+              final files = _mapListFlexible(entry['files']);
+              return files.where((file) {
+                final url = _workflowAttachmentUrl(file);
+                if (url == null) return false;
+                final contentType =
+                    _firstString(file, ['content_type', 'mime_type']);
+                final name = _firstString(file, [
+                  'filename',
+                  'name',
+                  'original_filename',
+                  'file_name',
+                ]);
+                return _isImageAttachment(url, contentType: contentType) ||
+                    (name != null && _looksLikeImage(name));
+              }).toList();
+            }
 
-              final entry = progressEntries[index];
-              final documentName = _uploadProgressEntryFileName(entry);
-              final confirmed = await showDialog<bool>(
-                context: context,
-                builder: (dialogContext) => AlertDialog(
-                  title: Text('Remove document'),
-                  content: Text(
-                    'Remove $documentName? Overall progress will be recalculated.',
-                  ),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.of(dialogContext).pop(false),
-                      child: Text('Cancel'),
-                    ),
-                    TextButton(
-                      onPressed: () => Navigator.of(dialogContext).pop(true),
-                      style: TextButton.styleFrom(
-                        foregroundColor: Color(0xFFDC2626),
-                      ),
-                      child: Text('Remove'),
-                    ),
-                  ],
-                ),
-              );
-              if (confirmed != true || !sheetContext.mounted) return;
+            void requestDeleteDocument(int index) {
+              if (index < 0 || index >= progressEntries.length || isBusy) {
+                return;
+              }
+              setSheetState(() {
+                confirmDeleteIndex = index;
+                formError = null;
+              });
+            }
+
+            void cancelDeleteDocument() {
+              if (isDeleting) return;
+              setSheetState(() {
+                confirmDeleteIndex = null;
+              });
+            }
+
+            Future<void> confirmDeleteDocument() async {
+              final index = confirmDeleteIndex;
+              if (index == null ||
+                  index < 0 ||
+                  index >= progressEntries.length) {
+                return;
+              }
 
               setSheetState(() {
                 isDeleting = true;
@@ -3795,7 +4717,9 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
 
                 if (!mounted) return;
                 _showSnackBar(message);
-                setSheetState(() {});
+                setSheetState(() {
+                  confirmDeleteIndex = null;
+                });
               } catch (e) {
                 if (!mounted) return;
                 final errorMessage =
@@ -3821,6 +4745,7 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
             }
 
             Future<void> saveDocument() async {
+              FocusManager.instance.primaryFocus?.unfocus();
               if (pendingFile == null) {
                 setSheetState(() {
                   formError = 'Select a file to upload.';
@@ -3963,6 +4888,7 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
             }
 
             Future<void> finalizeUpload() async {
+              FocusManager.instance.primaryFocus?.unfocus();
               if (requireComment && commentController.text.trim().isEmpty) {
                 setSheetState(() {
                   formError = 'Please add a comment.';
@@ -4062,24 +4988,157 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
               }
             }
 
+            // Show overall progress only after an upload has started/completed,
+            // not merely when a file is attached.
+            final showOverallProgress = isSaving ||
+                isFinalizing ||
+                currentPercent > 0 ||
+                progressEntries.isNotEmpty;
+
+            if (confirmDeleteIndex != null &&
+                confirmDeleteIndex! >= 0 &&
+                confirmDeleteIndex! < progressEntries.length) {
+              final entry = progressEntries[confirmDeleteIndex!];
+              final files = _mapListFlexible(entry['files']);
+              final imageFiles = imageFilesForEntry(entry);
+              final uploadedAt = entry['uploaded_at']?.toString();
+
+              return _BottomSheetFrame(
+                title: 'Remove document',
+                icon: Icons.delete_outline,
+                scrollController: sheetScrollController,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (imageFiles.isNotEmpty) ...[
+                      Center(
+                        child: imageFiles.length == 1
+                            ? _UploadedDocumentImagePreview(
+                                file: imageFiles.first,
+                                relatedFiles: files,
+                                size: 220,
+                                enableTap: false,
+                              )
+                            : SizedBox(
+                                height: 160,
+                                width: double.maxFinite,
+                                child: ListView.separated(
+                                  scrollDirection: Axis.horizontal,
+                                  itemCount: imageFiles.length,
+                                  separatorBuilder: (_, __) =>
+                                      const SizedBox(width: 10),
+                                  itemBuilder: (context, imageIndex) {
+                                    return _UploadedDocumentImagePreview(
+                                      file: imageFiles[imageIndex],
+                                      relatedFiles: files,
+                                      size: 160,
+                                      enableTap: false,
+                                    );
+                                  },
+                                ),
+                              ),
+                      ),
+                      const SizedBox(height: 14),
+                    ],
+                    if (uploadedAt != null && uploadedAt.trim().isNotEmpty) ...[
+                      Text(
+                        _formatUploadProgressDate(uploadedAt),
+                        style: TextStyle(
+                          color: AppTheme.getTextPrimary(context),
+                          fontSize: 14,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                    ],
+                    Text(
+                      'Remove this document? Overall progress will be recalculated.',
+                      style: TextStyle(
+                        color: AppTheme.getTextSecondary(context),
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w600,
+                        height: 1.35,
+                      ),
+                    ),
+                    if (formError != null && formError!.trim().isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      _SlotServerErrorBanner(message: formError!),
+                    ],
+                    const SizedBox(height: 20),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed:
+                                isDeleting ? null : cancelDeleteDocument,
+                            style: OutlinedButton.styleFrom(
+                              padding:
+                                  const EdgeInsets.symmetric(vertical: 14),
+                              foregroundColor:
+                                  AppTheme.getTextPrimary(context),
+                              side: const BorderSide(color: Color(0xFFE5E7EB)),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                            ),
+                            child: const Text(
+                              'Cancel',
+                              style: TextStyle(fontWeight: FontWeight.w800),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed:
+                                isDeleting ? null : confirmDeleteDocument,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFFDC2626),
+                              foregroundColor: Colors.white,
+                              padding:
+                                  const EdgeInsets.symmetric(vertical: 14),
+                              elevation: 0,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                            ),
+                            child: isDeleting
+                                ? const SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      valueColor: AlwaysStoppedAnimation<Color>(
+                                        Colors.white,
+                                      ),
+                                    ),
+                                  )
+                                : const Text(
+                                    'Remove',
+                                    style:
+                                        TextStyle(fontWeight: FontWeight.w800),
+                                  ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              );
+            }
+
             return _BottomSheetFrame(
               title: _label(submitLabel),
               icon: Icons.upload_file,
+              scrollController: sheetScrollController,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _WorkflowUploadProgressBar(percent: currentPercent),
-                  if (progressEntries.isNotEmpty) ...[
+                  if (showOverallProgress) ...[
+                    _WorkflowUploadProgressBar(percent: currentPercent),
                     SizedBox(height: 16),
-                    _WorkflowUploadProgressHistory(
-                      entries: progressEntries,
-                      canDelete: canUpdate,
-                      deletingIndex: isDeleting ? deletingIndex : null,
-                      onDelete: canUpdate ? deleteSavedDocument : null,
-                    ),
                   ],
                   if (needsGps) ...[
-                    SizedBox(height: 16),
                     _NearSiteStatusBanner(
                       isChecking: isCheckingLocation,
                       error: nearSiteError,
@@ -4095,15 +5154,17 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
                             }
                           : null,
                     ),
+                    SizedBox(height: 16),
                   ],
                   if (formError != null && formError!.trim().isNotEmpty) ...[
-                    SizedBox(height: 12),
                     _SlotServerErrorBanner(message: formError!),
+                    SizedBox(height: 12),
                   ],
+                  // Keep attach/submit above history so the submit button stays
+                  // reachable without scrolling past existing uploads.
                   if (canAddDocument) ...[
-                    SizedBox(height: 16),
                     Text(
-                      'Add upload',
+                      'Choose how you want to upload',
                       style: TextStyle(
                         color: AppTheme.getTextPrimary(context),
                         fontSize: 14,
@@ -4134,45 +5195,27 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
                         label: Text('No upload sources configured'),
                       ),
                     if (pendingFile != null) ...[
-                      SizedBox(height: 10),
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Expanded(
-                            child: Text(
-                              pendingFile!.capturedAt == null
-                                  ? pendingFile!.name
-                                  : '${pendingFile!.name} • ${DateFormat('dd MMM, hh:mm a').format(pendingFile!.capturedAt!)}',
-                              style: TextStyle(
-                                color: _premiumInk,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ),
-                          IconButton(
-                            tooltip: 'Remove selected file',
-                            onPressed: isBusy
-                                ? null
-                                : () {
-                                    setSheetState(() {
-                                      pendingFile = null;
-                                      percentController.clear();
-                                      percentError = null;
-                                      formError = null;
-                                    });
-                                  },
-                            icon: Icon(Icons.close, size: 20),
-                            color: AppTheme.getTextSecondary(context),
-                            visualDensity: VisualDensity.compact,
-                          ),
-                        ],
+                      SizedBox(height: 12),
+                      _SelectedUploadPreview(
+                        file: pendingFile!,
+                        onRemove: isBusy
+                            ? null
+                            : () {
+                                setSheetState(() {
+                                  pendingFile = null;
+                                  percentController.clear();
+                                  percentError = null;
+                                  formError = null;
+                                });
+                              },
                       ),
                       SizedBox(height: 10),
                       TextField(
                         controller: percentController,
+                        focusNode: percentFocusNode,
                         keyboardType: TextInputType.number,
                         inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                        onTap: ensureSaveDocumentVisible,
                         onChanged: (_) {
                           if (percentError != null) {
                             setSheetState(() {
@@ -4188,14 +5231,18 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
                         ).copyWith(errorText: percentError),
                       ),
                       SizedBox(height: 12),
-                      _SheetSubmitButton(
-                        label: isSaving ? 'Saving...' : 'Save document',
-                        isSubmitting: isSaving,
-                        onPressed: isBusy ? null : saveDocument,
+                      KeyedSubtree(
+                        key: saveDocumentKey,
+                        child: _SheetSubmitButton(
+                          label: isSaving ? 'Saving...' : 'Save document',
+                          isSubmitting: isSaving,
+                          onPressed: isBusy ? null : saveDocument,
+                        ),
                       ),
                     ],
+                    if (progressEntries.isNotEmpty) SizedBox(height: 18),
                   ] else if (canUpdate && currentPercent >= 100) ...[
-                    SizedBox(height: 16),
+                    SizedBox(height: 4),
                     Container(
                       width: double.infinity,
                       padding: EdgeInsets.all(12),
@@ -4214,6 +5261,15 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
                           fontWeight: FontWeight.w700,
                         ),
                       ),
+                    ),
+                    if (progressEntries.isNotEmpty) SizedBox(height: 18),
+                  ],
+                  if (progressEntries.isNotEmpty) ...[
+                    _WorkflowUploadProgressHistory(
+                      entries: progressEntries,
+                      canDelete: canUpdate && !isBusy,
+                      deletingIndex: isDeleting ? deletingIndex : null,
+                      onDelete: canUpdate ? requestDeleteDocument : null,
                     ),
                   ],
                   if (showCommentOnFinalize && canUpdate) ...[
@@ -4243,6 +5299,8 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
     await Future<void>.delayed(const Duration(milliseconds: 350));
     commentController.dispose();
     percentController.dispose();
+    percentFocusNode.dispose();
+    sheetScrollController.dispose();
     if (refreshAfterClose && mounted) {
       await widget.onActionCompleted();
     }
@@ -4305,8 +5363,10 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
     final commentController = TextEditingController();
     final allowComment = action['allow_comment'] == true;
     final requireComment = action['require_comment'] == true;
-    final yesLabel = action['yes_label']?.toString() ?? 'Yes';
-    final noLabel = action['no_label']?.toString() ?? 'No';
+    final yesLabel =
+        toSentenceCaseLabel(action['yes_label']?.toString() ?? 'Yes');
+    final noLabel =
+        toSentenceCaseLabel(action['no_label']?.toString() ?? 'No');
     bool isSubmitting = false;
 
     await showModalBottomSheet<void>(
@@ -4340,7 +5400,7 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
             }
 
             return _BottomSheetFrame(
-              title: _label('Yes / No'),
+              title: _label('Yes / no'),
               icon: Icons.rule,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -5933,24 +6993,6 @@ class _WorkflowTextListSheetState extends State<_WorkflowTextListSheet> {
           _SlotServerErrorBanner(message: _formError!),
           SizedBox(height: 14),
         ],
-        if (widget.standardLines.isNotEmpty) ...[
-          Text(
-            'Standard list',
-            style: TextStyle(
-              color: AppTheme.getTextPrimary(context),
-              fontSize: 14,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-          SizedBox(height: 8),
-          ...widget.standardLines.map(
-            (line) => _WorkflowTextListStandardLineCard(
-              line: line,
-              indentEnabled: widget.indentEnabled,
-            ),
-          ),
-          SizedBox(height: 14),
-        ],
         if (widget.linesNeedingQuantity.isNotEmpty) ...[
           Text(
             'Enter quantities',
@@ -6093,15 +7135,8 @@ class _WorkflowTextListQuantityRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      margin: EdgeInsets.only(bottom: 10),
-      padding: EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: _premiumSurface,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Color(0xFFE5E7EB)),
-      ),
+    return Padding(
+      padding: EdgeInsets.only(bottom: 14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -7601,7 +8636,7 @@ class _KypProjectPickerSheetState extends State<_KypProjectPickerSheet> {
           ),
           Expanded(
             child: widget.isLoading
-                ? Center(child: CircularProgressIndicator())
+                ? const SkeletonSheetLoader(itemCount: 6)
                 : filtered.isEmpty
                     ? _ResponseEmptyState(message: 'No source projects found.')
                     : ListView.separated(
@@ -8056,7 +9091,7 @@ class _ResponseEntryCard extends StatelessWidget {
             SizedBox(height: showTitle ? 14 : 0),
             _ResponseSectionHeader(
               icon: Icons.attach_file_rounded,
-              label: files.length == 1 ? 'Uploaded File' : 'Uploaded Files',
+              label: files.length == 1 ? 'Uploaded file' : 'Uploaded files',
             ),
             SizedBox(height: 10),
             ...files.map(
@@ -8345,7 +9380,7 @@ class _ChecklistFollowupResponseTile extends StatelessWidget {
             if (comment != null) SizedBox(height: 12),
             _ResponseSectionHeader(
               icon: Icons.attach_file_rounded,
-              label: files.length == 1 ? 'Uploaded File' : 'Uploaded Files',
+              label: files.length == 1 ? 'Uploaded file' : 'Uploaded files',
             ),
             SizedBox(height: 10),
             ...files.map(
@@ -8370,9 +9405,16 @@ class _ResponseFileTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final url = _workflowAttachmentUrl(file);
-    final name = _firstString(file, ['filename', 'file_name', 'name']) ??
-        _firstString(file, ['document_name']) ??
-        'Uploaded file';
+    final name = _displayFileName(
+      _firstString(file, [
+            'original_filename',
+            'filename',
+            'file_name',
+            'document_name',
+            'name',
+          ]),
+      fallback: 'Uploaded file',
+    );
     final contentType = _firstString(file, ['content_type', 'mime_type']);
     final isImage =
         url != null && _isImageAttachment(url, contentType: contentType);
@@ -8649,7 +9691,7 @@ class _WorkflowUploadProgressHistory extends StatelessWidget {
   final List<Map<String, dynamic>> entries;
   final bool canDelete;
   final int? deletingIndex;
-  final Future<void> Function(int index)? onDelete;
+  final void Function(int index)? onDelete;
 
   const _WorkflowUploadProgressHistory({
     required this.entries,
@@ -8658,99 +9700,339 @@ class _WorkflowUploadProgressHistory extends StatelessWidget {
     this.onDelete,
   });
 
+  List<Map<String, dynamic>> _imageFilesFor(Map<String, dynamic> entry) {
+    final files = _mapListFlexible(entry['files']);
+    return files.where((file) {
+      final url = _workflowAttachmentUrl(file);
+      if (url == null) return false;
+      final contentType = _firstString(file, ['content_type', 'mime_type']);
+      final name = _firstString(file, [
+        'filename',
+        'name',
+        'original_filename',
+        'file_name',
+      ]);
+      return _isImageAttachment(url, contentType: contentType) ||
+          (name != null && _looksLikeImage(name));
+    }).toList();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'Uploaded documents',
-          style: TextStyle(
-            color: AppTheme.getTextPrimary(context),
-            fontSize: 14,
-            fontWeight: FontWeight.w900,
+        Row(
+          children: [
+            Text(
+              'Uploaded documents',
+              style: TextStyle(
+                color: AppTheme.getTextPrimary(context),
+                fontSize: 14,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+            const Spacer(),
+            Text(
+              '${entries.length}',
+              style: TextStyle(
+                color: AppTheme.getTextSecondary(context),
+                fontSize: 12.5,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        SizedBox(
+          height: 168,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: entries.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 12),
+            itemBuilder: (context, index) {
+              final entry = entries[index];
+              final files = _mapListFlexible(entry['files']);
+              final imageFiles = _imageFilesFor(entry);
+              final isDeletingRow = deletingIndex == index;
+              final percent = entry['percent']?.toString() ?? '';
+              final uploadedAt = entry['uploaded_at']?.toString();
+              final dateLabel = uploadedAt == null || uploadedAt.trim().isEmpty
+                  ? 'Uploaded'
+                  : _formatUploadProgressDate(uploadedAt);
+
+              return _UploadedProgressCarouselCard(
+                width: 148,
+                height: 168,
+                imageFile: imageFiles.isEmpty ? null : imageFiles.first,
+                relatedFiles: files,
+                percentLabel: percent.isEmpty ? null : '$percent%',
+                dateLabel: dateLabel,
+                fallbackLabel: _uploadProgressEntryFileName(entry),
+                isDeleting: isDeletingRow,
+                canDelete: canDelete && onDelete != null,
+                onDelete: deletingIndex == null && onDelete != null
+                    ? () => onDelete!(index)
+                    : null,
+              );
+            },
           ),
         ),
-        SizedBox(height: 8),
-        ...entries.asMap().entries.map(
-          (indexedEntry) {
-            final index = indexedEntry.key;
-            final entry = indexedEntry.value;
-            final isDeletingRow = deletingIndex == index;
+      ],
+    );
+  }
+}
 
-            return Container(
-              width: double.infinity,
-              margin: EdgeInsets.only(bottom: 8),
-              padding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              decoration: BoxDecoration(
-                color: _premiumSurface,
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: Color(0xFFE5E7EB)),
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          _uploadProgressEntryFileName(entry),
-                          style: TextStyle(
-                            color: AppTheme.getTextPrimary(context),
-                            fontSize: 13,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                        if (entry['uploaded_at'] != null) ...[
-                          SizedBox(height: 4),
-                          Text(
-                            entry['uploaded_at'].toString(),
-                            style: TextStyle(
-                              color: AppTheme.getTextSecondary(context),
-                              fontSize: 11.5,
-                              fontWeight: FontWeight.w600,
+class _UploadedProgressCarouselCard extends StatelessWidget {
+  final double width;
+  final double height;
+  final Map<String, dynamic>? imageFile;
+  final List<Map<String, dynamic>> relatedFiles;
+  final String? percentLabel;
+  final String dateLabel;
+  final String fallbackLabel;
+  final bool isDeleting;
+  final bool canDelete;
+  final VoidCallback? onDelete;
+
+  const _UploadedProgressCarouselCard({
+    required this.width,
+    required this.height,
+    required this.imageFile,
+    required this.relatedFiles,
+    required this.percentLabel,
+    required this.dateLabel,
+    required this.fallbackLabel,
+    required this.isDeleting,
+    required this.canDelete,
+    this.onDelete,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final imageUrl = imageFile == null
+        ? null
+        : _workflowAttachmentUrl(imageFile!);
+    final absoluteUrl =
+        imageUrl == null ? null : _absoluteWorkflowUrl(imageUrl);
+
+    return SizedBox(
+      width: width,
+      height: height,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: absoluteUrl == null || imageFile == null
+              ? null
+              : () => _openWorkflowAttachment(
+                    context,
+                    imageFile!,
+                    relatedFiles: relatedFiles,
+                  ),
+          borderRadius: BorderRadius.circular(18),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(18),
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                ColoredBox(
+                  color: const Color(0xFF111827),
+                  child: absoluteUrl == null
+                      ? Center(
+                          child: Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                const Icon(
+                                  Icons.insert_drive_file_outlined,
+                                  color: Colors.white70,
+                                  size: 28,
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  fallbackLabel,
+                                  textAlign: TextAlign.center,
+                                  maxLines: 3,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
-                        ],
+                        )
+                      : Image.network(
+                          absoluteUrl,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => const Center(
+                            child: Icon(
+                              Icons.broken_image_outlined,
+                              color: Colors.white70,
+                              size: 28,
+                            ),
+                          ),
+                        ),
+                ),
+                const DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Color(0x66000000),
+                        Color(0x00000000),
+                        Color(0xB3000000),
+                      ],
+                      stops: [0, 0.45, 1],
+                    ),
+                  ),
+                ),
+                if (percentLabel != null)
+                  Positioned(
+                    top: 10,
+                    left: 10,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.92),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text(
+                        percentLabel!,
+                        style: const TextStyle(
+                          color: Color(0xFF111827),
+                          fontSize: 11,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
+                  ),
+                if (canDelete)
+                  Positioned(
+                    top: 6,
+                    right: 6,
+                    child: Material(
+                      color: Colors.black54,
+                      shape: const CircleBorder(),
+                      child: InkWell(
+                        customBorder: const CircleBorder(),
+                        onTap: isDeleting ? null : onDelete,
+                        child: Padding(
+                          padding: const EdgeInsets.all(6),
+                          child: isDeleting
+                              ? const SizedBox(
+                                  width: 14,
+                                  height: 14,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    valueColor: AlwaysStoppedAnimation<Color>(
+                                      Colors.white,
+                                    ),
+                                  ),
+                                )
+                              : const Icon(
+                                  Icons.delete_outline,
+                                  size: 16,
+                                  color: Colors.white,
+                                ),
+                        ),
+                      ),
+                    ),
+                  ),
+                Positioned(
+                  left: 12,
+                  right: 12,
+                  bottom: 12,
+                  child: Text(
+                    dateLabel,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                      height: 1.25,
+                      shadows: [
+                        Shadow(
+                          color: Color(0x99000000),
+                          blurRadius: 8,
+                        ),
                       ],
                     ),
                   ),
-                  SizedBox(width: 8),
-                  Text(
-                    '${entry['percent'] ?? ''}%',
-                    style: TextStyle(
-                      color: AppTheme.getPrimaryColor(context),
-                      fontSize: 13.5,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                  if (canDelete && onDelete != null) ...[
-                    SizedBox(width: 4),
-                    isDeletingRow
-                        ? SizedBox(
-                            width: 36,
-                            height: 36,
-                            child: Padding(
-                              padding: EdgeInsets.all(8),
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            ),
-                          )
-                        : IconButton(
-                            tooltip: 'Remove saved document',
-                            onPressed: deletingIndex == null
-                                ? () => onDelete!(index)
-                                : null,
-                            icon: Icon(Icons.delete_outline, size: 20),
-                            color: Color(0xFFDC2626),
-                            visualDensity: VisualDensity.compact,
-                          ),
-                  ],
-                ],
-              ),
-            );
-          },
+                ),
+              ],
+            ),
+          ),
         ),
-      ],
+      ),
+    );
+  }
+}
+
+class _UploadedDocumentImagePreview extends StatelessWidget {
+  final Map<String, dynamic> file;
+  final List<Map<String, dynamic>> relatedFiles;
+  final double size;
+  final bool enableTap;
+
+  const _UploadedDocumentImagePreview({
+    required this.file,
+    required this.relatedFiles,
+    required this.size,
+    this.enableTap = true,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final url = _workflowAttachmentUrl(file);
+    if (url == null) return const SizedBox.shrink();
+    final absoluteUrl = _absoluteWorkflowUrl(url);
+
+    final preview = ClipRRect(
+      borderRadius: BorderRadius.circular(14),
+      child: ColoredBox(
+        color: const Color(0xFFF3F4F6),
+        child: Image.network(
+          absoluteUrl,
+          width: size,
+          height: size,
+          fit: BoxFit.contain,
+          errorBuilder: (_, __, ___) => const Center(
+            child: Icon(
+              Icons.broken_image_outlined,
+              color: Color(0xFF9CA3AF),
+              size: 28,
+            ),
+          ),
+        ),
+      ),
+    );
+
+    return SizedBox(
+      width: size,
+      height: size,
+      child: enableTap
+          ? Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: () => _openWorkflowAttachment(
+                  context,
+                  file,
+                  relatedFiles: relatedFiles,
+                ),
+                borderRadius: BorderRadius.circular(14),
+                child: preview,
+              ),
+            )
+          : preview,
     );
   }
 }
@@ -9179,15 +10461,30 @@ bool _isAllowedUploadFormat(String fileName, List<String> allowedFormats) {
   return normalized.contains(ext);
 }
 
+String _displayFileName(String? value, {String fallback = 'Document'}) {
+  if (value == null) return fallback;
+  var name = value.trim();
+  if (name.isEmpty) return fallback;
+
+  // Drop query/hash fragments from URLs, then keep only the last path segment.
+  name = name.split('?').first.split('#').first;
+  name = name.split('/').last;
+  name = name.split(r'\').last;
+  name = name.split(Platform.pathSeparator).last.trim();
+
+  return name.isEmpty ? fallback : name;
+}
+
 String _uploadFileNameFromPath({required String name, required String path}) {
-  final trimmedName = name.trim();
-  if (trimmedName.contains('.') &&
-      trimmedName.split('.').last.trim().isNotEmpty) {
-    return trimmedName;
+  final fromName = _displayFileName(name, fallback: '');
+  if (fromName.contains('.') && fromName.split('.').last.trim().isNotEmpty) {
+    return fromName;
   }
-  final pathName = path.split(Platform.pathSeparator).last.trim();
-  if (pathName.contains('.')) return pathName;
-  return trimmedName.isNotEmpty ? trimmedName : pathName;
+  final fromPath = _displayFileName(path, fallback: '');
+  if (fromPath.contains('.')) return fromPath;
+  return fromName.isNotEmpty
+      ? fromName
+      : (fromPath.isNotEmpty ? fromPath : 'Document');
 }
 
 bool _looksLikeDocument(String value) {
@@ -9755,6 +11052,110 @@ Future<void> _showWorkflowUploadAlert(
   );
 }
 
+/// Debug-only: let developers continue when not physically at site.
+Future<_NearSiteCheckResult> _applyDebugNearSiteOverrideIfNeeded(
+  BuildContext context,
+  _NearSiteCheckResult result, {
+  _SiteCoordinates? siteLocation,
+}) async {
+  if (result.ok || !kDebugMode || !context.mounted) {
+    return result;
+  }
+
+  final override = await showDialog<bool>(
+    context: context,
+    barrierDismissible: false,
+    builder: (dialogContext) {
+      return AlertDialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text(
+          'Debug: Override site check?',
+          style: TextStyle(
+            color: _premiumInk,
+            fontWeight: FontWeight.w800,
+            fontSize: 18,
+          ),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'This task requires you to be at the project site location.',
+              style: TextStyle(
+                color: _premiumInk,
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                height: 1.35,
+              ),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              result.error?.trim().isNotEmpty == true
+                  ? result.error!.trim()
+                  : 'Location check failed.',
+              style: const TextStyle(
+                color: _premiumMuted,
+                fontSize: 13,
+                height: 1.35,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFF7ED),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFFDBA74)),
+              ),
+              child: const Text(
+                'Debug builds only. Overriding lets you continue without being on site.',
+                style: TextStyle(
+                  color: Color(0xFF9A3412),
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w600,
+                  height: 1.35,
+                ),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Keep blocked'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: _premiumInk,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Override'),
+          ),
+        ],
+      );
+    },
+  );
+
+  if (override == true) {
+    debugPrint(
+      '[DEBUG] Near-site location check overridden by user. '
+      'error=${result.error}',
+    );
+    return _NearSiteCheckResult(
+      ok: true,
+      distanceMeters: result.distanceMeters ?? 0,
+      latitude: result.latitude ?? siteLocation?.latitude ?? 0,
+      longitude: result.longitude ?? siteLocation?.longitude ?? 0,
+    );
+  }
+
+  return result;
+}
+
 Future<_SelectedUploadFile?> _pickWorkflowCameraFile() async {
   final picked = await ImagePicker().pickImage(
     source: ImageSource.camera,
@@ -9873,6 +11274,12 @@ class _WorkflowUploadSourceButtons extends StatelessWidget {
   }
 }
 
+bool _isSelectedImageFile(_SelectedUploadFile file) {
+  return file.capturedAt != null ||
+      _looksLikeImage(file.name) ||
+      _looksLikeImage(file.path);
+}
+
 class _SelectedUploadPreview extends StatelessWidget {
   final _SelectedUploadFile file;
   final VoidCallback? onRemove;
@@ -9884,62 +11291,52 @@ class _SelectedUploadPreview extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isImage = _looksLikeImage(file.name);
-    final isVideo = _looksLikeVideo(file.name);
+    if (_isSelectedImageFile(file)) {
+      return _SelectedUploadFilesPreview(
+        files: [file],
+        onRemove: onRemove == null ? null : (_) => onRemove!(),
+      );
+    }
 
+    final isVideo =
+        file.videoDurationSeconds != null || _looksLikeVideo(file.name);
     return Container(
       width: double.infinity,
-      padding: EdgeInsets.all(10),
+      padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
-        color: Color(0xFFF8FAFC),
+        color: const Color(0xFFF8FAFC),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Color(0xFFE5E7EB)),
+        border: Border.all(color: const Color(0xFFE5E7EB)),
       ),
       child: Row(
         children: [
-          if (isImage)
-            ClipRRect(
-              borderRadius: BorderRadius.circular(10),
-              child: Image.file(
-                File(file.path),
-                width: 44,
-                height: 44,
-                fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => Icon(
-                  Icons.insert_drive_file_outlined,
-                  color: Color(0xFF2563EB),
-                  size: 20,
-                ),
-              ),
-            )
-          else
-            Icon(
-              isVideo
-                  ? Icons.videocam_outlined
-                  : Icons.insert_drive_file_outlined,
-              color: Color(0xFF2563EB),
-              size: 20,
-            ),
-          SizedBox(width: 10),
+          Icon(
+            isVideo
+                ? Icons.videocam_outlined
+                : Icons.insert_drive_file_outlined,
+            color: const Color(0xFF2563EB),
+            size: 20,
+          ),
+          const SizedBox(width: 10),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  file.name,
+                  _displayFileName(file.name, fallback: 'Selected file'),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
+                  style: const TextStyle(
                     color: _premiumInk,
                     fontSize: 12.5,
                     fontWeight: FontWeight.w800,
                   ),
                 ),
                 if (file.capturedAt != null) ...[
-                  SizedBox(height: 2),
+                  const SizedBox(height: 2),
                   Text(
                     DateFormat('dd MMM yyyy, hh:mm a').format(file.capturedAt!),
-                    style: TextStyle(
+                    style: const TextStyle(
                       color: _premiumMuted,
                       fontSize: 10.5,
                       fontWeight: FontWeight.w600,
@@ -9951,10 +11348,181 @@ class _SelectedUploadPreview extends StatelessWidget {
           ),
           if (onRemove != null)
             IconButton(
+              tooltip: 'Remove selected file',
               onPressed: onRemove,
-              icon: const Icon(Icons.close, size: 18),
-              color: _premiumMuted,
+              icon: const Icon(Icons.close, size: 20),
+              color: AppTheme.getTextSecondary(context),
               visualDensity: VisualDensity.compact,
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SelectedUploadFilesPreview extends StatelessWidget {
+  final List<_SelectedUploadFile> files;
+  final void Function(int index)? onRemove;
+
+  const _SelectedUploadFilesPreview({
+    required this.files,
+    this.onRemove,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (files.isEmpty) return const SizedBox.shrink();
+
+    final imageFiles = files.where(_isSelectedImageFile).toList();
+    final otherFiles =
+        files.where((file) => !_isSelectedImageFile(file)).toList();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (imageFiles.isNotEmpty)
+          imageFiles.length == 1
+              ? Align(
+                  alignment: Alignment.centerLeft,
+                  child: _SelectedImagePreviewTile(
+                    file: imageFiles.first,
+                    size: 168,
+                    onRemove: onRemove == null
+                        ? null
+                        : () => onRemove!(files.indexOf(imageFiles.first)),
+                  ),
+                )
+              : SizedBox(
+                  height: 120,
+                  child: ListView.separated(
+                    scrollDirection: Axis.horizontal,
+                    itemCount: imageFiles.length,
+                    separatorBuilder: (_, __) => const SizedBox(width: 10),
+                    itemBuilder: (context, index) {
+                      final file = imageFiles[index];
+                      return _SelectedImagePreviewTile(
+                        file: file,
+                        size: 120,
+                        onRemove: onRemove == null
+                            ? null
+                            : () => onRemove!(files.indexOf(file)),
+                      );
+                    },
+                  ),
+                ),
+        if (otherFiles.isNotEmpty) ...[
+          if (imageFiles.isNotEmpty) const SizedBox(height: 10),
+          ...otherFiles.map((file) {
+            final isVideo = file.videoDurationSeconds != null ||
+                _looksLikeVideo(file.name);
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF8FAFC),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: const Color(0xFFE5E7EB)),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      isVideo
+                          ? Icons.videocam_outlined
+                          : Icons.insert_drive_file_outlined,
+                      color: const Color(0xFF2563EB),
+                      size: 20,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        file.capturedAt == null
+                            ? _displayFileName(file.name, fallback: 'Selected file')
+                            : '${_displayFileName(file.name, fallback: 'Selected file')} • ${DateFormat('dd MMM, hh:mm a').format(file.capturedAt!)}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: _premiumInk,
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                    if (onRemove != null)
+                      IconButton(
+                        tooltip: 'Remove selected file',
+                        onPressed: () => onRemove!(files.indexOf(file)),
+                        icon: const Icon(Icons.close, size: 20),
+                        color: AppTheme.getTextSecondary(context),
+                        visualDensity: VisualDensity.compact,
+                      ),
+                  ],
+                ),
+              ),
+            );
+          }),
+        ],
+      ],
+    );
+  }
+}
+
+class _SelectedImagePreviewTile extends StatelessWidget {
+  final _SelectedUploadFile file;
+  final double size;
+  final VoidCallback? onRemove;
+
+  const _SelectedImagePreviewTile({
+    required this.file,
+    required this.size,
+    this.onRemove,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: size,
+      height: size,
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(14),
+              child: ColoredBox(
+                color: const Color(0xFFF3F4F6),
+                child: Image.file(
+                  File(file.path),
+                  fit: BoxFit.contain,
+                  width: size,
+                  height: size,
+                  errorBuilder: (_, __, ___) => const Center(
+                    child: Icon(
+                      Icons.broken_image_outlined,
+                      color: Color(0xFF9CA3AF),
+                      size: 28,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          if (onRemove != null)
+            Positioned(
+              top: 6,
+              right: 6,
+              child: Material(
+                color: Colors.black54,
+                shape: const CircleBorder(),
+                child: InkWell(
+                  customBorder: const CircleBorder(),
+                  onTap: onRemove,
+                  child: const Padding(
+                    padding: EdgeInsets.all(4),
+                    child: Icon(Icons.close, size: 16, color: Colors.white),
+                  ),
+                ),
+              ),
             ),
         ],
       ),
@@ -10443,6 +12011,11 @@ class _UserChecklistFollowupSheetState
       children: [
         ..._items.map((item) {
           final itemId = _followupItemId(item);
+          final itemTitle =
+              _firstString(item, ['label', 'name', 'title'])?.trim() ?? '';
+          final showItemHeader = _items.length > 1 ||
+              (itemTitle.isNotEmpty &&
+                  itemTitle.toLowerCase() != 'checklist follow-up');
           return _ChecklistFollowupItemCard(
             item: item,
             itemId: itemId,
@@ -10461,6 +12034,10 @@ class _UserChecklistFollowupSheetState
             onPickCamera: _isSubmitting ? null : () => _pickCamera(itemId),
             onPickDocument: _isSubmitting ? null : () => _pickDocument(itemId),
             onPickVideo: _isSubmitting ? null : () => _pickVideo(itemId),
+            onRemoveFile: _isSubmitting
+                ? null
+                : () => _setSelectedFile(itemId, null),
+            showItemHeader: showItemHeader,
             onCommentChanged: () {
               if (_commentErrors[itemId] != null) {
                 setState(() {
@@ -10498,7 +12075,9 @@ class _ChecklistFollowupItemCard extends StatelessWidget {
   final VoidCallback? onPickCamera;
   final VoidCallback? onPickDocument;
   final VoidCallback? onPickVideo;
+  final VoidCallback? onRemoveFile;
   final VoidCallback onCommentChanged;
+  final bool showItemHeader;
 
   const _ChecklistFollowupItemCard({
     required this.item,
@@ -10517,7 +12096,9 @@ class _ChecklistFollowupItemCard extends StatelessWidget {
     required this.onPickCamera,
     this.onPickDocument,
     this.onPickVideo,
+    this.onRemoveFile,
     required this.onCommentChanged,
+    this.showItemHeader = true,
   });
 
   @override
@@ -10546,36 +12127,37 @@ class _ChecklistFollowupItemCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                width: 38,
-                height: 38,
-                decoration: BoxDecoration(
-                  color: Color(0xFFEFF6FF),
-                  borderRadius: BorderRadius.circular(13),
-                ),
-                child: Icon(
-                  Icons.assignment_turned_in_outlined,
-                  color: Color(0xFF2563EB),
-                  size: 20,
-                ),
-              ),
-              SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  title,
-                  style: TextStyle(
-                    color: _premiumInk,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w900,
-                    height: 1.25,
+          if (showItemHeader)
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    color: Color(0xFFEFF6FF),
+                    borderRadius: BorderRadius.circular(13),
+                  ),
+                  child: Icon(
+                    Icons.assignment_turned_in_outlined,
+                    color: Color(0xFF2563EB),
+                    size: 20,
                   ),
                 ),
-              ),
-            ],
-          ),
+                SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    title,
+                    style: TextStyle(
+                      color: _premiumInk,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w900,
+                      height: 1.25,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           if (originalComment != null) ...[
             SizedBox(height: 14),
             _FollowupInfoBlock(
@@ -10602,9 +12184,11 @@ class _ChecklistFollowupItemCard extends StatelessWidget {
           ],
           if (showComment) ...[
             SizedBox(height: 16),
-            _RequiredFieldLabel(
-              label: 'Response comment',
-              required: requireComment,
+            _ResponseSectionHeader(
+              icon: Icons.chat_bubble_outline_rounded,
+              label: requireComment
+                  ? 'Response comment *'
+                  : 'Response comment',
             ),
             SizedBox(height: 8),
             TextField(
@@ -10612,18 +12196,33 @@ class _ChecklistFollowupItemCard extends StatelessWidget {
               minLines: 3,
               maxLines: 5,
               onChanged: (_) => onCommentChanged(),
-              style: TextStyle(color: AppTheme.getTextPrimary(context)),
+              style: TextStyle(
+                color: _premiumInk,
+                fontSize: 13.5,
+                fontWeight: FontWeight.w600,
+                height: 1.35,
+              ),
               decoration: _sheetInputDecoration(
                 context,
                 'Write your response...',
-              ).copyWith(errorText: commentError),
+              ).copyWith(
+                labelText: '',
+                floatingLabelBehavior: FloatingLabelBehavior.never,
+                hintText: 'Write your response...',
+                hintStyle: TextStyle(
+                  color: _premiumMuted,
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w600,
+                ),
+                errorText: commentError,
+              ),
             ),
           ],
           if (showDocument) ...[
             SizedBox(height: 16),
-            _RequiredFieldLabel(
-              label: 'Attach proof',
-              required: requireDocument,
+            _ResponseSectionHeader(
+              icon: Icons.attach_file_rounded,
+              label: requireDocument ? 'Attach proof *' : 'Attach proof',
             ),
             SizedBox(height: 8),
             _WorkflowUploadSourceButtons(
@@ -10646,7 +12245,10 @@ class _ChecklistFollowupItemCard extends StatelessWidget {
             ],
             if (selectedFile != null) ...[
               SizedBox(height: 10),
-              _SelectedUploadPreview(file: selectedFile!),
+              _SelectedUploadPreview(
+                file: selectedFile!,
+                onRemove: onRemoveFile,
+              ),
             ],
             if (fileError != null) ...[
               SizedBox(height: 6),
@@ -12389,8 +13991,14 @@ class _ActionChipButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final disabled = onPressed == null;
-    final effectiveColor = disabled ? Color(0xFF9CA3AF) : color;
+    final effectiveColor = disabled ? AppTheme.mutedGrey : color;
     final isPrimary = !isOutlined && !disabled;
+    // Soft tinted fills keep action identity without neon solid blocks.
+    final fillColor = isPrimary
+        ? effectiveColor.withValues(alpha: 0.12)
+        : _premiumSurface;
+    final contentColor = isPrimary ? effectiveColor : _premiumInk;
+    final iconColor = isPrimary ? effectiveColor : effectiveColor;
 
     final button = Opacity(
       opacity: disabled ? 0.62 : 1,
@@ -12407,21 +14015,19 @@ class _ActionChipButton extends StatelessWidget {
                 height: expand ? 52 : 46,
                 padding: EdgeInsets.symmetric(horizontal: expand ? 16 : 14),
                 decoration: BoxDecoration(
-                  color: isPrimary ? effectiveColor : _premiumSurface,
+                  color: fillColor,
                   borderRadius: BorderRadius.circular(expand ? 17 : 14),
-                  border: isPrimary
-                      ? null
-                      : Border.all(color: Color(0xFFEAEAEA), width: 1),
+                  border: Border.all(
+                    color: isPrimary
+                        ? effectiveColor.withValues(alpha: 0.28)
+                        : AppTheme.border,
+                    width: 1,
+                  ),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.055),
-                      blurRadius: 16,
-                      offset: Offset(0, 7),
-                    ),
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.035),
-                      blurRadius: 6,
-                      offset: Offset(0, 2),
+                      color: AppTheme.softShadow,
+                      blurRadius: 12,
+                      offset: Offset(0, 4),
                     ),
                   ],
                 ),
@@ -12438,7 +14044,7 @@ class _ActionChipButton extends StatelessWidget {
                         child: CircularProgressIndicator(
                           strokeWidth: 2,
                           valueColor: AlwaysStoppedAnimation<Color>(
-                            isPrimary ? Colors.white : effectiveColor,
+                            iconColor,
                           ),
                         ),
                       )
@@ -12446,7 +14052,7 @@ class _ActionChipButton extends StatelessWidget {
                       Icon(
                         icon,
                         size: 18,
-                        color: isPrimary ? Colors.white : effectiveColor,
+                        color: iconColor,
                       ),
                     SizedBox(width: 8),
                     Flexible(
@@ -12455,7 +14061,7 @@ class _ActionChipButton extends StatelessWidget {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          color: isPrimary ? Colors.white : _premiumInk,
+                          color: contentColor,
                           fontSize: 13,
                           fontWeight: FontWeight.w800,
                         ),
@@ -12501,11 +14107,13 @@ class _BottomSheetFrame extends StatelessWidget {
   final String title;
   final IconData icon;
   final Widget child;
+  final ScrollController? scrollController;
 
   const _BottomSheetFrame({
     required this.title,
     required this.icon,
     required this.child,
+    this.scrollController,
   });
 
   @override
@@ -12525,6 +14133,7 @@ class _BottomSheetFrame extends StatelessWidget {
           borderRadius: BorderRadius.circular(22),
         ),
         child: SingleChildScrollView(
+          controller: scrollController,
           padding: EdgeInsets.all(18),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -12686,25 +14295,24 @@ class _UpdateStatusSheetState extends State<_UpdateStatusSheet> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        DropdownButtonFormField<String>(
-          value: _selectedStatus,
-          decoration: _sheetInputDecoration(context, 'Status'),
-          dropdownColor: AppTheme.getBackgroundSecondary(context),
-          items: widget.statuses
-              .map(
-                (status) => DropdownMenuItem<String>(
-                  value: status,
-                  child: Text(status.replaceAll('_', ' ')),
-                ),
-              )
-              .toList(),
-          onChanged: _isSubmitting
-              ? null
-              : (value) {
-                  setState(() {
-                    _selectedStatus = value;
-                  });
-                },
+        Text(
+          'Status',
+          style: TextStyle(
+            color: AppTheme.getTextPrimary(context),
+            fontSize: 13,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: 10),
+        TaskStatusChipSet(
+          currentStatus: _selectedStatus ?? '',
+          statuses: widget.statuses,
+          enabled: !_isSubmitting,
+          onStatusSelected: (value) {
+            setState(() {
+              _selectedStatus = value;
+            });
+          },
         ),
         if (widget.allowComment) ...[
           SizedBox(height: 14),
@@ -12775,7 +14383,7 @@ class _SheetSubmitButton extends StatelessWidget {
                   valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                 ),
               )
-            : Text(label),
+            : Text(toSentenceCaseLabel(label)),
       ),
     );
   }
@@ -12810,7 +14418,7 @@ class _ApproveResponseButton extends StatelessWidget {
               )
             : Icon(Icons.check_circle_outline_rounded, size: 20),
         label: Text(
-          isSubmitting ? 'Approving...' : label,
+          isSubmitting ? 'Approving...' : toSentenceCaseLabel(label),
           style: TextStyle(
             fontSize: 15,
             fontWeight: FontWeight.w900,
@@ -12818,12 +14426,13 @@ class _ApproveResponseButton extends StatelessWidget {
           ),
         ),
         style: ElevatedButton.styleFrom(
-          backgroundColor: Color(0xFF10B981),
+          backgroundColor: AppTheme.primaryColorConst,
           foregroundColor: Colors.white,
-          disabledBackgroundColor: Color(0xFF10B981).withValues(alpha: 0.55),
+          disabledBackgroundColor:
+              AppTheme.primaryColorConst.withValues(alpha: 0.55),
           disabledForegroundColor: Colors.white,
           elevation: 0,
-          shadowColor: Color(0xFF10B981).withValues(alpha: 0.25),
+          shadowColor: AppTheme.primaryColorConst.withValues(alpha: 0.25),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(18),
           ),
@@ -13658,16 +15267,30 @@ List<Map<String, dynamic>> _uploadProgressEntries(
 String _uploadProgressEntryFileName(Map<String, dynamic> entry) {
   final files = _mapListFlexible(entry['files']);
   if (files.isEmpty) {
-    return _firstString(entry, ['text', 'filename', 'name']) ?? 'Document';
+    return _displayFileName(
+      _firstString(entry, ['text', 'filename', 'name', 'original_filename']),
+    );
   }
   final file = files.first;
-  return _firstString(file, [
-        'filename',
-        'name',
-        'original_filename',
-        'file_name',
-      ]) ??
-      'Document';
+  return _displayFileName(
+    _firstString(file, [
+      'original_filename',
+      'filename',
+      'file_name',
+      'name',
+    ]),
+  );
+}
+
+String _formatUploadProgressDate(String value) {
+  final trimmed = value.trim();
+  if (trimmed.isEmpty) return 'Uploaded';
+  try {
+    return DateFormat('dd MMM yyyy, hh:mm a').format(DateTime.parse(trimmed));
+  } catch (_) {
+    // Already a human-readable date from the API.
+    return trimmed;
+  }
 }
 
 List<Map<String, dynamic>> _workflowTextListStandardLines(

@@ -4,7 +4,7 @@ import 'dart:convert';
 import 'package:buildAhome/AddDailyUpdate.dart';
 import 'package:buildAhome/UserHome.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_spinkit/flutter_spinkit.dart';
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:shimmer/shimmer.dart';
 import 'package:intl/intl.dart';
@@ -19,17 +19,22 @@ import 'notifcations.dart';
 import 'project_picker.dart';
 import 'user_picker.dart';
 import 'services/data_provider.dart';
+import 'services/notification_service.dart';
+import 'services/profile_picture_service.dart';
 import 'services/rbac_service.dart';
 import 'services/api_http.dart';
 import 'services/session_manager.dart';
 import 'stock_report.dart';
-import 'ViewAllTasksScreen.dart';
 import 'TasksScreen.dart';
 import 'MyTasksScreen.dart';
 import 'Skin2/loginPage.dart';
-import 'widgets/dark_mode_toggle.dart';
 import 'NavMenu.dart';
 import 'NotesAndComments.dart';
+import 'utilities/role_app_bar_color.dart';
+import 'widgets/dashboard_chrome.dart';
+import 'widgets/modern_task_card.dart';
+import 'widgets/opening_project_splash.dart';
+import 'widgets/profile_picture_dialog.dart';
 
 class AdminDashboard extends StatefulWidget {
   @override
@@ -37,10 +42,14 @@ class AdminDashboard extends StatefulWidget {
 }
 
 class _AdminDashboardState extends State<AdminDashboard> {
+  static const Color _navy = Color(0xFF1B254B);
+  static const Color _mutedGrey = Color(0xFF8A94A6);
+
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   final GlobalKey<AdminHomeState> _adminHomeKey = GlobalKey<AdminHomeState>();
   int _rebuildTrigger = 0;
   final ValueNotifier<String> _searchQueryNotifier = ValueNotifier<String>('');
+  int _bottomNavIndex = 0;
 
   @override
   void initState() {
@@ -59,6 +68,9 @@ class _AdminDashboardState extends State<AdminDashboard> {
         setState(() {});
       }
     });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) maybePromptForProfilePicture(context);
+    });
   }
 
   @override
@@ -67,51 +79,169 @@ class _AdminDashboardState extends State<AdminDashboard> {
     super.dispose();
   }
 
+  Future<void> _onBottomNavTap(int index) async {
+    if (index == 0) {
+      setState(() => _bottomNavIndex = 0);
+      return;
+    }
+    if (index == 4) {
+      _scaffoldKey.currentState?.openDrawer();
+      return;
+    }
+
+    setState(() => _bottomNavIndex = index);
+    final home = _adminHomeKey.currentState;
+    if (home == null) {
+      setState(() => _bottomNavIndex = 0);
+      return;
+    }
+
+    switch (index) {
+      case 1:
+        await home.openTasksScreen();
+        break;
+      case 2:
+        await home.openProjectsPicker();
+        break;
+      case 3:
+        await home.openSiteVisits();
+        break;
+    }
+    if (mounted) setState(() => _bottomNavIndex = 0);
+  }
+
+  Widget _buildBottomNav() {
+    final items = <_AdminDashNavItem>[
+      _AdminDashNavItem(Icons.home_rounded, Icons.home_outlined, 'Home'),
+      _AdminDashNavItem(
+          Icons.pending_actions_rounded, Icons.pending_actions_outlined, 'Tasks'),
+      _AdminDashNavItem(
+          Icons.folder_special_rounded, Icons.folder_special_outlined, 'Projects'),
+      _AdminDashNavItem(
+          Icons.location_on_rounded, Icons.location_on_outlined, 'Site Visits'),
+      _AdminDashNavItem(Icons.menu_rounded, Icons.menu_rounded, 'More'),
+    ];
+
+    return Container(
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        border: Border(top: BorderSide(color: Color(0xFFEEF1F5))),
+      ),
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+          child: Row(
+            children: List.generate(items.length, (index) {
+              final item = items[index];
+              final selected = _bottomNavIndex == index;
+              final color = selected ? _navy : _mutedGrey;
+              return Expanded(
+                child: InkWell(
+                  onTap: () => _onBottomNavTap(index),
+                  borderRadius: BorderRadius.circular(12),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 6),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          selected ? item.activeIcon : item.icon,
+                          color: color,
+                          size: 24,
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          item.label,
+                          style: TextStyle(
+                            color: color,
+                            fontSize: 10.5,
+                            fontWeight:
+                                selected ? FontWeight.w700 : FontWeight.w500,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            }),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       key: _scaffoldKey,
-      backgroundColor: AppTheme.getBackgroundPrimary(context),
+      backgroundColor: Colors.white,
       drawer: NavMenuWidget(),
       appBar: null,
-      body: Stack(
-        children: [
-          // Background image with opacity
-          Positioned.fill(
-            child: Opacity(
-              opacity: 0.3,
-              child: Image.asset(
-                'assets/images/See details.jpg',
-                fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) {
-                  return Container(
-                      color: AppTheme.getBackgroundPrimary(context));
-                },
-              ),
-            ),
-          ),
-          Positioned.fill(
-            child: Opacity(
-              opacity: 0.7,
-              child: Container(color: AppTheme.getBackgroundPrimary(context)),
-            ),
-          ),
-          // Content on top
-          GestureDetector(
-            onTap: () {
-              // Hide search results when tapping outside
-              if (_adminHomeKey.currentState != null) {
-                _adminHomeKey.currentState!._quickSearchFocusNode.unfocus();
-              }
-            },
-            behavior: HitTestBehavior.opaque,
-            child: AdminHome(
-              key: _adminHomeKey,
-              searchQueryNotifier: _searchQueryNotifier,
-            ),
-          ),
-        ],
+      body: GestureDetector(
+        onTap: () {
+          // Hide search results when tapping outside
+          if (_adminHomeKey.currentState != null) {
+            _adminHomeKey.currentState!._quickSearchFocusNode.unfocus();
+          }
+        },
+        behavior: HitTestBehavior.opaque,
+        child: AdminHome(
+          key: _adminHomeKey,
+          searchQueryNotifier: _searchQueryNotifier,
+        ),
       ),
+      bottomNavigationBar: _buildBottomNav(),
+    );
+  }
+}
+
+class _AdminDashNavItem {
+  final IconData activeIcon;
+  final IconData icon;
+  final String label;
+  const _AdminDashNavItem(this.activeIcon, this.icon, this.label);
+}
+
+class _AdminHeroStat extends StatelessWidget {
+  final String value;
+  final String label;
+  const _AdminHeroStat({required this.value, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.baseline,
+      textBaseline: TextBaseline.alphabetic,
+      children: [
+        Text(
+          value,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 16,
+            fontWeight: FontWeight.w800,
+            height: 1.1,
+            letterSpacing: -0.2,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            label,
+            style: const TextStyle(
+              color: Color(0xFFC7D0E0),
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              height: 1.15,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      ],
     );
   }
 }
@@ -165,6 +295,8 @@ class _LogoutButton extends StatelessWidget {
     if (shouldLogout == true) {
       // Clear data immediately (synchronous)
       DataProvider().clearData();
+      NotificationService.instance.clear();
+      ProfilePictureService.promptShownThisSession = false;
 
       // Navigate immediately without waiting for SharedPreferences.clear()
       if (context.mounted) {
@@ -226,6 +358,11 @@ class AdminHome extends StatefulWidget {
 }
 
 class AdminHomeState extends State<AdminHome> {
+  static const Color _navy = Color(0xFF1B254B);
+  static const Color _mutedGrey = Color(0xFF8A94A6);
+  static const Color _cardBorder = Color(0xFFE8ECF1);
+  static const Color _softShadow = Color(0x14000000);
+
   var currentWidgetContext;
   var currentDate;
   var showTopSection = true;
@@ -279,25 +416,39 @@ class AdminHomeState extends State<AdminHome> {
 
   setRole() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
+    await ProfilePictureService.getStoredPath();
+    if (!mounted) return;
     setState(() {
       currentUserRole = prefs.getString('role') ?? '';
       currentUserName = prefs.getString('username') ?? '';
     });
   }
 
-  Future<void> loadProjects(
-      {bool force = false, bool showLoader = false}) async {
+  Color get _roleAppBarColor => RoleAppBarColor.forRole(currentUserRole);
+
+  String _projectsDeltaKey(List<dynamic> list) {
+    return list
+        .whereType<Map>()
+        .map((p) => '${p['id']}|${p['name']}|${p['client_name']}')
+        .join('||');
+  }
+
+  Future<void> loadProjects({
+    bool force = false,
+    bool showLoader = false,
+    bool refreshTasks = true,
+    bool silentTasks = false,
+  }) async {
     if (!mounted) return;
 
-    if (showLoader || !showLoader) {
+    if (showLoader) {
       setState(() {
-        if (showLoader) {
-          _isLoadingProjects = true;
-        } else {
-          _isRefreshingProjects = true;
-        }
+        _isLoadingProjects = true;
         _projectsError = null;
       });
+    } else {
+      _isRefreshingProjects = true;
+      _projectsError = null;
     }
 
     try {
@@ -311,37 +462,44 @@ class AdminHomeState extends State<AdminHome> {
 
       print('[AdminDashboard] Loaded ${newProjects.length} projects');
 
-      setState(() {
-        projects = newProjects;
-        projectsToShow = projects;
-        // Reset search if projects changed
-        if (_cachedFilterQuery.isNotEmpty) {
-          final query = _cachedFilterQuery.toLowerCase();
-          projectsToShow = projects.where((project) {
-            final name = project['name']?.toString().toLowerCase() ?? '';
-            final id = project['id']?.toString().toLowerCase() ?? '';
-            final clientName =
-                project['client_name']?.toString().toLowerCase() ?? '';
-            return name.contains(query) ||
-                id.contains(query) ||
-                clientName.contains(query);
-          }).toList();
-        }
-      });
+      final previousKey = _projectsDeltaKey(projects);
+      final nextKey = _projectsDeltaKey(newProjects);
+      final projectsChanged = previousKey != nextKey;
+
+      if (projectsChanged || showLoader) {
+        setState(() {
+          projects = newProjects;
+          projectsToShow = projects;
+          if (_cachedFilterQuery.isNotEmpty) {
+            final query = _cachedFilterQuery.toLowerCase();
+            projectsToShow = projects.where((project) {
+              final name = project['name']?.toString().toLowerCase() ?? '';
+              final id = project['id']?.toString().toLowerCase() ?? '';
+              final clientName =
+                  project['client_name']?.toString().toLowerCase() ?? '';
+              return name.contains(query) ||
+                  id.contains(query) ||
+                  clientName.contains(query);
+            }).toList();
+          }
+          _isLoadingProjects = false;
+          _isRefreshingProjects = false;
+        });
+      } else {
+        _isLoadingProjects = false;
+        _isRefreshingProjects = false;
+      }
 
       // Reload tasks after projects are loaded to filter by project IDs
-      // Always load tasks, even if projects list is empty (tasks can be assigned directly to users)
-      loadTasks();
+      if (refreshTasks) {
+        await loadTasks(silent: silentTasks || !showLoader);
+      }
     } catch (e) {
       print('[AdminDashboard] Error loading projects: $e');
       if (!mounted) return;
       setState(() {
         _projectsError =
             'Unable to refresh projects. Please pull down to retry.';
-      });
-    } finally {
-      if (!mounted) return;
-      setState(() {
         _isLoadingProjects = false;
         _isRefreshingProjects = false;
       });
@@ -354,27 +512,117 @@ class AdminHomeState extends State<AdminHome> {
     _searchQueryNotifier = widget.searchQueryNotifier;
     setDate();
     setRole();
-    // Load projects from data provider (it should already be loaded on app init)
+    _loadUnreadNotifications();
+    // Use projects already loaded at app/login startup so the UI opens immediately.
     final initialProjects = DataProvider().projects;
     setState(() {
       projects = initialProjects;
       projectsToShow = projects;
     });
-    // Force reload on first load to ensure fresh data, especially after login
-    loadProjects(force: true, showLoader: true);
+    // Refresh in background; only show a loader if nothing is cached yet.
+    loadProjects(
+      force: initialProjects.isEmpty,
+      showLoader: initialProjects.isEmpty,
+    );
     _startProjectsAutoRefresh();
     // Note: loadTasks() will be called by loadProjects() after projects are loaded
+  }
+
+  Future<void> _loadUnreadNotifications({bool force = false}) async {
+    final service = NotificationService.instance;
+    await service.ensureHydrated();
+    await service.sync(force: force);
+  }
+
+  String _displayName() {
+    final raw = currentUserName.trim();
+    if (raw.isEmpty) return 'there';
+    final first = raw.split('-').first.trim();
+    return first.isNotEmpty ? first : raw;
+  }
+
+  String _greetingForNow() {
+    final hour = DateTime.now().hour;
+    if (hour < 12) return 'Good morning,';
+    if (hour < 17) return 'Good afternoon,';
+    return 'Good evening,';
+  }
+
+  Future<void> openTasksScreen() async {
+    if (_isNavigating) return;
+    setState(() => _isNavigating = true);
+    try {
+      await _navigateWithAnimation(
+        context,
+        MyTasksScreen(
+          tasks: _tasks,
+          onRefresh: _refreshTasksForMyTasks,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _isNavigating = false);
+    }
+  }
+
+  Future<void> openProjectsPicker() async {
+    if (_isNavigating) return;
+    setState(() => _isNavigating = true);
+    try {
+      await ProjectPickerScreen.show(context);
+      if (mounted) loadProjects();
+      await Future.delayed(const Duration(milliseconds: 300));
+    } finally {
+      if (mounted) setState(() => _isNavigating = false);
+    }
+  }
+
+  Future<void> openSiteVisits() async {
+    if (_isNavigating) return;
+    setState(() => _isNavigating = true);
+    try {
+      await _navigateWithAnimation(context, SiteVisitReportsScreen());
+    } finally {
+      if (mounted) setState(() => _isNavigating = false);
+    }
   }
 
   void _startProjectsAutoRefresh() {
     _projectsRefreshTimer?.cancel();
     _projectsRefreshTimer = Timer.periodic(Duration(minutes: 1), (_) {
       if (!mounted) return;
-      loadProjects();
+      // Silent background refresh — UI updates only when data changes.
+      loadProjects(
+        force: false,
+        showLoader: false,
+        refreshTasks: true,
+        silentTasks: true,
+      );
     });
   }
 
-  Future<void> loadTasks() async {
+  String _taskDeltaKey(Map task) {
+    return [
+      task['id'],
+      task['status'],
+      task['workflow_status'],
+      task['note'],
+      task['s_note'],
+      task['updated_at'],
+      task['created_at'],
+      task['assigned_to'],
+      task['assigned_to_name'],
+      task['project_id'],
+      task['project_name'],
+      task['can_update_workflow_task'],
+      task['can_approve_workflow_task'],
+      task['pending_manager_approval'],
+      jsonEncode(task['workflow_task_actions'] ?? const []),
+      jsonEncode(task['workflow_actions'] ?? const []),
+      jsonEncode(task['workflow_delay_gate'] ?? const {}),
+    ].join('|');
+  }
+
+  Future<void> loadTasks({bool silent = false}) async {
     if (!mounted) return;
 
     // Prevent multiple simultaneous calls
@@ -384,10 +632,16 @@ class AdminHomeState extends State<AdminHome> {
       return;
     }
 
-    setState(() {
+    final showLoader = !silent && !_hasLoadedTasksOnce;
+    if (showLoader) {
+      setState(() {
+        _isLoadingTasks = true;
+        _tasksError = null;
+      });
+    } else {
       _isLoadingTasks = true;
       _tasksError = null;
-    });
+    }
 
     try {
       print('Loading tasks');
@@ -461,42 +715,32 @@ class AdminHomeState extends State<AdminHome> {
           }
         }
 
-        // Compare with previous tasks to detect changes
+        // Compare with previous tasks to detect meaningful deltas
         bool hasChanges = false;
-        if (_previousTasksMap.length != currentTasksMap.length) {
+        if (!_hasLoadedTasksOnce ||
+            _previousTasksMap.length != currentTasksMap.length) {
           hasChanges = true;
         } else {
           for (var entry in currentTasksMap.entries) {
-            final taskId = entry.key;
-            final task = entry.value;
-            if (!_previousTasksMap.containsKey(taskId)) {
+            final prevTask = _previousTasksMap[entry.key];
+            if (prevTask == null ||
+                _taskDeltaKey(prevTask) != _taskDeltaKey(entry.value)) {
               hasChanges = true;
               break;
-            }
-            // Check if task data has changed
-            final prevTask = _previousTasksMap[taskId];
-            if (prevTask != null) {
-              final prevStatus = prevTask['status']?.toString() ?? '';
-              final currStatus = task['status']?.toString() ?? '';
-              final prevNote = prevTask['note']?.toString() ?? '';
-              final currNote = task['note']?.toString() ?? '';
-              if (prevStatus != currStatus || prevNote != currNote) {
-                hasChanges = true;
-                break;
-              }
             }
           }
         }
 
-        // Update UI only if there are changes
-        if (hasChanges || !_hasLoadedTasksOnce) {
-          allTasks.sort((a, b) {
-            if (a is! Map || b is! Map) return 0;
-            String aDate = (a['created_at'] ?? '').toString();
-            String bDate = (b['created_at'] ?? '').toString();
-            return bDate.compareTo(aDate);
-          });
+        allTasks.sort((a, b) {
+          if (a is! Map || b is! Map) return 0;
+          String aDate = (a['created_at'] ?? '').toString();
+          String bDate = (b['created_at'] ?? '').toString();
+          return bDate.compareTo(aDate);
+        });
 
+        // Update UI only if there are changes — avoid reload flicker.
+        if (!mounted) return;
+        if (hasChanges) {
           setState(() {
             _tasks = allTasks;
             _isLoadingTasks = false;
@@ -504,21 +748,23 @@ class AdminHomeState extends State<AdminHome> {
             _previousTasksMap = currentTasksMap;
           });
         } else {
-          // Don't call setState if there are no changes to prevent flickering
-          // Only update loading state if it was true
-          if (_isLoadingTasks) {
-            setState(() {
-              _isLoadingTasks = false;
-            });
-          }
+          _isLoadingTasks = false;
+          _hasLoadedTasksOnce = true;
         }
       } else if (response.statusCode == 404) {
         // No tasks found - this is okay
-        setState(() {
-          _tasks = [];
+        if (!mounted) return;
+        if (_tasks.isNotEmpty || _isLoadingTasks || !_hasLoadedTasksOnce) {
+          setState(() {
+            _tasks = [];
+            _isLoadingTasks = false;
+            _hasLoadedTasksOnce = true;
+            _previousTasksMap = {};
+          });
+        } else {
           _isLoadingTasks = false;
           _hasLoadedTasksOnce = true;
-        });
+        }
       } else {
         throw Exception('Unable to load tasks (code ${response.body})');
       }
@@ -526,18 +772,23 @@ class AdminHomeState extends State<AdminHome> {
       if (e is SessionInvalidatedException) return;
       if (!mounted) return;
       print('[AdminDashboard] Error loading tasks: $e');
+      // Keep existing tasks on background refresh errors to avoid wipe/flicker.
+      if (silent && _hasLoadedTasksOnce) {
+        _isLoadingTasks = false;
+        return;
+      }
       setState(() {
         _tasksError = e.toString().replaceAll('Exception: ', '');
         _isLoadingTasks = false;
         _hasLoadedTasksOnce = true;
-        // Set empty list on error to show empty state
         _tasks = [];
+        _previousTasksMap = {};
       });
     }
   }
 
   Future<List<dynamic>> _refreshTasksForMyTasks() async {
-    await loadTasks();
+    await loadTasks(silent: true);
     return List<dynamic>.from(_tasks);
   }
 
@@ -828,225 +1079,160 @@ class AdminHomeState extends State<AdminHome> {
 
   Widget build(BuildContext context) {
     currentWidgetContext = context;
-    List<Map<String, dynamic>> menuItems = getMenuItems();
-    int totalProjects = projects.length;
+    final menuItems = getMenuItems();
+    final visibleActions = menuItems.take(8).toList();
+    final totalProjects = projects.length;
+    final pendingCount = _tasks.where((task) {
+      if (task is Map) {
+        final status = task['status']?.toString().toLowerCase() ?? '';
+        return status == 'pending';
+      }
+      return false;
+    }).length;
 
     return RefreshIndicator(
-      onRefresh: () => loadProjects(force: true),
-      color: AppTheme.getPrimaryColor(context),
+      onRefresh: () async {
+        await loadProjects(force: true);
+        await loadTasks();
+        await _loadUnreadNotifications(force: true);
+      },
+      color: _navy,
       child: Container(
-        decoration: BoxDecoration(
-          color: Colors.transparent,
-        ),
+        color: Colors.white,
         height: MediaQuery.of(context).size.height,
         width: MediaQuery.of(context).size.width,
         child: ListView(
           controller: _scrollController,
           physics: const AlwaysScrollableScrollPhysics(),
-          padding: EdgeInsets.all(20),
+          padding: const EdgeInsets.only(bottom: 28),
           children: [
             _buildUserHeader(),
-            Container(
-              decoration: BoxDecoration(
-                color: Colors.transparent,
-                borderRadius: BorderRadius.only(
-                    bottomLeft: Radius.circular(12),
-                    bottomRight: Radius.circular(12)),
-              ),
-              child: _buildSearchField(),
-            ),
-            SizedBox(height: 20),
-            if (_projectsError != null)
-              Container(
-                margin: EdgeInsets.only(bottom: 12),
-                padding: EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.red.withOpacity(0.08),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.red.withOpacity(0.3)),
-                ),
-                child: Row(
-                  children: [
-                    Icon(Icons.error_outline, color: Colors.red, size: 18),
-                    SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        _projectsError!,
-                        style: TextStyle(
-                          color: Colors.red[800],
-                          fontSize: 12,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            // Statistics Cards - Total Projects and Total Pending Tasks
-            if (currentUserRole != 'Client')
-              Row(
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Expanded(
-                    child: _buildStatCard(
-                      context,
-                      'Total Projects',
-                      totalProjects.toString(),
-                      Icons.folder_special_outlined,
-                      AppTheme.getPrimaryColor(context),
-                      index: 0,
-                      onTap: () async {
-                        // Navigate to ProjectPickerScreen (same as Projects tab)
-                        if (_isNavigating) return;
-
-                        setState(() {
-                          _isNavigating = true;
-                        });
-
-                        try {
-                          await ProjectPickerScreen.show(context);
-                          if (mounted) {
-                            loadProjects();
-                          }
-                          // Add delay to prevent tap that closes modal from retriggering
-                          await Future.delayed(Duration(milliseconds: 300));
-                        } finally {
-                          if (mounted) {
-                            setState(() {
-                              _isNavigating = false;
-                            });
-                          }
-                        }
-                      },
-                    ),
-                  ),
-                  SizedBox(width: 12),
-                  Expanded(
-                    child: _buildStatCard(
-                      context,
-                      'Pending Tasks',
-                      _tasks
-                          .where((task) {
-                            if (task is Map) {
-                              final status =
-                                  task['status']?.toString().toLowerCase() ??
-                                      '';
-                              return status == 'pending';
-                            }
-                            return false;
-                          })
-                          .length
-                          .toString(),
-                      Icons.pending_actions_outlined,
-                      AppTheme.getPrimaryColor(context),
-                      index: 1,
-                      onTap: () {
-                        // Navigate to view all tasks screen
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => TasksLayout(
-                              initialTasks: _tasks,
-                              initialTabIndex: 1,
-                              onTaskUpdated: () => loadTasks(),
-                              loadTasksCallback: () async {
-                                await loadTasks();
-                                return _tasks;
-                              },
+                  const SizedBox(height: 8),
+                  _buildHeroBanner(),
+                  const SizedBox(height: 16),
+                  _buildSearchField(),
+                  const SizedBox(height: 16),
+                  if (_projectsError != null)
+                    Container(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFFF1F2),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: const Color(0xFFFECACA)),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.error_outline,
+                              color: Color(0xFFDC2626), size: 18),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              _projectsError!,
+                              style: const TextStyle(
+                                color: Color(0xFFB91C1C),
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
                             ),
                           ),
-                        );
-                      },
+                        ],
+                      ),
                     ),
+                  if (currentUserRole != 'Client')
+                    _buildOverviewCard(totalProjects, pendingCount),
+                  const SizedBox(height: 18),
+                  if (currentUserRole != 'Billing') _buildTasksSection(),
+                  const SizedBox(height: 22),
+                  Row(
+                    children: [
+                      const Text(
+                        'Quick Actions',
+                        style: TextStyle(
+                          fontSize: 15.5,
+                          fontWeight: FontWeight.w800,
+                          color: _navy,
+                        ),
+                      ),
+                      const Spacer(),
+                      GestureDetector(
+                        onTap: () => _showAllQuickActions(menuItems),
+                        child: const Text(
+                          'View all',
+                          style: TextStyle(
+                            fontSize: 13.5,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFF2563EB),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                  GridView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    gridDelegate:
+                        const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 4,
+                      crossAxisSpacing: 10,
+                      mainAxisSpacing: 14,
+                      childAspectRatio: 0.78,
+                    ),
+                    itemCount: visibleActions.length,
+                    itemBuilder: (BuildContext context, int index) {
+                      final item = visibleActions[index];
+                      final title = item['title'].toString();
+                      final colors = _quickActionColors(title);
+                      return InkWell(
+                        onTap: _isNavigating
+                            ? null
+                            : () async {
+                                await _handleMenuTap(context, item);
+                              },
+                        borderRadius: BorderRadius.circular(16),
+                        child: Column(
+                          children: [
+                            Container(
+                              width: 56,
+                              height: 56,
+                              decoration: BoxDecoration(
+                                color: colors['bg'],
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                              child: Icon(
+                                _quickActionIcon(
+                                    title, item['icon'] as IconData),
+                                size: 24,
+                                color: colors['fg'],
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              _quickActionLabel(title),
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                color: _navy,
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w600,
+                                height: 1.15,
+                              ),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ),
+                      );
+                    },
                   ),
                 ],
               ),
-
-            SizedBox(height: 20),
-
-            // Tasks Section - hidden for Billing roles
-            if (currentUserRole != 'Billing')
-              _buildTasksSection(),
-
-            SizedBox(height: 20),
-            Row(children: [
-              Icon(Icons.task_alt_outlined,
-                  color: AppTheme.getPrimaryColor(context), size: 24),
-              SizedBox(width: 8),
-              Text(
-                'Quick Actions',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w500,
-                  color: AppTheme.getTextPrimary(context),
-                ),
-              ),
-              Spacer(),
-            ]),
-
-            // GridView for menu items
-            GridView.builder(
-              shrinkWrap: true,
-              physics: NeverScrollableScrollPhysics(),
-              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 3,
-                crossAxisSpacing: 12,
-                mainAxisSpacing: 12,
-                childAspectRatio: 0.95,
-              ),
-              itemCount: menuItems.length,
-              itemBuilder: (BuildContext context, int index) {
-                final item = menuItems[index];
-                return Material(
-                  color: AppTheme.getBackgroundSecondary(context),
-                  child: InkWell(
-                    onTap: _isNavigating
-                        ? null
-                        : () async {
-                            await _handleMenuTap(context, item);
-                          },
-                    borderRadius: BorderRadius.circular(12),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Container(
-                          padding: EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: item['title'] == 'Log out'
-                                ? Colors.red.withOpacity(0.15)
-                                : AppTheme.getPrimaryColor(context)
-                                    .withOpacity(0.15),
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          child: Icon(
-                            item['icon'],
-                            size: 20,
-                            color: item['title'] == 'Log out'
-                                ? Colors.red
-                                : AppTheme.getPrimaryColor(context),
-                          ),
-                        ),
-                        SizedBox(height: 8),
-                        Padding(
-                          padding: EdgeInsets.symmetric(horizontal: 8),
-                          child: Text(
-                            item['title'],
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              color: AppTheme.getTextPrimary(context),
-                              fontSize: 12,
-                              fontWeight: FontWeight.normal,
-                            ),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                );
-              },
             ),
-
-            SizedBox(height: 20),
           ],
         ),
       ),
@@ -1054,141 +1240,655 @@ class AdminHomeState extends State<AdminHome> {
   }
 
   Widget _buildUserHeader() {
-    return Container(
-      width: MediaQuery.of(context).size.width,
-      padding: EdgeInsets.only(top: 40, left: 16, right: 16, bottom: 12),
-      child: Row(
-        children: [
-          Expanded(
-            child: Builder(
-              builder: (context) => InkWell(
-                onTap: () {
-                  Scaffold.of(context).openDrawer();
-                },
-                borderRadius: BorderRadius.circular(30),
-                child: Row(
-                  children: [
-                    Container(
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                      ),
-                      child: CircleAvatar(
-                        radius: 20,
-                        backgroundColor: AppTheme.getPrimaryColor(context),
-                        child: Text(
-                          currentUserName.isNotEmpty
-                              ? currentUserName[0].toUpperCase()
-                              : 'U',
-                          style: TextStyle(
+    final topPad = MediaQuery.of(context).padding.top;
+    final name = _displayName();
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle.light,
+      child: Container(
+        width: MediaQuery.of(context).size.width,
+        padding: EdgeInsets.fromLTRB(20, topPad + 8, 20, 8),
+        color: _roleAppBarColor,
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    _greetingForNow(),
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.75),
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w500,
+                      height: 1.2,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    '$name 👋',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 20,
+                      fontWeight: FontWeight.w800,
+                      height: 1.15,
+                      letterSpacing: -0.2,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+            InkWell(
+              onTap: () async {
+                await Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => DashboardChrome.wrap(
+                      DashboardChromeStyle.admin,
+                      const Notifications(),
+                      appBarColor: _roleAppBarColor,
+                    ),
+                  ),
+                );
+                _loadUnreadNotifications(force: true);
+              },
+              borderRadius: BorderRadius.circular(999),
+              child: Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.white.withValues(alpha: 0.12),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.25),
+                  ),
+                ),
+                child: ValueListenableBuilder<int>(
+                  valueListenable:
+                      NotificationService.instance.unreadCountNotifier,
+                  builder: (context, unreadCount, _) {
+                    return Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        const Center(
+                          child: Icon(
+                            Icons.notifications_none_rounded,
                             color: Colors.white,
-                            fontSize: 18,
-                            fontWeight: FontWeight.normal,
+                            size: 22,
                           ),
                         ),
+                        if (unreadCount > 0)
+                          Positioned(
+                            right: 6,
+                            top: 6,
+                            child: Container(
+                              constraints: const BoxConstraints(minWidth: 16),
+                              height: 16,
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 4),
+                              decoration: const BoxDecoration(
+                                color: Color(0xFFE53935),
+                                shape: BoxShape.circle,
+                              ),
+                              alignment: Alignment.center,
+                              child: Text(
+                                unreadCount > 9 ? '9+' : '$unreadCount',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
+                    );
+                  },
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Builder(
+              builder: (context) => ValueListenableBuilder<String?>(
+                valueListenable: ProfilePictureService.picturePathNotifier,
+                builder: (context, picturePath, _) {
+                  return ProfileAvatar(
+                    displayName: name,
+                    picturePath: picturePath,
+                    size: 40,
+                    backgroundColor: Colors.white.withValues(alpha: 0.18),
+                    foregroundColor: Colors.white,
+                    borderColor: Colors.white.withValues(alpha: 0.35),
+                    onTap: () => Scaffold.of(context).openDrawer(),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHeroBanner() {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(18),
+      child: Container(
+        height: 128,
+        width: double.infinity,
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            colors: [Color(0xFF1B254B), Color(0xFF243463)],
+            begin: Alignment.centerLeft,
+            end: Alignment.centerRight,
+          ),
+        ),
+        child: Stack(
+          children: [
+            const Positioned(
+              right: -10,
+              bottom: -20,
+              child: Opacity(
+                opacity: 0.12,
+                child: Icon(
+                  Icons.home_work_outlined,
+                  size: 160,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+            Row(
+              children: [
+                const Expanded(
+                  child: Padding(
+                    padding: EdgeInsets.fromLTRB(18, 16, 8, 16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        _AdminHeroStat(value: '1700+', label: 'Projects'),
+                        _AdminHeroStat(value: '18+', label: 'Cities'),
+                        _AdminHeroStat(
+                            value: '5M+', label: 'Sq. Ft of Build Area'),
+                      ],
+                    ),
+                  ),
+                ),
+                SizedBox(
+                  width: 132,
+                  height: double.infinity,
+                  child: ShaderMask(
+                    shaderCallback: (rect) {
+                      return const LinearGradient(
+                        begin: Alignment.centerLeft,
+                        end: Alignment.centerRight,
+                        colors: [Colors.transparent, Colors.white, Colors.white],
+                        stops: [0.0, 0.22, 1.0],
+                      ).createShader(rect);
+                    },
+                    blendMode: BlendMode.dstIn,
+                    child: Image.asset(
+                      'assets/images/Good going.jpg',
+                      fit: BoxFit.cover,
+                      alignment: const Alignment(0, -0.35),
+                      errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildOverviewCard(int totalProjects, int pendingCount) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: _cardBorder),
+        boxShadow: const [
+          BoxShadow(
+            color: _softShadow,
+            blurRadius: 18,
+            offset: Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: Image.asset(
+                  'assets/images/home1.jpg',
+                  width: 56,
+                  height: 56,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => Container(
+                    width: 56,
+                    height: 56,
+                    color: const Color(0xFFEEF2FF),
+                    child: const Icon(Icons.apartment_rounded, color: _navy),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'WORKSPACE',
+                      style: TextStyle(
+                        color: _mutedGrey,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.8,
                       ),
                     ),
-                    SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        currentUserName.isNotEmpty ? currentUserName : 'User',
-                        style: TextStyle(
-                          color: AppTheme.getTextPrimary(context),
-                          fontSize: 16,
-                          fontWeight: FontWeight.normal,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+                    const SizedBox(height: 3),
+                    Text(
+                      currentUserRole.isNotEmpty
+                          ? currentUserRole
+                          : 'Team Dashboard',
+                      style: const TextStyle(
+                        color: _navy,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      pendingCount > 0
+                          ? '$pendingCount pending task${pendingCount == 1 ? '' : 's'} need attention'
+                          : 'All caught up — no pending tasks',
+                      style: const TextStyle(
+                        color: _mutedGrey,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
                       ),
                     ),
                   ],
                 ),
               ),
-            ),
+            ],
           ),
-          DarkModeToggle(showLabel: false),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: _buildMiniStat(
+                  label: 'Projects',
+                  value: '$totalProjects',
+                  color: const Color(0xFF2563EB),
+                  bg: const Color(0xFFDBEAFE),
+                  icon: Icons.folder_special_rounded,
+                  onTap: openProjectsPicker,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _buildMiniStat(
+                  label: 'Pending',
+                  value: '$pendingCount',
+                  color: const Color(0xFFEAB308),
+                  bg: const Color(0xFFFFF1D6),
+                  icon: Icons.pending_actions_rounded,
+                  onTap: openTasksScreen,
+                ),
+              ),
+            ],
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildSearchField() {
-    return Container(
-      margin: EdgeInsets.symmetric(horizontal: 18),
-      child: Opacity(
-        opacity: _isNavigating ? 0.6 : 1.0,
-        child: InkWell(
-          onTap: _isNavigating
-              ? null
-              : () async {
-                  // Prevent double-tap opening picker twice
-                  if (_isNavigating) return;
-
-                  setState(() {
-                    _isNavigating = true;
-                  });
-
-                  try {
-                    await ProjectPickerScreen.show(context);
-                    if (mounted) {
-                      loadProjects();
-                    }
-                    // Add delay to prevent tap that closes modal from retriggering
-                    await Future.delayed(Duration(milliseconds: 300));
-                  } finally {
-                    if (mounted) {
-                      setState(() {
-                        _isNavigating = false;
-                      });
-                    }
-                  }
-                },
-          borderRadius: BorderRadius.circular(8),
-          child: Container(
-            padding: EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-            decoration: BoxDecoration(
-              color: AppTheme.getBackgroundSecondary(context),
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(
-                  color: AppTheme.getPrimaryColor(context).withOpacity(0.2)),
+  Widget _buildMiniStat({
+    required String label,
+    required String value,
+    required Color color,
+    required Color bg,
+    required IconData icon,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: _isNavigating ? null : onTap,
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF8FAFC),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: _cardBorder),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: bg,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(icon, color: color, size: 18),
             ),
-            child: Row(
-              children: [
-                if (_isNavigating)
-                  SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      valueColor: AlwaysStoppedAnimation<Color>(
-                          AppTheme.getPrimaryColor(context)),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    value,
+                    style: const TextStyle(
+                      color: _navy,
+                      fontSize: 17,
+                      fontWeight: FontWeight.w800,
+                      height: 1.1,
                     ),
-                  )
-                else
-                  Icon(
-                    Icons.folder_special,
-                    color: AppTheme.getPrimaryColor(context),
-                    size: 20,
                   ),
-                SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    'Select a project',
-                    style: TextStyle(
-                      color: AppTheme.getTextSecondary(context),
-                      fontSize: 14,
+                  Text(
+                    label,
+                    style: const TextStyle(
+                      color: _mutedGrey,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
                     ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSearchField() {
+    return Opacity(
+      opacity: _isNavigating ? 0.6 : 1.0,
+      child: InkWell(
+        onTap: _isNavigating ? null : openProjectsPicker,
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: _cardBorder),
+            boxShadow: const [
+              BoxShadow(
+                color: _softShadow,
+                blurRadius: 12,
+                offset: Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              if (_isNavigating)
+                const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation<Color>(_navy),
+                  ),
+                )
+              else
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFEEF2FF),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(
+                    Icons.folder_special_rounded,
+                    color: _navy,
+                    size: 18,
                   ),
                 ),
-                Icon(
-                  Icons.arrow_forward_ios,
-                  size: 16,
-                  color: AppTheme.getTextSecondary(context),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Select a project',
+                      style: TextStyle(
+                        color: _navy,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    SizedBox(height: 2),
+                    Text(
+                      'Open a project to manage work',
+                      style: TextStyle(
+                        color: _mutedGrey,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(
+                Icons.chevron_right_rounded,
+                size: 22,
+                color: _mutedGrey,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Map<String, Color> _quickActionColors(String title) {
+    switch (title.toLowerCase()) {
+      case 'projects':
+        return {
+          'bg': const Color(0xFFDBEAFE),
+          'fg': const Color(0xFF2563EB),
+        };
+      case 'my tasks':
+      case 'tasks':
+        return {
+          'bg': const Color(0xFFFFF1D6),
+          'fg': const Color(0xFFEAB308),
+        };
+      case 'daily update':
+        return {
+          'bg': const Color(0xFFE0E7FF),
+          'fg': const Color(0xFF4F46E5),
+        };
+      case 'indents':
+        return {
+          'bg': const Color(0xFFFFEDD5),
+          'fg': const Color(0xFFEA580C),
+        };
+      case 'stock report':
+        return {
+          'bg': const Color(0xFFCCFBF1),
+          'fg': const Color(0xFF0D9488),
+        };
+      case 'site visits':
+        return {
+          'bg': const Color(0xFFE0F2FE),
+          'fg': const Color(0xFF0284C7),
+        };
+      case 'test reports':
+        return {
+          'bg': const Color(0xFFF3E8FF),
+          'fg': const Color(0xFF7C3AED),
+        };
+      case 'checklist':
+        return {
+          'bg': const Color(0xFFF5E6D3),
+          'fg': const Color(0xFFB45309),
+        };
+      case 'chatbox':
+      case 'chat':
+        return {
+          'bg': const Color(0xFFE0E7FF),
+          'fg': const Color(0xFF4F46E5),
+        };
+      case 'my notifications':
+        return {
+          'bg': const Color(0xFFFFE4E6),
+          'fg': const Color(0xFFE11D48),
+        };
+      default:
+        return {
+          'bg': const Color(0xFFEEF2FF),
+          'fg': _navy,
+        };
+    }
+  }
+
+  String _quickActionLabel(String title) {
+    switch (title) {
+      case 'My tasks':
+        return 'Tasks';
+      case 'Daily Update':
+        return 'Updates';
+      case 'Stock Report':
+        return 'Stock';
+      case 'Site Visits':
+        return 'Visits';
+      case 'Test Reports':
+        return 'Tests';
+      case 'ChatBox':
+        return 'Chat';
+      case 'My Notifications':
+        return 'Alerts';
+      default:
+        return title;
+    }
+  }
+
+  IconData _quickActionIcon(String title, IconData fallback) {
+    switch (title) {
+      case 'Projects':
+        return Icons.folder_special_rounded;
+      case 'My tasks':
+        return Icons.assignment_outlined;
+      case 'Daily Update':
+        return Icons.campaign_rounded;
+      case 'Indents':
+        return Icons.request_quote_outlined;
+      case 'Stock Report':
+        return Icons.inventory_2_outlined;
+      case 'Site Visits':
+        return Icons.location_on_outlined;
+      case 'Test Reports':
+        return Icons.science_outlined;
+      case 'Checklist':
+        return Icons.checklist_rtl_rounded;
+      case 'ChatBox':
+        return Icons.chat_bubble_outline_rounded;
+      case 'My Notifications':
+        return Icons.notifications_none_rounded;
+      default:
+        return fallback;
+    }
+  }
+
+  Future<void> _showAllQuickActions(List<Map<String, dynamic>> items) async {
+    await showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'All Actions',
+                  style: TextStyle(
+                    color: _navy,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Flexible(
+                  child: GridView.builder(
+                    shrinkWrap: true,
+                    gridDelegate:
+                        const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 4,
+                      crossAxisSpacing: 10,
+                      mainAxisSpacing: 14,
+                      childAspectRatio: 0.78,
+                    ),
+                    itemCount: items.length,
+                    itemBuilder: (_, index) {
+                      final item = items[index];
+                      final title = item['title'].toString();
+                      final colors = _quickActionColors(title);
+                      return InkWell(
+                        onTap: () {
+                          Navigator.pop(ctx);
+                          _handleMenuTap(context, item);
+                        },
+                        borderRadius: BorderRadius.circular(16),
+                        child: Column(
+                          children: [
+                            Container(
+                              width: 56,
+                              height: 56,
+                              decoration: BoxDecoration(
+                                color: colors['bg'],
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                              child: Icon(
+                                _quickActionIcon(
+                                    title, item['icon'] as IconData),
+                                size: 24,
+                                color: colors['fg'],
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              _quickActionLabel(title),
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                color: _navy,
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w600,
+                              ),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
                 ),
               ],
             ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 
@@ -1292,7 +1992,7 @@ class AdminHomeState extends State<AdminHome> {
                 itemBuilder: (context, index) {
                   final project = filteredProjects[index];
                   final projectName =
-                      project['name']?.toString() ?? 'Unnamed Project';
+                      project['name']?.toString() ?? 'Unnamed project';
                   final projectId = project['id']?.toString() ?? '';
                   final clientName = project['client_name']?.toString() ?? '';
 
@@ -1332,42 +2032,44 @@ class AdminHomeState extends State<AdminHome> {
                           setState(() {
                             _isNavigating = true;
                           });
+                          _clearQuickSearch();
 
                           try {
-                            SharedPreferences prefs =
-                                await SharedPreferences.getInstance();
-                            await prefs.setString("project_id", projectIdStr);
-                            await prefs.setString(
-                                "client_name", projectNameStr);
-
-                            await DataProvider().onProjectSelected(
-                              erpProjectId: projectIdStr,
-                              project: Map<String, dynamic>.from(project),
-                            );
-
-                            // Preload project data for non-Client users
-                            final role = prefs.getString('role');
-                            if (role != null && role != 'Client') {
-                              DataProvider().resetProjectData();
-                              DataProvider()
-                                  .loadProjectDataForNonClient(projectIdStr)
-                                  .catchError((e) {
-                                print(
-                                    '[AdminDashboard] Error preloading project data: $e');
-                              });
-                            }
-
-                            if (!mounted) return;
-                            _clearQuickSearch();
-
-                            await _navigateWithAnimation(
+                            // Show splash immediately; do prefs/API work while it displays.
+                            await OpeningProjectGate.push(
                               context,
-                              Home(fromAdminDashboard: true),
-                            ).then((_) {
-                              if (mounted) {
-                                loadProjects();
-                              }
-                            });
+                              projectName: projectNameStr,
+                              destination: Home(fromAdminDashboard: true),
+                              prepare: () async {
+                                final prefs =
+                                    await SharedPreferences.getInstance();
+                                await prefs.setString(
+                                    "project_id", projectIdStr);
+                                await prefs.setString(
+                                    "client_name", projectNameStr);
+
+                                await DataProvider().onProjectSelected(
+                                  erpProjectId: projectIdStr,
+                                  project:
+                                      Map<String, dynamic>.from(project),
+                                );
+
+                                final role = prefs.getString('role');
+                                if (role != null && role != 'Client') {
+                                  DataProvider().resetProjectData();
+                                  DataProvider()
+                                      .loadProjectDataForNonClient(
+                                          projectIdStr)
+                                      .catchError((e) {
+                                    print(
+                                        '[AdminDashboard] Error preloading project data: $e');
+                                  });
+                                }
+                              },
+                            );
+                            if (mounted) {
+                              loadProjects();
+                            }
                           } finally {
                             if (mounted) {
                               setState(() {
@@ -1476,7 +2178,12 @@ class AdminHomeState extends State<AdminHome> {
     return Navigator.push<T>(
       context,
       PageRouteBuilder(
-        pageBuilder: (context, animation, secondaryAnimation) => destination,
+        pageBuilder: (context, animation, secondaryAnimation) =>
+            DashboardChrome.wrap(
+              DashboardChromeStyle.admin,
+              destination,
+              appBarColor: _roleAppBarColor,
+            ),
         transitionsBuilder: (context, animation, secondaryAnimation, child) {
           // Combine fade and slide for smooth animation
           return FadeTransition(
@@ -1511,6 +2218,7 @@ class AdminHomeState extends State<AdminHome> {
 
     if (item['title'] == 'Log out') {
       DataProvider().clearData();
+      await NotificationService.instance.clear();
       await item['route']();
       return;
     }
@@ -1633,286 +2341,315 @@ class AdminHomeState extends State<AdminHome> {
       filterActiveRecentTasks(_tasks);
 
   Widget _buildTasksSection() {
+    final recent = _activeRecentTasks.take(4).toList();
+    final pendingCount = _tasks.where((task) {
+      if (task is! Map) return false;
+      final status = task['status']?.toString().toLowerCase() ?? '';
+      return status == 'pending' ||
+          status == 'in_progress' ||
+          status == 'ready' ||
+          status == 'scheduled';
+    }).length;
+    final completedCount = _tasks.where((task) {
+      if (task is! Map) return false;
+      return kCompletedTaskStatuses
+          .contains(task['status']?.toString().toLowerCase() ?? '');
+    }).length;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Section Header - minimal
         Row(
           children: [
-            Icon(Icons.task_alt_outlined,
-                color: AppTheme.getPrimaryColor(context), size: 24),
-            SizedBox(width: 8),
-            Text(
-              'Recent Tasks',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w500,
-                color: AppTheme.getTextPrimary(context),
+            Expanded(
+              child: TaskSummaryStatCard(
+                value: '$pendingCount',
+                label: 'Pending tasks',
+                icon: Icons.assignment_outlined,
+                iconColor: const Color(0xFFEAB308),
+                iconBg: const Color(0xFFFFF1D6),
               ),
             ),
-            Spacer(),
-            // Create Task Button - compact with green
-            Container(
-              decoration: BoxDecoration(
-                color: Color(0xFF10B981),
-                borderRadius: BorderRadius.circular(6),
+            const SizedBox(width: 10),
+            Expanded(
+              child: TaskSummaryStatCard(
+                value: '$completedCount',
+                label: 'Completed tasks',
+                icon: Icons.check_circle_outline_rounded,
+                iconColor: const Color(0xFF16A34A),
+                iconBg: const Color(0xFFDCFCE7),
               ),
-              child: Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  onTap: () => _showCreateTaskDialog(),
-                  borderRadius: BorderRadius.circular(6),
-                  child: Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.add, color: Colors.white, size: 14),
-                        SizedBox(width: 4),
-                        Text(
-                          'Create',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 11,
-                            fontWeight: FontWeight.normal,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 18),
+        Row(
+          children: [
+            const Expanded(
+              child: Text(
+                'Recent tasks',
+                style: TextStyle(
+                  fontSize: 15.5,
+                  fontWeight: FontWeight.w800,
+                  color: _navy,
                 ),
               ),
             ),
-            SizedBox(width: 6),
-            // Refresh Button - compact
-            Container(
-              decoration: BoxDecoration(
-                color: AppTheme.getPrimaryColor(context),
-                borderRadius: BorderRadius.circular(6),
+            TextButton(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => DashboardChrome.wrap(
+                      DashboardChromeStyle.admin,
+                      MyTasksScreen(
+                        tasks: _tasks,
+                        onRefresh: _refreshTasksForMyTasks,
+                      ),
+                      appBarColor: _roleAppBarColor,
+                    ),
+                  ),
+                );
+              },
+              style: TextButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 6),
+                minimumSize: Size.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
               ),
-              child: Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  onTap: loadTasks,
-                  borderRadius: BorderRadius.circular(6),
-                  child: Padding(
-                    padding: EdgeInsets.all(6),
-                    child: Icon(Icons.refresh, color: Colors.white, size: 14),
+              child: const Text(
+                'View all',
+                style: TextStyle(
+                  color: Color(0xFF2563EB),
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+            const SizedBox(width: 6),
+            Material(
+              color: _navy,
+              borderRadius: BorderRadius.circular(10),
+              child: InkWell(
+                onTap: () => _showCreateTaskDialog(),
+                borderRadius: BorderRadius.circular(10),
+                child: const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.add, color: Colors.white, size: 15),
+                      SizedBox(width: 4),
+                      Text(
+                        'New task',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
             ),
           ],
         ),
-        SizedBox(height: 12),
-
-        // Error message - compact
+        const SizedBox(height: 12),
         if (_tasksError != null)
-          TweenAnimationBuilder<double>(
-            tween: Tween(begin: 0.0, end: 1.0),
-            duration: Duration(milliseconds: 300),
-            curve: Curves.easeOut,
-            builder: (context, value, child) {
-              return Opacity(
-                opacity: value,
-                child: Transform.scale(
-                  scale: 0.95 + (0.05 * value),
-                  child: Container(
-                    margin: EdgeInsets.only(bottom: 8),
-                    padding: EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: Colors.red.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.red.withOpacity(0.3)),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(Icons.error_outline, color: Colors.red, size: 16),
-                        SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            _tasksError!,
-                            style: TextStyle(
-                              color: Colors.red[800],
-                              fontSize: 11,
-                            ),
-                          ),
-                        ),
-                      ],
+          Container(
+            margin: const EdgeInsets.only(bottom: 10),
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFFF1F2),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFFFECACA)),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.error_outline,
+                    color: Color(0xFFDC2626), size: 16),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    _tasksError!,
+                    style: const TextStyle(
+                      color: Color(0xFFB91C1C),
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
                 ),
-              );
-            },
+              ],
+            ),
           ),
-
-        // Fixed height container to prevent layout shifts
-        SizedBox(
-          height: 210,
-          child: _isLoadingTasks
-              ? // Loading state - skeleton loader (show whenever loading)
-              ListView.builder(
-                  scrollDirection: Axis.horizontal,
-                  padding: EdgeInsets.symmetric(vertical: 8),
-                  itemCount: 5,
-                  itemBuilder: (context, index) {
-                    return Padding(
-                      padding: EdgeInsets.only(
-                        right: index < 4 ? 12 : 0,
+        if (_isLoadingTasks)
+          Column(
+            children: List.generate(
+              3,
+              (index) => Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: _buildTaskCardSkeleton(),
+              ),
+            ),
+          )
+        else if (recent.isEmpty && _tasksError == null)
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: _cardBorder),
+            ),
+            child: Column(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFEEF2FF),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.task_alt, size: 28, color: _navy),
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  'No tasks found',
+                  style: TextStyle(
+                    color: _navy,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                const Text(
+                  'Create your first task',
+                  style: TextStyle(
+                    color: _mutedGrey,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Material(
+                  color: _navy,
+                  borderRadius: BorderRadius.circular(10),
+                  child: InkWell(
+                    onTap: () => _showCreateTaskDialog(),
+                    borderRadius: BorderRadius.circular(10),
+                    child: const Padding(
+                      padding:
+                          EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                      child: Text(
+                        'New task',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
-                      child: _buildTaskCardSkeleton(),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          )
+        else
+          Column(
+            children: [
+              for (var index = 0; index < recent.length; index++)
+                if (recent[index] is Map)
+                  _buildModernRecentTaskCard(
+                    Map<String, dynamic>.from(recent[index] as Map),
+                    index,
+                  ),
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => DashboardChrome.wrap(
+                          DashboardChromeStyle.admin,
+                          MyTasksScreen(
+                            tasks: _tasks,
+                            onRefresh: _refreshTasksForMyTasks,
+                          ),
+                          appBarColor: _roleAppBarColor,
+                        ),
+                      ),
                     );
                   },
-                )
-              : _activeRecentTasks.isEmpty && _tasksError == null
-                  ? // Empty state - compact with animation
-                  Center(
-                      child: TweenAnimationBuilder<double>(
-                        tween: Tween(begin: 0.0, end: 1.0),
-                        duration: Duration(milliseconds: 500),
-                        curve: Curves.easeOut,
-                        builder: (context, value, child) {
-                          return Opacity(
-                            opacity: value,
-                            child: Transform.scale(
-                              scale: 0.9 + (0.1 * value),
-                              child: Container(
-                                padding: EdgeInsets.all(24),
-                                decoration: BoxDecoration(
-                                  color:
-                                      AppTheme.getBackgroundSecondary(context),
-                                  borderRadius: BorderRadius.circular(10),
-                                  border: Border.all(
-                                    color: AppTheme.getPrimaryColor(context)
-                                        .withOpacity(0.2),
-                                    width: 1,
-                                  ),
-                                ),
-                                child: Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Container(
-                                      padding: EdgeInsets.all(12),
-                                      decoration: BoxDecoration(
-                                        color: AppTheme.getPrimaryColor(context)
-                                            .withOpacity(0.15),
-                                        shape: BoxShape.circle,
-                                      ),
-                                      child: Icon(
-                                        Icons.task_alt,
-                                        size: 32,
-                                        color:
-                                            AppTheme.getPrimaryColor(context),
-                                      ),
-                                    ),
-                                    SizedBox(height: 12),
-                                    Text(
-                                      'No tasks found',
-                                      style: TextStyle(
-                                        color: AppTheme.getTextPrimary(context),
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.normal,
-                                      ),
-                                    ),
-                                    SizedBox(height: 4),
-                                    Text(
-                                      'Create your first task',
-                                      style: TextStyle(
-                                        color:
-                                            AppTheme.getTextSecondary(context),
-                                        fontSize: 12,
-                                      ),
-                                    ),
-                                    SizedBox(height: 12),
-                                    Container(
-                                      decoration: BoxDecoration(
-                                        color: Color(0xFF10B981),
-                                        borderRadius: BorderRadius.circular(6),
-                                      ),
-                                      child: Material(
-                                        color: Colors.transparent,
-                                        child: InkWell(
-                                          onTap: () => _showCreateTaskDialog(),
-                                          borderRadius:
-                                              BorderRadius.circular(6),
-                                          child: Padding(
-                                            padding: EdgeInsets.symmetric(
-                                                horizontal: 16, vertical: 8),
-                                            child: Row(
-                                              mainAxisSize: MainAxisSize.min,
-                                              children: [
-                                                Icon(Icons.add,
-                                                    color: Colors.white,
-                                                    size: 14),
-                                                SizedBox(width: 6),
-                                                Text(
-                                                  'Create Task',
-                                                  style: TextStyle(
-                                                    color: Colors.white,
-                                                    fontSize: 12,
-                                                    fontWeight:
-                                                        FontWeight.normal,
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          );
-                        },
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'View all tasks',
+                        style: TextStyle(
+                          color: Color(0xFF2563EB),
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
-                    )
-                  : // Tasks list with horizontal scroll view
-                  ListView.builder(
-                      scrollDirection: Axis.horizontal,
-                      padding: EdgeInsets.symmetric(vertical: 8),
-                      itemCount: _activeRecentTasks.length > 5
-                          ? 5
-                          : _activeRecentTasks.length,
-                      itemBuilder: (context, index) {
-                        final task = _activeRecentTasks[index];
-                        if (task is Map<String, dynamic>) {
-                          return TweenAnimationBuilder<double>(
-                            tween: Tween(begin: 0.0, end: 1.0),
-                            duration:
-                                Duration(milliseconds: 400 + (index * 100)),
-                            curve: Curves.easeOut,
-                            builder: (context, value, child) {
-                              return Opacity(
-                                opacity: value,
-                                child: Transform.scale(
-                                  scale: 0.9 + (0.1 * value),
-                                  child: Padding(
-                                    padding: EdgeInsets.only(
-                                      right: index <
-                                              (_tasks.length > 5
-                                                      ? 5
-                                                      : _tasks.length) -
-                                                  1
-                                          ? 12
-                                          : 0,
-                                    ),
-                                    child: _buildTaskCard(task, index),
-                                  ),
-                                ),
-                              );
-                            },
-                          );
-                        } else {
-                          return SizedBox.shrink();
-                        }
-                      },
-                    ),
-        ),
-
-        // View All Tasks button - styled like Create Task button
+                      SizedBox(width: 2),
+                      Icon(
+                        Icons.arrow_forward_rounded,
+                        size: 16,
+                        color: Color(0xFF2563EB),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
       ],
+    );
+  }
+
+  Widget _buildModernRecentTaskCard(Map<String, dynamic> task, int index) {
+    final taskId = task['id']?.toString() ?? '';
+    final projectName = task['project_name']?.toString() ?? '';
+    final assignedToName = task['assigned_to_name']?.toString() ?? '';
+    final status = task['status']?.toString() ?? 'pending';
+    final note = task['note']?.toString() ?? '';
+    final createdAt = task['created_at']?.toString() ?? '';
+    final title = note.trim().isNotEmpty
+        ? _toSentenceCase(note.trim())
+        : 'Task #$taskId';
+
+    String? dateLabel;
+    if (createdAt.isNotEmpty) {
+      try {
+        dateLabel =
+            DateFormat('dd MMM yyyy, hh:mm a').format(DateTime.parse(createdAt));
+      } catch (_) {
+        dateLabel = createdAt;
+      }
+    }
+
+    return ModernTaskCard(
+      title: title,
+      projectName: projectName,
+      assigneeName: assignedToName,
+      dateLabel: dateLabel,
+      status: status,
+      accentIndex: index,
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => DashboardChrome.wrap(
+              DashboardChromeStyle.admin,
+              MyTasksScreen(
+                tasks: _tasks,
+                onRefresh: _refreshTasksForMyTasks,
+                focusTaskId: taskId,
+              ),
+              appBarColor: _roleAppBarColor,
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -2041,9 +2778,14 @@ class AdminHomeState extends State<AdminHome> {
           Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (context) => ViewAllTasksScreen(
-                tasks: [task],
-                onTaskUpdated: () => loadTasks(),
+              builder: (_) => DashboardChrome.wrap(
+                DashboardChromeStyle.admin,
+                MyTasksScreen(
+                  tasks: _tasks,
+                  onRefresh: _refreshTasksForMyTasks,
+                  focusTaskId: taskId,
+                ),
+                appBarColor: _roleAppBarColor,
               ),
             ),
           );
@@ -2177,134 +2919,18 @@ class AdminHomeState extends State<AdminHome> {
   }
 
   Widget _buildTaskCardSkeleton() {
-    final baseColor = AppTheme.getBackgroundSecondary(context).withOpacity(0.4);
-    final highlightColor = Colors.white.withOpacity(0.35);
+    final baseColor = const Color(0xFFE8ECF1);
+    final highlightColor = const Color(0xFFF8FAFC);
 
     return Shimmer.fromColors(
       baseColor: baseColor,
       highlightColor: highlightColor,
-      child: Stack(
-        children: [
-          Container(
-            width: 140,
-            padding: EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: AppTheme.getBackgroundSecondary(context),
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(
-                color: AppTheme.getPrimaryColor(context).withOpacity(0.2),
-                width: 1,
-              ),
-            ),
-          ),
-          // Left border skeleton
-          Positioned(
-            left: 0,
-            top: 0,
-            bottom: 0,
-            child: Container(
-              width: 2,
-              decoration: BoxDecoration(
-                color: AppTheme.getPrimaryColor(context).withOpacity(0.3),
-                borderRadius: BorderRadius.only(
-                  topLeft: Radius.circular(10),
-                  bottomLeft: Radius.circular(10),
-                ),
-              ),
-            ),
-          ),
-          // Content skeleton
-          Container(
-            width: 140,
-            padding: EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                // Top section
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Avatar and status skeleton
-                    Row(
-                      children: [
-                        Container(
-                          width: 20,
-                          height: 20,
-                          decoration: BoxDecoration(
-                            color: baseColor,
-                            shape: BoxShape.circle,
-                          ),
-                        ),
-                        Spacer(),
-                        Container(
-                          width: 24,
-                          height: 16,
-                          decoration: BoxDecoration(
-                            color: baseColor,
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                        ),
-                      ],
-                    ),
-                    SizedBox(height: 16),
-                    // Note skeleton - 3 lines
-                    Container(
-                      width: double.infinity,
-                      height: 12,
-                      decoration: BoxDecoration(
-                        color: baseColor,
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                    ),
-                    SizedBox(height: 8),
-                    Container(
-                      width: double.infinity,
-                      height: 12,
-                      decoration: BoxDecoration(
-                        color: baseColor,
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                    ),
-                    SizedBox(height: 8),
-                    Container(
-                      width: 80,
-                      height: 12,
-                      decoration: BoxDecoration(
-                        color: baseColor,
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                    ),
-                  ],
-                ),
-                // Bottom section skeleton
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    SizedBox(height: 12),
-                    Container(
-                      width: 100,
-                      height: 10,
-                      decoration: BoxDecoration(
-                        color: baseColor,
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                    ),
-                    SizedBox(height: 8),
-                    Container(
-                      width: 70,
-                      height: 10,
-                      decoration: BoxDecoration(
-                        color: baseColor,
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ],
+      child: Container(
+        height: 96,
+        decoration: BoxDecoration(
+          color: baseColor,
+          borderRadius: BorderRadius.circular(16),
+        ),
       ),
     );
   }
@@ -2312,113 +2938,10 @@ class AdminHomeState extends State<AdminHome> {
   Widget _buildStatusDropdown(String taskIdStr, String currentStatus) {
     final taskId = int.tryParse(taskIdStr) ?? 0;
     final isWorkflowTask = taskId < 0;
-    final statuses = [
-      {
-        'value': 'pending',
-        'label': 'Pending',
-        'color': Color(0xFFD97706),
-        'icon': Icons.pending
-      },
-      {
-        'value': 'in_progress',
-        'label': 'In Progress',
-        'color': AppTheme.getPrimaryColor(context),
-        'icon': Icons.work
-      },
-      {
-        'value': 'completed',
-        'label': 'Completed',
-        'color': Color(0xFF10B981),
-        'icon': Icons.check_circle
-      },
-      {
-        'value': 'cancelled',
-        'label': 'Cancelled',
-        'color': Color(0xFFEF4444),
-        'icon': Icons.cancel
-      },
-    ];
-
-    final currentStatusData = statuses.firstWhere(
-      (s) => s['value'] == currentStatus,
-      orElse: () => statuses[0],
-    );
-    final currentColor = currentStatusData['color'] as Color;
-    final currentIcon = currentStatusData['icon'] as IconData;
-
-    return Container(
-      decoration: BoxDecoration(
-        color: AppTheme.backgroundPrimaryLight,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: AppTheme.getPrimaryColor(context).withOpacity(0.2),
-          width: 1,
-        ),
-      ),
-      child: DropdownButtonFormField<String>(
-        value: currentStatus,
-        decoration: InputDecoration(
-          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          border: InputBorder.none,
-          enabledBorder: InputBorder.none,
-          focusedBorder: InputBorder.none,
-        ),
-        icon: Icon(Icons.arrow_drop_down,
-            color: AppTheme.getTextSecondary(context)),
-        dropdownColor: AppTheme.backgroundPrimaryLight,
-        style: TextStyle(
-          color: AppTheme.getTextPrimary(context),
-          fontSize: 14,
-        ),
-        items: statuses.map((statusData) {
-          final status = statusData['value'] as String;
-          final label = statusData['label'] as String;
-          final color = statusData['color'] as Color;
-          final icon = statusData['icon'] as IconData;
-
-          return DropdownMenuItem<String>(
-            value: status,
-            child: Row(
-              children: [
-                Icon(icon, size: 16, color: color),
-                SizedBox(width: 8),
-                Text(
-                  label,
-                  style: TextStyle(
-                    color: AppTheme.getTextPrimary(context),
-                    fontSize: 14,
-                  ),
-                ),
-              ],
-            ),
-          );
-        }).toList(),
-        onChanged: isWorkflowTask
-            ? null
-            : (String? newStatus) {
-                if (newStatus != null && newStatus != currentStatus) {
-                  updateTaskStatus(taskId, newStatus);
-                }
-              },
-        selectedItemBuilder: (BuildContext context) {
-          return statuses.map((statusData) {
-            final label = statusData['label'] as String;
-            return Row(
-              children: [
-                Icon(currentIcon, size: 16, color: currentColor),
-                SizedBox(width: 8),
-                Text(
-                  label,
-                  style: TextStyle(
-                    color: AppTheme.getTextPrimary(context),
-                    fontSize: 14,
-                  ),
-                ),
-              ],
-            );
-          }).toList();
-        },
-      ),
+    return TaskStatusChipSet(
+      currentStatus: currentStatus,
+      enabled: !isWorkflowTask,
+      onStatusSelected: (newStatus) => updateTaskStatus(taskId, newStatus),
     );
   }
 
@@ -2671,7 +3194,7 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
                       SizedBox(width: 12),
                       Expanded(
                         child: Text(
-                          'Select Project',
+                          'Select project',
                           style: TextStyle(
                             color: AppTheme.getTextPrimary(context),
                             fontSize: 16,
@@ -2806,7 +3329,7 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
                                 final projectId = project['id']?.toString();
                                 final projectName =
                                     project['name']?.toString() ??
-                                        'Unnamed Project';
+                                        'Unnamed project';
                                 final clientName =
                                     project['client_name']?.toString();
                                 final isSelected =
@@ -2969,113 +3492,13 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
   }
 
   Widget _buildStatusDropdownForForm() {
-    final statuses = [
-      {
-        'value': 'pending',
-        'label': 'Pending',
-        'color': Color(0xFFD97706),
-        'icon': Icons.pending
+    return TaskStatusChipSet(
+      currentStatus: selectedStatus,
+      onStatusSelected: (newStatus) {
+        setState(() {
+          selectedStatus = newStatus;
+        });
       },
-      {
-        'value': 'in_progress',
-        'label': 'In Progress',
-        'color': AppTheme.getPrimaryColor(context),
-        'icon': Icons.work
-      },
-      {
-        'value': 'completed',
-        'label': 'Completed',
-        'color': Color(0xFF10B981),
-        'icon': Icons.check_circle
-      },
-      {
-        'value': 'cancelled',
-        'label': 'Cancelled',
-        'color': Color(0xFFEF4444),
-        'icon': Icons.cancel
-      },
-    ];
-
-    final currentStatusData = statuses.firstWhere(
-      (s) => s['value'] == selectedStatus,
-      orElse: () => statuses[0],
-    );
-    final currentColor = currentStatusData['color'] as Color;
-    final currentIcon = currentStatusData['icon'] as IconData;
-
-    return Container(
-      decoration: BoxDecoration(
-        color: AppTheme.backgroundPrimaryLight,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: AppTheme.getPrimaryColor(context).withOpacity(0.2),
-          width: 1,
-        ),
-      ),
-      child: DropdownButtonFormField<String>(
-        value: selectedStatus,
-        decoration: InputDecoration(
-          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          border: InputBorder.none,
-          enabledBorder: InputBorder.none,
-          focusedBorder: InputBorder.none,
-        ),
-        icon: Icon(Icons.arrow_drop_down,
-            color: AppTheme.getTextSecondary(context)),
-        dropdownColor: AppTheme.backgroundPrimaryLight,
-        style: TextStyle(
-          color: AppTheme.getTextPrimary(context),
-          fontSize: 14,
-        ),
-        items: statuses.map((statusData) {
-          final status = statusData['value'] as String;
-          final label = statusData['label'] as String;
-          final color = statusData['color'] as Color;
-          final icon = statusData['icon'] as IconData;
-
-          return DropdownMenuItem<String>(
-            value: status,
-            child: Row(
-              children: [
-                Icon(icon, size: 16, color: color),
-                SizedBox(width: 8),
-                Text(
-                  label,
-                  style: TextStyle(
-                    color: AppTheme.getTextPrimary(context),
-                    fontSize: 14,
-                  ),
-                ),
-              ],
-            ),
-          );
-        }).toList(),
-        onChanged: (String? newStatus) {
-          if (newStatus != null) {
-            setState(() {
-              selectedStatus = newStatus;
-            });
-          }
-        },
-        selectedItemBuilder: (BuildContext context) {
-          return statuses.map((statusData) {
-            final label = statusData['label'] as String;
-            return Row(
-              children: [
-                Icon(currentIcon, size: 16, color: currentColor),
-                SizedBox(width: 8),
-                Text(
-                  label,
-                  style: TextStyle(
-                    color: AppTheme.getTextPrimary(context),
-                    fontSize: 14,
-                  ),
-                ),
-              ],
-            );
-          }).toList();
-        },
-      ),
     );
   }
 
@@ -3091,7 +3514,7 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
           onPressed: () => Navigator.of(context).pop(),
         ),
         title: Text(
-          'Create New Task',
+          'Create new task',
           style: TextStyle(
             color: AppTheme.getTextPrimary(context),
             fontSize: 18,
@@ -3192,7 +3615,7 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
 
             // User Picker (Assign To)
             Text(
-              'Assign To',
+              'Assign to',
               style: TextStyle(
                 color: AppTheme.getTextPrimary(context),
                 fontSize: 14,
@@ -3346,7 +3769,7 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
                                     color: Colors.white, size: 18),
                                 SizedBox(width: 8),
                                 Text(
-                                  'Create Task',
+                                  'Create task',
                                   style: TextStyle(
                                     color: Colors.white,
                                     fontSize: 16,
@@ -3471,7 +3894,7 @@ class DashboardState extends State<Dashboard> {
                       SizedBox(width: 12),
                       Expanded(
                         child: Text(
-                          'Select Project',
+                          'Select project',
                           style: TextStyle(
                             color: AppTheme.getTextPrimary(context),
                             fontSize: 16,
@@ -3608,7 +4031,7 @@ class DashboardState extends State<Dashboard> {
                                 final projectId = project['id']?.toString();
                                 final projectName =
                                     project['name']?.toString() ??
-                                        'Unnamed Project';
+                                        'Unnamed project';
                                 final clientName =
                                     project['client_name']?.toString();
 
@@ -3628,62 +4051,50 @@ class DashboardState extends State<Dashboard> {
                                     color: Colors.transparent,
                                     child: InkWell(
                                       onTap: () async {
-                                        SharedPreferences prefs =
-                                            await SharedPreferences
-                                                .getInstance();
-                                        await prefs.setString(
-                                            "project_id", projectId ?? '');
-                                        await prefs.setString(
-                                            "client_name", projectName);
-
-                                        // Preload project data for non-Client users
-                                        final role = prefs.getString('role');
-                                        if (role != null && role != 'Client') {
-                                          DataProvider()
-                                              .loadProjectDataForNonClient(
-                                                  projectId ?? '')
-                                              .catchError((e) {
-                                            print(
-                                                '[Dashboard] Error preloading project data: $e');
-                                          });
-                                        }
                                         isClosing = true;
                                         FocusManager.instance.primaryFocus
                                             ?.unfocus();
                                         _searchController.clear();
                                         Navigator.pop(sheetContext);
-                                        await Future.delayed(
-                                          Duration(milliseconds: 120),
-                                        );
                                         if (!mounted) return;
-                                        Navigator.pushReplacement(
+                                        // Splash first; prepare project while it shows.
+                                        await OpeningProjectGate.push(
                                           parentContext,
-                                          PageRouteBuilder(
-                                            pageBuilder: (context, animation,
-                                                    secondaryAnimation) =>
-                                                Home(fromAdminDashboard: true),
-                                            transitionsBuilder: (context,
-                                                animation,
-                                                secondaryAnimation,
-                                                child) {
-                                              return FadeTransition(
-                                                opacity: animation,
-                                                child: SlideTransition(
-                                                  position: Tween<Offset>(
-                                                    begin:
-                                                        const Offset(0.3, 0.0),
-                                                    end: Offset.zero,
-                                                  ).animate(CurvedAnimation(
-                                                    parent: animation,
-                                                    curve: Curves.easeOutCubic,
-                                                  )),
-                                                  child: child,
-                                                ),
+                                          projectName: projectName,
+                                          destination:
+                                              Home(fromAdminDashboard: true),
+                                          prepare: () async {
+                                            final prefs =
+                                                await SharedPreferences
+                                                    .getInstance();
+                                            await prefs.setString(
+                                                "project_id", projectId ?? '');
+                                            await prefs.setString(
+                                                "client_name", projectName);
+
+                                            final role =
+                                                prefs.getString('role');
+                                            if (role != null &&
+                                                role != 'Client') {
+                                              DataProvider()
+                                                  .loadProjectDataForNonClient(
+                                                      projectId ?? '')
+                                                  .catchError((e) {
+                                                print(
+                                                    '[Dashboard] Error preloading project data: $e');
+                                              });
+                                            }
+
+                                            if (projectId != null &&
+                                                projectId.isNotEmpty) {
+                                              await DataProvider()
+                                                  .onProjectSelected(
+                                                erpProjectId: projectId,
+                                                project: Map<String,
+                                                    dynamic>.from(project),
                                               );
-                                            },
-                                            transitionDuration:
-                                                Duration(milliseconds: 300),
-                                          ),
+                                            }
+                                          },
                                         );
                                       },
                                       borderRadius: BorderRadius.circular(10),

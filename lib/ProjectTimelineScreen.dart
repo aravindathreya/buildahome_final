@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'app_theme.dart';
 import 'services/data_provider.dart';
+import 'widgets/skeleton_loader.dart';
 
 const Color _pageBackground = Color(0xFFF8F9FC);
 const Color _cardSurface = Colors.white;
@@ -114,20 +115,23 @@ class _ProjectTimelineScreenState extends State<ProjectTimelineScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: _pageBackground,
+      backgroundColor: AppTheme.getBackgroundPrimary(context),
       appBar: AppBar(
-        backgroundColor: _pageBackground,
+        backgroundColor: AppTheme.getBackgroundSecondary(context),
+        foregroundColor: AppTheme.navy,
         elevation: 0,
         scrolledUnderElevation: 0,
+        iconTheme: const IconThemeData(color: AppTheme.navy),
+        actionsIconTheme: const IconThemeData(color: AppTheme.navy),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios_new_rounded,
-              color: _ink, size: 20),
+              color: AppTheme.navy, size: 20),
           onPressed: () => Navigator.maybePop(context),
         ),
         title: const Text(
           'Project Timeline',
           style: TextStyle(
-            color: _ink,
+            color: AppTheme.navy,
             fontSize: 20,
             fontWeight: FontWeight.w800,
             letterSpacing: -0.4,
@@ -141,10 +145,10 @@ class _ProjectTimelineScreenState extends State<ProjectTimelineScreen> {
                 ? const SizedBox(
                     width: 18,
                     height: 18,
-                    child:
-                        CircularProgressIndicator(strokeWidth: 2, color: _ink),
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2, color: AppTheme.navy),
                   )
-                : const Icon(Icons.refresh_rounded, color: _ink),
+                : const Icon(Icons.refresh_rounded, color: AppTheme.navy),
           ),
           const SizedBox(width: 8),
         ],
@@ -155,11 +159,7 @@ class _ProjectTimelineScreenState extends State<ProjectTimelineScreen> {
 
   Widget _buildBody() {
     if (_isLoading && _tasks.isEmpty && _errorMessage == null) {
-      return Center(
-        child: CircularProgressIndicator(
-          color: AppTheme.getPrimaryColor(context),
-        ),
-      );
+      return const SkeletonListLoader(showSummary: false, cardCount: 5);
     }
 
     if (_errorMessage != null && _tasks.isEmpty) {

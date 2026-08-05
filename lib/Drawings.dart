@@ -8,7 +8,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import 'app_theme.dart';
 import 'services/data_provider.dart';
-import 'widgets/dark_mode_toggle.dart';
+import 'widgets/themed_scaffold.dart';
 
 class Documents extends StatefulWidget {
   @override
@@ -45,11 +45,18 @@ class DocumentObjectState extends State<DocumentObject> {
   @override
   Widget build(BuildContext context) {
     return Container(
-      margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+      margin: const EdgeInsets.symmetric(vertical: 8),
       decoration: BoxDecoration(
-        color: AppTheme.getBackgroundSecondary(context),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppTheme.getPrimaryColor(context).withOpacity(0.08)),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppTheme.border),
+        boxShadow: const [
+          BoxShadow(
+            color: AppTheme.softShadow,
+            blurRadius: 18,
+            offset: Offset(0, 8),
+          ),
+        ],
       ),
       child: Material(
         color: Colors.transparent,
@@ -61,7 +68,7 @@ class DocumentObjectState extends State<DocumentObject> {
                   vis = !vis;
                 });
               },
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(18),
               child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: Row(
@@ -70,24 +77,25 @@ class DocumentObjectState extends State<DocumentObject> {
                     Row(
                       children: [
                         Container(
-                          padding: const EdgeInsets.all(8),
+                          width: 42,
+                          height: 42,
                           decoration: BoxDecoration(
-                            color: AppTheme.getPrimaryColor(context).withOpacity(0.12),
-                            borderRadius: BorderRadius.circular(10),
+                            color: const Color(0xFFEEF2FF),
+                            borderRadius: BorderRadius.circular(12),
                           ),
-                          child: Icon(
-                            Icons.folder,
-                            size: 20,
-                            color: AppTheme.getPrimaryColor(context),
+                          child: const Icon(
+                            Icons.folder_rounded,
+                            size: 22,
+                            color: AppTheme.navy,
                           ),
                         ),
                         const SizedBox(width: 12),
                         Text(
                           parent.toString(),
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                            color: AppTheme.getTextPrimary(context),
+                          style: const TextStyle(
+                            fontSize: 15.5,
+                            fontWeight: FontWeight.w800,
+                            color: AppTheme.navy,
                           ),
                         ),
                       ],
@@ -95,9 +103,9 @@ class DocumentObjectState extends State<DocumentObject> {
                     AnimatedRotation(
                       turns: vis ? 0.5 : 0.0,
                       duration: const Duration(milliseconds: 250),
-                      child: Icon(
-                        Icons.expand_more,
-                        color: AppTheme.getTextPrimary(context),
+                      child: const Icon(
+                        Icons.expand_more_rounded,
+                        color: AppTheme.mutedGrey,
                       ),
                     ),
                   ],
@@ -132,34 +140,35 @@ class DocumentObjectState extends State<DocumentObject> {
                                       _launchURL("https://office.buildahome.in/files/${children[x]['link']}");
                                     },
                                     child: Container(
-                                      padding: const EdgeInsets.all(16),
+                                      padding: const EdgeInsets.all(14),
                                       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                                       decoration: BoxDecoration(
-                                        color: AppTheme.getBackgroundPrimaryLight(context),
+                                        color: const Color(0xFFF7F8FB),
                                         borderRadius: BorderRadius.circular(12),
+                                        border: Border.all(color: AppTheme.border),
                                       ),
                                       child: Row(
                                         children: [
-                                          Icon(
-                                            Icons.description,
+                                          const Icon(
+                                            Icons.description_outlined,
+                                            color: AppTheme.navy,
                                             size: 20,
-                                            color: AppTheme.getPrimaryColor(context),
                                           ),
                                           const SizedBox(width: 12),
                                           Expanded(
                                             child: Text(
                                               children[x]['name'].toString() == 'null' ? children[x]['link'].toString() : children[x]['name'].toString(),
-                                              style: TextStyle(
-                                                color: AppTheme.getTextPrimary(context),
-                                                fontWeight: FontWeight.w600,
+                                              style: const TextStyle(
+                                                color: AppTheme.navy,
+                                                fontWeight: FontWeight.w700,
                                                 fontSize: 14,
                                               ),
                                             ),
                                           ),
-                                          Icon(
-                                            Icons.open_in_new,
+                                          const Icon(
+                                            Icons.open_in_new_rounded,
                                             size: 18,
-                                            color: AppTheme.getPrimaryColor(context),
+                                            color: AppTheme.mutedGrey,
                                           ),
                                         ],
                                       ),
@@ -352,46 +361,36 @@ class DocumentsState extends State<Documents> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final canPop = Navigator.of(context).canPop();
-    return Scaffold(
-      backgroundColor: AppTheme.getBackgroundPrimary(context),
-      appBar: AppBar(
-        backgroundColor: AppTheme.getBackgroundSecondary(context),
-        automaticallyImplyLeading: canPop,
-        leading: canPop
-            ? IconButton(
-                icon: const Icon(Icons.arrow_back_ios_new_rounded),
-                onPressed: () => Navigator.of(context).maybePop(),
-              )
-            : null,
-        title: Text(
-          'Documents',
-          style: theme.textTheme.headlineSmall?.copyWith(fontSize: 20),
-        ),
-        actions: [
-          DarkModeToggle(showLabel: false),
-          SizedBox(width: 8),
-        ],
-      ),
+    return ThemedScaffold(
+      title: 'Documents',
       body: SafeArea(
         child: RefreshIndicator(
-          color: AppTheme.getPrimaryColor(context),
+          color: AppTheme.navy,
           onRefresh: () => call(showLoader: false),
           child: ListView(
             physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.fromLTRB(16, 24, 16, 32),
+            padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
             children: [
-              Text(
-                "Project documents",
-                style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700),
+              const Text(
+                'Project documents',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                  color: AppTheme.navy,
+                  letterSpacing: -0.2,
+                ),
               ),
-              const SizedBox(height: 8),
-              Text(
+              const SizedBox(height: 6),
+              const Text(
                 'Access sanctioned drawings, approvals and shared files in one place.',
-                style: theme.textTheme.bodyMedium?.copyWith(color: AppTheme.getTextSecondary(context)),
+                style: TextStyle(
+                  color: AppTheme.mutedGrey,
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w500,
+                  height: 1.35,
+                ),
               ),
-              const SizedBox(height: 24),
+              const SizedBox(height: 20),
               if (_errorMessage != null && folders.isEmpty)
                 _buildErrorState()
               else if (_isLoading && folders.isEmpty)
@@ -400,15 +399,15 @@ class DocumentsState extends State<Documents> {
                 _buildEmptyState()
               else ...[
                 if (_isRefreshing && folders.isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 16),
+                  const Padding(
+                    padding: EdgeInsets.only(bottom: 16),
                     child: Center(
                       child: SizedBox(
                         width: 20,
                         height: 20,
                         child: CircularProgressIndicator(
                           strokeWidth: 2,
-                          valueColor: AlwaysStoppedAnimation<Color>(AppTheme.primaryColorConst),
+                          valueColor: AlwaysStoppedAnimation<Color>(AppTheme.navy),
                         ),
                       ),
                     ),
@@ -473,22 +472,26 @@ class DocumentsState extends State<Documents> {
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: AppTheme.getBackgroundSecondary(context),
-        borderRadius: BorderRadius.circular(16),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppTheme.border),
       ),
-      child: Column(
+      child: const Column(
         children: [
-          Icon(Icons.inventory_2_outlined, color: AppTheme.getPrimaryColor(context), size: 32),
-          const SizedBox(height: 12),
+          Icon(Icons.inventory_2_outlined, color: AppTheme.navy, size: 32),
+          SizedBox(height: 12),
           Text(
             'No documents shared yet',
-            style: TextStyle(fontWeight: FontWeight.w600, color: AppTheme.getTextPrimary(context)),
+            style: TextStyle(fontWeight: FontWeight.w800, color: AppTheme.navy),
           ),
-          const SizedBox(height: 4),
+          SizedBox(height: 4),
           Text(
             'Project files uploaded by the team will appear here automatically.',
             textAlign: TextAlign.center,
-            style: TextStyle(color: AppTheme.getTextSecondary(context)),
+            style: TextStyle(
+              color: AppTheme.mutedGrey,
+              fontWeight: FontWeight.w500,
+            ),
           ),
         ],
       ),
@@ -499,29 +502,37 @@ class DocumentsState extends State<Documents> {
     return Container(
       padding: const EdgeInsets.all(32),
       decoration: BoxDecoration(
-        color: AppTheme.getBackgroundSecondary(context),
-        borderRadius: BorderRadius.circular(20),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppTheme.border),
       ),
       child: Column(
         children: [
-          Icon(Icons.error_outline, color: Colors.redAccent, size: 48),
+          const Icon(Icons.error_outline, color: Color(0xFFDC2626), size: 48),
           const SizedBox(height: 12),
-          Text(
+          const Text(
             'Something went wrong',
-            style: TextStyle(fontWeight: FontWeight.w600, color: AppTheme.getTextPrimary(context)),
+            style: TextStyle(fontWeight: FontWeight.w800, color: AppTheme.navy),
           ),
           const SizedBox(height: 8),
           Text(
             _errorMessage ?? 'Please try again later.',
             textAlign: TextAlign.center,
-            style: TextStyle(color: AppTheme.getTextSecondary(context)),
+            style: const TextStyle(
+              color: AppTheme.mutedGrey,
+              fontWeight: FontWeight.w500,
+            ),
           ),
           const SizedBox(height: 16),
           ElevatedButton(
             onPressed: () => call(),
             style: ElevatedButton.styleFrom(
-              backgroundColor: AppTheme.getPrimaryColor(context),
+              backgroundColor: AppTheme.navy,
               foregroundColor: Colors.white,
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
             ),
             child: const Text('Retry'),
           ),

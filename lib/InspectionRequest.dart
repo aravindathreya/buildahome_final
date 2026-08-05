@@ -10,12 +10,11 @@ import 'app_theme.dart';
 import 'user_picker.dart';
 import 'services/data_provider.dart';
 import 'services/rbac_service.dart';
-import 'widgets/dark_mode_toggle.dart';
 import 'widgets/searchable_select.dart';
 import 'widgets/full_screen_message.dart';
 import 'widgets/full_screen_progress.dart';
-import 'package:provider/provider.dart';
-import 'providers/theme_provider.dart';
+import 'widgets/themed_scaffold.dart';
+import 'widgets/skeleton_loader.dart';
 
 class InspectionRequestLayout extends StatefulWidget {
   final String? fixedProjectId;
@@ -73,47 +72,80 @@ class _InspectionRequestLayoutState extends State<InspectionRequestLayout> with 
     super.dispose();
   }
 
+  PreferredSizeWidget? _buildTabBottom() {
+    if (!_canCreate && !_canView) return null;
+    final tabs = <Widget>[
+      if (_canCreate)
+        const SizedBox(height: 40, child: Center(child: Text('Create'))),
+      if (_canView)
+        const SizedBox(height: 40, child: Center(child: Text('View'))),
+    ];
+    if (tabs.length < 2) return null;
+
+    return PreferredSize(
+      preferredSize: const Size.fromHeight(66),
+      child: Container(
+        color: Colors.white,
+        padding: const EdgeInsets.fromLTRB(18, 0, 18, 14),
+        child: Container(
+          height: 48,
+          padding: const EdgeInsets.all(4),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF1F4F8),
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: TabBar(
+            controller: _tabController,
+            indicatorSize: TabBarIndicatorSize.tab,
+            dividerColor: Colors.transparent,
+            splashFactory: NoSplash.splashFactory,
+            overlayColor: WidgetStateProperty.all(Colors.transparent),
+            labelPadding: EdgeInsets.zero,
+            indicator: BoxDecoration(
+              color: AppTheme.navy,
+              borderRadius: BorderRadius.circular(11),
+            ),
+            labelColor: Colors.white,
+            unselectedLabelColor: AppTheme.mutedGrey,
+            labelStyle: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+            ),
+            unselectedLabelStyle: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
+            tabs: tabs,
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     // Hide inspection requests from clients
     if (_userRole != null && _userRole!.toLowerCase() == 'client') {
-      return Scaffold(
-        backgroundColor: AppTheme.getBackgroundPrimary(context),
-        appBar: AppBar(
-          automaticallyImplyLeading: true,
-          backgroundColor: AppTheme.getBackgroundSecondary(context),
-          elevation: 0,
-          title: Text(
-            'Inspection Requests',
-            style: TextStyle(
-              color: AppTheme.getTextPrimary(context),
-              fontSize: 18,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          actions: [
-            DarkModeToggle(showLabel: false),
-            SizedBox(width: 8),
-          ],
-        ),
+      return ThemedScaffold(
+        title: 'Inspection Requests',
         body: Center(
           child: Padding(
-            padding: EdgeInsets.all(40),
+            padding: const EdgeInsets.all(40),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
-              children: [
+              children: const [
                 Icon(
                   Icons.fact_check_outlined,
                   size: 64,
-                  color: AppTheme.getTextSecondary(context),
+                  color: AppTheme.mutedGrey,
                 ),
                 SizedBox(height: 16),
                 Text(
                   'Inspection Requests',
                   style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    color: AppTheme.getTextPrimary(context),
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                    color: AppTheme.navy,
                   ),
                 ),
                 SizedBox(height: 8),
@@ -122,7 +154,8 @@ class _InspectionRequestLayoutState extends State<InspectionRequestLayout> with 
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 14,
-                    color: AppTheme.getTextSecondary(context),
+                    color: AppTheme.mutedGrey,
+                    fontWeight: FontWeight.w500,
                   ),
                 ),
               ],
@@ -133,43 +166,15 @@ class _InspectionRequestLayoutState extends State<InspectionRequestLayout> with 
     }
 
     if (_isLoadingPermissions) {
-      return Scaffold(
-        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-        body: Center(
-          child: CircularProgressIndicator(
-            valueColor: AlwaysStoppedAnimation<Color>(AppTheme.getPrimaryColor(context)),
-          ),
-        ),
+      return const ThemedScaffold(
+        title: 'Inspection Requests',
+        body: SkeletonListLoader(cardCount: 4),
       );
     }
 
-    return Scaffold(
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      appBar: AppBar(
-        automaticallyImplyLeading: true,
-        backgroundColor: Theme.of(context).colorScheme.surface,
-        elevation: 0,
-        title: Text(
-          'Inspection Requests',
-          style: TextStyle(
-            color: AppTheme.getTextPrimary(context),
-            fontSize: 18,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        bottom: (_canCreate || _canView)
-            ? TabBar(
-                controller: _tabController,
-                indicatorColor: AppTheme.getPrimaryColor(context),
-                labelColor: AppTheme.getTextPrimary(context),
-                unselectedLabelColor: AppTheme.getTextSecondary(context),
-                tabs: [
-                  if (_canCreate) const Tab(text: 'Create'),
-                  if (_canView) const Tab(text: 'View'),
-                ],
-              )
-            : null,
-      ),
+    return ThemedScaffold(
+      title: 'Inspection Requests',
+      bottom: _buildTabBottom(),
       body: SafeArea(
         child: InspectionRequestScreen(
           tabController: _tabController,
@@ -246,7 +251,7 @@ class InspectionRequestScreenState extends State<InspectionRequestScreen> {
 
     // If no tabs, show empty state
     if (tabs.isEmpty) {
-      return Center(
+      return const Center(
         child: Padding(
           padding: EdgeInsets.all(40),
           child: Column(
@@ -255,15 +260,15 @@ class InspectionRequestScreenState extends State<InspectionRequestScreen> {
               Icon(
                 Icons.fact_check_outlined,
                 size: 64,
-                color: AppTheme.textSecondary,
+                color: AppTheme.mutedGrey,
               ),
               SizedBox(height: 16),
               Text(
                 'No Access',
                 style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  color: AppTheme.textPrimary,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                  color: AppTheme.navy,
                 ),
               ),
               SizedBox(height: 8),
@@ -272,7 +277,8 @@ class InspectionRequestScreenState extends State<InspectionRequestScreen> {
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 14,
-                  color: AppTheme.textSecondary,
+                  fontWeight: FontWeight.w500,
+                  color: AppTheme.mutedGrey,
                 ),
               ),
             ],
@@ -422,10 +428,10 @@ class _CreateInspectionRequestPageState extends State<CreateInspectionRequestPag
       builder: (context, child) {
         return Theme(
           data: Theme.of(context).copyWith(
-            colorScheme: ColorScheme.light(
-              primary: AppTheme.primaryColorConst,
+            colorScheme: const ColorScheme.light(
+              primary: AppTheme.navy,
               onPrimary: Colors.white,
-              onSurface: AppTheme.textPrimary,
+              onSurface: AppTheme.navy,
             ),
           ),
           child: child!,
@@ -694,124 +700,143 @@ class _CreateInspectionRequestPageState extends State<CreateInspectionRequestPag
     ];
   }
 
+  BoxDecoration _surfaceCard({Color? borderColor}) {
+    return BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(18),
+      border: Border.all(color: borderColor ?? AppTheme.border),
+      boxShadow: const [
+        BoxShadow(
+          color: AppTheme.softShadow,
+          blurRadius: 18,
+          offset: Offset(0, 8),
+        ),
+      ],
+    );
+  }
+
   Widget _buildStepIndicator() {
-    return Consumer<ThemeProvider>(
-      builder: (context, themeProvider, child) {
-        return Container(
-          padding: EdgeInsets.symmetric(vertical: 16, horizontal: 12),
-          decoration: BoxDecoration(
-            color: AppTheme.getBackgroundSecondary(context),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.05),
-                blurRadius: 4,
-                offset: Offset(0, 2),
+    final stepTitles = _getStepTitles();
+    final stepInstructions = _getStepInstructions();
+    final progress = (_currentStep + 1) / _totalSteps;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 14),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        border: Border(bottom: BorderSide(color: AppTheme.border)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(
+                'Step ${_currentStep + 1} of $_totalSteps',
+                style: const TextStyle(
+                  color: AppTheme.mutedGrey,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.3,
+                ),
+              ),
+              const Spacer(),
+              Text(
+                stepTitles[_currentStep],
+                style: const TextStyle(
+                  color: AppTheme.navy,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w800,
+                ),
               ),
             ],
           ),
-          child: SingleChildScrollView(
+          const SizedBox(height: 10),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(999),
+            child: LinearProgressIndicator(
+              value: progress,
+              minHeight: 6,
+              backgroundColor: const Color(0xFFEEF2F7),
+              valueColor: const AlwaysStoppedAnimation<Color>(AppTheme.navy),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            stepInstructions[_currentStep],
+            style: const TextStyle(
+              color: AppTheme.mutedGrey,
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+              height: 1.35,
+            ),
+          ),
+          const SizedBox(height: 14),
+          SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
               children: List.generate(_totalSteps, (index) {
                 final isActive = _currentStep == index;
                 final isCompleted = _isStepCompleted(index);
-                final isLast = index == _totalSteps - 1;
-                final stepTitles = _getStepTitles();
-                final stepInstructions = _getStepInstructions();
-
-                return Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
-                      width: 100,
-                      constraints: BoxConstraints(minWidth: 80, maxWidth: 120),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                        Container(
-                          width: 36,
-                          height: 36,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: isCompleted
-                                ? Colors.green
-                                : isActive
-                                    ? AppTheme.getPrimaryColor(context)
-                                    : AppTheme.getBackgroundSecondary(context),
-                            border: Border.all(
-                              color: isCompleted
-                                  ? Colors.green
-                                  : isActive
-                                      ? AppTheme.getPrimaryColor(context)
-                                      : AppTheme.getTextSecondary(context).withOpacity(0.3),
-                              width: 2.5,
+                return Padding(
+                  padding: EdgeInsets.only(right: index == _totalSteps - 1 ? 0 : 8),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: isActive
+                          ? AppTheme.navy
+                          : isCompleted
+                              ? const Color(0xFFDCFCE7)
+                              : const Color(0xFFF1F4F8),
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(
+                        color: isActive
+                            ? AppTheme.navy
+                            : isCompleted
+                                ? const Color(0xFFBBF7D0)
+                                : AppTheme.border,
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (isCompleted && !isActive) ...[
+                          const Icon(Icons.check_rounded,
+                              size: 14, color: Color(0xFF16A34A)),
+                          const SizedBox(width: 4),
+                        ] else ...[
+                          Text(
+                            '${index + 1}',
+                            style: TextStyle(
+                              color: isActive ? Colors.white : AppTheme.mutedGrey,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w800,
                             ),
                           ),
-                          child: Center(
-                            child: isCompleted
-                                ? Icon(Icons.check, color: Colors.white, size: 18)
-                                : Text(
-                                    '${index + 1}',
-                                    style: TextStyle(
-                                      color: isActive
-                                          ? Colors.white
-                                          : AppTheme.getTextSecondary(context),
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                          ),
-                        ),
-                        SizedBox(height: 6),
+                          const SizedBox(width: 5),
+                        ],
                         Text(
                           stepTitles[index],
-                          textAlign: TextAlign.center,
                           style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: isActive ? FontWeight.bold : FontWeight.w500,
-                            color: isCompleted
-                                ? Colors.green
-                                : isActive
-                                    ? AppTheme.getPrimaryColor(context)
-                                    : AppTheme.getTextSecondary(context),
+                            color: isActive
+                                ? Colors.white
+                                : isCompleted
+                                    ? const Color(0xFF16A34A)
+                                    : AppTheme.mutedGrey,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
                           ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        SizedBox(height: 3),
-                        Text(
-                          stepInstructions[index],
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontSize: 9,
-                            color: AppTheme.getTextSecondary(context),
-                            height: 1.2,
-                          ),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
                         ),
                       ],
                     ),
                   ),
-                  if (!isLast)
-                    Container(
-                      width: 20,
-                      height: 2,
-                      margin: EdgeInsets.only(top: 17, left: 4, right: 4),
-                      decoration: BoxDecoration(
-                        color: isCompleted
-                            ? Colors.green
-                            : AppTheme.getTextSecondary(context).withOpacity(0.2),
-                    ),
-                  ),
-                ],
                 );
               }),
             ),
           ),
-        );
-      },
+        ],
+      ),
     );
   }
 
@@ -838,33 +863,29 @@ class _CreateInspectionRequestPageState extends State<CreateInspectionRequestPag
 
   @override
   Widget build(BuildContext context) {
-    return Consumer<ThemeProvider>(
-      builder: (context, themeProvider, child) {
-        return Column(
-          children: [
-            _buildStepIndicator(),
-            Expanded(
-              child: PageView(
-                controller: _pageController,
-                onPageChanged: (index) {
-                  setState(() {
-                    _currentStep = index;
-                  });
-                },
-                children: [
-                  _buildStep1Project(),
-                  _buildStep2Category(),
-                  _buildStep3Date(),
-                  _buildStep4AssignTo(),
-                  _buildStep5Comments(),
-                  _buildStep6Preview(),
-                ],
-              ),
-            ),
-            _buildNavigationButtons(),
-          ],
-        );
-      },
+    return Column(
+      children: [
+        _buildStepIndicator(),
+        Expanded(
+          child: PageView(
+            controller: _pageController,
+            onPageChanged: (index) {
+              setState(() {
+                _currentStep = index;
+              });
+            },
+            children: [
+              _buildStep1Project(),
+              _buildStep2Category(),
+              _buildStep3Date(),
+              _buildStep4AssignTo(),
+              _buildStep5Comments(),
+              _buildStep6Preview(),
+            ],
+          ),
+        ),
+        _buildNavigationButtons(),
+      ],
     );
   }
 
@@ -875,22 +896,21 @@ class _CreateInspectionRequestPageState extends State<CreateInspectionRequestPag
         Row(
           children: [
             Container(
-              padding: EdgeInsets.all(8),
+              width: 42,
+              height: 42,
               decoration: BoxDecoration(
                 color: isCompleted
-                    ? Colors.green.withOpacity(0.1)
-                    : AppTheme.getPrimaryColor(context).withOpacity(0.1),
-                borderRadius: BorderRadius.circular(10),
+                    ? const Color(0xFFDCFCE7)
+                    : const Color(0xFFEEF2FF),
+                borderRadius: BorderRadius.circular(12),
               ),
               child: Icon(
                 icon,
-                color: isCompleted
-                    ? Colors.green
-                    : AppTheme.getPrimaryColor(context),
-                size: 24,
+                color: isCompleted ? const Color(0xFF16A34A) : AppTheme.navy,
+                size: 22,
               ),
             ),
-            SizedBox(width: 12),
+            const SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -899,17 +919,19 @@ class _CreateInspectionRequestPageState extends State<CreateInspectionRequestPag
                     title,
                     style: TextStyle(
                       fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: AppTheme.getTextPrimary(context),
+                      fontWeight: FontWeight.w800,
+                      color: isCompleted ? const Color(0xFF16A34A) : AppTheme.navy,
+                      letterSpacing: -0.2,
                     ),
                   ),
                   if (instruction != null) ...[
-                    SizedBox(height: 4),
+                    const SizedBox(height: 4),
                     Text(
                       instruction,
-                      style: TextStyle(
+                      style: const TextStyle(
                         fontSize: 13,
-                        color: AppTheme.getTextSecondary(context),
+                        color: AppTheme.mutedGrey,
+                        fontWeight: FontWeight.w500,
                       ),
                     ),
                   ],
@@ -917,10 +939,10 @@ class _CreateInspectionRequestPageState extends State<CreateInspectionRequestPag
               ),
             ),
             if (isCompleted)
-              Icon(
-                Icons.check_circle,
-                color: Colors.green,
-                size: 24,
+              const Icon(
+                Icons.check_circle_rounded,
+                color: Color(0xFF16A34A),
+                size: 22,
               ),
           ],
         ),
@@ -969,20 +991,14 @@ class _CreateInspectionRequestPageState extends State<CreateInspectionRequestPag
             child: Container(
               padding: EdgeInsets.symmetric(horizontal: 16, vertical: 18),
               decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    AppTheme.getBackgroundSecondary(context),
-                    AppTheme.getBackgroundPrimaryLight(context),
-                  ],
-                ),
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: [
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: AppTheme.border),
+                boxShadow: const [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.1),
-                    blurRadius: 8,
-                    offset: Offset(0, 4),
+                    color: AppTheme.softShadow,
+                    blurRadius: 18,
+                    offset: Offset(0, 8),
                   ),
                 ],
               ),
@@ -997,8 +1013,8 @@ class _CreateInspectionRequestPageState extends State<CreateInspectionRequestPag
                               : 'Select a project',
                       style: TextStyle(
                         color: (selectedProject != null || projectId != null)
-                            ? AppTheme.getTextPrimary(context)
-                            : AppTheme.getTextSecondary(context),
+                            ? AppTheme.navy
+                            : AppTheme.mutedGrey,
                         fontSize: 16,
                         fontWeight: (selectedProject != null || projectId != null)
                             ? FontWeight.w600
@@ -1009,7 +1025,7 @@ class _CreateInspectionRequestPageState extends State<CreateInspectionRequestPag
                   if (!widget.projectFixed)
                     Icon(
                       Icons.arrow_forward_ios,
-                      color: AppTheme.getPrimaryColor(context),
+                      color: AppTheme.navy,
                       size: 18,
                     ),
                 ],
@@ -1035,34 +1051,22 @@ class _CreateInspectionRequestPageState extends State<CreateInspectionRequestPag
           ),
           SizedBox(height: 24),
           Container(
-            padding: EdgeInsets.symmetric(horizontal: 16),
-            decoration: BoxDecoration(
-              color: AppTheme.getBackgroundSecondary(context),
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(
-                color: selectedCategory != 'Select category'
-                    ? AppTheme.getPrimaryColor(context).withOpacity(0.5)
-                    : AppTheme.getPrimaryColor(context).withOpacity(0.15),
-                width: selectedCategory != 'Select category' ? 2 : 1,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.05),
-                  blurRadius: 10,
-                  offset: Offset(0, 4),
-                ),
-              ],
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            decoration: _surfaceCard(
+              borderColor: selectedCategory != 'Select category'
+                  ? const Color(0xFFBBF7D0)
+                  : AppTheme.border,
             ),
             child: DropdownButtonHideUnderline(
               child: DropdownButton<String>(
                 isExpanded: true,
                 value: selectedCategory == 'Select category' ? null : selectedCategory,
-                hint: Text('Select category', style: TextStyle(color: AppTheme.getTextSecondary(context))),
-                icon: Icon(Icons.keyboard_arrow_down, color: AppTheme.getPrimaryColor(context)),
+                hint: const Text('Select category', style: TextStyle(color: AppTheme.mutedGrey)),
+                icon: const Icon(Icons.keyboard_arrow_down_rounded, color: AppTheme.navy),
                 items: categories.map((String category) {
                   return DropdownMenuItem<String>(
                     value: category,
-                    child: Text(category, style: TextStyle(color: AppTheme.getTextPrimary(context), fontWeight: FontWeight.w600)),
+                    child: Text(category, style: const TextStyle(color: AppTheme.navy, fontWeight: FontWeight.w700)),
                   );
                 }).toList(),
                 onChanged: (String? newValue) {
@@ -1099,26 +1103,20 @@ class _CreateInspectionRequestPageState extends State<CreateInspectionRequestPag
             child: Container(
               padding: EdgeInsets.symmetric(horizontal: 16, vertical: 18),
               decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    AppTheme.getBackgroundSecondary(context),
-                    AppTheme.getBackgroundPrimaryLight(context),
-                  ],
-                ),
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: [
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: AppTheme.border),
+                boxShadow: const [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.1),
-                    blurRadius: 8,
-                    offset: Offset(0, 4),
+                    color: AppTheme.softShadow,
+                    blurRadius: 18,
+                    offset: Offset(0, 8),
                   ),
                 ],
               ),
               child: Row(
                 children: [
-                  Icon(Icons.calendar_month, color: AppTheme.getPrimaryColor(context), size: 24),
+                  Icon(Icons.calendar_month, color: AppTheme.navy, size: 24),
                   SizedBox(width: 12),
                   Expanded(
                     child: Text(
@@ -1126,13 +1124,13 @@ class _CreateInspectionRequestPageState extends State<CreateInspectionRequestPag
                           ? 'Select request date'
                           : DateFormat('d MMM yyyy').format(requestDate!),
                       style: TextStyle(
-                        color: requestDate == null ? AppTheme.getTextSecondary(context) : AppTheme.getTextPrimary(context),
+                        color: requestDate == null ? AppTheme.mutedGrey : AppTheme.navy,
                         fontWeight: requestDate == null ? FontWeight.normal : FontWeight.w600,
                         fontSize: 16,
                       ),
                     ),
                   ),
-                  Icon(Icons.chevron_right, color: AppTheme.getTextSecondary(context), size: 20),
+                  Icon(Icons.chevron_right, color: AppTheme.mutedGrey, size: 20),
                 ],
               ),
             ),
@@ -1161,20 +1159,14 @@ class _CreateInspectionRequestPageState extends State<CreateInspectionRequestPag
             child: Container(
               padding: EdgeInsets.symmetric(horizontal: 16, vertical: 18),
               decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    AppTheme.getBackgroundSecondary(context),
-                    AppTheme.getBackgroundPrimaryLight(context),
-                  ],
-                ),
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: [
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: AppTheme.border),
+                boxShadow: const [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.1),
-                    blurRadius: 8,
-                    offset: Offset(0, 4),
+                    color: AppTheme.softShadow,
+                    blurRadius: 18,
+                    offset: Offset(0, 8),
                   ),
                 ],
               ),
@@ -1182,7 +1174,7 @@ class _CreateInspectionRequestPageState extends State<CreateInspectionRequestPag
                 children: [
                   Icon(
                     Icons.person,
-                    color: AppTheme.getPrimaryColor(context),
+                    color: AppTheme.navy,
                     size: 24,
                   ),
                   SizedBox(width: 12),
@@ -1192,7 +1184,7 @@ class _CreateInspectionRequestPageState extends State<CreateInspectionRequestPag
                           ? 'Select a user (optional)'
                           : assignedToUserName ?? 'User',
                       style: TextStyle(
-                        color: assignedToUserId == null ? AppTheme.getTextSecondary(context) : AppTheme.getTextPrimary(context),
+                        color: assignedToUserId == null ? AppTheme.mutedGrey : AppTheme.navy,
                         fontWeight: assignedToUserId == null ? FontWeight.normal : FontWeight.w600,
                         fontSize: 16,
                       ),
@@ -1200,7 +1192,7 @@ class _CreateInspectionRequestPageState extends State<CreateInspectionRequestPag
                   ),
                   Icon(
                     Icons.arrow_forward_ios,
-                    color: AppTheme.getPrimaryColor(context),
+                    color: AppTheme.navy,
                     size: 18,
                   ),
                 ],
@@ -1226,37 +1218,35 @@ class _CreateInspectionRequestPageState extends State<CreateInspectionRequestPag
           ),
           SizedBox(height: 24),
           Container(
-            padding: EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: AppTheme.getBackgroundSecondary(context),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: AppTheme.getPrimaryColor(context).withOpacity(0.15),
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.05),
-                  blurRadius: 10,
-                  offset: Offset(0, 4),
-                ),
-              ],
+            padding: const EdgeInsets.all(16),
+            decoration: _surfaceCard(
+              borderColor: _commentsController.text.trim().isNotEmpty
+                  ? const Color(0xFFBBF7D0)
+                  : AppTheme.border,
             ),
             child: TextFormField(
               controller: _commentsController,
               maxLines: 8,
               textCapitalization: TextCapitalization.sentences,
               keyboardType: TextInputType.multiline,
-              style: TextStyle(
-                fontSize: 16,
-                color: AppTheme.getTextPrimary(context),
+              style: const TextStyle(
+                fontSize: 15.5,
+                color: AppTheme.navy,
+                fontWeight: FontWeight.w500,
+                height: 1.45,
               ),
               onChanged: (value) {
                 setState(() {});
               },
-              decoration: InputDecoration(
+              decoration: const InputDecoration(
                 hintText: 'Add any additional details or comments about the inspection request...',
-                hintStyle: TextStyle(color: AppTheme.getTextSecondary(context)),
+                hintStyle: TextStyle(
+                  color: AppTheme.mutedGrey,
+                  fontWeight: FontWeight.w500,
+                ),
                 border: InputBorder.none,
+                filled: true,
+                fillColor: Color(0xFFF7F8FB),
               ),
             ),
           ),
@@ -1297,56 +1287,40 @@ class _CreateInspectionRequestPageState extends State<CreateInspectionRequestPag
   
   Widget _buildPreviewCard(String label, String value, IconData icon) {
     return Container(
-      padding: EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            AppTheme.getBackgroundSecondary(context),
-            AppTheme.getBackgroundPrimaryLight(context),
-          ],
-        ),
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 8,
-            offset: Offset(0, 4),
-          ),
-        ],
-      ),
+      padding: const EdgeInsets.all(16),
+      decoration: _surfaceCard(),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
-            padding: EdgeInsets.all(8),
+            width: 40,
+            height: 40,
             decoration: BoxDecoration(
-              color: AppTheme.getPrimaryColor(context).withOpacity(0.1),
-              borderRadius: BorderRadius.circular(10),
+              color: const Color(0xFFEEF2FF),
+              borderRadius: BorderRadius.circular(12),
             ),
-            child: Icon(icon, color: AppTheme.getPrimaryColor(context), size: 20),
+            child: Icon(icon, color: AppTheme.navy, size: 20),
           ),
-          SizedBox(width: 12),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   label,
-                  style: TextStyle(
+                  style: const TextStyle(
                     fontSize: 12,
-                    color: AppTheme.getTextSecondary(context),
-                    fontWeight: FontWeight.w500,
+                    color: AppTheme.mutedGrey,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
-                SizedBox(height: 4),
+                const SizedBox(height: 4),
                 Text(
                   value,
-                  style: TextStyle(
+                  style: const TextStyle(
                     fontSize: 15,
-                    color: AppTheme.getTextPrimary(context),
-                    fontWeight: FontWeight.w600,
+                    color: AppTheme.navy,
+                    fontWeight: FontWeight.w800,
                   ),
                 ),
               ],
@@ -1359,147 +1333,91 @@ class _CreateInspectionRequestPageState extends State<CreateInspectionRequestPag
   
   Widget _buildNavigationButtons() {
     return Container(
-      padding: EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: AppTheme.getBackgroundSecondary(context),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.1),
-            blurRadius: 8,
-            offset: Offset(0, -2),
-          ),
-        ],
+      padding: const EdgeInsets.fromLTRB(20, 14, 20, 20),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        border: Border(top: BorderSide(color: AppTheme.border)),
       ),
       child: Row(
         children: [
           if (_currentStep > 0)
             Expanded(
-              child: Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  onTap: _previousStep,
-                  borderRadius: BorderRadius.circular(12),
-                  child: Container(
-                    padding: EdgeInsets.symmetric(vertical: 14),
-                    decoration: BoxDecoration(
-                      color: AppTheme.getBackgroundPrimary(context),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: AppTheme.getPrimaryColor(context).withOpacity(0.3),
-                      ),
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          Icons.arrow_back,
-                          color: AppTheme.getPrimaryColor(context),
-                          size: 20,
-                        ),
-                        SizedBox(width: 8),
-                        Text(
-                          'Back',
-                          style: TextStyle(
-                            color: AppTheme.getPrimaryColor(context),
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ),
+              child: OutlinedButton(
+                onPressed: _previousStep,
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppTheme.navy,
+                  side: const BorderSide(color: AppTheme.border),
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
                   ),
+                ),
+                child: const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.arrow_back_rounded, size: 18),
+                    SizedBox(width: 8),
+                    Text(
+                      'Back',
+                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+                    ),
+                  ],
                 ),
               ),
             ),
-          if (_currentStep > 0) SizedBox(width: 12),
+          if (_currentStep > 0) const SizedBox(width: 12),
           Expanded(
-            flex: _currentStep == 0 ? 1 : 1,
-            child: Material(
-              color: Colors.transparent,
-              child: InkWell(
-                onTap: _isSubmitting
-                    ? null
-                    : (_currentStep == _totalSteps - 1
-                        ? () async {
-                            await _handleSubmit();
-                          }
-                        : _nextStep),
-                borderRadius: BorderRadius.circular(12),
-                child: Container(
-                  padding: EdgeInsets.symmetric(vertical: 14),
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [
-                        AppTheme.getPrimaryColor(context),
-                        AppTheme.primaryColorConstDark,
-                      ],
-                    ),
-                    borderRadius: BorderRadius.circular(12),
-                    boxShadow: [
-                      BoxShadow(
-                        color: AppTheme.getPrimaryColor(context).withOpacity(0.3),
-                        blurRadius: 8,
-                        offset: Offset(0, 4),
-                      ),
-                    ],
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      if (_isSubmitting) ...[
-                        SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                          ),
-                        ),
-                        SizedBox(width: 12),
-                        Text(
-                          'Submitting...',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ] else if (_currentStep == _totalSteps - 1) ...[
-                        Icon(
-                          Icons.send,
-                          color: Colors.white,
-                          size: 20,
-                        ),
-                        SizedBox(width: 8),
-                        Text(
-                          'Submit',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ] else ...[
-                        Text(
-                          'Next',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        SizedBox(width: 8),
-                        Icon(
-                          Icons.arrow_forward,
-                          color: Colors.white,
-                          size: 20,
-                        ),
-                      ],
-                    ],
-                  ),
+            child: ElevatedButton(
+              onPressed: _isSubmitting
+                  ? null
+                  : (_currentStep == _totalSteps - 1
+                      ? () async {
+                          await _handleSubmit();
+                        }
+                      : _nextStep),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.navy,
+                foregroundColor: Colors.white,
+                disabledBackgroundColor: AppTheme.navy.withValues(alpha: 0.55),
+                elevation: 0,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
                 ),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  if (_isSubmitting) ...[
+                    const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    const Text(
+                      'Submitting...',
+                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
+                    ),
+                  ] else if (_currentStep == _totalSteps - 1) ...[
+                    const Icon(Icons.send_rounded, size: 18),
+                    const SizedBox(width: 8),
+                    const Text(
+                      'Submit',
+                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
+                    ),
+                  ] else ...[
+                    const Text(
+                      'Next',
+                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
+                    ),
+                    const SizedBox(width: 8),
+                    const Icon(Icons.arrow_forward_rounded, size: 18),
+                  ],
+                ],
               ),
             ),
           ),
@@ -1759,7 +1677,7 @@ class _ViewInspectionRequestsPageState extends State<ViewInspectionRequestsPage>
           backgroundColor: Theme.of(context).colorScheme.surface,
           title: Row(
             children: [
-              Icon(Icons.check_circle, color: AppTheme.primaryColorConst),
+              Icon(Icons.check_circle, color: AppTheme.navy),
               SizedBox(width: 8),
               Text('Mark as Complete'),
             ],
@@ -1772,7 +1690,7 @@ class _ViewInspectionRequestsPageState extends State<ViewInspectionRequestsPage>
                 Text(
                   'Please upload an inspection report to complete this request.',
                   style: TextStyle(
-                    color: AppTheme.textPrimary,
+                    color: AppTheme.navy,
                     fontSize: 14,
                   ),
                 ),
@@ -1791,12 +1709,12 @@ class _ViewInspectionRequestsPageState extends State<ViewInspectionRequestsPage>
                   child: Container(
                     padding: EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      color: AppTheme.backgroundPrimary,
+                      color: const Color(0xFFF7F8FB),
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(
                         color: selectedFilePath != null
-                            ? AppTheme.primaryColorConst
-                            : AppTheme.primaryColorConst.withOpacity(0.3),
+                            ? AppTheme.navy
+                            : AppTheme.navy.withOpacity(0.3),
                         width: selectedFilePath != null ? 2 : 1,
                       ),
                     ),
@@ -1805,8 +1723,8 @@ class _ViewInspectionRequestsPageState extends State<ViewInspectionRequestsPage>
                         Icon(
                           Icons.attach_file,
                           color: selectedFilePath != null
-                              ? AppTheme.primaryColorConst
-                              : AppTheme.textSecondary,
+                              ? AppTheme.navy
+                              : AppTheme.mutedGrey,
                         ),
                         SizedBox(width: 12),
                         Expanded(
@@ -1817,8 +1735,8 @@ class _ViewInspectionRequestsPageState extends State<ViewInspectionRequestsPage>
                                 selectedFileName ?? 'Select Report File',
                                 style: TextStyle(
                                   color: selectedFilePath != null
-                                      ? AppTheme.textPrimary
-                                      : AppTheme.textSecondary,
+                                      ? AppTheme.navy
+                                      : AppTheme.mutedGrey,
                                   fontWeight: selectedFilePath != null
                                       ? FontWeight.w600
                                       : FontWeight.normal,
@@ -1829,7 +1747,7 @@ class _ViewInspectionRequestsPageState extends State<ViewInspectionRequestsPage>
                                 Text(
                                   'Tap to change',
                                   style: TextStyle(
-                                    color: AppTheme.textSecondary,
+                                    color: AppTheme.mutedGrey,
                                     fontSize: 11,
                                   ),
                                 ),
@@ -1839,7 +1757,7 @@ class _ViewInspectionRequestsPageState extends State<ViewInspectionRequestsPage>
                         Icon(
                           Icons.arrow_forward_ios,
                           size: 16,
-                          color: AppTheme.textSecondary,
+                          color: AppTheme.mutedGrey,
                         ),
                       ],
                     ),
@@ -1873,7 +1791,7 @@ class _ViewInspectionRequestsPageState extends State<ViewInspectionRequestsPage>
                       });
                     },
               style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.primaryColorConst,
+                backgroundColor: AppTheme.navy,
                 foregroundColor: Colors.white,
               ),
               child: Text('Complete & Upload'),
@@ -1897,13 +1815,13 @@ class _ViewInspectionRequestsPageState extends State<ViewInspectionRequestsPage>
     await showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: AppTheme.backgroundSecondary,
+        backgroundColor: Colors.white,
         title: Text('Select File Source', style: TextStyle(fontWeight: FontWeight.bold)),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
-              leading: Icon(Icons.camera_alt, color: AppTheme.primaryColorConst),
+              leading: Icon(Icons.camera_alt, color: AppTheme.navy),
               title: Text('Take Photo'),
               onTap: () async {
                 Navigator.pop(context);
@@ -1918,7 +1836,7 @@ class _ViewInspectionRequestsPageState extends State<ViewInspectionRequestsPage>
               },
             ),
             ListTile(
-              leading: Icon(Icons.photo_library, color: AppTheme.primaryColorConst),
+              leading: Icon(Icons.photo_library, color: AppTheme.navy),
               title: Text('Choose from Gallery'),
               onTap: () async {
                 Navigator.pop(context);
@@ -1933,7 +1851,7 @@ class _ViewInspectionRequestsPageState extends State<ViewInspectionRequestsPage>
               },
             ),
             ListTile(
-              leading: Icon(Icons.attach_file, color: AppTheme.primaryColorConst),
+              leading: Icon(Icons.attach_file, color: AppTheme.navy),
               title: Text('Other Files'),
               onTap: () async {
                 Navigator.pop(context);
@@ -2086,7 +2004,7 @@ class _ViewInspectionRequestsPageState extends State<ViewInspectionRequestsPage>
       builder: (context) => Container(
         height: MediaQuery.of(context).size.height * 0.6,
         decoration: BoxDecoration(
-          color: AppTheme.backgroundSecondary,
+          color: Colors.white,
           borderRadius: BorderRadius.only(
             topLeft: Radius.circular(20),
             topRight: Radius.circular(20),
@@ -2097,7 +2015,7 @@ class _ViewInspectionRequestsPageState extends State<ViewInspectionRequestsPage>
             Container(
               padding: EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: AppTheme.backgroundPrimary,
+                color: const Color(0xFFF7F8FB),
                 borderRadius: BorderRadius.only(
                   topLeft: Radius.circular(20),
                   topRight: Radius.circular(20),
@@ -2109,7 +2027,7 @@ class _ViewInspectionRequestsPageState extends State<ViewInspectionRequestsPage>
                     width: 4,
                     height: 20,
                     decoration: BoxDecoration(
-                      color: AppTheme.primaryColorConst,
+                      color: AppTheme.navy,
                       borderRadius: BorderRadius.circular(2),
                     ),
                   ),
@@ -2118,14 +2036,14 @@ class _ViewInspectionRequestsPageState extends State<ViewInspectionRequestsPage>
                     child: Text(
                       'Filter by Project',
                       style: TextStyle(
-                        color: AppTheme.textPrimary,
+                        color: AppTheme.navy,
                         fontSize: 16,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
                   ),
                   IconButton(
-                    icon: Icon(Icons.close, color: AppTheme.textSecondary),
+                    icon: Icon(Icons.close, color: AppTheme.mutedGrey),
                     onPressed: () => Navigator.pop(context),
                   ),
                 ],
@@ -2142,13 +2060,13 @@ class _ViewInspectionRequestsPageState extends State<ViewInspectionRequestsPage>
                     margin: EdgeInsets.only(bottom: 8),
                     decoration: BoxDecoration(
                       color: isSelected
-                          ? AppTheme.primaryColorConst.withOpacity(0.1)
-                          : AppTheme.backgroundPrimary,
+                          ? AppTheme.navy.withOpacity(0.1)
+                          : const Color(0xFFF7F8FB),
                       borderRadius: BorderRadius.circular(10),
                       border: Border.all(
                         color: isSelected
-                            ? AppTheme.primaryColorConst
-                            : AppTheme.primaryColorConst.withOpacity(0.2),
+                            ? AppTheme.navy
+                            : AppTheme.navy.withOpacity(0.2),
                         width: isSelected ? 1.5 : 1,
                       ),
                     ),
@@ -2168,20 +2086,20 @@ class _ViewInspectionRequestsPageState extends State<ViewInspectionRequestsPage>
                           padding: EdgeInsets.all(12),
                           child: Row(
                             children: [
-                              Icon(Icons.clear_all, color: AppTheme.primaryColorConst, size: 20),
+                              Icon(Icons.clear_all, color: AppTheme.navy, size: 20),
                               SizedBox(width: 12),
                               Expanded(
                                 child: Text(
                                   'All Projects',
                                   style: TextStyle(
-                                    color: AppTheme.textPrimary,
+                                    color: AppTheme.navy,
                                     fontSize: 14,
                                     fontWeight: FontWeight.w600,
                                   ),
                                 ),
                               ),
                               if (isSelected)
-                                Icon(Icons.check_circle, color: AppTheme.primaryColorConst, size: 20),
+                                Icon(Icons.check_circle, color: AppTheme.navy, size: 20),
                             ],
                           ),
                         ),
@@ -2199,13 +2117,13 @@ class _ViewInspectionRequestsPageState extends State<ViewInspectionRequestsPage>
                   margin: EdgeInsets.only(bottom: 8),
                   decoration: BoxDecoration(
                     color: isSelected
-                        ? AppTheme.primaryColorConst.withOpacity(0.1)
-                        : AppTheme.backgroundPrimary,
+                        ? AppTheme.navy.withOpacity(0.1)
+                        : const Color(0xFFF7F8FB),
                     borderRadius: BorderRadius.circular(10),
                     border: Border.all(
                       color: isSelected
-                          ? AppTheme.primaryColorConst
-                          : AppTheme.primaryColorConst.withOpacity(0.2),
+                          ? AppTheme.navy
+                          : AppTheme.navy.withOpacity(0.2),
                       width: isSelected ? 1.5 : 1,
                     ),
                   ),
@@ -2225,20 +2143,20 @@ class _ViewInspectionRequestsPageState extends State<ViewInspectionRequestsPage>
                         padding: EdgeInsets.all(12),
                         child: Row(
                           children: [
-                            Icon(Icons.folder_special, color: AppTheme.primaryColorConst, size: 20),
+                            Icon(Icons.folder_special, color: AppTheme.navy, size: 20),
                             SizedBox(width: 12),
                             Expanded(
                               child: Text(
                                 projectName,
                                 style: TextStyle(
-                                  color: AppTheme.textPrimary,
+                                  color: AppTheme.navy,
                                   fontSize: 14,
                                   fontWeight: FontWeight.w600,
                                 ),
                               ),
                             ),
                             if (isSelected)
-                              Icon(Icons.check_circle, color: AppTheme.primaryColorConst, size: 20),
+                              Icon(Icons.check_circle, color: AppTheme.navy, size: 20),
                           ],
                         ),
                       ),
@@ -2261,7 +2179,7 @@ class _ViewInspectionRequestsPageState extends State<ViewInspectionRequestsPage>
       backgroundColor: Colors.transparent,
       builder: (context) => Container(
         decoration: BoxDecoration(
-          color: AppTheme.backgroundSecondary,
+          color: Colors.white,
           borderRadius: BorderRadius.only(
             topLeft: Radius.circular(20),
             topRight: Radius.circular(20),
@@ -2273,7 +2191,7 @@ class _ViewInspectionRequestsPageState extends State<ViewInspectionRequestsPage>
             Container(
               padding: EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: AppTheme.backgroundPrimary,
+                color: const Color(0xFFF7F8FB),
                 borderRadius: BorderRadius.only(
                   topLeft: Radius.circular(20),
                   topRight: Radius.circular(20),
@@ -2285,7 +2203,7 @@ class _ViewInspectionRequestsPageState extends State<ViewInspectionRequestsPage>
                     width: 4,
                     height: 20,
                     decoration: BoxDecoration(
-                      color: AppTheme.primaryColorConst,
+                      color: AppTheme.navy,
                       borderRadius: BorderRadius.circular(2),
                     ),
                   ),
@@ -2294,14 +2212,14 @@ class _ViewInspectionRequestsPageState extends State<ViewInspectionRequestsPage>
                     child: Text(
                       'Filter by Category',
                       style: TextStyle(
-                        color: AppTheme.textPrimary,
+                        color: AppTheme.navy,
                         fontSize: 16,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
                   ),
                   IconButton(
-                    icon: Icon(Icons.close, color: AppTheme.textSecondary),
+                    icon: Icon(Icons.close, color: AppTheme.mutedGrey),
                     onPressed: () => Navigator.pop(context),
                   ),
                 ],
@@ -2318,13 +2236,13 @@ class _ViewInspectionRequestsPageState extends State<ViewInspectionRequestsPage>
                     margin: EdgeInsets.only(bottom: 8),
                     decoration: BoxDecoration(
                       color: isSelected
-                          ? AppTheme.primaryColorConst.withOpacity(0.1)
-                          : AppTheme.backgroundPrimary,
+                          ? AppTheme.navy.withOpacity(0.1)
+                          : const Color(0xFFF7F8FB),
                       borderRadius: BorderRadius.circular(10),
                       border: Border.all(
                         color: isSelected
-                            ? AppTheme.primaryColorConst
-                            : AppTheme.primaryColorConst.withOpacity(0.2),
+                            ? AppTheme.navy
+                            : AppTheme.navy.withOpacity(0.2),
                         width: isSelected ? 1.5 : 1,
                       ),
                     ),
@@ -2343,20 +2261,20 @@ class _ViewInspectionRequestsPageState extends State<ViewInspectionRequestsPage>
                           padding: EdgeInsets.all(12),
                           child: Row(
                             children: [
-                              Icon(Icons.clear_all, color: AppTheme.primaryColorConst, size: 20),
+                              Icon(Icons.clear_all, color: AppTheme.navy, size: 20),
                               SizedBox(width: 12),
                               Expanded(
                                 child: Text(
                                   'All Categories',
                                   style: TextStyle(
-                                    color: AppTheme.textPrimary,
+                                    color: AppTheme.navy,
                                     fontSize: 14,
                                     fontWeight: FontWeight.w600,
                                   ),
                                 ),
                               ),
                               if (isSelected)
-                                Icon(Icons.check_circle, color: AppTheme.primaryColorConst, size: 20),
+                                Icon(Icons.check_circle, color: AppTheme.navy, size: 20),
                             ],
                           ),
                         ),
@@ -2372,13 +2290,13 @@ class _ViewInspectionRequestsPageState extends State<ViewInspectionRequestsPage>
                   margin: EdgeInsets.only(bottom: 8),
                   decoration: BoxDecoration(
                     color: isSelected
-                        ? AppTheme.primaryColorConst.withOpacity(0.1)
-                        : AppTheme.backgroundPrimary,
+                        ? AppTheme.navy.withOpacity(0.1)
+                        : const Color(0xFFF7F8FB),
                     borderRadius: BorderRadius.circular(10),
                     border: Border.all(
                       color: isSelected
-                          ? AppTheme.primaryColorConst
-                          : AppTheme.primaryColorConst.withOpacity(0.2),
+                          ? AppTheme.navy
+                          : AppTheme.navy.withOpacity(0.2),
                       width: isSelected ? 1.5 : 1,
                     ),
                   ),
@@ -2397,20 +2315,20 @@ class _ViewInspectionRequestsPageState extends State<ViewInspectionRequestsPage>
                         padding: EdgeInsets.all(12),
                         child: Row(
                           children: [
-                            Icon(Icons.category, color: AppTheme.primaryColorConst, size: 20),
+                            Icon(Icons.category, color: AppTheme.navy, size: 20),
                             SizedBox(width: 12),
                             Expanded(
                               child: Text(
                                 category,
                                 style: TextStyle(
-                                  color: AppTheme.textPrimary,
+                                  color: AppTheme.navy,
                                   fontSize: 14,
                                   fontWeight: FontWeight.w600,
                                 ),
                               ),
                             ),
                             if (isSelected)
-                              Icon(Icons.check_circle, color: AppTheme.primaryColorConst, size: 20),
+                              Icon(Icons.check_circle, color: AppTheme.navy, size: 20),
                           ],
                         ),
                       ),
@@ -2459,19 +2377,16 @@ class _ViewInspectionRequestsPageState extends State<ViewInspectionRequestsPage>
     final isExpanded = _expandedCardIds.contains(requestId);
 
     return Container(
-      margin: EdgeInsets.only(bottom: 12),
+      margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
-        color: AppTheme.backgroundSecondary,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: AppTheme.primaryColorConst.withOpacity(0.15),
-          width: 1,
-        ),
-        boxShadow: [
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppTheme.border),
+        boxShadow: const [
           BoxShadow(
-            color: Colors.black.withOpacity(0.03),
-            blurRadius: 4,
-            offset: Offset(0, 2),
+            color: AppTheme.softShadow,
+            blurRadius: 18,
+            offset: Offset(0, 8),
           ),
         ],
       ),
@@ -2487,34 +2402,34 @@ class _ViewInspectionRequestsPageState extends State<ViewInspectionRequestsPage>
               }
             });
           },
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(18),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // Collapsed Header - Always visible
               Padding(
-                padding: EdgeInsets.all(16),
+                padding: const EdgeInsets.all(16),
                 child: Row(
                   children: [
                     // Category badge
                     if (category.isNotEmpty)
                       Container(
-                        padding: EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                         decoration: BoxDecoration(
-                          color: AppTheme.primaryColorConst.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(8),
+                          color: const Color(0xFFEEF2FF),
+                          borderRadius: BorderRadius.circular(999),
                         ),
                         child: Text(
                           category.toUpperCase(),
-                          style: TextStyle(
-                            color: AppTheme.primaryColorConst,
+                          style: const TextStyle(
+                            color: AppTheme.navy,
                             fontSize: 10,
-                            fontWeight: FontWeight.w700,
+                            fontWeight: FontWeight.w800,
                             letterSpacing: 0.5,
                           ),
                         ),
                       ),
-                    if (category.isNotEmpty) SizedBox(width: 12),
+                    if (category.isNotEmpty) const SizedBox(width: 12),
                     // Request ID and Project
                     Expanded(
                       child: Column(
@@ -2522,19 +2437,20 @@ class _ViewInspectionRequestsPageState extends State<ViewInspectionRequestsPage>
                         children: [
                           Text(
                             'Request #$requestId',
-                            style: TextStyle(
-                              color: AppTheme.textPrimary,
+                            style: const TextStyle(
+                              color: AppTheme.navy,
                               fontSize: 15,
-                              fontWeight: FontWeight.w600,
+                              fontWeight: FontWeight.w800,
                             ),
                           ),
                           if (projectName.isNotEmpty) ...[
-                            SizedBox(height: 4),
+                            const SizedBox(height: 4),
                             Text(
                               projectName,
-                              style: TextStyle(
-                                color: AppTheme.textSecondary,
-                                fontSize: 12,
+                              style: const TextStyle(
+                                color: AppTheme.mutedGrey,
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.w500,
                               ),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
@@ -2546,14 +2462,14 @@ class _ViewInspectionRequestsPageState extends State<ViewInspectionRequestsPage>
                     // Expand/Collapse icon
                     Icon(
                       isExpanded ? Icons.expand_less : Icons.expand_more,
-                      color: AppTheme.textSecondary,
+                      color: AppTheme.mutedGrey,
                       size: 20,
                     ),
                     SizedBox(width: 8),
                     // Menu button - only show if user has delete permission
                     if (_canDelete && isCreatedByMe)
                       PopupMenuButton<String>(
-                        icon: Icon(Icons.more_vert, color: AppTheme.textSecondary, size: 20),
+                        icon: Icon(Icons.more_vert, color: AppTheme.mutedGrey, size: 20),
                         onSelected: (value) {
                           if (value == 'delete') {
                             _deleteRequest(int.tryParse(requestId) ?? 0);
@@ -2578,7 +2494,7 @@ class _ViewInspectionRequestsPageState extends State<ViewInspectionRequestsPage>
               
               // Expanded Content - Only shown when expanded
               if (isExpanded) ...[
-                Divider(height: 1, thickness: 1, color: AppTheme.primaryColorConst.withOpacity(0.1)),
+                Divider(height: 1, thickness: 1, color: AppTheme.navy.withOpacity(0.1)),
                 Padding(
                   padding: EdgeInsets.all(16),
                   child: Column(
@@ -2589,19 +2505,19 @@ class _ViewInspectionRequestsPageState extends State<ViewInspectionRequestsPage>
                         Container(
                           padding: EdgeInsets.all(12),
                           decoration: BoxDecoration(
-                            color: AppTheme.backgroundPrimary,
+                            color: const Color(0xFFF7F8FB),
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Icon(Icons.comment_outlined, size: 16, color: AppTheme.primaryColorConst),
+                              Icon(Icons.comment_outlined, size: 16, color: AppTheme.navy),
                               SizedBox(width: 8),
                               Expanded(
                                 child: Text(
                                   comments,
                                   style: TextStyle(
-                                    color: AppTheme.textPrimary,
+                                    color: AppTheme.navy,
                                     fontSize: 13,
                                     height: 1.4,
                                   ),
@@ -2638,7 +2554,7 @@ class _ViewInspectionRequestsPageState extends State<ViewInspectionRequestsPage>
                             icon: Icon(Icons.check_circle, size: 18),
                             label: Text('Mark as Complete'),
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: AppTheme.primaryColorConst,
+                              backgroundColor: AppTheme.navy,
                               foregroundColor: Colors.white,
                               padding: EdgeInsets.symmetric(vertical: 12),
                               shape: RoundedRectangleBorder(
@@ -2686,18 +2602,18 @@ class _ViewInspectionRequestsPageState extends State<ViewInspectionRequestsPage>
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: AppTheme.backgroundPrimary,
+        color: const Color(0xFFF7F8FB),
         borderRadius: BorderRadius.circular(6),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 14, color: AppTheme.textSecondary),
+          Icon(icon, size: 14, color: AppTheme.mutedGrey),
           SizedBox(width: 6),
           Text(
             text,
             style: TextStyle(
-              color: AppTheme.textSecondary,
+              color: AppTheme.mutedGrey,
               fontSize: 11,
             ),
           ),
@@ -2719,7 +2635,7 @@ class _ViewInspectionRequestsPageState extends State<ViewInspectionRequestsPage>
               Icon(
                 Icons.fact_check_outlined,
                 size: 64,
-                color: AppTheme.textSecondary,
+                color: AppTheme.mutedGrey,
               ),
               SizedBox(height: 16),
               Text(
@@ -2727,7 +2643,7 @@ class _ViewInspectionRequestsPageState extends State<ViewInspectionRequestsPage>
                 style: TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.bold,
-                  color: AppTheme.textPrimary,
+                  color: AppTheme.navy,
                 ),
               ),
               SizedBox(height: 8),
@@ -2736,7 +2652,7 @@ class _ViewInspectionRequestsPageState extends State<ViewInspectionRequestsPage>
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 14,
-                  color: AppTheme.textSecondary,
+                  color: AppTheme.mutedGrey,
                 ),
               ),
             ],
@@ -2749,31 +2665,33 @@ class _ViewInspectionRequestsPageState extends State<ViewInspectionRequestsPage>
       children: [
         // Filter Section
         Container(
-          margin: EdgeInsets.only(top: 12),
-          padding: EdgeInsets.all(16),
-          width: MediaQuery.of(context).size.width * 0.9,
+          margin: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+          padding: const EdgeInsets.all(16),
+          width: double.infinity,
           decoration: BoxDecoration(
-            color: AppTheme.backgroundSecondary,
-            boxShadow: [
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: AppTheme.border),
+            boxShadow: const [
               BoxShadow(
-                color: Colors.black.withOpacity(0.05),
-                blurRadius: 4,
-                offset: Offset(0, 2),
+                color: AppTheme.softShadow,
+                blurRadius: 18,
+                offset: Offset(0, 8),
               ),
             ],
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
+              const Text(
                 'Filters',
                 style: TextStyle(
-                  color: AppTheme.textPrimary,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
+                  color: AppTheme.navy,
+                  fontSize: 15.5,
+                  fontWeight: FontWeight.w800,
                 ),
               ),
-              SizedBox(height: 12),
+              const SizedBox(height: 12),
               Wrap(
                 spacing: 8,
                 runSpacing: 8,
@@ -2786,13 +2704,13 @@ class _ViewInspectionRequestsPageState extends State<ViewInspectionRequestsPage>
                       padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                       decoration: BoxDecoration(
                         color: _selectedProjectId != null
-                            ? AppTheme.primaryColorConst.withOpacity(0.2)
-                            : AppTheme.backgroundPrimary,
+                            ? AppTheme.navy.withOpacity(0.2)
+                            : const Color(0xFFF7F8FB),
                         borderRadius: BorderRadius.circular(20),
                         border: Border.all(
                           color: _selectedProjectId != null
-                              ? AppTheme.primaryColorConst
-                              : AppTheme.primaryColorConst.withOpacity(0.3),
+                              ? AppTheme.navy
+                              : AppTheme.navy.withOpacity(0.3),
                           width: 1,
                         ),
                       ),
@@ -2803,16 +2721,16 @@ class _ViewInspectionRequestsPageState extends State<ViewInspectionRequestsPage>
                             Icons.folder_special,
                             size: 14,
                             color: _selectedProjectId != null
-                                ? AppTheme.primaryColorConst
-                                : AppTheme.textSecondary,
+                                ? AppTheme.navy
+                                : AppTheme.mutedGrey,
                           ),
                           SizedBox(width: 6),
                           Text(
                             _selectedProjectName ?? 'All Projects',
                             style: TextStyle(
                               color: _selectedProjectId != null
-                                  ? AppTheme.primaryColorConst
-                                  : AppTheme.textSecondary,
+                                  ? AppTheme.navy
+                                  : AppTheme.mutedGrey,
                               fontSize: 12,
                               fontWeight: _selectedProjectId != null
                                   ? FontWeight.w600
@@ -2832,7 +2750,7 @@ class _ViewInspectionRequestsPageState extends State<ViewInspectionRequestsPage>
                               child: Icon(
                                 Icons.close,
                                 size: 14,
-                                color: AppTheme.primaryColorConst,
+                                color: AppTheme.navy,
                               ),
                             ),
                           ],
@@ -2848,13 +2766,13 @@ class _ViewInspectionRequestsPageState extends State<ViewInspectionRequestsPage>
                       padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                       decoration: BoxDecoration(
                         color: _selectedCategory != null
-                            ? AppTheme.primaryColorConst.withOpacity(0.2)
-                            : AppTheme.backgroundPrimary,
+                            ? AppTheme.navy.withOpacity(0.2)
+                            : const Color(0xFFF7F8FB),
                         borderRadius: BorderRadius.circular(20),
                         border: Border.all(
                           color: _selectedCategory != null
-                              ? AppTheme.primaryColorConst
-                              : AppTheme.primaryColorConst.withOpacity(0.3),
+                              ? AppTheme.navy
+                              : AppTheme.navy.withOpacity(0.3),
                           width: 1,
                         ),
                       ),
@@ -2865,16 +2783,16 @@ class _ViewInspectionRequestsPageState extends State<ViewInspectionRequestsPage>
                             Icons.category,
                             size: 14,
                             color: _selectedCategory != null
-                                ? AppTheme.primaryColorConst
-                                : AppTheme.textSecondary,
+                                ? AppTheme.navy
+                                : AppTheme.mutedGrey,
                           ),
                           SizedBox(width: 6),
                           Text(
                             _selectedCategory ?? 'All Categories',
                             style: TextStyle(
                               color: _selectedCategory != null
-                                  ? AppTheme.primaryColorConst
-                                  : AppTheme.textSecondary,
+                                  ? AppTheme.navy
+                                  : AppTheme.mutedGrey,
                               fontSize: 12,
                               fontWeight: _selectedCategory != null
                                   ? FontWeight.w600
@@ -2893,7 +2811,7 @@ class _ViewInspectionRequestsPageState extends State<ViewInspectionRequestsPage>
                               child: Icon(
                                 Icons.close,
                                 size: 14,
-                                color: AppTheme.primaryColorConst,
+                                color: AppTheme.navy,
                               ),
                             ),
                           ],
@@ -2914,13 +2832,13 @@ class _ViewInspectionRequestsPageState extends State<ViewInspectionRequestsPage>
                       padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                       decoration: BoxDecoration(
                         color: _showCreatedByMeOnly
-                            ? AppTheme.primaryColorConst.withOpacity(0.2)
-                            : AppTheme.backgroundPrimary,
+                            ? AppTheme.navy.withOpacity(0.2)
+                            : const Color(0xFFF7F8FB),
                         borderRadius: BorderRadius.circular(20),
                         border: Border.all(
                           color: _showCreatedByMeOnly
-                              ? AppTheme.primaryColorConst
-                              : AppTheme.primaryColorConst.withOpacity(0.3),
+                              ? AppTheme.navy
+                              : AppTheme.navy.withOpacity(0.3),
                           width: 1,
                         ),
                       ),
@@ -2931,16 +2849,16 @@ class _ViewInspectionRequestsPageState extends State<ViewInspectionRequestsPage>
                             Icons.create,
                             size: 14,
                             color: _showCreatedByMeOnly
-                                ? AppTheme.primaryColorConst
-                                : AppTheme.textSecondary,
+                                ? AppTheme.navy
+                                : AppTheme.mutedGrey,
                           ),
                           SizedBox(width: 6),
                           Text(
                             'Created by Me',
                             style: TextStyle(
                               color: _showCreatedByMeOnly
-                                  ? AppTheme.primaryColorConst
-                                  : AppTheme.textSecondary,
+                                  ? AppTheme.navy
+                                  : AppTheme.mutedGrey,
                               fontSize: 12,
                               fontWeight: _showCreatedByMeOnly
                                   ? FontWeight.w600
@@ -2964,13 +2882,13 @@ class _ViewInspectionRequestsPageState extends State<ViewInspectionRequestsPage>
                       padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                       decoration: BoxDecoration(
                         color: _showAssignedToMeOnly
-                            ? AppTheme.primaryColorConst.withOpacity(0.2)
-                            : AppTheme.backgroundPrimary,
+                            ? AppTheme.navy.withOpacity(0.2)
+                            : const Color(0xFFF7F8FB),
                         borderRadius: BorderRadius.circular(20),
                         border: Border.all(
                           color: _showAssignedToMeOnly
-                              ? AppTheme.primaryColorConst
-                              : AppTheme.primaryColorConst.withOpacity(0.3),
+                              ? AppTheme.navy
+                              : AppTheme.navy.withOpacity(0.3),
                           width: 1,
                         ),
                       ),
@@ -2981,16 +2899,16 @@ class _ViewInspectionRequestsPageState extends State<ViewInspectionRequestsPage>
                             Icons.person,
                             size: 14,
                             color: _showAssignedToMeOnly
-                                ? AppTheme.primaryColorConst
-                                : AppTheme.textSecondary,
+                                ? AppTheme.navy
+                                : AppTheme.mutedGrey,
                           ),
                           SizedBox(width: 6),
                           Text(
                             'Assigned to Me',
                             style: TextStyle(
                               color: _showAssignedToMeOnly
-                                  ? AppTheme.primaryColorConst
-                                  : AppTheme.textSecondary,
+                                  ? AppTheme.navy
+                                  : AppTheme.mutedGrey,
                               fontSize: 12,
                               fontWeight: _showAssignedToMeOnly
                                   ? FontWeight.w600
@@ -3009,22 +2927,22 @@ class _ViewInspectionRequestsPageState extends State<ViewInspectionRequestsPage>
         // Requests List
         Expanded(
           child: _isLoading && _requests.isEmpty
-              ? Center(
-                  child: CircularProgressIndicator(
-                    valueColor: AlwaysStoppedAnimation<Color>(AppTheme.primaryColorConst),
-                  ),
+              ? const SkeletonListLoader(
+                  showSummary: false,
+                  cardCount: 4,
+                  padding: EdgeInsets.fromLTRB(20, 8, 20, 24),
                 )
               : _requests.isEmpty
                   ? Center(
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(Icons.fact_check_outlined, size: 56, color: AppTheme.textSecondary),
+                          Icon(Icons.fact_check_outlined, size: 56, color: AppTheme.mutedGrey),
                           SizedBox(height: 16),
                           Text(
                             'No inspection requests found',
                             style: TextStyle(
-                              color: AppTheme.textPrimary,
+                              color: AppTheme.navy,
                               fontSize: 16,
                               fontWeight: FontWeight.w600,
                             ),
@@ -3033,7 +2951,7 @@ class _ViewInspectionRequestsPageState extends State<ViewInspectionRequestsPage>
                           Text(
                             'Try adjusting your filters',
                             style: TextStyle(
-                              color: AppTheme.textSecondary,
+                              color: AppTheme.mutedGrey,
                               fontSize: 14,
                             ),
                           ),
@@ -3044,7 +2962,7 @@ class _ViewInspectionRequestsPageState extends State<ViewInspectionRequestsPage>
                       onRefresh: () async {
                         await _loadRequests();
                       },
-                      color: AppTheme.primaryColorConst,
+                      color: AppTheme.navy,
                       child: ListView(
                         padding: EdgeInsets.all(20),
                         children: _requests.map((request) {

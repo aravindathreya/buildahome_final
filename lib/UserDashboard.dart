@@ -6,9 +6,9 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
-import 'package:flutter_spinkit/flutter_spinkit.dart';
 import "Payments.dart";
 import 'app_theme.dart';
+import 'widgets/skeleton_loader.dart';
 import 'Drawings.dart';
 import 'Scheduler.dart';
 import 'Gallery.dart' hide TimelineGallery;
@@ -17,6 +17,7 @@ import 'NotesAndComments.dart';
 import 'checklist_categories.dart';
 import 'services/api_http.dart';
 import 'services/data_provider.dart';
+import 'services/notification_service.dart';
 import 'services/rbac_service.dart';
 import 'services/session_manager.dart';
 import 'AdminDashboard.dart';
@@ -27,8 +28,17 @@ import 'indents_screen.dart';
 import 'main.dart';
 import 'MyTasksScreen.dart';
 import 'ProjectTimelineScreen.dart';
+import 'SalesSopCardsScreen.dart';
+import 'ClientPortalScreen.dart';
+import 'VirtualTour.dart';
 import 'NavMenu.dart';
-import 'widgets/dark_mode_toggle.dart';
+import 'notifcations.dart';
+import 'Dpr.dart';
+import 'services/profile_picture_service.dart';
+import 'utilities/role_app_bar_color.dart';
+import 'widgets/dashboard_chrome.dart';
+import 'widgets/modern_task_card.dart';
+import 'widgets/profile_picture_dialog.dart';
 
 class UserDashboardLayout extends StatefulWidget {
   final bool fromAdminDashboard;
@@ -225,20 +235,34 @@ class UserDashboardLayoutState extends State<UserDashboardLayout> {
   final GlobalKey<UserDashboardScreenState> _userDashboardKey =
       GlobalKey<UserDashboardScreenState>();
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
-  String displayName = 'My Home';
-  String _userRole = '';
+  String displayName = 'there';
+  String? _userRole;
+  int _bottomNavIndex = 0;
+  static const Color _navy = Color(0xFF1B254B);
+  static const Color _mutedGrey = Color(0xFF8A94A6);
   // Removed local navigatorKey and observer - using global ones from main.dart
+
+  bool get _showBackToDashboard {
+    if (!widget.fromAdminDashboard) return false;
+    final role = (_userRole ?? '').trim();
+    if (role.isEmpty) return true;
+    return role.toLowerCase() != 'client';
+  }
 
   @override
   void initState() {
     super.initState();
     _loadDisplayName();
+    _loadUnreadNotifications();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) maybePromptForProfilePicture(context);
+    });
   }
 
   _loadDisplayName() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
+    await ProfilePictureService.getStoredPath();
     String loadedUsername = ' ';
-    final loadedRole = prefs.getString('role') ?? '';
     if (prefs.containsKey("client_name")) {
       loadedUsername = prefs.getString('client_name') ?? ' ';
     } else {
@@ -246,124 +270,326 @@ class UserDashboardLayoutState extends State<UserDashboardLayout> {
     }
 
     String name = _getDisplayName(loadedUsername);
+    final role = prefs.getString('role');
     if (mounted) {
       setState(() {
         displayName = name;
-        _userRole = loadedRole;
+        _userRole = role;
       });
     }
   }
 
+  void _goBackToDashboard() {
+    if (Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
+      return;
+    }
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (context) => AdminDashboard()),
+    );
+  }
+
+  Future<void> _loadUnreadNotifications({bool force = false}) async {
+    final service = NotificationService.instance;
+    await service.ensureHydrated();
+    await service.sync(force: force);
+  }
+
   String _getDisplayName(String username) {
     if (username.isEmpty || username == ' ') {
-      return 'Your';
+      return 'there';
     }
     try {
       String name = username.split('-')[0].trim();
       return name.isNotEmpty ? name : username.trim();
     } catch (e) {
-      return username.trim().isNotEmpty ? username.trim() : 'Your';
+      return username.trim().isNotEmpty ? username.trim() : 'there';
+    }
+  }
+
+  String _greetingForNow() {
+    final hour = DateTime.now().hour;
+    if (hour < 12) return 'Good morning,';
+    if (hour < 17) return 'Good afternoon,';
+    return 'Good evening,';
+  }
+
+  Future<void> _openNotifications() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => DashboardChrome.wrap(
+          DashboardChromeStyle.user,
+          const Notifications(),
+        ),
+      ),
+    );
+    _loadUnreadNotifications(force: true);
+  }
+
+  Future<void> _onBottomNavTap(int index) async {
+    if (index == 0) {
+      setState(() => _bottomNavIndex = 0);
+      return;
+    }
+    if (index == 4) {
+      _scaffoldKey.currentState?.openDrawer();
+      return;
+    }
+
+    setState(() => _bottomNavIndex = index);
+    final screen = _userDashboardKey.currentState;
+    Widget? page;
+    switch (index) {
+      case 1:
+        final tasks = screen?._tasks ?? <dynamic>[];
+        page = MyTasksScreen(
+          tasks: List<dynamic>.from(tasks),
+          onRefresh: screen == null
+              ? null
+              : () => screen._refreshTasksForMyTasks(),
+        );
+        break;
+      case 2:
+        page = const DprScreen(title: 'Updates');
+        break;
+      case 3:
+        if (screen != null) {
+          await screen.openSiteVisitReports();
+        }
+        if (mounted) setState(() => _bottomNavIndex = 0);
+        return;
+    }
+
+    if (page != null) {
+      final chrome = widget.fromAdminDashboard
+          ? DashboardChromeStyle.admin
+          : DashboardChromeStyle.user;
+      final appBarColor = chrome == DashboardChromeStyle.admin
+          ? RoleAppBarColor.forRole(_userRole)
+          : null;
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => DashboardChrome.wrap(
+            chrome,
+            page!,
+            appBarColor: appBarColor,
+          ),
+        ),
+      );
+      if (mounted) setState(() => _bottomNavIndex = 0);
     }
   }
 
   Widget _buildUserHeader() {
+    final topPad = MediaQuery.of(context).padding.top;
     return Container(
       width: MediaQuery.of(context).size.width,
-      padding: EdgeInsets.only(top: 40, left: 16, right: 16, bottom: 12),
-      decoration: BoxDecoration(
-        color: Colors.transparent,
-      ),
-      child: Row(
+      padding: EdgeInsets.only(top: topPad + 8, left: 16, right: 16, bottom: 8),
+      color: Colors.white,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(
-            child: Row(
-              children: [
-                if (widget.fromAdminDashboard && Navigator.of(context).canPop())
-                  IconButton(
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(),
-                    icon: Icon(
-                      Icons.arrow_back_ios_new,
-                      color: AppTheme.getTextPrimary(context),
-                    ),
-                    onPressed: () => Navigator.of(context).pop(),
-                  ),
-                if (_userRole == 'Client')
-                  InkWell(
-                    borderRadius: BorderRadius.circular(999),
-                    onTap: () => _scaffoldKey.currentState?.openDrawer(),
-                    child: Container(
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color:
-                              AppTheme.getPrimaryColor(context).withOpacity(0.3),
-                          width: 2,
+          if (_showBackToDashboard) ...[
+            Material(
+              color: const Color(0xFFF1F4F8),
+              borderRadius: BorderRadius.circular(999),
+              child: InkWell(
+                onTap: _goBackToDashboard,
+                borderRadius: BorderRadius.circular(999),
+                child: const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.arrow_back_rounded, color: _navy, size: 18),
+                      SizedBox(width: 6),
+                      Text(
+                        'Back to dashboard',
+                        style: TextStyle(
+                          color: _navy,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
                         ),
                       ),
-                      child: CircleAvatar(
-                        radius: 20,
-                        backgroundColor: AppTheme.getPrimaryColor(context),
-                        child: Text(
-                          displayName.isNotEmpty
-                              ? displayName[0].toUpperCase()
-                              : 'U',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 18,
-                            fontWeight: FontWeight.normal,
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+          ],
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _greetingForNow(),
+                      style: const TextStyle(
+                        color: _mutedGrey,
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w500,
+                        height: 1.2,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '${displayName.isNotEmpty ? displayName : 'there'} 👋',
+                      style: const TextStyle(
+                        color: _navy,
+                        fontSize: 20,
+                        fontWeight: FontWeight.w800,
+                        height: 1.15,
+                        letterSpacing: -0.2,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+          InkWell(
+            onTap: _openNotifications,
+            borderRadius: BorderRadius.circular(999),
+            child: Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.white,
+                border: Border.all(color: const Color(0xFFE6EAF0)),
+              ),
+              child: ValueListenableBuilder<int>(
+                valueListenable:
+                    NotificationService.instance.unreadCountNotifier,
+                builder: (context, unreadCount, _) {
+                  return Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      const Center(
+                        child: Icon(
+                          Icons.notifications_none_rounded,
+                          color: _navy,
+                          size: 22,
+                        ),
+                      ),
+                      if (unreadCount > 0)
+                        Positioned(
+                          right: 6,
+                          top: 6,
+                          child: Container(
+                            constraints: const BoxConstraints(minWidth: 16),
+                            height: 16,
+                            padding:
+                                const EdgeInsets.symmetric(horizontal: 4),
+                            decoration: const BoxDecoration(
+                              color: Color(0xFFE53935),
+                              shape: BoxShape.circle,
+                            ),
+                            alignment: Alignment.center,
+                            child: Text(
+                              unreadCount > 9 ? '9+' : '$unreadCount',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 9,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
                           ),
                         ),
-                      ),
-                    ),
-                  )
-                else
-                  Container(
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: AppTheme.getPrimaryColor(context).withOpacity(0.3),
-                        width: 2,
-                      ),
-                    ),
-                    child: CircleAvatar(
-                      radius: 20,
-                      backgroundColor: AppTheme.getPrimaryColor(context),
-                      child: Text(
-                        displayName.isNotEmpty
-                            ? displayName[0].toUpperCase()
-                            : 'U',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 18,
-                          fontWeight: FontWeight.normal,
-                        ),
-                      ),
-                    ),
-                  ),
-                SizedBox(width: 12),
-                Expanded(
+                    ],
+                  );
+                },
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+              ValueListenableBuilder<String?>(
+                valueListenable: ProfilePictureService.picturePathNotifier,
+                builder: (context, picturePath, _) {
+                  return ProfileAvatar(
+                    displayName: displayName,
+                    picturePath: picturePath,
+                    size: 40,
+                    backgroundColor: _navy,
+                    foregroundColor: Colors.white,
+                    borderColor: const Color(0xFFE6EAF0),
+                    onTap: () => _scaffoldKey.currentState?.openDrawer(),
+                  );
+                },
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBottomNav() {
+    final items = <_DashNavItem>[
+      _DashNavItem(Icons.home_rounded, Icons.home_outlined, 'Home'),
+      _DashNavItem(
+          Icons.pending_actions_rounded, Icons.pending_actions_outlined, 'Tasks'),
+      _DashNavItem(
+          Icons.description_rounded, Icons.description_outlined, 'Updates'),
+      _DashNavItem(
+          Icons.location_on_rounded, Icons.location_on_outlined, 'Site Visits'),
+      _DashNavItem(Icons.menu_rounded, Icons.menu_rounded, 'More'),
+    ];
+
+    return Container(
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        border: Border(top: BorderSide(color: Color(0xFFEEF1F5))),
+      ),
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+          child: Row(
+            children: List.generate(items.length, (index) {
+              final item = items[index];
+              final selected = _bottomNavIndex == index;
+              final color = selected ? _navy : _mutedGrey;
+              return Expanded(
+                child: InkWell(
+                  onTap: () => _onBottomNavTap(index),
+                  borderRadius: BorderRadius.circular(12),
                   child: Padding(
-                    padding: EdgeInsets.only(top: 12),
-                    child: Text(
-                      displayName.isNotEmpty
-                          ? displayName + "\'s Dashboard"
-                          : 'User\'s Dashboard',
-                      style: TextStyle(
-                        color: AppTheme.getTextPrimary(context),
-                        fontSize: 20,
-                        fontWeight: FontWeight.w500,
-                      ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
+                    padding: const EdgeInsets.symmetric(vertical: 6),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          selected ? item.activeIcon : item.icon,
+                          color: color,
+                          size: 24,
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          item.label,
+                          style: TextStyle(
+                            color: color,
+                            fontSize: 10.5,
+                            fontWeight:
+                                selected ? FontWeight.w700 : FontWeight.w500,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
                     ),
                   ),
                 ),
-              ],
-            ),
+              );
+            }),
           ),
-          DarkModeToggle(showLabel: false),
-        ],
+        ),
       ),
     );
   }
@@ -413,65 +639,85 @@ class UserDashboardLayoutState extends State<UserDashboardLayout> {
       },
       child: Scaffold(
         key: _scaffoldKey,
-        backgroundColor: AppTheme.getBackgroundPrimary(context),
+        backgroundColor: Colors.white,
         drawer: NavMenuWidget(),
         appBar: (!widget.fromAdminDashboard && Navigator.of(context).canPop())
             ? AppBar(
-                backgroundColor: AppTheme.getBackgroundSecondary(context),
+                backgroundColor: Colors.white,
                 elevation: 0,
                 leading: IconButton(
-                  icon: Icon(Icons.arrow_back),
-                  color: AppTheme.getTextPrimary(context),
+                  icon: const Icon(Icons.arrow_back),
+                  color: _navy,
                   onPressed: () => Navigator.of(context).pop(),
                 ),
-                title: Text(
+                title: const Text(
                   'Project',
                   style: TextStyle(
-                    color: AppTheme.getTextPrimary(context),
+                    color: _navy,
                     fontSize: 18,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
-                iconTheme:
-                    IconThemeData(color: AppTheme.getTextPrimary(context)),
+                iconTheme: const IconThemeData(color: _navy),
               )
             : null,
-        body: Stack(
+        body: Column(
           children: [
-            // Background image with opacity
-            Positioned.fill(
-              child: Opacity(
-                opacity: 0.3,
-                child: Image.asset(
-                  'assets/images/See details.jpg',
-                  fit: BoxFit.cover,
-                  errorBuilder: (context, error, stackTrace) {
-                    return Container(
-                        color: AppTheme.getBackgroundPrimary(context));
-                  },
-                ),
-              ),
-            ),
-            Positioned.fill(
-              child: Opacity(
-                opacity: 0.7,
-                child: Container(color: AppTheme.getBackgroundPrimary(context)),
-              ),
-            ),
-            // Content on top
-            Column(
-              children: [
-                // User avatar header
-                if (_userDashboardKey.currentState != null) _buildUserHeader(),
-                // Main content
-                Expanded(
-                  child: UserDashboardScreen(key: _userDashboardKey),
-                ),
-              ],
+            _buildUserHeader(),
+            Expanded(
+              child: UserDashboardScreen(key: _userDashboardKey),
             ),
           ],
         ),
+        bottomNavigationBar: _buildBottomNav(),
       ),
+    );
+  }
+}
+
+class _DashNavItem {
+  final IconData activeIcon;
+  final IconData icon;
+  final String label;
+  const _DashNavItem(this.activeIcon, this.icon, this.label);
+}
+
+class _HeroStat extends StatelessWidget {
+  final String value;
+  final String label;
+  const _HeroStat({required this.value, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.baseline,
+      textBaseline: TextBaseline.alphabetic,
+      children: [
+        Text(
+          value,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 16,
+            fontWeight: FontWeight.w800,
+            height: 1.1,
+            letterSpacing: -0.2,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            label,
+            style: const TextStyle(
+              color: Color(0xFFC7D0E0),
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              height: 1.15,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      ],
     );
   }
 }
@@ -486,8 +732,14 @@ class UserDashboardScreen extends StatefulWidget {
 }
 
 class UserDashboardScreenState extends State<UserDashboardScreen> {
+  static const Color _navy = Color(0xFF1B254B);
+  static const Color _mutedGrey = Color(0xFF8A94A6);
+  static const Color _cardBorder = Color(0xFFE8ECF1);
+  static const Color _softShadow = Color(0x14000000);
+
   List dailyUpdateList = [];
   var username = ' ';
+  var projectName = 'My Project';
   var updatePostedOnDate = " ";
   var value = " ";
   String? completed;
@@ -692,6 +944,7 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
       value = nextValue;
       workflowDashboardSlots = nextWorkflowSlots;
       username = loadedUsername;
+      projectName = _resolveProjectName(loadedUsername);
       _isLoadingSummary = false;
       _hasLoadedSummary = true;
     });
@@ -719,7 +972,24 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
     // Note: loadTasks() is only called once at initState to avoid multiple API calls
   }
 
-  Future<void> loadTasks() async {
+  String _tasksDeltaKey(List<dynamic> tasks) {
+    return tasks.whereType<Map>().map((task) {
+      return [
+        task['id'],
+        task['status'],
+        task['workflow_status'],
+        task['note'],
+        task['updated_at'],
+        task['can_update_workflow_task'],
+        task['can_approve_workflow_task'],
+        jsonEncode(task['workflow_task_actions'] ?? const []),
+        jsonEncode(task['workflow_actions'] ?? const []),
+        jsonEncode(task['workflow_delay_gate'] ?? const {}),
+      ].join('|');
+    }).join('||');
+  }
+
+  Future<void> loadTasks({bool silent = false}) async {
     if (!mounted) return;
 
     // Prevent multiple simultaneous calls
@@ -729,10 +999,15 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
       return;
     }
 
-    setState(() {
+    final showLoader = !silent && _tasks.isEmpty;
+    if (showLoader) {
+      setState(() {
+        _isLoadingTasks = true;
+        _tasksError = null;
+      });
+    } else {
       _isLoadingTasks = true;
-      _tasksError = null;
-    });
+    }
 
     try {
       SharedPreferences prefs = await SharedPreferences.getInstance();
@@ -806,20 +1081,29 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
         });
 
         if (!mounted) return;
-        setState(() {
-          _tasks = allTasks;
+        final changed = _tasksDeltaKey(_tasks) != _tasksDeltaKey(allTasks);
+        if (changed || showLoader) {
+          setState(() {
+            _tasks = allTasks;
+            _isLoadingTasks = false;
+          });
+        } else {
           _isLoadingTasks = false;
-        });
+        }
 
         print(
             '[UserDashboard] Loaded ${allTasks.length} tasks for project $projectId');
       } else if (response.statusCode == 404) {
         // No tasks found - this is okay
         if (!mounted) return;
-        setState(() {
-          _tasks = [];
+        if (_tasks.isNotEmpty || showLoader) {
+          setState(() {
+            _tasks = [];
+            _isLoadingTasks = false;
+          });
+        } else {
           _isLoadingTasks = false;
-        });
+        }
       } else {
         throw Exception('Unable to load tasks (code ${response.statusCode})');
       }
@@ -827,6 +1111,10 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
       if (e is SessionInvalidatedException) return;
       if (!mounted) return;
       print('[UserDashboard] Error loading tasks: $e');
+      if (silent && _tasks.isNotEmpty) {
+        _isLoadingTasks = false;
+        return;
+      }
       setState(() {
         _isLoadingTasks = false;
         _tasksError = e.toString().replaceAll('Exception: ', '');
@@ -836,7 +1124,7 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
   }
 
   Future<List<dynamic>> _refreshTasksForMyTasks() async {
-    await loadTasks();
+    await loadTasks(silent: true);
     return List<dynamic>.from(_tasks);
   }
 
@@ -941,368 +1229,187 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
       filterActiveRecentTasks(_tasks);
 
   Widget _buildTasksSection() {
+    final recent = _activeRecentTasks.take(4).toList();
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Section Header - minimal (matching admin dashboard)
         Row(
           children: [
-            Text(
-              'Pending Tasks',
-              style: TextStyle(
-                fontSize: 17,
-                fontWeight: FontWeight.w800,
-                color: AppTheme.getTextPrimary(context),
-                letterSpacing: -0.3,
+            const Expanded(
+              child: Text(
+                'Pending tasks',
+                style: TextStyle(
+                  fontSize: 15.5,
+                  fontWeight: FontWeight.w800,
+                  color: _navy,
+                  letterSpacing: -0.2,
+                ),
               ),
             ),
-            const Spacer(),
-            if (!_isLoadingTasks && _tasks.isNotEmpty)
-              TextButton(
-                onPressed: _openAllTasks,
-                style: TextButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 4),
-                  minimumSize: Size.zero,
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            TextButton(
+              onPressed: _openAllTasks,
+              style: TextButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                minimumSize: Size.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              child: const Text(
+                'View all tasks',
+                style: TextStyle(
+                  color: Color(0xFF2563EB),
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
                 ),
-                child: Text(
-                  'View All',
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        if (_tasksError != null)
+          Container(
+            margin: const EdgeInsets.only(bottom: 10),
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFFF1F2),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFFFECACA)),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.error_outline,
+                    color: Color(0xFFDC2626), size: 16),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    _tasksError!,
+                    style: const TextStyle(
+                      color: Color(0xFFB91C1C),
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        if (_isLoadingTasks && _tasks.isEmpty)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 8),
+            child: SkeletonListLoader(
+              showSummary: false,
+              cardCount: 3,
+              shrinkWrap: true,
+              physics: NeverScrollableScrollPhysics(),
+              padding: EdgeInsets.zero,
+            ),
+          )
+        else if (!_isLoadingTasks && recent.isEmpty && _tasksError == null)
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: _cardBorder),
+            ),
+            child: Column(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFEEF2FF),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.task_alt, size: 28, color: _navy),
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  'No tasks found',
                   style: TextStyle(
-                    color: AppTheme.getPrimaryColor(context),
-                    fontSize: 13,
+                    color: _navy,
+                    fontSize: 14,
                     fontWeight: FontWeight.w700,
                   ),
                 ),
-              )
-            else
-              IconButton(
-                tooltip: 'Refresh tasks',
-                onPressed: _isLoadingTasks ? null : loadTasks,
-                icon: Icon(
-                  Icons.refresh_rounded,
-                  color: AppTheme.getPrimaryColor(context),
-                  size: 20,
+                const SizedBox(height: 4),
+                const Text(
+                  'Tasks for this project will appear here',
+                  style: TextStyle(
+                    color: _mutedGrey,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                  ),
                 ),
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(),
-              ),
-          ],
-        ),
-        SizedBox(height: 12),
-
-        // Error message - compact
-        if (_tasksError != null)
-          TweenAnimationBuilder<double>(
-            tween: Tween(begin: 0.0, end: 1.0),
-            duration: Duration(milliseconds: 300),
-            curve: Curves.easeOut,
-            builder: (context, value, child) {
-              return Opacity(
-                opacity: value,
-                child: Transform.scale(
-                  scale: 0.95 + (0.05 * value),
-                  child: Container(
-                    margin: EdgeInsets.only(bottom: 8),
-                    padding: EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: Colors.red.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.red.withOpacity(0.3)),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(Icons.error_outline, color: Colors.red, size: 16),
-                        SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            _tasksError!,
-                            style: TextStyle(
-                              color: Colors.red[800],
-                              fontSize: 11,
-                            ),
-                          ),
-                        ),
-                      ],
+                const SizedBox(height: 12),
+                TextButton(
+                  onPressed: _openAllTasks,
+                  child: const Text(
+                    'Open all tasks',
+                    style: TextStyle(
+                      color: Color(0xFF2563EB),
+                      fontWeight: FontWeight.w700,
                     ),
                   ),
                 ),
-              );
-            },
-          ),
-
-        // Loading state - compact (only show on first load)
-        if (_isLoadingTasks && _tasks.isEmpty)
-          Container(
-            padding: EdgeInsets.all(24),
-            child: Center(
-              child: SpinKitRing(
-                color: AppTheme.getPrimaryColor(context),
-                size: 32,
-                lineWidth: 2.5,
-              ),
+              ],
             ),
-          ),
-
-        // Empty state - compact with animation
-        if (!_isLoadingTasks && _tasks.isEmpty && _tasksError == null)
-          TweenAnimationBuilder<double>(
-            tween: Tween(begin: 0.0, end: 1.0),
-            duration: Duration(milliseconds: 500),
-            curve: Curves.easeOut,
-            builder: (context, value, child) {
-              return Opacity(
-                opacity: value,
-                child: Transform.scale(
-                  scale: 0.9 + (0.1 * value),
-                  child: Container(
-                    padding: EdgeInsets.all(24),
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [
-                          Theme.of(context).colorScheme.surface,
-                          Theme.of(context).scaffoldBackgroundColor,
-                        ],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
+          )
+        else
+          Column(
+            children: [
+              for (var index = 0; index < recent.length; index++)
+                _buildModernDashboardTaskCard(recent[index], index),
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton(
+                  onPressed: _openAllTasks,
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'View all tasks',
+                        style: TextStyle(
+                          color: Color(0xFF2563EB),
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(
-                        color:
-                            AppTheme.getPrimaryColor(context).withOpacity(0.2),
-                        width: 1,
+                      SizedBox(width: 2),
+                      Icon(
+                        Icons.arrow_forward_rounded,
+                        size: 16,
+                        color: Color(0xFF2563EB),
                       ),
-                    ),
-                    child: Column(
-                      children: [
-                        Container(
-                          padding: EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: AppTheme.getPrimaryColor(context)
-                                .withOpacity(0.15),
-                            shape: BoxShape.circle,
-                          ),
-                          child: Icon(
-                            Icons.task_alt,
-                            size: 32,
-                            color: AppTheme.getPrimaryColor(context),
-                          ),
-                        ),
-                        SizedBox(height: 12),
-                        Text(
-                          'No tasks found',
-                          style: TextStyle(
-                            color: AppTheme.getTextPrimary(context),
-                            fontSize: 14,
-                            fontWeight: FontWeight.normal,
-                          ),
-                        ),
-                        SizedBox(height: 4),
-                        Text(
-                          'Tasks for this project will appear here',
-                          style: TextStyle(
-                            color: AppTheme.getTextSecondary(context),
-                            fontSize: 12,
-                          ),
-                        ),
-                      ],
-                    ),
+                    ],
                   ),
                 ),
-              );
-            },
+              ),
+            ],
           ),
-
-        // Premium client task carousel
-        if (!_isLoadingTasks && _activeRecentTasks.isNotEmpty)
-          _buildRecentTasksCarousel(_activeRecentTasks),
       ],
     );
   }
 
-  Widget _buildRecentTasksCarousel(List<Map<String, dynamic>> tasks) {
-    if (tasks.isEmpty) return SizedBox.shrink();
-
-    return Column(
-      children: [
-        SizedBox(
-          height: _recentTasksViewportHeight,
-          child: PageView.builder(
-            controller: _recentTasksPageController,
-            scrollDirection: Axis.vertical,
-            itemCount: tasks.length,
-            padEnds: false,
-            physics: const BouncingScrollPhysics(),
-            itemBuilder: (context, index) {
-              return Padding(
-                padding: const EdgeInsets.symmetric(vertical: 4),
-                child: _buildTaskCard(tasks[index]),
-              );
-            },
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildTaskCard(Map<String, dynamic> task) {
-    final accentColor = _recentTaskAccentColor(task);
-    final title = _clientTaskTitle(task);
+  Widget _buildModernDashboardTaskCard(
+      Map<String, dynamic> task, int index) {
     final assigneeParts = _taskAssigneeParts(task);
     final dateParts = _taskDateTimeParts(task);
-    final assigneeText =
-        assigneeParts.whereType<String>().join(' · ');
+    final assigneeText = assigneeParts.whereType<String>().join(' · ');
     final dateText = dateParts[0] == null
         ? null
         : dateParts[1] == null
             ? dateParts[0]
             : '${dateParts[0]} · ${dateParts[1]}';
 
-    return SizedBox(
-      height: _recentTaskCardHeight,
-      child: Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: const Color(0xFFE8ECF1)),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.04),
-              blurRadius: 12,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Container(width: 4, color: accentColor),
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Container(
-                          width: 34,
-                          height: 34,
-                          decoration: BoxDecoration(
-                            color: accentColor.withValues(alpha: 0.12),
-                            shape: BoxShape.circle,
-                          ),
-                          child: Icon(
-                            _taskStatusIcon(task),
-                            color: accentColor,
-                            size: 17,
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Padding(
-                            padding: const EdgeInsets.only(top: 2),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  title,
-                                  style: const TextStyle(
-                                    color: Color(0xFF111827),
-                                    fontSize: 13.5,
-                                    fontWeight: FontWeight.w800,
-                                    height: 1.25,
-                                  ),
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                                if (isWorkflowDelayGated(task)) ...[
-                                  const SizedBox(height: 4),
-                                  Row(
-                                    children: [
-                                      Icon(
-                                        Icons.timer_outlined,
-                                        size: 13,
-                                        color: accentColor,
-                                      ),
-                                      const SizedBox(width: 4),
-                                      Flexible(
-                                        child: WorkflowDelayCountdownText(
-                                          gateData:
-                                              workflowDelayGate(task) ??
-                                                  const {},
-                                          style: TextStyle(
-                                            color: accentColor,
-                                            fontSize: 11.5,
-                                            fontWeight: FontWeight.w700,
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ],
-                              ],
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        _buildTaskStatusBadge(task, accentColor),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    if (assigneeText.isNotEmpty)
-                      _buildRecentTaskMetaRow(
-                        icon: Icons.person_outline_rounded,
-                        text: assigneeText,
-                      ),
-                    if (dateText != null) ...[
-                      const SizedBox(height: 4),
-                      _buildRecentTaskMetaRow(
-                        icon: Icons.calendar_today_outlined,
-                        text: dateText,
-                      ),
-                    ],
-                    const Spacer(),
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: InkWell(
-                        onTap: () => _openTaskDetails(task),
-                        borderRadius: BorderRadius.circular(6),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 2,
-                            vertical: 2,
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                'View Details',
-                                style: TextStyle(
-                                  color: AppTheme.getPrimaryColor(context),
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                              const SizedBox(width: 2),
-                              Icon(
-                                Icons.arrow_forward_rounded,
-                                color: AppTheme.getPrimaryColor(context),
-                                size: 14,
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
+    return ModernTaskCard(
+      title: _clientTaskTitle(task),
+      projectName: task['project_name']?.toString(),
+      assigneeName: assigneeText.isEmpty ? null : assigneeText,
+      dateLabel: dateText,
+      status: normalizeTaskStatusValue(task),
+      statusLabel: workflowStatusDisplayLabel(task),
+      accentIndex: index,
+      onTap: () => _openTaskDetails(task),
     );
   }
 
@@ -1723,7 +1830,7 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
         builder: (context) => MyTasksScreen(
           tasks: _tasks,
           onRefresh: _refreshTasksForMyTasks,
-          initialTabIndex: 0,
+          focusTaskId: task['id']?.toString(),
         ),
       ),
     );
@@ -1950,9 +2057,9 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
       final normalizedToday = DateTime(today.year, today.month, today.day);
       final normalizedDue = DateTime(dueDate.year, dueDate.month, dueDate.day);
       final days = normalizedDue.difference(normalizedToday).inDays;
-      if (days == 0) return 'Due Today';
-      if (days == 1) return 'Due Tomorrow';
-      if (days > 1) return 'Due in $days Days';
+      if (days == 0) return 'Due today';
+      if (days == 1) return 'Due tomorrow';
+      if (days > 1) return 'Due in $days days';
     }
 
     if (task['is_workflow_task'] == true) {
@@ -1961,16 +2068,16 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
 
     switch (_normalizedTaskStatus(task)) {
       case 'waiting_approval':
-        return 'Waiting for Approval';
+        return 'Waiting for approval';
       case 'ready':
-        return 'Ready for Review';
+        return 'Ready for review';
       case 'completed':
       case 'done':
       case 'finished':
       case 'approved':
         return 'Approved';
       case 'in_progress':
-        return 'In Progress';
+        return 'In progress';
       case 'information':
       case 'info':
         return 'Information';
@@ -1984,12 +2091,12 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
     final customLabel = action == null
         ? null
         : _firstTaskString(action, ['label', 'button_label', 'title']);
-    if (customLabel != null) return customLabel;
+    if (customLabel != null) return toSentenceCaseLabel(customLabel);
 
     final actionType = action?['type']?.toString() ?? '';
     switch (actionType) {
       case 'upload':
-        return 'Upload Document';
+        return 'Upload document';
       case 'complete_button':
         return 'Confirm';
       case 'update_status':
@@ -2005,7 +2112,7 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
       case 'picture_choice_pick':
         return 'Choose option';
       case 'slot_selection':
-        return 'Book Appointment';
+        return 'Book appointment';
       case 'redirect_button':
         return 'Open';
       case 'view_prior_response':
@@ -2013,7 +2120,7 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
       case 'user_checklist_summary':
       case 'text_list_summary':
       case 'material_shift_summary':
-        return 'View Response';
+        return 'View response';
     }
 
     switch (_normalizedTaskStatus(task)) {
@@ -2279,113 +2386,10 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
   Widget _buildStatusDropdown(String taskIdStr, String currentStatus) {
     final taskId = int.tryParse(taskIdStr) ?? 0;
     final isWorkflowTask = taskId < 0;
-    final statuses = [
-      {
-        'value': 'pending',
-        'label': 'Pending',
-        'color': Color(0xFFD97706),
-        'icon': Icons.pending
-      },
-      {
-        'value': 'in_progress',
-        'label': 'In Progress',
-        'color': AppTheme.primaryColorConst,
-        'icon': Icons.work
-      },
-      {
-        'value': 'completed',
-        'label': 'Completed',
-        'color': Color(0xFF10B981),
-        'icon': Icons.check_circle
-      },
-      {
-        'value': 'cancelled',
-        'label': 'Cancelled',
-        'color': Color(0xFFEF4444),
-        'icon': Icons.cancel
-      },
-    ];
-
-    final currentStatusData = statuses.firstWhere(
-      (s) => s['value'] == currentStatus,
-      orElse: () => statuses[0],
-    );
-    final currentColor = currentStatusData['color'] as Color;
-    final currentIcon = currentStatusData['icon'] as IconData;
-
-    return Container(
-      decoration: BoxDecoration(
-        color: AppTheme.backgroundPrimaryLight,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: AppTheme.primaryColorConst.withOpacity(0.2),
-          width: 1,
-        ),
-      ),
-      child: DropdownButtonFormField<String>(
-        value: currentStatus,
-        decoration: InputDecoration(
-          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          border: InputBorder.none,
-          enabledBorder: InputBorder.none,
-          focusedBorder: InputBorder.none,
-        ),
-        icon: Icon(Icons.arrow_drop_down,
-            color: AppTheme.getTextSecondary(context)),
-        dropdownColor: AppTheme.getBackgroundPrimaryLight(context),
-        style: TextStyle(
-          color: AppTheme.getTextPrimary(context),
-          fontSize: 14,
-        ),
-        items: statuses.map((statusData) {
-          final status = statusData['value'] as String;
-          final label = statusData['label'] as String;
-          final color = statusData['color'] as Color;
-          final icon = statusData['icon'] as IconData;
-
-          return DropdownMenuItem<String>(
-            value: status,
-            child: Row(
-              children: [
-                Icon(icon, size: 16, color: color),
-                SizedBox(width: 8),
-                Text(
-                  label,
-                  style: TextStyle(
-                    color: AppTheme.getTextPrimary(context),
-                    fontSize: 14,
-                  ),
-                ),
-              ],
-            ),
-          );
-        }).toList(),
-        onChanged: isWorkflowTask
-            ? null
-            : (String? newStatus) {
-                if (newStatus != null && newStatus != currentStatus) {
-                  updateTaskStatus(taskId, newStatus);
-                }
-              },
-        selectedItemBuilder: (BuildContext context) {
-          return statuses.map((statusData) {
-            final label = statusData['label'] as String;
-            return Row(
-              children: [
-                Icon(currentIcon, size: 16, color: currentColor),
-                SizedBox(width: 8),
-                Text(
-                  label,
-                  style: TextStyle(
-                    color: AppTheme.getTextPrimary(context),
-                    fontSize: 14,
-                  ),
-                ),
-              ],
-            );
-          }).toList();
-        },
-      ),
+    return TaskStatusChipSet(
+      currentStatus: currentStatus,
+      enabled: !isWorkflowTask,
+      onStatusSelected: (newStatus) => updateTaskStatus(taskId, newStatus),
     );
   }
 
@@ -2394,6 +2398,14 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
     final rbac = RBACService();
 
     if (_currentRole != 'Billing') {
+      // Client Portal — documents, design, site prep, inspection (clients only)
+      if (_currentRole?.toLowerCase() == 'client') {
+        menuItems.add({
+          'title': 'Client Portal',
+          'icon': Icons.dashboard_customize_outlined,
+          'route': () => const ClientPortalScreen(),
+        });
+      }
       menuItems.add({
         'title': 'My tasks',
         'icon': Icons.pending_actions,
@@ -2406,6 +2418,31 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
         'title': 'Project Timeline',
         'icon': Icons.timeline_rounded,
         'route': () => const ProjectTimelineScreen(),
+      });
+      // Clients: shared Client Information card only.
+      if (_currentRole?.toLowerCase() == 'client') {
+        menuItems.add({
+          'title': 'Client Information',
+          'icon': Icons.person_outline_rounded,
+          'route': () => const SalesSopCardsScreen(
+                initialCardKey: 'client_information',
+                isClient: true,
+              ),
+        });
+      }
+    }
+
+    // Project Details SOP cards — all PDF card APIs for non-clients.
+    if (_currentRole != null &&
+        _currentRole!.toLowerCase() != 'client' &&
+        _currentRole != 'Billing') {
+      menuItems.add({
+        'title': 'Project Details',
+        'icon': Icons.home_work_outlined,
+        'route': () => const SalesSopCardsScreen(
+              initialCardKey: 'client_information',
+              isClient: false,
+            ),
       });
     }
 
@@ -2458,6 +2495,12 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
         'route': () => TimelineGallery(),
       });
     }
+
+    menuItems.add({
+      'title': 'Virtual Tour',
+      'icon': Icons.view_in_ar_rounded,
+      'route': () => const VirtualTourScreen(),
+    });
 
     // ChatBox - check RBAC
     if (rbac.canViewSync(_currentRole, RBACService.tasksAndNotes)) {
@@ -2524,209 +2567,144 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
   }
 
   Widget build(BuildContext context) {
-    List<Map<String, dynamic>> menuItems = getMenuItems();
+    final menuItems = _orderedMenuItems(getMenuItems());
+    final visibleActions = menuItems.take(8).toList();
 
     final dashboardContent = Container(
-      decoration: BoxDecoration(
-        color: Theme.of(context).scaffoldBackgroundColor,
-      ),
-      child: ListView(
-        controller: _scrollController,
-        children: <Widget>[
-          AnimatedWidgetSlide(
-              direction:
-                  SlideDirection.topToBottom, // Specify the slide direction
-              duration:
-                  Duration(milliseconds: 300), // Adjust the duration as needed
-              child: Column(
-                children: [
-                  // Welcome section with better styling
-                ],
-              )),
-          Container(
-            padding: EdgeInsets.symmetric(horizontal: 20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                if (blocked == true)
-                  Column(
-                    children: [
-                      Container(
-                          alignment: Alignment.centerLeft,
-                          child: Text("Project blocked",
-                              style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.red))),
-                      Container(
-                          alignment: Alignment.centerLeft,
-                          margin: EdgeInsets.only(bottom: 15),
-                          child: Text("Reason : " + bolckReason.toString(),
-                              style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.red))),
-                    ],
-                  ),
-                // Progress Card with enhanced design
-                _buildSummarySection(),
-                if (workflowDashboardSlots.isNotEmpty) ...[
-                  _buildWorkflowSlotsSection(),
-                  SizedBox(height: 10),
-                ],
-                SizedBox(height: 10),
-                // Hide tasks section for Billing roles
-                if (_currentRole != 'Billing') _buildTasksSection(),
-                SizedBox(height: 20),
-                Padding(
-                  padding: EdgeInsets.only(bottom: 16, top: 8),
-                  child: Row(
-                    children: [
-                      Icon(Icons.update_rounded,
-                          color: AppTheme.getPrimaryColor(context), size: 24),
-                      SizedBox(width: 8),
-                      Text(
-                        'Latest Updates',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w500,
-                          color: AppTheme.getTextPrimary(context),
-                        ),
+      color: Colors.white,
+      child: RefreshIndicator(
+        color: _navy,
+        onRefresh: () => reloadData(force: true),
+        child: ListView(
+          controller: _scrollController,
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 28),
+          children: <Widget>[
+            if (blocked == true) ...[
+              Container(
+                width: double.infinity,
+                margin: const EdgeInsets.only(bottom: 14),
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFF1F2),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: const Color(0xFFFECACA)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Project blocked',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFFDC2626),
                       ),
-                      Spacer(),
-                    ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Reason : ${bolckReason.toString()}',
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFFB91C1C),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+            _buildHeroBanner(),
+            const SizedBox(height: 16),
+            _buildSummarySection(),
+            if (workflowDashboardSlots.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              _buildWorkflowSlotsSection(),
+            ],
+            if (_currentRole != 'Billing' && _currentRole != 'Client') ...[
+              const SizedBox(height: 12),
+              _buildTasksSection(),
+            ],
+            const SizedBox(height: 16),
+            _buildUpdatesSection(),
+            const SizedBox(height: 22),
+            Row(
+              children: [
+                const Text(
+                  'Quick Actions',
+                  style: TextStyle(
+                    fontSize: 15.5,
+                    fontWeight: FontWeight.w800,
+                    color: _navy,
                   ),
                 ),
-                _buildUpdatesSection(),
-                SizedBox(height: 20),
-                // Section header for Quick Actions
-                Padding(
-                  padding: EdgeInsets.only(bottom: 16, top: 8),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 4,
-                        height: 24,
-                        decoration: BoxDecoration(
-                          color: AppTheme.primaryColorConst,
-                          borderRadius: BorderRadius.circular(2),
-                        ),
-                      ),
-                      SizedBox(width: 12),
-                      Text(
-                        'Quick Actions',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: AppTheme.getTextPrimary(context),
-                          letterSpacing: 0.5,
-                        ),
-                      ),
-                    ],
+                const Spacer(),
+                GestureDetector(
+                  onTap: () => _showAllQuickActions(menuItems),
+                  child: const Text(
+                    'View all',
+                    style: TextStyle(
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF2563EB),
+                    ),
                   ),
                 ),
-                AnimatedWidgetSlide(
-                    direction: SlideDirection
-                        .bottomToTop, // Specify the slide direction
-                    duration: Duration(
-                        milliseconds: 300), // Adjust the duration as needed
-                    child: Column(
-                      children: [
-                        Container(
-                          margin: EdgeInsets.only(bottom: 20),
-                          child: GridView.builder(
-                            shrinkWrap: true,
-                            physics: NeverScrollableScrollPhysics(),
-                            gridDelegate:
-                                SliverGridDelegateWithFixedCrossAxisCount(
-                              crossAxisCount: 3,
-                              crossAxisSpacing: 12,
-                              mainAxisSpacing: 12,
-                              childAspectRatio: 0.95,
-                            ),
-                            itemCount: menuItems.length,
-                            itemBuilder: (BuildContext context, int index) {
-                              final item = menuItems[index];
-                              return Material(
-                                color: AppTheme.getBackgroundSecondary(context),
-                                child: InkWell(
-                                  onTap: () async {
-                                    await _handleMenuTap(item);
-                                  },
-                                  borderRadius: BorderRadius.circular(12),
-                                  child: Column(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Container(
-                                        padding: EdgeInsets.all(10),
-                                        decoration: BoxDecoration(
-                                          color:
-                                              AppTheme.getPrimaryColor(context)
-                                                  .withOpacity(0.15),
-                                          borderRadius:
-                                              BorderRadius.circular(10),
-                                        ),
-                                        child: Icon(
-                                          item['icon'],
-                                          size: 20,
-                                          color:
-                                              AppTheme.getPrimaryColor(context),
-                                        ),
-                                      ),
-                                      SizedBox(height: 8),
-                                      Padding(
-                                        padding:
-                                            EdgeInsets.symmetric(horizontal: 8),
-                                        child: Column(
-                                          children: [
-                                            Text(
-                                              item['title'],
-                                              textAlign: TextAlign.center,
-                                              style: TextStyle(
-                                                color: AppTheme.getTextPrimary(
-                                                    context),
-                                                fontSize: 12,
-                                                fontWeight: FontWeight.w600,
-                                              ),
-                                              maxLines: 2,
-                                              overflow: TextOverflow.ellipsis,
-                                            ),
-                                            if (item['subtitle'] != null &&
-                                                item['subtitle']
-                                                    .toString()
-                                                    .isNotEmpty) ...[
-                                              SizedBox(height: 4),
-                                              Text(
-                                                item['subtitle'].toString(),
-                                                textAlign: TextAlign.center,
-                                                style: TextStyle(
-                                                  color: AppTheme
-                                                      .getTextSecondary(
-                                                          context),
-                                                  fontSize: 9.5,
-                                                  fontWeight: FontWeight.w500,
-                                                ),
-                                                maxLines: 2,
-                                                overflow: TextOverflow.ellipsis,
-                                              ),
-                                            ],
-                                          ],
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              );
-                            },
-                          ),
-                        ),
-                      ],
-                    )),
-                // Latest Updates Section
               ],
             ),
-          ),
-        ],
+            const SizedBox(height: 14),
+            GridView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 4,
+                crossAxisSpacing: 10,
+                mainAxisSpacing: 14,
+                childAspectRatio: 0.78,
+              ),
+              itemCount: visibleActions.length,
+              itemBuilder: (BuildContext context, int index) {
+                final item = visibleActions[index];
+                final title = item['title'].toString();
+                final colors = _quickActionColors(title);
+                return InkWell(
+                  onTap: () => _handleMenuTap(item),
+                  borderRadius: BorderRadius.circular(16),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.start,
+                    children: [
+                      Container(
+                        width: 56,
+                        height: 56,
+                        decoration: BoxDecoration(
+                          color: colors['bg'],
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: Icon(
+                          _quickActionIcon(title, item['icon'] as IconData),
+                          size: 24,
+                          color: colors['fg'],
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        _quickActionLabel(title),
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          color: _navy,
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w600,
+                          height: 1.15,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ],
+        ),
       ),
     );
 
@@ -2734,11 +2712,165 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
       return _buildLoadingState();
     }
 
-    return Stack(
-      children: [
-        dashboardContent,
-        // if (_isAnySectionLoading) _buildLoadingOverlay(),
-      ],
+    return dashboardContent;
+  }
+
+  Future<void> _showAllQuickActions(List<Map<String, dynamic>> items) async {
+    await showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'All Actions',
+                  style: TextStyle(
+                    color: _navy,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Flexible(
+                  child: GridView.builder(
+                    shrinkWrap: true,
+                    gridDelegate:
+                        const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 4,
+                      crossAxisSpacing: 10,
+                      mainAxisSpacing: 14,
+                      childAspectRatio: 0.78,
+                    ),
+                    itemCount: items.length,
+                    itemBuilder: (_, index) {
+                      final item = items[index];
+                      final title = item['title'].toString();
+                      final colors = _quickActionColors(title);
+                      return InkWell(
+                        onTap: () {
+                          Navigator.pop(ctx);
+                          _handleMenuTap(item);
+                        },
+                        borderRadius: BorderRadius.circular(16),
+                        child: Column(
+                          children: [
+                            Container(
+                              width: 56,
+                              height: 56,
+                              decoration: BoxDecoration(
+                                color: colors['bg'],
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                              child: Icon(
+                                _quickActionIcon(
+                                    title, item['icon'] as IconData),
+                                size: 24,
+                                color: colors['fg'],
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              _quickActionLabel(title),
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                color: _navy,
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w600,
+                              ),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildHeroBanner() {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(18),
+      child: Container(
+        height: 128,
+        width: double.infinity,
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            colors: [Color(0xFF1B254B), Color(0xFF243463)],
+            begin: Alignment.centerLeft,
+            end: Alignment.centerRight,
+          ),
+        ),
+        child: Stack(
+          children: [
+            Positioned(
+              right: -10,
+              bottom: -20,
+              child: Opacity(
+                opacity: 0.12,
+                child: Icon(
+                  Icons.home_work_outlined,
+                  size: 160,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+            Row(
+              children: [
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(18, 16, 8, 16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: const [
+                        _HeroStat(value: '1700+', label: 'Projects'),
+                        _HeroStat(value: '18+', label: 'Cities'),
+                        _HeroStat(value: '5M+', label: 'Sq. Ft of Build Area'),
+                      ],
+                    ),
+                  ),
+                ),
+                SizedBox(
+                  width: 132,
+                  height: double.infinity,
+                  child: ShaderMask(
+                    shaderCallback: (rect) {
+                      return const LinearGradient(
+                        begin: Alignment.centerLeft,
+                        end: Alignment.centerRight,
+                        colors: [Colors.transparent, Colors.white, Colors.white],
+                        stops: [0.0, 0.22, 1.0],
+                      ).createShader(rect);
+                    },
+                    blendMode: BlendMode.dstIn,
+                    child: Image.asset(
+                      'assets/images/Good going.jpg',
+                      fit: BoxFit.cover,
+                      alignment: const Alignment(0, -0.35),
+                      errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -2986,6 +3118,201 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
     await _navigateToWidget(widget);
   }
 
+  Future<void> openSiteVisitReports() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    final projectId = prefs.getString('project_id');
+    await _navigateToWidget(SiteVisitReportsScreen(
+      fixedProjectId: projectId,
+      projectFixed: true,
+    ));
+  }
+
+  Future<void> openDocuments() async {
+    await _navigateToWidget(Documents());
+  }
+
+  String _resolveProjectName(String raw) {
+    final trimmed = raw.trim();
+    if (trimmed.isEmpty) return 'My Project';
+    final first = trimmed.split('-').first.trim();
+    return first.isNotEmpty ? first : trimmed;
+  }
+
+  String _relativeUpdateLabel(String rawDate) {
+    try {
+      DateTime? parsed = DateTime.tryParse(rawDate);
+      parsed ??= DateFormat('EEEE dd MMMM').parseLoose(rawDate);
+      final diff = DateTime.now().difference(parsed);
+      if (diff.inMinutes < 60) {
+        final m = diff.inMinutes.clamp(1, 59);
+        return '$m ${m == 1 ? 'minute' : 'minutes'} ago';
+      }
+      if (diff.inHours < 24) {
+        final h = diff.inHours;
+        return '$h ${h == 1 ? 'hour' : 'hours'} ago';
+      }
+      if (diff.inDays < 7) {
+        final d = diff.inDays;
+        return '$d ${d == 1 ? 'day' : 'days'} ago';
+      }
+      return DateFormat('dd MMM').format(parsed);
+    } catch (_) {
+      return rawDate.trim().isEmpty ? 'Recently' : rawDate;
+    }
+  }
+
+  Map<String, Color> _quickActionColors(String title) {
+    switch (title.toLowerCase()) {
+      case 'gallery':
+      case 'timeline gallery':
+        return {
+          'bg': const Color(0xFFF3E8FF),
+          'fg': const Color(0xFF7C3AED),
+        };
+      case 'project timeline':
+      case 'timeline':
+        return {
+          'bg': const Color(0xFFDCFCE7),
+          'fg': const Color(0xFF16A34A),
+        };
+      case 'my tasks':
+      case 'tasks':
+        return {
+          'bg': const Color(0xFFFFF1D6),
+          'fg': const Color(0xFFEAB308),
+        };
+      case 'payments':
+        return {
+          'bg': const Color(0xFFFFE4E6),
+          'fg': const Color(0xFFE11D48),
+        };
+      case 'scheduler':
+      case 'schedule':
+        return {
+          'bg': const Color(0xFFDBEAFE),
+          'fg': const Color(0xFF2563EB),
+        };
+      case 'documents':
+        return {
+          'bg': const Color(0xFFCCFBF1),
+          'fg': const Color(0xFF0D9488),
+        };
+      case 'chatbox':
+      case 'chat':
+        return {
+          'bg': const Color(0xFFE0E7FF),
+          'fg': const Color(0xFF4F46E5),
+        };
+      case 'checklist':
+        return {
+          'bg': const Color(0xFFF5E6D3),
+          'fg': const Color(0xFFB45309),
+        };
+      case 'indents':
+        return {
+          'bg': const Color(0xFFFFEDD5),
+          'fg': const Color(0xFFEA580C),
+        };
+      case 'site visit reports':
+        return {
+          'bg': const Color(0xFFE0F2FE),
+          'fg': const Color(0xFF0284C7),
+        };
+      case 'virtual tour':
+        return {
+          'bg': const Color(0xFFE0E7FF),
+          'fg': const Color(0xFF4338CA),
+        };
+      case 'client portal':
+        return {
+          'bg': const Color(0xFFE0E7FF),
+          'fg': const Color(0xFF1B254B),
+        };
+      default:
+        return {
+          'bg': const Color(0xFFEEF2FF),
+          'fg': _navy,
+        };
+    }
+  }
+
+  String _quickActionLabel(String title) {
+    switch (title) {
+      case 'My tasks':
+        return 'Tasks';
+      case 'Project Timeline':
+        return 'Timeline';
+      case 'Scheduler':
+        return 'Schedule';
+      case 'ChatBox':
+        return 'Chat';
+      case 'Site Visit Reports':
+        return 'Site Visits';
+      case 'Timeline Gallery':
+        return 'Timeline';
+      case 'Virtual Tour':
+        return '3D Tour';
+      case 'Client Portal':
+        return 'Portal';
+      default:
+        return title;
+    }
+  }
+
+  IconData _quickActionIcon(String title, IconData fallback) {
+    switch (title) {
+      case 'Client Portal':
+        return Icons.dashboard_customize_outlined;
+      case 'Gallery':
+        return Icons.photo_library_rounded;
+      case 'Project Timeline':
+        return Icons.view_timeline_rounded;
+      case 'My tasks':
+        return Icons.assignment_outlined;
+      case 'Payments':
+        return Icons.account_balance_wallet_outlined;
+      case 'Scheduler':
+        return Icons.calendar_month_rounded;
+      case 'Documents':
+        return Icons.description_outlined;
+      case 'ChatBox':
+        return Icons.chat_bubble_outline_rounded;
+      case 'Checklist':
+        return Icons.checklist_rtl_rounded;
+      case 'Virtual Tour':
+        return Icons.view_in_ar_rounded;
+      default:
+        return fallback;
+    }
+  }
+
+  List<Map<String, dynamic>> _orderedMenuItems(
+      List<Map<String, dynamic>> items) {
+    const preferred = [
+      'Client Portal',
+      'Virtual Tour',
+      'Gallery',
+      'Project Timeline',
+      'My tasks',
+      'Payments',
+      'Scheduler',
+      'Documents',
+      'ChatBox',
+      'Checklist',
+    ];
+    final byTitle = <String, Map<String, dynamic>>{};
+    for (final item in items) {
+      byTitle[item['title'].toString()] = item;
+    }
+    final ordered = <Map<String, dynamic>>[];
+    for (final title in preferred) {
+      final item = byTitle.remove(title);
+      if (item != null) ordered.add(item);
+    }
+    ordered.addAll(byTitle.values);
+    return ordered;
+  }
+
   Future<void> _openPaymentCategory(PaymentCategory category) async {
     await _navigateToWidget(PaymentTaskWidget(initialCategory: category));
   }
@@ -2998,7 +3325,8 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
     final routeName = widget.runtimeType.toString();
     final route = _BackButtonInterceptingRoute(
       routeName: routeName,
-      pageBuilder: (context, animation, secondaryAnimation) => widget,
+      pageBuilder: (context, animation, secondaryAnimation) =>
+          DashboardChrome.wrap(DashboardChromeStyle.user, widget),
     );
 
     print('[UserDashboard] Pushing route: $routeName');
@@ -3035,222 +3363,226 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
       isLoading: _isLoadingSummary,
       hasLoaded: _hasLoadedSummary,
       skeleton: _buildSummarySkeleton(),
-      borderRadius: BorderRadius.circular(20),
-      margin: const EdgeInsets.only(bottom: 20),
+      borderRadius: BorderRadius.circular(18),
+      margin: EdgeInsets.zero,
       child: summaryCard,
     );
   }
 
   Widget _buildSummaryCardBody() {
+    final progress = ((double.tryParse(completed ?? '') ?? 0.0) / 100)
+        .clamp(0.0, 1.0)
+        .toDouble();
+    final percentLabel = completed == null || completed!.isEmpty
+        ? '--'
+        : '${completed!.replaceAll('%', '')}%';
+    final onTrack = progress < 1.0;
+
     return Container(
-      padding: EdgeInsets.all(16),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(24),
-        gradient: LinearGradient(
-          colors: [
-            AppTheme.primaryColorConst.withOpacity(0.08),
-            AppTheme.primaryColorConst.withOpacity(0.03),
-          ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        border: Border.all(
-          color: AppTheme.primaryColorConst.withOpacity(0.15),
-          width: 1,
-        ),
-        boxShadow: [
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: _cardBorder),
+        boxShadow: const [
           BoxShadow(
-            color: AppTheme.primaryColorConst.withOpacity(0.05),
-            blurRadius: 8,
-            offset: Offset(0, 2),
+            color: _softShadow,
+            blurRadius: 18,
+            offset: Offset(0, 8),
           ),
         ],
       ),
-      child: Row(
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Header section with icon and label
-                Row(
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: Image.asset(
+                  'assets/images/home1.jpg',
+                  width: 64,
+                  height: 64,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => Container(
+                    width: 64,
+                    height: 64,
+                    color: const Color(0xFFEEF2FF),
+                    child: const Icon(Icons.home_work_outlined, color: _navy),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Container(
-                      padding: EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: AppTheme.primaryColorConst.withOpacity(0.15),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Icon(
-                        Icons.trending_up_rounded,
-                        color: AppTheme.primaryColorConst,
-                        size: 20,
+                    const Text(
+                      'MY PROJECT',
+                      style: TextStyle(
+                        color: _mutedGrey,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.8,
                       ),
                     ),
-                    SizedBox(width: 10),
-                    if (completed != null) ...[
-                      Flexible(
-                        child: Text(
-                          "Construction Progress",
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: AppTheme.getTextSecondary(context),
-                          ),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
+                    const SizedBox(height: 3),
+                    Text(
+                      projectName,
+                      style: const TextStyle(
+                        color: _navy,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                        height: 1.2,
                       ),
-                    ] else ...[
-                      Flexible(
-                        child: _buildCardSkeleton(
-                            width: 150,
-                            height: 16,
-                            borderRadius: BorderRadius.circular(4)),
-                      ),
-                    ],
-                    SizedBox(width: 8),
-                    if (location.isNotEmpty)
-                      InkWell(
-                        onTap: () async {
-                          await launchUrl(Uri.parse(location),
-                              mode: LaunchMode.externalApplication);
-                        },
-                        borderRadius: BorderRadius.circular(10),
-                        child: Container(
-                          padding: EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            color: AppTheme.getBackgroundSecondary(context),
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          child: Icon(
-                            Icons.directions_outlined,
-                            color: AppTheme.primaryColorConst,
-                            size: 18,
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-                SizedBox(height: 16),
-                // Percentage display - large and prominent
-                if (completed != null) ...[
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        mainAxisSize: MainAxisSize.min,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 6),
+                    InkWell(
+                      onTap: location.isEmpty
+                          ? null
+                          : () async {
+                              await launchUrl(
+                                Uri.parse(location),
+                                mode: LaunchMode.externalApplication,
+                              );
+                            },
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Flexible(
+                          const Padding(
+                            padding: EdgeInsets.only(top: 1),
+                            child: Icon(
+                              Icons.location_on_outlined,
+                              size: 14,
+                              color: _mutedGrey,
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          Expanded(
                             child: Text(
-                              completed!,
-                              style: TextStyle(
-                                fontSize: 42,
-                                fontWeight: FontWeight.bold,
-                                color: AppTheme.getTextPrimary(context),
-                                height: 1.0,
-                                letterSpacing: -1,
+                              location.isNotEmpty
+                                  ? 'View project location'
+                                  : 'Location not available',
+                              style: const TextStyle(
+                                color: _mutedGrey,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500,
+                                height: 1.3,
                               ),
+                              maxLines: 2,
                               overflow: TextOverflow.ellipsis,
                             ),
                           ),
-                          Padding(
-                            padding: EdgeInsets.only(bottom: 6, left: 4),
-                            child: Text(
-                              "%",
-                              style: TextStyle(
-                                fontSize: 20,
-                                fontWeight: FontWeight.w600,
-                                color: AppTheme.getTextSecondary(context),
-                                height: 1.0,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      SizedBox(height: 4),
-                      Padding(
-                        padding: EdgeInsets.only(bottom: 8),
-                        child: Text(
-                          "Complete",
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w500,
-                            color: AppTheme.getTextSecondary(context),
-                            letterSpacing: 0.3,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ] else
-                  ...[],
-                // Progress bar
-                if (completed != null) ...[
-                  Container(
-                    child: LinearPercentIndicator(
-                      barRadius: Radius.circular(10),
-                      padding: EdgeInsets.all(0),
-                      lineHeight: 6.0,
-                      percent: (double.tryParse(completed!) ?? 0.0) / 100,
-                      animation: true,
-                      animationDuration: 1200,
-                      backgroundColor:
-                          AppTheme.getBackgroundPrimaryLight(context),
-                      clipLinearGradient: true,
-                      linearGradient: LinearGradient(
-                        colors: [
-                          AppTheme.primaryColorConst,
-                          AppTheme.primaryColorConst.withOpacity(0.85),
                         ],
                       ),
                     ),
-                  ),
-                ] else
-                  ...[],
-              ],
-            ),
-          ),
-          SizedBox(width: 12),
-          // Good going.jpg banner on the right - better positioned
-          ClipRRect(
-            borderRadius: BorderRadius.circular(10),
-            child: Container(
-              width: 110,
-              height: 130,
-              constraints: BoxConstraints(
-                maxWidth: 110,
-                maxHeight: 130,
+                  ],
+                ),
               ),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.1),
-                    blurRadius: 8,
-                    offset: Offset(0, 4),
+              const SizedBox(width: 4),
+              PopupMenuButton<String>(
+                padding: EdgeInsets.zero,
+                icon: const Icon(Icons.more_vert, color: _mutedGrey, size: 20),
+                onSelected: (value) async {
+                  if (value == 'directions' && location.isNotEmpty) {
+                    await launchUrl(
+                      Uri.parse(location),
+                      mode: LaunchMode.externalApplication,
+                    );
+                  } else if (value == 'timeline') {
+                    await _navigateToWidget(const ProjectTimelineScreen());
+                  }
+                },
+                itemBuilder: (_) => [
+                  if (location.isNotEmpty)
+                    const PopupMenuItem(
+                      value: 'directions',
+                      child: Text('Get directions'),
+                    ),
+                  const PopupMenuItem(
+                    value: 'timeline',
+                    child: Text('View timeline'),
                   ),
                 ],
               ),
-              child: Image.asset(
-                'assets/images/Good going.jpg',
-                fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) {
-                  return Container(
-                    color: AppTheme.getBackgroundSecondary(context),
-                    child: Icon(
-                      Icons.image_not_supported,
-                      color: AppTheme.getTextSecondary(context),
-                      size: 32,
-                    ),
-                  );
-                },
+            ],
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              const Text(
+                'Overall Progress',
+                style: TextStyle(
+                  color: _navy,
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const Spacer(),
+              Container(
+                width: 7,
+                height: 7,
+                decoration: BoxDecoration(
+                  color: onTrack
+                      ? const Color(0xFF22C55E)
+                      : const Color(0xFF2563EB),
+                  shape: BoxShape.circle,
+                ),
+              ),
+              const SizedBox(width: 6),
+              Text(
+                onTrack ? 'On track' : 'Completed',
+                style: TextStyle(
+                  color: onTrack
+                      ? const Color(0xFF16A34A)
+                      : const Color(0xFF2563EB),
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Text(
+                percentLabel,
+                style: const TextStyle(
+                  color: _navy,
+                  fontSize: 22,
+                  fontWeight: FontWeight.w800,
+                  height: 1,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: LinearPercentIndicator(
+                  barRadius: const Radius.circular(10),
+                  padding: EdgeInsets.zero,
+                  lineHeight: 8,
+                  percent: progress,
+                  animation: true,
+                  animationDuration: 1000,
+                  backgroundColor: const Color(0xFFE8ECF1),
+                  progressColor: _navy,
+                ),
+              ),
+            ],
+          ),
+          if (value.toString().trim().isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Text(
+              'Project value • $value',
+              style: const TextStyle(
+                color: _mutedGrey,
+                fontSize: 11.5,
+                fontWeight: FontWeight.w500,
               ),
             ),
-          ),
+          ],
         ],
       ),
     );
@@ -3491,154 +3823,195 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
     return _wrapSectionWithLoader(
       isLoading: _isLoadingUpdates,
       hasLoaded: _hasLoadedUpdates,
-      skeleton: Container(),
-      borderRadius: BorderRadius.circular(16),
-      margin: const EdgeInsets.only(bottom: 20),
+      skeleton: _buildUpdatesSkeleton(),
+      borderRadius: BorderRadius.circular(18),
+      margin: EdgeInsets.zero,
       child: updatesCard,
     );
   }
 
   Widget _buildUpdatesCardBody(BuildContext context) {
-    // Show skeleton if data not loaded yet
+    final primaryUpdate = dailyUpdateList.isNotEmpty
+        ? dailyUpdateList.first.toString()
+        : 'Stay tuned for updates about your home';
+    final nextUpdate = dailyUpdateList.length > 1
+        ? 'Next: ${dailyUpdateList[1]}'
+        : (updateResponseBody != null &&
+                updateResponseBody is List &&
+                updateResponseBody.isNotEmpty &&
+                updateResponseBody[0] != null &&
+                updateResponseBody[0]['tradesmenMap'] != null)
+            ? parsedUpdateTradesmen(updateResponseBody[0]['tradesmenMap'])
+            : null;
+
     return Container(
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(16),
-        color: AppTheme.getBackgroundSecondary(context),
-        border: Border.all(
-          color: AppTheme.primaryColorConst.withOpacity(0.1),
-          width: 1,
-        ),
-        boxShadow: [
+        borderRadius: BorderRadius.circular(18),
+        color: Colors.white,
+        border: Border.all(color: _cardBorder),
+        boxShadow: const [
           BoxShadow(
-            color: AppTheme.primaryColorConst.withOpacity(0.08),
-            blurRadius: 10,
-            offset: Offset(0, 3),
-            spreadRadius: 0,
-          ),
-          BoxShadow(
-            color: Colors.black.withOpacity(0.06),
-            blurRadius: 6,
-            offset: Offset(0, 2),
-            spreadRadius: -1,
+            color: _softShadow,
+            blurRadius: 16,
+            offset: Offset(0, 6),
           ),
         ],
       ),
-      child: Stack(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Accent colored side border
-          Positioned(
-            left: 0,
-            top: 0,
-            bottom: 0,
-            child: Container(
-              width: 4,
-              decoration: BoxDecoration(
-                color: AppTheme.primaryColorConst,
-                borderRadius: BorderRadius.only(
-                  topLeft: Radius.circular(16),
-                  bottomLeft: Radius.circular(16),
+          Row(
+            children: [
+              Container(
+                width: 28,
+                height: 28,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFDBEAFE),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(
+                  Icons.campaign_rounded,
+                  color: Color(0xFF2563EB),
+                  size: 16,
                 ),
               ),
-            ),
+              const SizedBox(width: 8),
+              const Text(
+                'Latest Update',
+                style: TextStyle(
+                  color: _navy,
+                  fontSize: 14.5,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const Spacer(),
+              Text(
+                _relativeUpdateLabel(updatePostedOnDate),
+                style: const TextStyle(
+                  color: _mutedGrey,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
           ),
-          // Main content
-          Padding(
-            padding: EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Header with icon and date
-                Row(
+          const SizedBox(height: 14),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: Image.asset(
+                  'assets/images/bricks.jpg.png',
+                  width: 72,
+                  height: 72,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => Container(
+                    width: 72,
+                    height: 72,
+                    color: const Color(0xFFF1F5F9),
+                    child: const Icon(Icons.construction, color: _mutedGrey),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Icon(
-                      Icons.update_rounded,
-                      color: AppTheme.primaryColorConst,
-                      size: 16,
-                    ),
-                    SizedBox(width: 8),
-                    Text(
-                      updatePostedOnDate,
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: AppTheme.getTextSecondary(context),
-                        fontWeight: FontWeight.w500,
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFFF4D6),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: const Text(
+                        'Work in Progress',
+                        style: TextStyle(
+                          color: Color(0xFFB45309),
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
                     ),
+                    const SizedBox(height: 8),
+                    Text(
+                      primaryUpdate,
+                      style: const TextStyle(
+                        color: _navy,
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w600,
+                        height: 1.35,
+                      ),
+                      maxLines: 3,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    if (nextUpdate != null && nextUpdate.trim().isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        nextUpdate,
+                        style: const TextStyle(
+                          color: _mutedGrey,
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w500,
+                          height: 1.3,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
                   ],
                 ),
-                // Tradesmen info - no box, just text
-                if (updateResponseBody != null &&
-                    updateResponseBody is List &&
-                    updateResponseBody.length > 0 &&
-                    updateResponseBody[0] != null &&
-                    updateResponseBody[0]['tradesmenMap'] != null)
-                  Padding(
-                    padding: EdgeInsets.only(top: 12),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Icon(
-                          Icons.people_outline,
-                          color: AppTheme.primaryColorConst,
-                          size: 14,
-                        ),
-                        SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            parsedUpdateTradesmen(
-                                updateResponseBody[0]['tradesmenMap']),
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: AppTheme.getTextPrimary(context),
-                              fontWeight: FontWeight.w500,
-                              height: 1.4,
-                            ),
-                          ),
-                        ),
-                      ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          InkWell(
+            onTap: () {
+              final fromAdmin = context
+                      .findAncestorWidgetOfExactType<UserDashboardLayout>()
+                      ?.fromAdminDashboard ??
+                  false;
+              final chrome = fromAdmin
+                  ? DashboardChromeStyle.admin
+                  : DashboardChromeStyle.user;
+              final appBarColor = chrome == DashboardChromeStyle.admin
+                  ? RoleAppBarColor.forRole(_currentRole)
+                  : null;
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => DashboardChrome.wrap(
+                    chrome,
+                    const DprScreen(),
+                    appBarColor: appBarColor,
+                  ),
+                ),
+              );
+            },
+            borderRadius: BorderRadius.circular(8),
+            child: const Padding(
+              padding: EdgeInsets.symmetric(vertical: 4),
+              child: Row(
+                children: [
+                  Text(
+                    'View all updates',
+                    style: TextStyle(
+                      color: Color(0xFF2563EB),
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w700,
                     ),
                   ),
-                // Daily updates list with simple bullet points
-                if (dailyUpdateList.isNotEmpty) ...[
-                  SizedBox(height: 12),
-                  ...dailyUpdateList.asMap().entries.map((entry) {
-                    final index = entry.key;
-                    final update = entry.value.toString();
-                    return TweenAnimationBuilder<double>(
-                      tween: Tween(begin: 0.0, end: 1.0),
-                      duration: Duration(milliseconds: 400 + (index * 100)),
-                      curve: Curves.easeOut,
-                      builder: (context, value, child) {
-                        return Opacity(
-                          opacity: value,
-                          child: Transform.translate(
-                            offset: Offset(0, 8 * (1 - value)),
-                            child: Padding(
-                              padding:
-                                  EdgeInsets.only(top: index == 0 ? 0 : 10),
-                              child: Row(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Expanded(
-                                    child: Text(
-                                      update,
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        color: AppTheme.getTextPrimary(context),
-                                        height: 1.5,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        );
-                      },
-                    );
-                  }).toList(),
+                  Spacer(),
+                  Icon(
+                    Icons.chevron_right_rounded,
+                    color: Color(0xFF2563EB),
+                    size: 20,
+                  ),
                 ],
-              ],
+              ),
             ),
           ),
         ],
@@ -3725,20 +4098,20 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
   }
 
   Widget _buildLoadingState() {
-    final baseColor = AppTheme.getTextPrimary(context).withOpacity(0.6);
-    final highlightColor = Colors.white.withOpacity(0.35);
+    final baseColor = const Color(0xFFE8ECF1);
+    final highlightColor = const Color(0xFFF8FAFC);
 
     return Container(
-      color: AppTheme.getBackgroundPrimary(context),
+      color: Colors.white,
       child: ListView(
-        padding: EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
         children: [
           _buildSkeletonCard(baseColor, highlightColor,
-              height: 60, margin: EdgeInsets.only(bottom: 16)),
+              height: 148, margin: const EdgeInsets.only(bottom: 16)),
           _buildSkeletonCard(baseColor, highlightColor,
-              height: 170, margin: EdgeInsets.only(bottom: 20)),
+              height: 190, margin: const EdgeInsets.only(bottom: 16)),
           _buildSkeletonCard(baseColor, highlightColor,
-              height: 200, margin: EdgeInsets.only(bottom: 20)),
+              height: 170, margin: const EdgeInsets.only(bottom: 20)),
           _buildSkeletonGrid(baseColor, highlightColor),
         ],
       ),
@@ -3764,23 +4137,38 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
   Widget _buildSkeletonGrid(Color base, Color highlight) {
     return GridView.builder(
       shrinkWrap: true,
-      physics: NeverScrollableScrollPhysics(),
-      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 3,
+      physics: const NeverScrollableScrollPhysics(),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 4,
         crossAxisSpacing: 10,
-        mainAxisSpacing: 10,
-        childAspectRatio: 0.85,
+        mainAxisSpacing: 14,
+        childAspectRatio: 0.78,
       ),
-      itemCount: 6,
+      itemCount: 8,
       itemBuilder: (_, __) {
         return Shimmer.fromColors(
           baseColor: base,
           highlightColor: highlight,
-          child: Container(
-            decoration: BoxDecoration(
-              color: AppTheme.getBackgroundSecondary(context).withOpacity(0.4),
-              borderRadius: BorderRadius.circular(16),
-            ),
+          child: Column(
+            children: [
+              Container(
+                width: 56,
+                height: 56,
+                decoration: BoxDecoration(
+                  color: base,
+                  borderRadius: BorderRadius.circular(16),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Container(
+                height: 10,
+                width: 48,
+                decoration: BoxDecoration(
+                  color: base,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              ),
+            ],
           ),
         );
       },

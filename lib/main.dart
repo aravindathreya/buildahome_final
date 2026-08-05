@@ -1,11 +1,9 @@
 // Built in packages
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 import 'Skin2/loginPage.dart';
 import 'UserDashboard.dart';
 import 'app_navigator.dart';
 import 'app_theme.dart';
-import 'providers/theme_provider.dart';
 import 'services/session_manager.dart';
 
 export 'app_navigator.dart';
@@ -49,26 +47,15 @@ class _AppState extends State<App> with WidgetsBindingObserver {
   Widget build(BuildContext context) {
     final appTitle = 'buildAhome';
 
-    return ChangeNotifierProvider(
-      create: (_) => ThemeProvider(),
-      child: Consumer<ThemeProvider>(
-        builder: (context, themeProvider, child) {
-          return MaterialApp(
-            title: appTitle,
-            debugShowCheckedModeBanner: false,
-            theme: AppTheme.getLightTheme(),
-            darkTheme: AppTheme.getDarkTheme(),
-            themeMode:
-                themeProvider.isDarkMode ? ThemeMode.dark : ThemeMode.light,
-            navigatorKey: globalNavigatorKey,
-            scaffoldMessengerKey: globalScaffoldMessengerKey,
-            navigatorObservers: [globalNavigatorObserver],
-            home: Scaffold(
-              body: LoginScreenNew(),
-            ),
-          );
-        },
-      ),
+    return MaterialApp(
+      title: appTitle,
+      debugShowCheckedModeBanner: false,
+      theme: AppTheme.getLightTheme(),
+      themeMode: ThemeMode.light,
+      navigatorKey: globalNavigatorKey,
+      scaffoldMessengerKey: globalScaffoldMessengerKey,
+      navigatorObservers: [globalNavigatorObserver],
+      home: LoginScreenNew(),
     );
   }
 }

@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
+import '../app_theme.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../NavMenu.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:percent_indicator/linear_percent_indicator.dart';
-import '../main.dart';
 
 import "Dpr.dart";
 import "Payments.dart";
@@ -46,9 +46,10 @@ class TaskWidget1 extends State<TaskWidget> {
         new GlobalKey<ScaffoldState>();
     return MaterialApp(
       title: appTitle,
-      theme: ThemeData(fontFamily: App().fontName),
+      theme: AppTheme.getLightTheme(),
       home: Scaffold(
         key: _scaffoldKey,
+        backgroundColor: Colors.white,
         drawer: NavMenuWidget(),
         appBar: AppBar(
           automaticallyImplyLeading: false,
@@ -58,12 +59,16 @@ class TaskWidget1 extends State<TaskWidget> {
               onPressed: () => {
                     Navigator.pop(context),
                   }),
-          backgroundColor: Color(0xFF000055),
+          backgroundColor: Colors.white,
+          foregroundColor: AppTheme.navy,
+          elevation: 0,
+          iconTheme: const IconThemeData(color: AppTheme.navy),
+          titleTextStyle: const TextStyle(color: AppTheme.navy, fontSize: 18, fontWeight: FontWeight.w800),
         ),
         body: TaskScreenClass(this.id),
         bottomNavigationBar: BottomNavigationBar(
           currentIndex: 3,
-          selectedItemColor: Colors.indigo[900],
+          selectedItemColor: AppTheme.navy,
           onTap: (int index) {
             if (index == 0) {
               Navigator.pushReplacement(
@@ -273,7 +278,7 @@ class TaskItemWidget extends State<TaskItem>
                                       fontWeight: FontWeight.bold),
                                 ),
                               ),
-                              new Icon(view, color: Colors.indigo[600]),
+                              new Icon(view, color: AppTheme.primaryColorConstLight),
                             ],
                           ),
                         ),
@@ -323,7 +328,7 @@ class TaskItemWidget extends State<TaskItem>
                                 animation: true,
                                 animationDuration: 200,
                                 backgroundColor: Colors.grey[300],
-                                progressColor: Colors.indigo[500],
+                                progressColor: AppTheme.primaryColorConstLight,
                               ),
                             ),
                             Container(
@@ -445,7 +450,7 @@ class TaskScreen extends State<TaskScreenClass> {
           padding: EdgeInsets.only(top: 20, left: 10, bottom: 10),
           decoration: BoxDecoration(
               border: Border(
-            bottom: BorderSide(width: 6.0, color: Colors.indigo[900]!),
+            bottom: BorderSide(width: 6.0, color: AppTheme.navy),
           )),
           child: Text("What's done and what's not?",
               style: TextStyle(

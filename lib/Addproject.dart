@@ -6,6 +6,7 @@ import 'NavMenu.dart';
 import "ShowAlert.dart";
 import 'clients.dart';
 import 'package:intl/intl.dart';
+import 'app_theme.dart';
 
 class AddProject extends StatelessWidget {
   @override
@@ -14,14 +15,19 @@ class AddProject extends StatelessWidget {
     final GlobalKey<ScaffoldState> _scaffoldKey = new GlobalKey<ScaffoldState>();
     return MaterialApp(
       title: appTitle,
-      theme: ThemeData(fontFamily: 'Varela'),
+      theme: AppTheme.getLightTheme(),
       home: Scaffold(
         key: _scaffoldKey, // ADD THIS LINE
+        backgroundColor: Colors.white,
         appBar: AppBar(
           automaticallyImplyLeading: false,
           title: Text(appTitle),
           leading: new IconButton(icon: new Icon(Icons.menu), onPressed: () => _scaffoldKey.currentState?.openDrawer()),
-          backgroundColor: Colors.indigo[900],
+          backgroundColor: Colors.white,
+          foregroundColor: AppTheme.navy,
+          elevation: 0,
+          iconTheme: const IconThemeData(color: AppTheme.navy),
+          titleTextStyle: const TextStyle(color: AppTheme.navy, fontSize: 18, fontWeight: FontWeight.w800),
         ),
 
         drawer: NavMenuWidget(),
@@ -174,7 +180,7 @@ class TaskBlockState extends State<TaskBlock> with SingleTickerProviderStateMixi
                               child: Container(
                                 child: Row(
                                   children: <Widget>[
-                                    Icon(Icons.calendar_today, size: 20, color: Colors.indigo[900]),
+                                    Icon(Icons.calendar_today, size: 20, color: AppTheme.navy),
                                     Container(
                                       decoration: BoxDecoration(
                                           border: Border(
@@ -202,7 +208,7 @@ class TaskBlockState extends State<TaskBlock> with SingleTickerProviderStateMixi
                               child: Container(
                                 child: Row(
                                   children: <Widget>[
-                                    Icon(Icons.calendar_today, size: 20, color: Colors.indigo[900]),
+                                    Icon(Icons.calendar_today, size: 20, color: AppTheme.navy),
                                     Container(
                                       decoration: BoxDecoration(
                                           border: Border(
@@ -330,7 +336,7 @@ class AddProjectState extends State<AddProjectForm> {
                 padding: EdgeInsets.only(top: 20, bottom: 10, left: 5, right: 5),
                 decoration: BoxDecoration(
                     border: Border(
-                  bottom: BorderSide(width: 2.0, color: Colors.indigo[900]!),
+                  bottom: BorderSide(width: 2.0, color: AppTheme.navy),
                 )),
                 child: Text("All projects",
                     style: TextStyle(
@@ -479,7 +485,7 @@ class AddProjectState extends State<AddProjectForm> {
                       ),
                       child: Row(
                         children: <Widget>[
-                          Icon(Icons.calendar_today, color: Colors.indigo[900]),
+                          Icon(Icons.calendar_today, color: AppTheme.navy),
                           Container(
 //                            width: MediaQuery
 //                                .of(context)
@@ -536,7 +542,7 @@ class AddProjectState extends State<AddProjectForm> {
                           Container(
                             decoration:
                                 BoxDecoration(borderRadius: BorderRadius.all(Radius.circular(50)), color: Colors.white),
-                            child: Icon(Icons.view_list, size: 25, color: Colors.indigo[900]),
+                            child: Icon(Icons.view_list, size: 25, color: AppTheme.navy),
                           ),
                           Container(
                               padding: EdgeInsets.only(left: 10),
@@ -643,7 +649,7 @@ class AddProjectState extends State<AddProjectForm> {
                           padding: EdgeInsets.all(5),
                           decoration: BoxDecoration(
                             borderRadius: BorderRadius.all(Radius.circular(50)),
-                            color: Colors.indigo[900],
+                            color: AppTheme.navy,
                           ),
                           child: Icon(Icons.add, size: 15, color: Colors.white),
                         ),
@@ -659,7 +665,7 @@ class AddProjectState extends State<AddProjectForm> {
                 //height: 100,
                 child: InkWell(
                     onTap: () => submitForm(),
-                    splashColor: Colors.indigo[900],
+                    splashColor: AppTheme.navy,
                     child: Container(
                         padding: EdgeInsets.all(7),
                         decoration: BoxDecoration(
@@ -674,10 +680,10 @@ class AddProjectState extends State<AddProjectForm> {
                               // Colors are easy thanks to Flutter's Colors class.
 
                               //Colors.blue,
-                              Colors.indigo[900]!,
-                              Colors.indigo[700]!,
-                              Colors.indigo[700]!,
-                              Colors.indigo[900]!,
+                              AppTheme.navy,
+                              AppTheme.navySoft,
+                              AppTheme.navySoft,
+                              AppTheme.navy,
                             ],
                           ),
                           borderRadius: BorderRadius.all(Radius.circular(5)),

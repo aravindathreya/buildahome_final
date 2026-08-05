@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'app_theme.dart';
 import 'package:flutter/widgets.dart';
 import 'dart:async';
 import 'dart:convert';
@@ -9,6 +10,7 @@ import 'package:photo_view/photo_view.dart';
 import 'Update.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:typed_data';
+import 'widgets/skeleton_loader.dart';
 
 var drawings = {};
 
@@ -41,16 +43,21 @@ class VIewDrawing extends StatelessWidget {
         new GlobalKey<ScaffoldState>();
     return MaterialApp(
       title: appTitle,
-      theme: ThemeData(fontFamily: 'Varela'),
+      theme: AppTheme.getLightTheme(),
       home: Scaffold(
         key: _scaffoldKey, // ADD THIS LINE
+        backgroundColor: Colors.white,
         appBar: AppBar(
           automaticallyImplyLeading: false,
           title: Text(appTitle, style: TextStyle(fontFamily: "PatuaOne"),),
           leading: new IconButton(
               icon: new Icon(Icons.menu),
               onPressed: () => _scaffoldKey.currentState!.openDrawer()),
-          backgroundColor: Color(0xFF000055),
+          backgroundColor: Colors.white,
+          foregroundColor: AppTheme.navy,
+          elevation: 0,
+          iconTheme: const IconThemeData(color: AppTheme.navy),
+          titleTextStyle: const TextStyle(color: AppTheme.navy, fontSize: 18, fontWeight: FontWeight.w800),
         ),
         drawer: NavMenuWidget(),
         body: VIewDrawingForm(),
@@ -110,12 +117,7 @@ class VIewDrawingState extends State<VIewDrawingForm> {
             );
           });
     } else {
-      return Container(
-          padding: EdgeInsets.all(30),
-          width: 100,
-          height: 100,
-          color: Colors.grey[100],
-          child: CircularProgressIndicator());
+      return const SkeletonImage(width: 100, height: 100, radius: 8);
     }
   }
 
@@ -188,19 +190,16 @@ class VIewDrawingState extends State<VIewDrawingForm> {
                       switch (snapshot.connectionState) {
                         case ConnectionState.none:
                         case ConnectionState.active:
-                          return Container(
-                            padding: EdgeInsets.all(30),
-                            height: 100,
+                          return const SkeletonImage(
                             width: 100,
-                            child: CircularProgressIndicator(),
+                            height: 100,
+                            radius: 8,
                           );
                         case ConnectionState.waiting:
-                          return Container(
-                            padding: EdgeInsets.all(100),
+                          return SkeletonImage(
                             width: MediaQuery.of(context).size.width * .80,
                             height: MediaQuery.of(context).size.width * .80,
-                            color: Colors.grey[100],
-                            child: CircularProgressIndicator(),
+                            radius: 8,
                           );
                         case ConnectionState.done:
                           if (snapshot.hasError) {

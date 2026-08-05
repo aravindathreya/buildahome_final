@@ -12,12 +12,11 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
 import 'app_theme.dart';
-import 'widgets/dark_mode_toggle.dart';
 import 'AddDailyUpdate.dart'; // For FullScreenImage
 import 'services/data_provider.dart';
 import 'widgets/searchable_select.dart';
-import 'package:provider/provider.dart';
-import 'providers/theme_provider.dart';
+import 'widgets/themed_scaffold.dart';
+import 'widgets/skeleton_loader.dart';
 
 class SiteVisitReportsScreen extends StatefulWidget {
   final String? fixedProjectId;
@@ -232,7 +231,7 @@ class _SiteVisitReportsScreenState extends State<SiteVisitReportsScreen> with Si
             mainAxisSize: MainAxisSize.min,
             children: [
               ListTile(
-                leading: Icon(Icons.camera_alt, color: AppTheme.getPrimaryColor(context)),
+                leading: Icon(Icons.camera_alt, color: AppTheme.navy),
                 title: const Text('Take Photo'),
                 onTap: () {
                   Navigator.pop(context);
@@ -240,7 +239,7 @@ class _SiteVisitReportsScreenState extends State<SiteVisitReportsScreen> with Si
                 },
               ),
               ListTile(
-                leading: Icon(Icons.photo_library, color: AppTheme.getPrimaryColor(context)),
+                leading: Icon(Icons.photo_library, color: AppTheme.navy),
                 title: const Text('Choose from Gallery'),
                 onTap: () {
                   Navigator.pop(context);
@@ -248,7 +247,7 @@ class _SiteVisitReportsScreenState extends State<SiteVisitReportsScreen> with Si
                 },
               ),
               ListTile(
-                leading: Icon(Icons.attach_file, color: AppTheme.getPrimaryColor(context)),
+                leading: Icon(Icons.attach_file, color: AppTheme.navy),
                 title: const Text('Other Files'),
                 onTap: () {
                   Navigator.pop(context);
@@ -425,9 +424,9 @@ class _SiteVisitReportsScreenState extends State<SiteVisitReportsScreen> with Si
         return Theme(
           data: Theme.of(context).copyWith(
             colorScheme: ColorScheme.light(
-              primary: AppTheme.getPrimaryColor(context),
+              primary: AppTheme.navy,
               onPrimary: Colors.white,
-              onSurface: AppTheme.getTextPrimary(context),
+              onSurface: AppTheme.navy,
             ),
           ),
           child: child!,
@@ -627,47 +626,64 @@ class _SiteVisitReportsScreenState extends State<SiteVisitReportsScreen> with Si
     }
   }
 
+  PreferredSizeWidget? _buildTabBottom() {
+    if (_isClient || _tabController == null) return null;
+    return PreferredSize(
+      preferredSize: const Size.fromHeight(66),
+      child: Container(
+        color: Colors.white,
+        padding: const EdgeInsets.fromLTRB(18, 0, 18, 14),
+        child: Container(
+          height: 48,
+          padding: const EdgeInsets.all(4),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF1F4F8),
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: TabBar(
+            controller: _tabController!,
+            indicatorSize: TabBarIndicatorSize.tab,
+            dividerColor: Colors.transparent,
+            splashFactory: NoSplash.splashFactory,
+            overlayColor: WidgetStateProperty.all(Colors.transparent),
+            labelPadding: EdgeInsets.zero,
+            indicator: BoxDecoration(
+              color: AppTheme.navy,
+              borderRadius: BorderRadius.circular(11),
+            ),
+            labelColor: Colors.white,
+            unselectedLabelColor: AppTheme.mutedGrey,
+            labelStyle: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+            ),
+            unselectedLabelStyle: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
+            tabs: const [
+              SizedBox(height: 40, child: Center(child: Text('Create'))),
+              SizedBox(height: 40, child: Center(child: Text('View'))),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     // Show loading if tab controller is not initialized yet
     if (_tabController == null && !_isClient) {
-      return Scaffold(
-        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-        appBar: AppBar(
-          title: Text('Site Visit Reports'),
-          backgroundColor: Theme.of(context).colorScheme.surface,
-        ),
-        body: Center(
-          child: CircularProgressIndicator(
-            valueColor: AlwaysStoppedAnimation<Color>(AppTheme.getPrimaryColor(context)),
-          ),
-        ),
+      return const ThemedScaffold(
+        title: 'Site Visit Reports',
+        body: SkeletonListLoader(cardCount: 4),
       );
     }
 
-    return Scaffold(
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      appBar: AppBar(
-        title: Text('Site Visit Reports'),
-        backgroundColor: Theme.of(context).colorScheme.surface,
-        actions: [
-          DarkModeToggle(showLabel: false),
-          SizedBox(width: 8),
-        ],
-        bottom: _isClient
-            ? null
-            : _tabController != null
-                ? TabBar(
-                    controller: _tabController!,
-                    indicatorColor: AppTheme.getPrimaryColor(context),
-                    labelColor: AppTheme.getTextPrimary(context),
-                    tabs: const [
-                      Tab(text: 'Create'),
-                      Tab(text: 'View'),
-                    ],
-                  )
-                : null,
-      ),
+    return ThemedScaffold(
+      title: 'Site Visit Reports',
+      bottom: _buildTabBottom(),
       body: _isClient
           ? _buildViewTab()
           : _tabController != null
@@ -678,11 +694,7 @@ class _SiteVisitReportsScreenState extends State<SiteVisitReportsScreen> with Si
                     _buildViewTab(),
                   ],
                 )
-              : Center(
-                  child: CircularProgressIndicator(
-                    valueColor: AlwaysStoppedAnimation<Color>(AppTheme.getPrimaryColor(context)),
-                  ),
-                ),
+              : const SkeletonListLoader(cardCount: 4),
     );
   }
 
@@ -717,123 +729,127 @@ class _SiteVisitReportsScreenState extends State<SiteVisitReportsScreen> with Si
   }
 
   Widget _buildStepIndicator() {
-    return Consumer<ThemeProvider>(
-      builder: (context, themeProvider, child) {
-        return Container(
-          padding: EdgeInsets.symmetric(vertical: 16, horizontal: 12),
-          decoration: BoxDecoration(
-            color: AppTheme.getBackgroundSecondary(context),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.05),
-                blurRadius: 4,
-                offset: Offset(0, 2),
+    final stepTitles = _getStepTitles();
+    final stepInstructions = _getStepInstructions();
+    final progress = (_currentStep + 1) / _totalSteps;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 14),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        border: Border(bottom: BorderSide(color: AppTheme.border)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(
+                'Step ${_currentStep + 1} of $_totalSteps',
+                style: const TextStyle(
+                  color: AppTheme.mutedGrey,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.3,
+                ),
+              ),
+              const Spacer(),
+              Text(
+                stepTitles[_currentStep],
+                style: const TextStyle(
+                  color: AppTheme.navy,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w800,
+                ),
               ),
             ],
           ),
-          child: SingleChildScrollView(
+          const SizedBox(height: 10),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(999),
+            child: LinearProgressIndicator(
+              value: progress,
+              minHeight: 6,
+              backgroundColor: const Color(0xFFEEF2F7),
+              valueColor: const AlwaysStoppedAnimation<Color>(AppTheme.navy),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            stepInstructions[_currentStep],
+            style: const TextStyle(
+              color: AppTheme.mutedGrey,
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+              height: 1.35,
+            ),
+          ),
+          const SizedBox(height: 14),
+          SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
               children: List.generate(_totalSteps, (index) {
                 final isActive = _currentStep == index;
                 final isCompleted = _isStepCompleted(index);
-                final isLast = index == _totalSteps - 1;
-                final stepTitles = _getStepTitles();
-                final stepInstructions = _getStepInstructions();
-
-                return Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
-                      width: 100,
-                      constraints: BoxConstraints(minWidth: 80, maxWidth: 120),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Container(
-                            width: 36,
-                            height: 36,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: isCompleted
-                                  ? Colors.green
-                                  : isActive
-                                      ? AppTheme.getPrimaryColor(context)
-                                      : AppTheme.getBackgroundSecondary(context),
-                              border: Border.all(
-                                color: isCompleted
-                                    ? Colors.green
-                                    : isActive
-                                        ? AppTheme.getPrimaryColor(context)
-                                        : AppTheme.getTextSecondary(context).withOpacity(0.3),
-                                width: 2.5,
-                              ),
-                            ),
-                            child: Center(
-                              child: isCompleted
-                                  ? Icon(Icons.check, color: Colors.white, size: 18)
-                                  : Text(
-                                      '${index + 1}',
-                                      style: TextStyle(
-                                        color: isActive
-                                            ? Colors.white
-                                            : AppTheme.getTextSecondary(context),
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                            ),
-                          ),
-                          SizedBox(height: 6),
-                          Text(
-                            stepTitles[index],
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: isActive ? FontWeight.bold : FontWeight.w500,
-                              color: isCompleted
-                                  ? Colors.green
-                                  : isActive
-                                      ? AppTheme.getPrimaryColor(context)
-                                      : AppTheme.getTextSecondary(context),
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          SizedBox(height: 3),
-                          Text(
-                            stepInstructions[index],
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              fontSize: 9,
-                              color: AppTheme.getTextSecondary(context),
-                              height: 1.2,
-                            ),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ],
+                return Padding(
+                  padding: EdgeInsets.only(right: index == _totalSteps - 1 ? 0 : 8),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: isActive
+                          ? AppTheme.navy
+                          : isCompleted
+                              ? const Color(0xFFDCFCE7)
+                              : const Color(0xFFF1F4F8),
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(
+                        color: isActive
+                            ? AppTheme.navy
+                            : isCompleted
+                                ? const Color(0xFFBBF7D0)
+                                : AppTheme.border,
                       ),
                     ),
-                    if (!isLast)
-                      Container(
-                        width: 20,
-                        height: 2,
-                        margin: EdgeInsets.only(top: 17, left: 4, right: 4),
-                        decoration: BoxDecoration(
-                          color: isCompleted
-                              ? Colors.green
-                              : AppTheme.getTextSecondary(context).withOpacity(0.2),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (isCompleted && !isActive) ...[
+                          const Icon(Icons.check_rounded,
+                              size: 14, color: Color(0xFF16A34A)),
+                          const SizedBox(width: 4),
+                        ] else ...[
+                          Text(
+                            '${index + 1}',
+                            style: TextStyle(
+                              color: isActive ? Colors.white : AppTheme.mutedGrey,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          const SizedBox(width: 5),
+                        ],
+                        Text(
+                          stepTitles[index],
+                          style: TextStyle(
+                            color: isActive
+                                ? Colors.white
+                                : isCompleted
+                                    ? const Color(0xFF16A34A)
+                                    : AppTheme.mutedGrey,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
-                      ),
-                  ],
+                      ],
+                    ),
+                  ),
                 );
               }),
             ),
           ),
-        );
-      },
+        ],
+      ),
     );
   }
 
@@ -844,22 +860,21 @@ class _SiteVisitReportsScreenState extends State<SiteVisitReportsScreen> with Si
         Row(
           children: [
             Container(
-              padding: EdgeInsets.all(8),
+              width: 42,
+              height: 42,
               decoration: BoxDecoration(
                 color: isCompleted
-                    ? Colors.green.withOpacity(0.1)
-                    : AppTheme.getPrimaryColor(context).withOpacity(0.1),
-                borderRadius: BorderRadius.circular(10),
+                    ? const Color(0xFFDCFCE7)
+                    : const Color(0xFFEEF2FF),
+                borderRadius: BorderRadius.circular(12),
               ),
               child: Icon(
                 icon,
-                color: isCompleted
-                    ? Colors.green
-                    : AppTheme.getPrimaryColor(context),
-                size: 24,
+                color: isCompleted ? const Color(0xFF16A34A) : AppTheme.navy,
+                size: 22,
               ),
             ),
-            SizedBox(width: 12),
+            const SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -868,17 +883,19 @@ class _SiteVisitReportsScreenState extends State<SiteVisitReportsScreen> with Si
                     title,
                     style: TextStyle(
                       fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: AppTheme.getTextPrimary(context),
+                      fontWeight: FontWeight.w800,
+                      color: isCompleted ? const Color(0xFF16A34A) : AppTheme.navy,
+                      letterSpacing: -0.2,
                     ),
                   ),
                   if (instruction != null) ...[
-                    SizedBox(height: 4),
+                    const SizedBox(height: 4),
                     Text(
                       instruction,
-                      style: TextStyle(
+                      style: const TextStyle(
                         fontSize: 13,
-                        color: AppTheme.getTextSecondary(context),
+                        color: AppTheme.mutedGrey,
+                        fontWeight: FontWeight.w500,
                       ),
                     ),
                   ],
@@ -886,10 +903,10 @@ class _SiteVisitReportsScreenState extends State<SiteVisitReportsScreen> with Si
               ),
             ),
             if (isCompleted)
-              Icon(
-                Icons.check_circle,
-                color: Colors.green,
-                size: 24,
+              const Icon(
+                Icons.check_circle_rounded,
+                color: Color(0xFF16A34A),
+                size: 22,
               ),
           ],
         ),
@@ -898,37 +915,33 @@ class _SiteVisitReportsScreenState extends State<SiteVisitReportsScreen> with Si
   }
 
   Widget _buildCreateTab() {
-    return Consumer<ThemeProvider>(
-      builder: (context, themeProvider, child) {
-        return Column(
-          children: [
-            _buildStepIndicator(),
-            Expanded(
-              child: PageView(
-                controller: _pageController,
-                onPageChanged: (index) {
-                  setState(() {
-                    _currentStep = index;
-                  });
-                },
-                children: widget.projectFixed
-                    ? [
-                        _buildStep1Notes(),
-                        _buildStep2Attachments(),
-                        _buildStep3TaskPreview(),
-                      ]
-                    : [
-                        _buildStep1Project(),
-                        _buildStep2Notes(),
-                        _buildStep3Attachments(),
-                        _buildStep4TaskPreview(),
-                      ],
-              ),
-            ),
-            _buildNavigationButtons(),
-          ],
-        );
-      },
+    return Column(
+      children: [
+        _buildStepIndicator(),
+        Expanded(
+          child: PageView(
+            controller: _pageController,
+            onPageChanged: (index) {
+              setState(() {
+                _currentStep = index;
+              });
+            },
+            children: widget.projectFixed
+                ? [
+                    _buildStep1Notes(),
+                    _buildStep2Attachments(),
+                    _buildStep3TaskPreview(),
+                  ]
+                : [
+                    _buildStep1Project(),
+                    _buildStep2Notes(),
+                    _buildStep3Attachments(),
+                    _buildStep4TaskPreview(),
+                  ],
+          ),
+        ),
+        _buildNavigationButtons(),
+      ],
     );
   }
 
@@ -979,8 +992,8 @@ class _SiteVisitReportsScreenState extends State<SiteVisitReportsScreen> with Si
                           : 'Select a project',
                       style: TextStyle(
                         color: _createProject != null
-                            ? AppTheme.getTextPrimary(context)
-                            : AppTheme.getTextSecondary(context),
+                            ? AppTheme.navy
+                            : AppTheme.mutedGrey,
                         fontSize: 16,
                         fontWeight: _createProject != null
                             ? FontWeight.w600
@@ -991,7 +1004,7 @@ class _SiteVisitReportsScreenState extends State<SiteVisitReportsScreen> with Si
                   if (!widget.projectFixed)
                     Icon(
                       Icons.arrow_forward_ios,
-                      color: AppTheme.getPrimaryColor(context),
+                      color: AppTheme.navy,
                       size: 18,
                     ),
                 ],
@@ -1022,7 +1035,7 @@ class _SiteVisitReportsScreenState extends State<SiteVisitReportsScreen> with Si
               color: AppTheme.getBackgroundSecondary(context),
               borderRadius: BorderRadius.circular(16),
               border: Border.all(
-                color: AppTheme.getPrimaryColor(context).withOpacity(0.15),
+                color: AppTheme.navy.withOpacity(0.15),
               ),
               boxShadow: [
                 BoxShadow(
@@ -1037,13 +1050,13 @@ class _SiteVisitReportsScreenState extends State<SiteVisitReportsScreen> with Si
               minLines: 4,
               maxLines: 8,
               enabled: !_submitting,
-              style: TextStyle(color: AppTheme.getTextPrimary(context)),
+              style: TextStyle(color: AppTheme.navy),
               onChanged: (value) {
                 setState(() {});
               },
               decoration: InputDecoration(
                 hintText: 'Add visit summary, observations, follow-ups…',
-                hintStyle: TextStyle(color: AppTheme.getTextSecondary(context)),
+                hintStyle: TextStyle(color: AppTheme.mutedGrey),
                 border: InputBorder.none,
               ),
             ),
@@ -1095,19 +1108,19 @@ class _SiteVisitReportsScreenState extends State<SiteVisitReportsScreen> with Si
               ),
               child: Row(
                 children: [
-                  Icon(Icons.add_a_photo, color: AppTheme.getPrimaryColor(context), size: 24),
+                  Icon(Icons.add_a_photo, color: AppTheme.navy, size: 24),
                   SizedBox(width: 12),
                   Expanded(
                     child: Text(
                       attachPictureButtonText,
                       style: TextStyle(
-                        color: AppTheme.getTextPrimary(context),
+                        color: AppTheme.navy,
                         fontWeight: FontWeight.w600,
                         fontSize: 16,
                       ),
                     ),
                   ),
-                  Icon(Icons.chevron_right, color: AppTheme.getTextSecondary(context), size: 20),
+                  Icon(Icons.chevron_right, color: AppTheme.mutedGrey, size: 20),
                 ],
               ),
             ),
@@ -1142,7 +1155,7 @@ class _SiteVisitReportsScreenState extends State<SiteVisitReportsScreen> with Si
                                 image: selectedPictures[index],
                                 fit: BoxFit.cover,
                               ),
-                              border: Border.all(color: AppTheme.getPrimaryColor(context).withOpacity(0.2)),
+                              border: Border.all(color: AppTheme.navy.withOpacity(0.2)),
                             ),
                           ),
                         ),
@@ -1199,19 +1212,19 @@ class _SiteVisitReportsScreenState extends State<SiteVisitReportsScreen> with Si
               color: AppTheme.getBackgroundSecondary(context),
               borderRadius: BorderRadius.circular(16),
               border: Border.all(
-                color: AppTheme.getPrimaryColor(context).withOpacity(0.15),
+                color: AppTheme.navy.withOpacity(0.15),
               ),
             ),
             child: SwitchListTile(
               contentPadding: EdgeInsets.zero,
-              activeColor: AppTheme.getPrimaryColor(context),
+              activeColor: AppTheme.navy,
               title: Text(
                 'This note requires action',
-                style: TextStyle(color: AppTheme.getTextPrimary(context)),
+                style: TextStyle(color: AppTheme.navy),
               ),
               subtitle: Text(
                 'Flag the visit note as a task for quick follow-up.',
-                style: TextStyle(color: AppTheme.getTextSecondary(context)),
+                style: TextStyle(color: AppTheme.mutedGrey),
               ),
               value: _isTask,
               onChanged: _submitting
@@ -1251,7 +1264,7 @@ class _SiteVisitReportsScreenState extends State<SiteVisitReportsScreen> with Si
                 ),
                 child: Row(
                   children: [
-                    Icon(Icons.calendar_month, color: AppTheme.getPrimaryColor(context), size: 24),
+                    Icon(Icons.calendar_month, color: AppTheme.navy, size: 24),
                     SizedBox(width: 12),
                     Expanded(
                       child: Text(
@@ -1259,13 +1272,13 @@ class _SiteVisitReportsScreenState extends State<SiteVisitReportsScreen> with Si
                             ? 'Select due date'
                             : DateFormat('d MMM yyyy').format(_dueDate!),
                         style: TextStyle(
-                          color: _dueDate == null ? AppTheme.getTextSecondary(context) : AppTheme.getTextPrimary(context),
+                          color: _dueDate == null ? AppTheme.mutedGrey : AppTheme.navy,
                           fontWeight: _dueDate == null ? FontWeight.normal : FontWeight.w600,
                           fontSize: 16,
                         ),
                       ),
                     ),
-                    Icon(Icons.chevron_right, color: AppTheme.getTextSecondary(context), size: 20),
+                    Icon(Icons.chevron_right, color: AppTheme.mutedGrey, size: 20),
                   ],
                 ),
               ),
@@ -1319,10 +1332,10 @@ class _SiteVisitReportsScreenState extends State<SiteVisitReportsScreen> with Si
           Container(
             padding: EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: AppTheme.getPrimaryColor(context).withOpacity(0.1),
+              color: AppTheme.navy.withOpacity(0.1),
               borderRadius: BorderRadius.circular(10),
             ),
-            child: Icon(icon, color: AppTheme.getPrimaryColor(context), size: 20),
+            child: Icon(icon, color: AppTheme.navy, size: 20),
           ),
           SizedBox(width: 12),
           Expanded(
@@ -1333,7 +1346,7 @@ class _SiteVisitReportsScreenState extends State<SiteVisitReportsScreen> with Si
                   label,
                   style: TextStyle(
                     fontSize: 12,
-                    color: AppTheme.getTextSecondary(context),
+                    color: AppTheme.mutedGrey,
                     fontWeight: FontWeight.w500,
                   ),
                 ),
@@ -1342,7 +1355,7 @@ class _SiteVisitReportsScreenState extends State<SiteVisitReportsScreen> with Si
                   value,
                   style: TextStyle(
                     fontSize: 15,
-                    color: AppTheme.getTextPrimary(context),
+                    color: AppTheme.navy,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -1356,147 +1369,91 @@ class _SiteVisitReportsScreenState extends State<SiteVisitReportsScreen> with Si
 
   Widget _buildNavigationButtons() {
     return Container(
-      padding: EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: AppTheme.getBackgroundSecondary(context),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.1),
-            blurRadius: 8,
-            offset: Offset(0, -2),
-          ),
-        ],
+      padding: const EdgeInsets.fromLTRB(20, 14, 20, 20),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        border: Border(top: BorderSide(color: AppTheme.border)),
       ),
       child: Row(
         children: [
           if (_currentStep > 0)
             Expanded(
-              child: Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  onTap: _previousStep,
-                  borderRadius: BorderRadius.circular(12),
-                  child: Container(
-                    padding: EdgeInsets.symmetric(vertical: 14),
-                    decoration: BoxDecoration(
-                      color: AppTheme.getBackgroundPrimary(context),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: AppTheme.getPrimaryColor(context).withOpacity(0.3),
-                      ),
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          Icons.arrow_back,
-                          color: AppTheme.getPrimaryColor(context),
-                          size: 20,
-                        ),
-                        SizedBox(width: 8),
-                        Text(
-                          'Back',
-                          style: TextStyle(
-                            color: AppTheme.getPrimaryColor(context),
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ),
+              child: OutlinedButton(
+                onPressed: _previousStep,
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppTheme.navy,
+                  side: const BorderSide(color: AppTheme.border),
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
                   ),
+                ),
+                child: const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.arrow_back_rounded, size: 18),
+                    SizedBox(width: 8),
+                    Text(
+                      'Back',
+                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+                    ),
+                  ],
                 ),
               ),
             ),
-          if (_currentStep > 0) SizedBox(width: 12),
+          if (_currentStep > 0) const SizedBox(width: 12),
           Expanded(
-            flex: _currentStep == 0 ? 1 : 1,
-            child: Material(
-              color: Colors.transparent,
-              child: InkWell(
-                onTap: _submitting
-                    ? null
-                    : (_currentStep == _totalSteps - 1
-                        ? () async {
-                            await _submitReport();
-                          }
-                        : _nextStep),
-                borderRadius: BorderRadius.circular(12),
-                child: Container(
-                  padding: EdgeInsets.symmetric(vertical: 14),
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [
-                        AppTheme.getPrimaryColor(context),
-                        AppTheme.primaryColorConstDark,
-                      ],
-                    ),
-                    borderRadius: BorderRadius.circular(12),
-                    boxShadow: [
-                      BoxShadow(
-                        color: AppTheme.getPrimaryColor(context).withOpacity(0.3),
-                        blurRadius: 8,
-                        offset: Offset(0, 4),
-                      ),
-                    ],
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      if (_submitting) ...[
-                        SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                          ),
-                        ),
-                        SizedBox(width: 12),
-                        Text(
-                          'Submitting...',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ] else if (_currentStep == _totalSteps - 1) ...[
-                        Icon(
-                          Icons.send,
-                          color: Colors.white,
-                          size: 20,
-                        ),
-                        SizedBox(width: 8),
-                        Text(
-                          'Submit',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ] else ...[
-                        Text(
-                          'Next',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        SizedBox(width: 8),
-                        Icon(
-                          Icons.arrow_forward,
-                          color: Colors.white,
-                          size: 20,
-                        ),
-                      ],
-                    ],
-                  ),
+            child: ElevatedButton(
+              onPressed: _submitting
+                  ? null
+                  : (_currentStep == _totalSteps - 1
+                      ? () async {
+                          await _submitReport();
+                        }
+                      : _nextStep),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.navy,
+                foregroundColor: Colors.white,
+                disabledBackgroundColor: AppTheme.navy.withValues(alpha: 0.55),
+                elevation: 0,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
                 ),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  if (_submitting) ...[
+                    const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    const Text(
+                      'Submitting...',
+                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
+                    ),
+                  ] else if (_currentStep == _totalSteps - 1) ...[
+                    const Icon(Icons.send_rounded, size: 18),
+                    const SizedBox(width: 8),
+                    const Text(
+                      'Submit',
+                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
+                    ),
+                  ] else ...[
+                    const Text(
+                      'Next',
+                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
+                    ),
+                    const SizedBox(width: 8),
+                    const Icon(Icons.arrow_forward_rounded, size: 18),
+                  ],
+                ],
               ),
             ),
           ),
@@ -1517,15 +1474,16 @@ class _SiteVisitReportsScreenState extends State<SiteVisitReportsScreen> with Si
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
+                    const Text(
                       'Project',
                       style: TextStyle(
-                        color: AppTheme.getTextSecondary(context),
+                        color: AppTheme.mutedGrey,
                         fontSize: 12,
+                        fontWeight: FontWeight.w700,
                         letterSpacing: 0.5,
                       ),
                     ),
-                    SizedBox(height: 8),
+                    const SizedBox(height: 8),
                     Row(
                       children: [
                         Expanded(
@@ -1533,20 +1491,25 @@ class _SiteVisitReportsScreenState extends State<SiteVisitReportsScreen> with Si
                             _viewProject == null
                                 ? 'All projects'
                                 : _viewProject['name'] ?? 'Project #${_viewProject['id']}',
-                            style: TextStyle(
-                              color: AppTheme.getTextPrimary(context),
-                              fontWeight: FontWeight.w600,
+                            style: const TextStyle(
+                              color: AppTheme.navy,
+                              fontWeight: FontWeight.w800,
+                              fontSize: 15,
                             ),
                           ),
                         ),
                         if (!widget.projectFixed)
                           TextButton(
                             onPressed: _fetchingReports ? null : () => _openProjectPicker(forCreate: false),
-                            child: Text('Change'),
+                            style: TextButton.styleFrom(
+                              foregroundColor: AppTheme.accentBlue,
+                              textStyle: const TextStyle(fontWeight: FontWeight.w700),
+                            ),
+                            child: const Text('Change'),
                           ),
                         if (_viewProject != null && !widget.projectFixed)
                           IconButton(
-                            icon: Icon(Icons.close, color: AppTheme.getTextSecondary(context)),
+                            icon: const Icon(Icons.close, color: AppTheme.mutedGrey),
                             onPressed: _fetchingReports
                                 ? null
                                 : () {
@@ -1564,11 +1527,14 @@ class _SiteVisitReportsScreenState extends State<SiteVisitReportsScreen> with Si
                     Divider(height: 24),
                     SwitchListTile(
                       contentPadding: EdgeInsets.zero,
-                      activeColor: AppTheme.getPrimaryColor(context),
+                      activeColor: AppTheme.navy,
                       thumbColor: MaterialStateProperty.all(Colors.white),
-                      title: Text(
+                      title: const Text(
                         'Only my reports',
-                        style: TextStyle(color: AppTheme.getTextPrimary(context)),
+                        style: TextStyle(
+                          color: AppTheme.navy,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
                       value: _myReportsOnly,
                       onChanged: _fetchingReports
@@ -1589,23 +1555,31 @@ class _SiteVisitReportsScreenState extends State<SiteVisitReportsScreen> with Si
                 width: double.infinity,
                 child: ElevatedButton.icon(
                   onPressed: _fetchingReports ? null : _fetchReports,
-                  icon: Icon(Icons.search),
+                  icon: const Icon(Icons.search_rounded),
                   label: Text(_viewProject == null ? 'View All Projects' : 'Refresh Reports'),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: AppTheme.getPrimaryColor(context),
-                    padding: EdgeInsets.symmetric(vertical: 14),
+                    backgroundColor: AppTheme.navy,
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    textStyle: const TextStyle(
+                      fontSize: 14.5,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                 ),
               ),
               SizedBox(height: 24),
               if (_fetchingReports)
-                Center(
-                  child: Padding(
-                    padding: EdgeInsets.only(top: 40),
-                    child: CircularProgressIndicator(
-                      valueColor: AlwaysStoppedAnimation<Color>(AppTheme.getPrimaryColor(context)),
-                    ),
-                  ),
+                const SkeletonListLoader(
+                  showSummary: false,
+                  cardCount: 3,
+                  shrinkWrap: true,
+                  physics: NeverScrollableScrollPhysics(),
+                  padding: EdgeInsets.only(top: 8),
                 )
               else if (_reportsError != null)
                 _EmptyState(
@@ -1645,26 +1619,14 @@ class _SectionHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Container(
-          width: 4,
-          height: 22,
-          decoration: BoxDecoration(
-            color: AppTheme.getPrimaryColor(context),
-            borderRadius: BorderRadius.circular(2),
-          ),
-        ),
-        SizedBox(width: 12),
-        Text(
-          title,
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-            fontSize: 16,
-                            color: AppTheme.getTextPrimary(context),
-          ),
-        ),
-      ],
+    return Text(
+      title,
+      style: const TextStyle(
+        fontWeight: FontWeight.w800,
+        fontSize: 15.5,
+        color: AppTheme.navy,
+        letterSpacing: -0.1,
+      ),
     );
   }
 }
@@ -1678,12 +1640,19 @@ class _InputCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      margin: EdgeInsets.only(top: 12),
-      padding: EdgeInsets.all(16),
+      margin: const EdgeInsets.only(top: 12),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppTheme.getPrimaryColor(context).withOpacity(0.08)),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppTheme.border),
+        boxShadow: const [
+          BoxShadow(
+            color: AppTheme.softShadow,
+            blurRadius: 18,
+            offset: Offset(0, 8),
+          ),
+        ],
       ),
       child: child,
     );
@@ -1700,20 +1669,33 @@ class _EmptyState extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      padding: EdgeInsets.symmetric(vertical: 40, horizontal: 20),
+      padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 20),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface.withOpacity(0.5),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppTheme.getPrimaryColor(context).withOpacity(0.05)),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppTheme.border),
       ),
       child: Column(
         children: [
-          Icon(icon, size: 40, color: AppTheme.getTextSecondary(context)),
-          SizedBox(height: 12),
+          Container(
+            width: 64,
+            height: 64,
+            decoration: BoxDecoration(
+              color: const Color(0xFFEEF2FF),
+              borderRadius: BorderRadius.circular(18),
+            ),
+            child: Icon(icon, size: 28, color: AppTheme.navy),
+          ),
+          const SizedBox(height: 14),
           Text(
             message,
             textAlign: TextAlign.center,
-            style: TextStyle(color: AppTheme.getTextSecondary(context)),
+            style: const TextStyle(
+              color: AppTheme.mutedGrey,
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+              height: 1.4,
+            ),
           ),
         ],
       ),
@@ -1789,12 +1771,19 @@ class _ReportTile extends StatelessWidget {
     }
 
     return Container(
-      margin: EdgeInsets.only(bottom: 16),
-      padding: EdgeInsets.all(16),
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppTheme.getPrimaryColor(context).withOpacity(0.06)),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppTheme.border),
+        boxShadow: const [
+          BoxShadow(
+            color: AppTheme.softShadow,
+            blurRadius: 18,
+            offset: Offset(0, 8),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1804,34 +1793,41 @@ class _ReportTile extends StatelessWidget {
               Expanded(
                 child: Text(
                   projectLabel,
-                  style: TextStyle(
-                    fontWeight: FontWeight.w700,
-                    color: AppTheme.getTextPrimary(context),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 15,
+                    color: AppTheme.navy,
+                    letterSpacing: -0.1,
                   ),
                 ),
               ),
               if (isTask)
                 Container(
-                  padding: EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
-                    color: Colors.orange.withOpacity(0.15),
-                    borderRadius: BorderRadius.circular(12),
+                    color: const Color(0xFFFFEDD5),
+                    borderRadius: BorderRadius.circular(999),
                   ),
-                  child: Text(
+                  child: const Text(
                     'Task',
                     style: TextStyle(
-                      color: Colors.orange,
-                      fontWeight: FontWeight.w600,
+                      color: Color(0xFFEA580C),
+                      fontWeight: FontWeight.w700,
                       fontSize: 12,
                     ),
                   ),
                 ),
             ],
           ),
-          SizedBox(height: 8),
+          const SizedBox(height: 8),
           Text(
             note,
-            style: TextStyle(color: AppTheme.getTextPrimary(context).withOpacity(0.9)),
+            style: const TextStyle(
+              color: AppTheme.navy,
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+              height: 1.4,
+            ),
           ),
           if (isTask && dueDate != null && dueDate.isNotEmpty && dueDate != 'null') ...[
             SizedBox(height: 8),
@@ -1879,7 +1875,7 @@ class _ReportTile extends StatelessWidget {
                           child: SizedBox(
                             width: 24,
                             height: 24,
-                            child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.getPrimaryColor(context)),
+                            child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.navy),
                           ),
                         ),
                       ),
@@ -1905,8 +1901,8 @@ class _ReportTile extends StatelessWidget {
                 icon: const Icon(Icons.attach_file),
                 label: const Text('View attachment'),
                 style: OutlinedButton.styleFrom(
-                  foregroundColor: AppTheme.getPrimaryColor(context),
-                  side: BorderSide(color: AppTheme.getPrimaryColor(context).withOpacity(0.5)),
+                  foregroundColor: AppTheme.navy,
+                  side: BorderSide(color: AppTheme.navy.withOpacity(0.5)),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 ),
               ),
@@ -1914,7 +1910,7 @@ class _ReportTile extends StatelessWidget {
           SizedBox(height: 16),
           Row(
             children: [
-              Icon(Icons.person_outline, size: 16, color: AppTheme.getTextSecondary(context)),
+              Icon(Icons.person_outline, size: 16, color: AppTheme.mutedGrey),
               SizedBox(width: 6),
               Expanded(
                 child: Text(
@@ -1922,7 +1918,7 @@ class _ReportTile extends StatelessWidget {
                   (createdBy != null
                       ? (createdBy['name']?.toString() ?? 'User #${createdBy['id']}')
                       : 'User #${report['created_by_user_id'] ?? '--'}'),
-                  style: TextStyle(color: AppTheme.getTextSecondary(context), fontSize: 12),
+                  style: TextStyle(color: AppTheme.mutedGrey, fontSize: 12),
                 ),
               ),
             ],
@@ -1930,11 +1926,11 @@ class _ReportTile extends StatelessWidget {
           SizedBox(height: 6),
           Row(
             children: [
-              Icon(Icons.calendar_today_outlined, size: 16, color: AppTheme.getTextSecondary(context)),
+              Icon(Icons.calendar_today_outlined, size: 16, color: AppTheme.mutedGrey),
               SizedBox(width: 6),
               Text(
                 dateLabel,
-                style: TextStyle(color: AppTheme.getTextSecondary(context), fontSize: 12),
+                style: TextStyle(color: AppTheme.mutedGrey, fontSize: 12),
               ),
             ],
           ),

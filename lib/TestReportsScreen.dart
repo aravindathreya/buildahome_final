@@ -12,10 +12,11 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
 import 'app_theme.dart';
-import 'widgets/dark_mode_toggle.dart';
 import 'AddDailyUpdate.dart'; // For FullScreenImage
 import 'services/data_provider.dart';
 import 'widgets/searchable_select.dart';
+import 'widgets/themed_scaffold.dart';
+import 'widgets/skeleton_loader.dart';
 
 class TestReportsScreen extends StatefulWidget {
   final String? fixedProjectId;
@@ -506,27 +507,57 @@ class _TestReportsScreenState extends State<TestReportsScreen> with SingleTicker
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      appBar: AppBar(
-        title: Text('Test Reports / QC Reports'),
-        backgroundColor: Theme.of(context).colorScheme.surface,
-        actions: [
-          DarkModeToggle(showLabel: false),
-          SizedBox(width: 8),
-        ],
-        bottom: _tabController != null
-            ? TabBar(
-                controller: _tabController!,
-                indicatorColor: AppTheme.getPrimaryColor(context),
-                labelColor: AppTheme.getTextPrimary(context),
-                tabs: const [
-                  Tab(text: 'Create'),
-                  Tab(text: 'View'),
-                ],
-              )
-            : null,
-      ),
+    return ThemedScaffold(
+      title: 'Test Reports',
+      bottom: _tabController != null
+          ? PreferredSize(
+              preferredSize: const Size.fromHeight(66),
+              child: Container(
+                color: Colors.white,
+                padding: const EdgeInsets.fromLTRB(18, 0, 18, 14),
+                child: Container(
+                  height: 48,
+                  padding: const EdgeInsets.all(4),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF1F4F8),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: TabBar(
+                    controller: _tabController!,
+                    indicatorSize: TabBarIndicatorSize.tab,
+                    dividerColor: Colors.transparent,
+                    splashFactory: NoSplash.splashFactory,
+                    overlayColor: WidgetStateProperty.all(Colors.transparent),
+                    labelPadding: EdgeInsets.zero,
+                    indicator: BoxDecoration(
+                      color: AppTheme.navy,
+                      borderRadius: BorderRadius.circular(11),
+                    ),
+                    labelColor: Colors.white,
+                    unselectedLabelColor: AppTheme.mutedGrey,
+                    labelStyle: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                    ),
+                    unselectedLabelStyle: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    tabs: const [
+                      SizedBox(
+                        height: 40,
+                        child: Center(child: Text('Create')),
+                      ),
+                      SizedBox(
+                        height: 40,
+                        child: Center(child: Text('View')),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            )
+          : null,
       body: _tabController != null
           ? TabBarView(
               controller: _tabController!,
@@ -535,11 +566,7 @@ class _TestReportsScreenState extends State<TestReportsScreen> with SingleTicker
                 _buildViewTab(),
               ],
             )
-          : Center(
-              child: CircularProgressIndicator(
-                valueColor: AlwaysStoppedAnimation<Color>(AppTheme.getPrimaryColor(context)),
-              ),
-            ),
+          : const SkeletonListLoader(cardCount: 4),
     );
   }
 
@@ -805,13 +832,12 @@ class _TestReportsScreenState extends State<TestReportsScreen> with SingleTicker
               ),
               SizedBox(height: 24),
               if (_fetchingReports)
-                Center(
-                  child: Padding(
-                    padding: EdgeInsets.only(top: 40),
-                    child: CircularProgressIndicator(
-                      valueColor: AlwaysStoppedAnimation<Color>(AppTheme.getPrimaryColor(context)),
-                    ),
-                  ),
+                const SkeletonListLoader(
+                  showSummary: false,
+                  cardCount: 3,
+                  shrinkWrap: true,
+                  physics: NeverScrollableScrollPhysics(),
+                  padding: EdgeInsets.only(top: 8),
                 )
               else if (_reportsError != null)
                 _EmptyState(

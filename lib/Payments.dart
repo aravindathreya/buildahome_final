@@ -8,7 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app_theme.dart';
 import 'services/data_provider.dart';
-import 'widgets/dark_mode_toggle.dart';
+import 'widgets/themed_scaffold.dart';
 
 enum PaymentCategory {
   tender,
@@ -290,61 +290,18 @@ class _PaymentsDashboardState extends State<PaymentsDashboard> {
 
   @override
   Widget build(BuildContext context) {
-    // Route's willPop() handles back button logging - no need for PopScope
-    return Scaffold(
-        backgroundColor: AppTheme.getBackgroundPrimary(context),
-        appBar: AppBar(
-          backgroundColor: AppTheme.getBackgroundSecondary(context),
-          elevation: 0,
-          leading: IconButton(
-            icon: Icon(Icons.arrow_back, color: AppTheme.getTextPrimary(context)),
-            onPressed: () {
-              print('[Payments] ========== AppBar back button pressed ==========');
-              print('[Payments] canPop: ${Navigator.of(context).canPop()}');
-              print('[Payments] Calling maybePop()...');
-              // Always pop back to UserDashboard
-              Navigator.of(context).maybePop();
-              print('[Payments] maybePop() called');
-              print('[Payments] =================================================');
-            },
-          ),
-          title: Text(
-            'Payments',
-            style: TextStyle(
-              color: AppTheme.getTextPrimary(context),
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          actions: [
-            DarkModeToggle(showLabel: false),
-            SizedBox(width: 8),
-          ],
+    final title = selectedCategory == PaymentCategory.nonTender
+        ? 'Non Tender Payments'
+        : 'Payments';
+    return ThemedScaffold(
+      title: title,
+      body: SafeArea(
+        child: AnimatedSwitcher(
+          duration: const Duration(milliseconds: 300),
+          child: _buildBody(),
         ),
-        body: Stack(
-          children: [
-            // Background image with opacity
-            Positioned.fill(
-              child: Opacity(
-                opacity: 0.1,
-                child: Image.asset(
-                  'assets/images/See details.jpg',
-                  fit: BoxFit.cover,
-                  errorBuilder: (context, error, stackTrace) {
-                    return Container();
-                  },
-                ),
-              ),
-            ),
-            // Content on top
-            SafeArea(
-              child: AnimatedSwitcher(
-                duration: Duration(milliseconds: 300),
-                child: _buildBody(),
-              ),
-            ),
-          ],
-        ),
-      );
+      ),
+    );
   }
 
   Widget _buildBody() {
@@ -358,7 +315,7 @@ class _PaymentsDashboardState extends State<PaymentsDashboard> {
 
     return RefreshIndicator(
       onRefresh: () => _loadData(showLoader: false),
-      color: AppTheme.getPrimaryColor(context),
+      color: AppTheme.navy,
       child: ListView(
         physics: AlwaysScrollableScrollPhysics(),
         padding: EdgeInsets.symmetric(horizontal: 20, vertical: 16),
@@ -378,23 +335,26 @@ class _PaymentsDashboardState extends State<PaymentsDashboard> {
   }
 
   Widget _buildHeader() {
-    return Column(
+    return const Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           'Track your project payments',
           style: TextStyle(
-            fontSize: 22,
-            fontWeight: FontWeight.bold,
-            color: AppTheme.getTextPrimary(context),
+            fontSize: 18,
+            fontWeight: FontWeight.w800,
+            color: AppTheme.navy,
+            letterSpacing: -0.2,
           ),
         ),
         SizedBox(height: 6),
         Text(
           'Switch between project and non tender payments using the filters below.',
           style: TextStyle(
-            color: AppTheme.getTextSecondary(context),
-            fontSize: 14,
+            color: AppTheme.mutedGrey,
+            fontSize: 13.5,
+            fontWeight: FontWeight.w500,
+            height: 1.35,
           ),
         ),
       ],
@@ -405,39 +365,75 @@ class _PaymentsDashboardState extends State<PaymentsDashboard> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-     Text('Filter by'),
-     SizedBox(height: 12),
-      Wrap(
-      spacing: 12,
-      children: [
-        _buildChip('Project Payments', PaymentCategory.tender),
-        _buildChip('Non Tender Payments', PaymentCategory.nonTender),
+        const Text(
+          'Filter by',
+          style: TextStyle(
+            color: AppTheme.navy,
+            fontSize: 13,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        const SizedBox(height: 12),
+        Container(
+          height: 48,
+          padding: const EdgeInsets.all(4),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF1F4F8),
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: _buildChip('Project Payments', PaymentCategory.tender),
+              ),
+              Expanded(
+                child: _buildChip(
+                    'Non Tender Payments', PaymentCategory.nonTender),
+              ),
+            ],
+          ),
+        ),
       ],
-    )
-    ],);
+    );
   }
 
   Widget _buildSearchField() {
     return TextField(
       controller: _searchController,
       onChanged: (value) => setState(() => _searchQuery = value),
+      style: const TextStyle(
+        color: AppTheme.navy,
+        fontWeight: FontWeight.w600,
+      ),
       decoration: InputDecoration(
         hintText: 'Search payments, notes or status',
-        prefixIcon: Icon(Icons.search, color: AppTheme.getTextSecondary(context)),
+        hintStyle: const TextStyle(
+          color: AppTheme.mutedGrey,
+          fontWeight: FontWeight.w500,
+        ),
+        prefixIcon: const Icon(Icons.search_rounded, color: AppTheme.mutedGrey),
         suffixIcon: _searchQuery.isEmpty
             ? null
             : IconButton(
-                icon: Icon(Icons.close, color: AppTheme.getTextSecondary(context)),
+                icon: const Icon(Icons.close_rounded, color: AppTheme.mutedGrey),
                 onPressed: () {
                   _searchController.clear();
                   setState(() => _searchQuery = '');
                 },
               ),
         filled: true,
-        fillColor: AppTheme.getBackgroundSecondary(context),
+        fillColor: Colors.white,
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: AppTheme.border),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: AppTheme.navy, width: 1.5),
+        ),
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
-          borderSide: BorderSide.none,
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: AppTheme.border),
         ),
       ),
     );
@@ -445,22 +441,33 @@ class _PaymentsDashboardState extends State<PaymentsDashboard> {
 
   Widget _buildChip(String label, PaymentCategory category) {
     final bool isSelected = selectedCategory == category;
-    return ChoiceChip(
-      label: Text(label, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
-      selected: isSelected,
-      selectedColor: AppTheme.getPrimaryColor(context),
-      backgroundColor: Theme.of(context).colorScheme.surface,
-          labelStyle: TextStyle(
-        color: isSelected ? Colors.white : AppTheme.getTextPrimary(context),
-        fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
-      ),
-      onSelected: (value) {
-        if (value) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () {
           setState(() {
             selectedCategory = category;
           });
-        }
-      },
+        },
+        borderRadius: BorderRadius.circular(11),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: isSelected ? AppTheme.navy : Colors.transparent,
+            borderRadius: BorderRadius.circular(11),
+          ),
+          child: Text(
+            label,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: isSelected ? Colors.white : AppTheme.mutedGrey,
+            ),
+          ),
+        ),
+      ),
     );
   }
 
@@ -1114,16 +1121,16 @@ class _SummaryCard extends StatelessWidget {
     return Container(
       height: 150,
       width: (MediaQuery.of(context).size.width - 60) / 2,
-      padding: EdgeInsets.all(16),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppTheme.getBackgroundSecondary(context),
+        color: Colors.white,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: AppTheme.getPrimaryColor(context).withOpacity(0.1)),
-        boxShadow: [
+        border: Border.all(color: AppTheme.border),
+        boxShadow: const [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 8,
-            offset: Offset(0, 2),
+            color: AppTheme.softShadow,
+            blurRadius: 18,
+            offset: Offset(0, 8),
           ),
         ],
       ),
@@ -1132,21 +1139,31 @@ class _SummaryCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              Icon(icon, size: 20, color: AppTheme.getTextSecondary(context)),
-              SizedBox(width: 8),
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: gradient.isNotEmpty
+                      ? gradient.first
+                      : const Color(0xFFEEF2FF),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(icon, size: 18, color: AppTheme.navy),
+              ),
+              const SizedBox(width: 8),
               Expanded(
                 child: Text(
                   title,
-                  style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                    color: AppTheme.getTextPrimary(context),
-                    fontSize: 12
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w800,
+                    color: AppTheme.navy,
+                    fontSize: 12,
                   ),
                 ),
               ),
             ],
           ),
-          SizedBox(height: 6),
+          const SizedBox(height: 10),
           Text(
             value,
             style: TextStyle(
@@ -1634,7 +1651,7 @@ class PaymentTasks extends State<PaymentTasksClass> {
                           style: TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.bold,
-                            color: Color.fromARGB(255, 13, 17, 65),
+                            color: AppTheme.navy,
                           ),
                         ),
                       ),
@@ -1656,7 +1673,7 @@ class PaymentTasks extends State<PaymentTasksClass> {
                         decoration: BoxDecoration(
                           gradient: LinearGradient(
                             colors: [
-                              Color.fromARGB(255, 13, 17, 65),
+                              AppTheme.navy,
                               Color.fromARGB(255, 20, 25, 80),
                             ],
                           ),
@@ -1717,7 +1734,7 @@ class PaymentTasks extends State<PaymentTasksClass> {
                                       children: [
                                         Row(
                                           children: [
-                                            Icon(Icons.account_balance_wallet, size: 18, color: Color.fromARGB(255, 13, 17, 65)),
+                                            Icon(Icons.account_balance_wallet, size: 18, color: AppTheme.navy),
                                             SizedBox(width: 6),
                                             Text(
                                               "Project Value",
@@ -1734,7 +1751,7 @@ class PaymentTasks extends State<PaymentTasksClass> {
                                           style: TextStyle(
                                             fontSize: 18,
                                             fontWeight: FontWeight.bold,
-                                            color: Color.fromARGB(255, 13, 17, 65),
+                                            color: AppTheme.navy,
                                           ),
                                         ),
                                       ],

@@ -6,6 +6,7 @@ import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'NavMenu.dart';
 import 'AddNewUser.dart';
+import 'app_theme.dart';
 
 class UserCard extends StatelessWidget {
   String name = "";
@@ -84,18 +85,29 @@ class ViewUsers extends StatelessWidget {
 
     return MaterialApp(
       title: appTitle,
+      theme: AppTheme.getLightTheme(),
       home: Scaffold(
         key: _scaffoldKey,
+        backgroundColor: AppTheme.getBackgroundPrimary(context),
         // ADD THIS LINE
         drawer: NavMenuWidget(),
 
         appBar: AppBar(
           automaticallyImplyLeading: false,
-          title: Text(appTitle),
+          title: Text(
+            appTitle,
+            style: const TextStyle(
+              color: AppTheme.navy,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
           leading: new IconButton(
               icon: new Icon(Icons.menu),
               onPressed: () => _scaffoldKey.currentState!.openDrawer()),
-          backgroundColor: Colors.indigo[900],
+          backgroundColor: AppTheme.getBackgroundSecondary(context),
+          foregroundColor: AppTheme.navy,
+          elevation: 0,
+          iconTheme: const IconThemeData(color: AppTheme.navy),
         ),
         bottomNavigationBar: BottomNavigationBar(
           items: const <BottomNavigationBarItem>[
@@ -111,6 +123,10 @@ class ViewUsers extends StatelessWidget {
           ],
           currentIndex: 1,
           onTap: _onItemTapped,
+          backgroundColor: AppTheme.getBackgroundSecondary(context),
+          selectedItemColor: AppTheme.navy,
+          unselectedItemColor: AppTheme.mutedGrey,
+          type: BottomNavigationBarType.fixed,
         ),
 
         body: ViewUsersForm(),

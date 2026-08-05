@@ -1,10 +1,10 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_spinkit/flutter_spinkit.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 
 import 'package:http/http.dart';
+import 'widgets/skeleton_loader.dart';
 
 class UpdateTemplates extends StatelessWidget{
   bool is_Loading=false;
@@ -25,12 +25,10 @@ class UpdateTemplates extends StatelessWidget{
                 return Text('Press button to start.');
               case ConnectionState.active:
               case ConnectionState.waiting:
-                return Container(
-                  padding: EdgeInsets.only(top: 20),
-                  child: SpinKitThreeBounce(
-                    color: Colors.indigo[900],
-                    size: 30.0,
-                  ),
+                return const SizedBox(
+                  width: 280,
+                  height: 220,
+                  child: SkeletonBlockLoader(),
                 );
               case ConnectionState.done:
                 if (snapshot.hasError)

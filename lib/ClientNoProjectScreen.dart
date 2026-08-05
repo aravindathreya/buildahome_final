@@ -6,6 +6,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'app_theme.dart';
 import 'NavMenu.dart';
+import 'widgets/skeleton_loader.dart';
 
 /// Base URL for sales SOP API
 const String _salesSopBaseUrl = 'http://192.168.1.11:5000';
@@ -165,19 +166,21 @@ class _ClientNoProjectScreenState extends State<ClientNoProjectScreen> {
       drawer: NavMenuWidget(),
       appBar: AppBar(
         backgroundColor: AppTheme.getBackgroundSecondary(context),
+        foregroundColor: AppTheme.navy,
         elevation: 0,
-        title: Text(
+        title: const Text(
           'Project Dashboard',
           style: TextStyle(
-            color: AppTheme.getTextPrimary(context),
+            color: AppTheme.navy,
             fontSize: 18,
-            fontWeight: FontWeight.w600,
+            fontWeight: FontWeight.w800,
           ),
         ),
-        iconTheme: IconThemeData(color: AppTheme.getTextPrimary(context)),
+        iconTheme: const IconThemeData(color: AppTheme.navy),
+        actionsIconTheme: const IconThemeData(color: AppTheme.navy),
         actions: [
           IconButton(
-            icon: Icon(Icons.refresh, color: AppTheme.getTextPrimary(context)),
+            icon: const Icon(Icons.refresh, color: AppTheme.navy),
             onPressed: _loading ? null : _fetchSalesSopDetails,
           ),
         ],
@@ -190,9 +193,7 @@ class _ClientNoProjectScreenState extends State<ClientNoProjectScreen> {
 
   Widget _buildBody() {
     if (_loading) {
-      return Center(
-        child: CircularProgressIndicator(color: AppTheme.getPrimaryColor(context)),
-      );
+      return const SkeletonListLoader(cardCount: 4);
     }
 
     if (_error != null) {
@@ -1505,12 +1506,18 @@ class _InAppDocumentScreenState extends State<_InAppDocumentScreen> {
       backgroundColor: AppTheme.getBackgroundPrimary(context),
       appBar: AppBar(
         backgroundColor: AppTheme.getBackgroundSecondary(context),
+        foregroundColor: AppTheme.navy,
         elevation: 0,
         title: Text(
           widget.title,
-          style: TextStyle(color: AppTheme.getTextPrimary(context), fontSize: 18, fontWeight: FontWeight.w600),
+          style: const TextStyle(
+            color: AppTheme.navy,
+            fontSize: 18,
+            fontWeight: FontWeight.w800,
+          ),
         ),
-        iconTheme: IconThemeData(color: AppTheme.getTextPrimary(context)),
+        iconTheme: const IconThemeData(color: AppTheme.navy),
+        actionsIconTheme: const IconThemeData(color: AppTheme.navy),
         actions: [
           IconButton(
             icon: Icon(Icons.open_in_new),
@@ -1530,15 +1537,9 @@ class _InAppDocumentScreenState extends State<_InAppDocumentScreen> {
         children: [
           WebViewWidget(controller: _controller),
           if (_loading)
-            Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  CircularProgressIndicator(color: AppTheme.getPrimaryColor(context)),
-                  SizedBox(height: 16),
-                  Text('Loading document...', style: TextStyle(color: AppTheme.getTextSecondary(context))),
-                ],
-              ),
+            Container(
+              color: AppTheme.getBackgroundPrimary(context),
+              child: const SkeletonListLoader(showSummary: false, cardCount: 3),
             ),
           if (_loadError != null && !_loading)
             Center(

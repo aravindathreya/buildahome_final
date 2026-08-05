@@ -11,7 +11,6 @@ import 'package:url_launcher/url_launcher.dart';
 import 'FullScreenImage.dart';
 import 'app_theme.dart';
 import 'services/data_provider.dart';
-import 'widgets/dark_mode_toggle.dart';
 
 const String _galleryApiBaseUrl = 'https://office.buildahome.in';
 
@@ -248,6 +247,10 @@ class _GalleryState extends State<Gallery> {
       backgroundColor: AppTheme.getBackgroundPrimary(context),
       appBar: AppBar(
         backgroundColor: AppTheme.getBackgroundSecondary(context),
+        foregroundColor: AppTheme.navy,
+        elevation: 0,
+        iconTheme: const IconThemeData(color: AppTheme.navy),
+        actionsIconTheme: const IconThemeData(color: AppTheme.navy),
         automaticallyImplyLeading: canPop,
         leading: canPop
             ? IconButton(
@@ -257,12 +260,12 @@ class _GalleryState extends State<Gallery> {
             : null,
         title: Text(
           'Gallery',
-          style: theme.textTheme.headlineSmall?.copyWith(fontSize: 20),
+          style: theme.textTheme.headlineSmall?.copyWith(
+            fontSize: 20,
+            color: AppTheme.navy,
+            fontWeight: FontWeight.w800,
+          ),
         ),
-        actions: [
-          DarkModeToggle(showLabel: false),
-          SizedBox(width: 8),
-        ],
       ),
       body: SafeArea(
         child: RefreshIndicator(
@@ -1214,9 +1217,13 @@ class _TimelineGalleryState extends State<TimelineGallery> {
     final theme = Theme.of(context);
     final canPop = Navigator.of(context).canPop();
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: AppTheme.getBackgroundPrimary(context),
       appBar: AppBar(
-        backgroundColor: Colors.white,
+        backgroundColor: AppTheme.getBackgroundSecondary(context),
+        foregroundColor: AppTheme.navy,
+        elevation: 0,
+        iconTheme: const IconThemeData(color: AppTheme.navy),
+        actionsIconTheme: const IconThemeData(color: AppTheme.navy),
         automaticallyImplyLeading: canPop,
         leading: canPop
             ? IconButton(
@@ -1226,12 +1233,12 @@ class _TimelineGalleryState extends State<TimelineGallery> {
             : null,
         title: Text(
           'Project Gallery',
-          style: theme.textTheme.headlineSmall?.copyWith(fontSize: 20),
+          style: theme.textTheme.headlineSmall?.copyWith(
+            fontSize: 20,
+            color: AppTheme.navy,
+            fontWeight: FontWeight.w800,
+          ),
         ),
-        actions: [
-          DarkModeToggle(showLabel: false),
-          SizedBox(width: 8),
-        ],
       ),
       body: SafeArea(
         child: RefreshIndicator(
@@ -1889,11 +1896,13 @@ class _GallerySectionDetailScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: AppTheme.getBackgroundPrimary(context),
       appBar: AppBar(
-        backgroundColor: Colors.white,
+        backgroundColor: AppTheme.getBackgroundSecondary(context),
+        foregroundColor: AppTheme.navy,
         elevation: 0,
         scrolledUnderElevation: 0,
+        iconTheme: const IconThemeData(color: AppTheme.navy),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios_new_rounded),
           onPressed: () => Navigator.of(context).maybePop(),
@@ -1902,7 +1911,10 @@ class _GallerySectionDetailScreen extends StatelessWidget {
           section.label,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
-          style: const TextStyle(fontWeight: FontWeight.w800),
+          style: const TextStyle(
+            fontWeight: FontWeight.w800,
+            color: AppTheme.navy,
+          ),
         ),
       ),
       body: SafeArea(

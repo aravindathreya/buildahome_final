@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
+import '../app_theme.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../NavMenu.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../main.dart';
 
 import "Dpr.dart";
 import "Scheduler.dart";
@@ -21,9 +21,10 @@ class PaymentTaskWidget extends StatelessWidget {
     final GlobalKey<ScaffoldState> _scaffoldKey = new GlobalKey<ScaffoldState>();
     return MaterialApp(
       title: appTitle,
-      theme: ThemeData(fontFamily: App().fontName),
+      theme: AppTheme.getLightTheme(),
       home: Scaffold(
         key: _scaffoldKey,
+        backgroundColor: Colors.white,
         // ADD THIS LINE
         drawer: NavMenuWidget(),
         appBar: AppBar(
@@ -34,12 +35,16 @@ class PaymentTaskWidget extends StatelessWidget {
               onPressed: () => {
                     Navigator.pop(context),
                   }),
-          backgroundColor: Color(0xFF000055),
+          backgroundColor: Colors.white,
+          foregroundColor: AppTheme.navy,
+          elevation: 0,
+          iconTheme: const IconThemeData(color: AppTheme.navy),
+          titleTextStyle: const TextStyle(color: AppTheme.navy, fontSize: 18, fontWeight: FontWeight.w800),
         ),
         body: PaymentTasksClass(this.id),
         bottomNavigationBar: BottomNavigationBar(
           currentIndex: 4,
-          selectedItemColor: Colors.indigo[900],
+          selectedItemColor: AppTheme.navy,
           onTap: (int index) {
             if (index == 0) {
               Navigator.pushReplacement(
@@ -377,7 +382,7 @@ class PaymentTasks extends State<PaymentTasksClass> {
           padding: EdgeInsets.only(top: 20, left: 10, bottom: 10),
           decoration: BoxDecoration(
               border: Border(
-            bottom: BorderSide(width: 6.0, color: Colors.indigo[900]!),
+            bottom: BorderSide(width: 6.0, color: AppTheme.navy),
           )),
           child: Text("Payments",
               style: TextStyle(

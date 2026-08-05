@@ -5,6 +5,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'NavMenu.dart';
+import 'app_theme.dart';
 
 
 class ProjectCard extends StatelessWidget{
@@ -76,17 +77,27 @@ class ViewProject extends StatelessWidget {
 
     return MaterialApp(
       title: appTitle,
+      theme: AppTheme.getLightTheme(),
       home: Scaffold(
         key: _scaffoldKey, // ADD THIS LINE
+        backgroundColor: AppTheme.getBackgroundPrimary(context),
         drawer: NavMenuWidget(),
 
         appBar: AppBar(
           automaticallyImplyLeading: false,
-          title:  Text(appTitle),
+          title: Text(
+            appTitle,
+            style: const TextStyle(
+              color: AppTheme.navy,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
           leading: new IconButton(icon: new Icon(Icons.menu),
               onPressed: () => _scaffoldKey.currentState!.openDrawer()),
-          backgroundColor: Colors.indigo[900],
-
+          backgroundColor: AppTheme.getBackgroundSecondary(context),
+          foregroundColor: AppTheme.navy,
+          elevation: 0,
+          iconTheme: const IconThemeData(color: AppTheme.navy),
         ),
         body: ViewProjectForm(),
       ),

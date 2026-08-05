@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../app_theme.dart';
 
 class NewRoute extends StatelessWidget {
   // This widget is the root of your application.
@@ -6,6 +7,7 @@ class NewRoute extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Connect dots',
+      theme: AppTheme.getLightTheme(),
       home: HomePage(),
     );
   }
