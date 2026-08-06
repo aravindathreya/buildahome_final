@@ -20,15 +20,26 @@ import 'services/data_provider.dart';
 
 class IndentsScreenLayout extends StatelessWidget {
   final int initialTab;
+  final String? initialProjectId;
+  final String? initialProjectName;
 
-  const IndentsScreenLayout({Key? key, this.initialTab = 0}) : super(key: key);
+  const IndentsScreenLayout({
+    Key? key,
+    this.initialTab = 0,
+    this.initialProjectId,
+    this.initialProjectName,
+  }) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
     return ThemedScaffold(
       title: 'Indents',
       body: SafeArea(
-        child: IndentsScreen(initialTab: initialTab),
+        child: IndentsScreen(
+          initialTab: initialTab,
+          initialProjectId: initialProjectId,
+          initialProjectName: initialProjectName,
+        ),
       ),
     );
   }
@@ -36,8 +47,15 @@ class IndentsScreenLayout extends StatelessWidget {
 
 class IndentsScreen extends StatefulWidget {
   final int initialTab;
+  final String? initialProjectId;
+  final String? initialProjectName;
 
-  const IndentsScreen({Key? key, this.initialTab = 0}) : super(key: key);
+  const IndentsScreen({
+    Key? key,
+    this.initialTab = 0,
+    this.initialProjectId,
+    this.initialProjectName,
+  }) : super(key: key);
 
   @override
   IndentsScreenState createState() {
@@ -84,7 +102,11 @@ class IndentsScreenState extends State<IndentsScreen> {
           child: IndexedStack(
             index: selectedTab,
             children: [
-              CreateIndentTab(onIndentCreated: _refreshViewOpenIndents),
+              CreateIndentTab(
+                onIndentCreated: _refreshViewOpenIndents,
+                initialProjectId: widget.initialProjectId,
+                initialProjectName: widget.initialProjectName,
+              ),
               ViewOpenIndentsTab(key: _viewOpenIndentsKey),
               MyIndentsTab(),
             ],
@@ -131,8 +153,15 @@ class IndentsScreenState extends State<IndentsScreen> {
 // Create Indent Tab
 class CreateIndentTab extends StatefulWidget {
   final VoidCallback? onIndentCreated;
+  final String? initialProjectId;
+  final String? initialProjectName;
 
-  const CreateIndentTab({Key? key, this.onIndentCreated}) : super(key: key);
+  const CreateIndentTab({
+    Key? key,
+    this.onIndentCreated,
+    this.initialProjectId,
+    this.initialProjectName,
+  }) : super(key: key);
 
   @override
   CreateIndentTabState createState() {
@@ -222,9 +251,40 @@ class CreateIndentTabState extends State<CreateIndentTab> {
 
   void loadProjects() async {
     await DataProvider().loadProjects(force: false);
+    if (!mounted) return;
     setState(() {
       projects = DataProvider().projects;
+      _applyInitialProjectSelection();
     });
+  }
+
+  void _applyInitialProjectSelection() {
+    final id = widget.initialProjectId?.trim() ?? '';
+    if (id.isEmpty) return;
+
+    Map? match;
+    for (final project in projects) {
+      if (project is Map && project['id']?.toString().trim() == id) {
+        match = project;
+        break;
+      }
+    }
+
+    if (match != null) {
+      selectedProject = match;
+      projectId = match['id'].toString();
+      return;
+    }
+
+    final name = widget.initialProjectName?.trim() ?? '';
+    if (name.isNotEmpty) {
+      // Keep UI usable when project isn't in the loaded list yet.
+      selectedProject = {
+        'id': id,
+        'name': name,
+      };
+      projectId = id;
+    }
   }
 
   void loadMaterials() async {

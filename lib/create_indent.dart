@@ -44,6 +44,15 @@ class CreateIndentLayout extends StatelessWidget {
 }
 
 class CreateIndent extends StatefulWidget {
+  final String? initialProjectId;
+  final String? initialProjectName;
+
+  const CreateIndent({
+    Key? key,
+    this.initialProjectId,
+    this.initialProjectName,
+  }) : super(key: key);
+
   @override
   CreateIndentState createState() {
     return CreateIndentState();
@@ -132,9 +141,39 @@ class CreateIndentState extends State<CreateIndent> {
 
   void loadProjects() async {
     await DataProvider().reloadData();
+    if (!mounted) return;
     setState(() {
       projects = DataProvider().projects;
+      _applyInitialProjectSelection();
     });
+  }
+
+  void _applyInitialProjectSelection() {
+    final id = widget.initialProjectId?.trim() ?? '';
+    if (id.isEmpty) return;
+
+    Map? match;
+    for (final project in projects) {
+      if (project is Map && project['id']?.toString().trim() == id) {
+        match = project;
+        break;
+      }
+    }
+
+    if (match != null) {
+      selectedProject = match;
+      projectId = match['id'].toString();
+      return;
+    }
+
+    final name = widget.initialProjectName?.trim() ?? '';
+    if (name.isNotEmpty) {
+      selectedProject = {
+        'id': id,
+        'name': name,
+      };
+      projectId = id;
+    }
   }
 
   void loadMaterials() async {

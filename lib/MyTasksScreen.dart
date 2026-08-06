@@ -20,6 +20,7 @@ import 'app_theme.dart';
 import 'FullScreenImage.dart';
 import 'NotesAndComments.dart';
 import 'TasksScreen.dart';
+import 'indents_screen.dart';
 import 'services/api_http.dart';
 import 'services/data_provider.dart';
 import 'services/session_manager.dart';
@@ -2881,8 +2882,12 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
         );
       case 'redirect_button':
         return _WorkflowButtonData(
-          defaultLabel: 'Open',
-          icon: Icons.open_in_new,
+          defaultLabel: isCreateIndentRedirectAction(action)
+              ? 'Create indent'
+              : 'Open',
+          icon: isCreateIndentRedirectAction(action)
+              ? Icons.request_quote_outlined
+              : Icons.open_in_new,
           color: primary,
         );
       case 'view_prior_response':
@@ -6008,6 +6013,13 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
   }
 
   Future<void> _openRedirect() async {
+    // Native Indent Creation for workflow redirect_button → create_indent.
+    // Opening this screen must NOT complete the workflow task.
+    if (isCreateIndentRedirectAction(action)) {
+      await _openNativeCreateIndent();
+      return;
+    }
+
     final redirectUrl = action['redirect_url']?.toString() ?? '';
     if (redirectUrl.trim().isEmpty) {
       _showSnackBar('No redirect URL available.', isError: true);
@@ -6020,11 +6032,113 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
       return;
     }
 
+    // Map /create_indent?project_id=... deep links to native screen.
+    if (isCreateIndentUri(uri)) {
+      await _openNativeCreateIndent(
+        projectIdOverride: uri.queryParameters['project_id']?.trim(),
+      );
+      return;
+    }
+
     try {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
     } catch (e) {
       _showSnackBar('Could not open link.', isError: true);
     }
+  }
+
+  Future<void> _openNativeCreateIndent({String? projectIdOverride}) async {
+    final projectId =
+        (projectIdOverride?.trim().isNotEmpty == true
+                ? projectIdOverride!.trim()
+                : _resolveCreateIndentProjectId()) ??
+            '';
+    final projectName = _resolveCreateIndentProjectName(projectId);
+
+    if (!mounted) return;
+
+    if (projectId.isEmpty) {
+      _showSnackBar(
+        'Project not found for this workflow. Select a project on the Indent screen.',
+        isError: true,
+      );
+    }
+
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => IndentsScreenLayout(
+          initialTab: 0,
+          initialProjectId: projectId.isEmpty ? null : projectId,
+          initialProjectName: projectName,
+        ),
+      ),
+    );
+  }
+
+  String? _resolveCreateIndentProjectId() {
+    for (final key in const [
+      'project_id',
+      'run_project_id',
+      'wf_project_id',
+      'data-wf-project-id',
+      'data_wf_project_id',
+    ]) {
+      final fromAction = (_actionConfigValue(key) ?? action[key])
+          ?.toString()
+          .trim();
+      if (fromAction != null && fromAction.isNotEmpty) return fromAction;
+    }
+
+    final redirectUrl = action['redirect_url']?.toString() ?? '';
+    final uri = Uri.tryParse(redirectUrl);
+    if (uri != null) {
+      for (final key in const [
+        'project_id',
+        'run_project_id',
+        'data-wf-project-id',
+      ]) {
+        final q = uri.queryParameters[key]?.trim();
+        if (q != null && q.isNotEmpty) return q;
+      }
+    }
+
+    for (final key in const [
+      'project_id',
+      'run_project_id',
+      'erp_project_id',
+      'projectId',
+      'sales_sop_project_id',
+      'sop_project_id',
+    ]) {
+      final fromTask = task[key]?.toString().trim();
+      if (fromTask != null && fromTask.isNotEmpty) return fromTask;
+    }
+
+    return null;
+  }
+
+  String? _resolveCreateIndentProjectName(String projectId) {
+    for (final key in const [
+      'project_name',
+      'run_project_name',
+      'erp_project_name',
+    ]) {
+      final fromAction = (_actionConfigValue(key) ?? action[key])
+          ?.toString()
+          .trim();
+      if (fromAction != null && fromAction.isNotEmpty) return fromAction;
+      final fromTask = task[key]?.toString().trim();
+      if (fromTask != null && fromTask.isNotEmpty) return fromTask;
+    }
+
+    if (projectId.isEmpty) return null;
+    for (final project in DataProvider().projects) {
+      if (project is Map && project['id']?.toString().trim() == projectId) {
+        final name = project['name']?.toString().trim();
+        if (name != null && name.isNotEmpty) return name;
+      }
+    }
+    return null;
   }
 
   Future<void> _showResponseSheet() async {
@@ -15306,6 +15420,48 @@ List<Map<String, dynamic>> _workflowTextListStandardLines(
     return aOrder.compareTo(bOrder);
   });
   return lines;
+}
+
+/// Detect workflow redirect_button aimed at native Indent Creation.
+bool isCreateIndentRedirectAction(Map<String, dynamic>? action) {
+  if (action == null) return false;
+
+  for (final key in const [
+    'redirect_page',
+    'native_screen',
+    'wf_native_screen',
+    'data-wf-native-screen',
+    'data_wf_native_screen',
+  ]) {
+    final direct = action[key]?.toString().trim().toLowerCase();
+    if (direct == 'create_indent') return true;
+
+    for (final configKey in const [
+      'config',
+      'action_config',
+      'task_action_config',
+      'settings',
+    ]) {
+      final config = action[configKey];
+      if (config is Map) {
+        final nested = config[key]?.toString().trim().toLowerCase();
+        if (nested == 'create_indent') return true;
+      }
+    }
+  }
+
+  final redirectUrl = action['redirect_url']?.toString() ?? '';
+  final uri = Uri.tryParse(redirectUrl);
+  if (uri != null && isCreateIndentUri(uri)) return true;
+
+  return false;
+}
+
+bool isCreateIndentUri(Uri uri) {
+  final path = uri.path.toLowerCase();
+  if (path.contains('create_indent')) return true;
+  final hostPath = '${uri.host}${uri.path}'.toLowerCase();
+  return hostPath.contains('create_indent');
 }
 
 bool _workflowTextListIndentEnabled(Map<String, dynamic> action) {

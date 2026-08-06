@@ -2015,7 +2015,9 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
       case 'slot_selection':
         return Icons.event_available_outlined;
       case 'redirect_button':
-        return Icons.open_in_new_rounded;
+        return isCreateIndentRedirectAction(_primaryWorkflowAction(task))
+            ? Icons.request_quote_outlined
+            : Icons.open_in_new_rounded;
       case 'checklist':
       case 'user_checklist':
       case 'text_list':
@@ -2114,7 +2116,9 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
       case 'slot_selection':
         return 'Book appointment';
       case 'redirect_button':
-        return 'Open';
+        return isCreateIndentRedirectAction(_primaryWorkflowAction(task))
+            ? 'Create indent'
+            : 'Open';
       case 'view_prior_response':
       case 'yes_no_summary':
       case 'user_checklist_summary':
@@ -2145,7 +2149,9 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
       case 'slot_selection':
         return Icons.calendar_month_outlined;
       case 'redirect_button':
-        return Icons.open_in_new_rounded;
+        return isCreateIndentRedirectAction(_primaryWorkflowAction(task))
+            ? Icons.request_quote_outlined
+            : Icons.open_in_new_rounded;
       case 'view_prior_response':
       case 'yes_no_summary':
       case 'user_checklist_summary':
