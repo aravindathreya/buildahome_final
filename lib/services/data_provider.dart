@@ -44,6 +44,18 @@ class DataProvider {
   String? currentUserId;
   String? currentApiToken;
 
+  /// ERP project_id → sales_sop_id learned from get_tasks / project payloads.
+  final Map<String, String> _projectSalesSopByErpId = {};
+
+  /// Latest task rows kept briefly for chat SOP resolution fallbacks.
+  List<dynamic> _taskSalesSopHints = [];
+
+  /// context_id → {title, status} for ERP tasks / workflow runs (chat list).
+  final Map<String, Map<String, String>> erpTaskMetaById = {};
+  final Map<String, Map<String, String>> workflowRunMetaById = {};
+
+  List<String> get knownWorkflowRunIds => workflowRunMetaById.keys.toList();
+
   // Cached data for non-Client users (payments, gallery, schedule, notes, documents)
   Map<String, dynamic>? cachedPayments;
   List<dynamic>? cachedGallery;
@@ -576,13 +588,35 @@ class DataProvider {
     String? projectId,
     required String apiToken,
     bool useCache = true,
+    Map<String, dynamic>? projectHint,
+    Iterable<dynamic>? tasksHint,
   }) async {
     final prefs = await SharedPreferences.getInstance();
     final erpProjectId = projectId ?? prefs.getString('project_id');
 
+    // a) Explicit project object
+    final fromHint = _salesSopIdFromProjectMap(projectHint, erpProjectId);
+    if (fromHint != null) {
+      await _cacheSalesSopId(fromHint, erpProjectId);
+      print(
+        '[DataProvider] Resolved sales_sop_id=$fromHint from project object '
+        '(ERP project $erpProjectId)',
+      );
+      return fromHint;
+    }
+
     if (useCache) {
       final cachedSopId = prefs.getString('sales_sop_id');
       final cachedErpId = prefs.getString('sales_sop_erp_project_id');
+      final role = prefs.getString('role');
+      // Client: accept cached sales_sop_id even without ERP pairing.
+      if (role == 'Client' &&
+          cachedSopId != null &&
+          cachedSopId.isNotEmpty &&
+          _isValidSalesSopId(cachedSopId, null)) {
+        clientSalesSopId = cachedSopId;
+        return cachedSopId;
+      }
       if (cachedSopId != null &&
           cachedSopId.isNotEmpty &&
           cachedErpId == erpProjectId &&
@@ -597,6 +631,42 @@ class DataProvider {
       return clientSalesSopId;
     }
 
+    // a2) Selected / matching project in DataProvider.projects
+    final fromProjects = _salesSopIdFromProjectsList(erpProjectId);
+    if (fromProjects != null) {
+      await _cacheSalesSopId(fromProjects, erpProjectId);
+      print(
+        '[DataProvider] Resolved sales_sop_id=$fromProjects from projects list '
+        '(ERP project $erpProjectId)',
+      );
+      return fromProjects;
+    }
+
+    // b) Any loaded task for this project_id (get_tasks already returns sales_sop_id)
+    final fromTasks = _salesSopIdFromTasks(tasksHint, erpProjectId) ??
+        _salesSopIdFromTasks(_taskSalesSopHints, erpProjectId);
+    if (fromTasks != null) {
+      await _cacheSalesSopId(fromTasks, erpProjectId);
+      print(
+        '[DataProvider] Resolved sales_sop_id=$fromTasks from tasks '
+        '(ERP project $erpProjectId)',
+      );
+      return fromTasks;
+    }
+
+    // In-memory map populated by cacheSalesSopIdsFromTasks
+    if (erpProjectId != null &&
+        _projectSalesSopByErpId.containsKey(erpProjectId)) {
+      final mapped = _projectSalesSopByErpId[erpProjectId]!;
+      await _cacheSalesSopId(mapped, erpProjectId);
+      print(
+        '[DataProvider] Resolved sales_sop_id=$mapped from task cache map '
+        '(ERP project $erpProjectId)',
+      );
+      return mapped;
+    }
+
+    // c) Lookup via sales_sop details (converted_project_id / id)
     final sopContext = await _fetchSalesSopDetailsContext(
       projectId: erpProjectId,
       apiToken: apiToken,
@@ -604,12 +674,191 @@ class DataProvider {
     final salesSopId = _extractSalesSopIdFromContext(sopContext, erpProjectId);
     if (salesSopId != null) {
       await _cacheSalesSopId(salesSopId, erpProjectId);
+      print(
+        '[DataProvider] Resolved sales_sop_id=$salesSopId from SOP details '
+        '(ERP project $erpProjectId)',
+      );
       return salesSopId;
     }
 
     print(
       '[DataProvider] Could not resolve sales_sop_id for ERP project $erpProjectId',
     );
+    return null;
+  }
+
+  /// Cache sales_sop_id values found on get_tasks / task payloads.
+  Future<void> cacheSalesSopIdsFromTasks(Iterable<dynamic> tasks) async {
+    _taskSalesSopHints = List<dynamic>.from(tasks);
+    for (final task in tasks) {
+      if (task is! Map) continue;
+      final map = Map<String, dynamic>.from(task);
+      final projectId = _stringValue(map['project_id']);
+      final sopId = _stringValue(map['sales_sop_id']) ??
+          _stringValue(map['sop_id']) ??
+          _stringValue(map['sales_sop_project_id']);
+      if (projectId != null &&
+          sopId != null &&
+          _isValidSalesSopId(sopId, projectId)) {
+        _projectSalesSopByErpId[projectId] = sopId;
+      }
+
+      final title = _stringValue(map['note']) ??
+          _stringValue(map['title']) ??
+          _stringValue(map['task_title']) ??
+          'Task';
+      final status = (_stringValue(map['status']) ?? 'pending').toLowerCase();
+      final assignee = _stringValue(map['assigned_to_name']) ??
+          _stringValue(map['assignee_name']) ??
+          _stringValue(map['user_name']) ??
+          _stringValue(map['assigned_user_name']) ??
+          _displayAssignee(_stringValue(map['assigned_to']));
+      final assigneeRole = _stringValue(map['assigned_to_role']) ??
+          _stringValue(map['assigned_role']) ??
+          _stringValue(map['assignee_role']);
+      final isWorkflow = map['is_workflow_task'] == true ||
+          map['is_workflow_approval_task'] == true ||
+          _stringValue(map['category']) == 'workflow_task';
+
+      final runId = _stringValue(map['workflow_item_run_id']) ??
+          _stringValue(map['item_run_id']) ??
+          _stringValue(map['workflow_run_id']);
+      if (isWorkflow && runId != null) {
+        workflowRunMetaById[runId] = {
+          'title': title,
+          'status': status,
+          if (assignee != null) 'assignee': assignee,
+          if (assigneeRole != null) 'assignee_role': assigneeRole,
+        };
+      } else {
+        final erpId = _stringValue(map['erp_task_id']) ??
+            _stringValue(map['id']);
+        if (erpId != null && !erpId.startsWith('-')) {
+          final existing = erpTaskMetaById[erpId];
+          erpTaskMetaById[erpId] = {
+            'title': title,
+            'status': status,
+            // Prefer newly supplied assignee, else keep any previously cached.
+            'assignee': assignee ?? existing?['assignee'] ?? '',
+            'assignee_role':
+                assigneeRole ?? existing?['assignee_role'] ?? '',
+          };
+          // Drop empty keys so consumers can treat missing as unset.
+          erpTaskMetaById[erpId]!.removeWhere(
+            (key, value) =>
+                (key == 'assignee' || key == 'assignee_role') && value.isEmpty,
+          );
+        }
+      }
+    }
+
+    // If a project is currently selected, refresh its cache from tasks.
+    final prefs = await SharedPreferences.getInstance();
+    final currentProjectId = prefs.getString('project_id');
+    if (currentProjectId != null &&
+        _projectSalesSopByErpId.containsKey(currentProjectId)) {
+      await _cacheSalesSopId(
+        _projectSalesSopByErpId[currentProjectId]!,
+        currentProjectId,
+      );
+    }
+  }
+
+  /// Fetch all ERP tasks for [projectId] and merge title/status/assignee into
+  /// [erpTaskMetaById] so Chat V1 project-task cards can show Role · Name.
+  Future<void> enrichTaskMetaForProject(String projectId) async {
+    final trimmed = projectId.trim();
+    if (trimmed.isEmpty) return;
+    try {
+      final uri = Uri.parse('https://office.buildahome.in/API/get_tasks')
+          .replace(queryParameters: {'project_id': trimmed});
+      print('[DataProvider] Enriching chat task meta via $uri');
+      final response =
+          await ApiHttp.get(uri).timeout(const Duration(seconds: 20));
+      if (response.statusCode != 200) {
+        print(
+          '[DataProvider] get_tasks for project meta failed: '
+          '${response.statusCode}',
+        );
+        return;
+      }
+      final decoded = jsonDecode(response.body);
+      List<dynamic> tasks = const [];
+      if (decoded is Map && decoded['tasks'] is List) {
+        tasks = decoded['tasks'] as List;
+      } else if (decoded is List) {
+        tasks = decoded;
+      }
+      if (tasks.isEmpty) return;
+      await cacheSalesSopIdsFromTasks(tasks);
+      print(
+        '[DataProvider] Cached assignee meta for ${erpTaskMetaById.length} '
+        'ERP tasks (project $trimmed)',
+      );
+    } catch (e) {
+      print('[DataProvider] enrichTaskMetaForProject skipped: $e');
+    }
+  }
+
+  /// Prefer a real display name; ignore bare numeric user ids.
+  String? _displayAssignee(String? value) {
+    if (value == null || value.isEmpty) return null;
+    if (RegExp(r'^\d+$').hasMatch(value)) return null;
+    return value;
+  }
+
+  String? _salesSopIdFromProjectMap(
+    Map<String, dynamic>? project,
+    String? erpProjectId,
+  ) {
+    if (project == null) return null;
+    final sopId = _stringValue(project['sales_sop_id']) ??
+        _stringValue(project['sales_sop_project_id']) ??
+        _stringValue(project['sop_id']);
+    if (_isValidSalesSopId(sopId, erpProjectId)) return sopId;
+    return null;
+  }
+
+  String? _salesSopIdFromProjectsList(String? erpProjectId) {
+    if (erpProjectId == null || erpProjectId.isEmpty) {
+      // No selected project — use first project that has a sop id.
+      for (final p in projects) {
+        if (p is! Map) continue;
+        final map = Map<String, dynamic>.from(p);
+        final sop = _salesSopIdFromProjectMap(map, map['id']?.toString());
+        if (sop != null) return sop;
+      }
+      return null;
+    }
+    for (final p in projects) {
+      if (p is! Map) continue;
+      final map = Map<String, dynamic>.from(p);
+      final id = _stringValue(map['id']) ?? _stringValue(map['project_id']);
+      if (id != erpProjectId) continue;
+      return _salesSopIdFromProjectMap(map, erpProjectId);
+    }
+    return null;
+  }
+
+  String? _salesSopIdFromTasks(Iterable<dynamic>? tasks, String? erpProjectId) {
+    if (tasks == null) return null;
+    for (final task in tasks) {
+      if (task is! Map) continue;
+      final map = Map<String, dynamic>.from(task);
+      final taskProjectId = _stringValue(map['project_id']);
+      if (erpProjectId != null &&
+          erpProjectId.isNotEmpty &&
+          taskProjectId != null &&
+          taskProjectId != erpProjectId) {
+        continue;
+      }
+      final sopId = _stringValue(map['sales_sop_id']) ??
+          _stringValue(map['sop_id']) ??
+          _stringValue(map['sales_sop_project_id']);
+      if (_isValidSalesSopId(sopId, erpProjectId ?? taskProjectId)) {
+        return sopId;
+      }
+    }
     return null;
   }
 
@@ -637,6 +886,7 @@ class DataProvider {
     }
 
     if (salesSopId != null && _isValidSalesSopId(salesSopId, erpProjectId)) {
+      _projectSalesSopByErpId[erpProjectId] = salesSopId;
       await _cacheSalesSopId(salesSopId, erpProjectId);
       return;
     }
@@ -1314,6 +1564,10 @@ class DataProvider {
     projects = [];
     clientProjectId = null;
     clientSalesSopId = null;
+    _projectSalesSopByErpId.clear();
+    _taskSalesSopHints = [];
+    erpTaskMetaById.clear();
+    workflowRunMetaById.clear();
     _clearSalesSopIdCacheInMemory();
     clientProjectLocation = null;
     clientProjectCompletion = null;

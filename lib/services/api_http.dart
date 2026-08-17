@@ -105,6 +105,15 @@ class ApiHttp {
     return client.put(url, headers: headers, body: body, encoding: encoding);
   }
 
+  static Future<http.Response> patch(
+    Uri url, {
+    Map<String, String>? headers,
+    Object? body,
+    Encoding? encoding,
+  }) {
+    return client.patch(url, headers: headers, body: body, encoding: encoding);
+  }
+
   static Future<http.Response> delete(
     Uri url, {
     Map<String, String>? headers,

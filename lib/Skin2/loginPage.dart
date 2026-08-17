@@ -2,7 +2,6 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_spinkit/flutter_spinkit.dart';
@@ -12,6 +11,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 // Custom dart files
 import '../AdminDashboard.dart';
 import '../UserHome.dart';
+import '../chat_v1/chat_v1_api.dart';
 import '../services/data_provider.dart';
 import '../services/profile_picture_service.dart';
 
@@ -297,10 +297,8 @@ class LoginScreenNewState extends State<LoginScreenNew>
     try {
       final Map<String, dynamic> payload = {
         'phone_number': normalized,
+        'debugger': true,
       };
-      if (kDebugMode) {
-        payload['debugger'] = true;
-      }
 
       final response = await http
           .post(
@@ -424,6 +422,12 @@ class LoginScreenNewState extends State<LoginScreenNew>
       if (response.statusCode == 200 &&
           body != null &&
           (body['success'] == true || body['token'] != null)) {
+        // Persist ERP session cookie for Chat V1 (/api/v1/chat + Socket.IO).
+        try {
+          // ignore: avoid_dynamic_calls
+          await ChatV1Api.instance.captureLoginCookies(response);
+        } catch (_) {}
+
         final token = body['token']?.toString();
         final user = body['user'] is Map
             ? Map<String, dynamic>.from(body['user'] as Map)
@@ -445,6 +449,46 @@ class LoginScreenNewState extends State<LoginScreenNew>
           accessLevel: user['access_level']?.toString(),
           profilePicture: user['profile_picture']?.toString(),
         );
+
+        // Cache Client project / sales_sop context for Chat V1 (DOC + General).
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          final sopId = (user['sales_sop_id'] ??
+                  user['sop_id'] ??
+                  user['sales_sop_project_id'])
+              ?.toString()
+              .trim();
+          final projectId = (user['project_id'] ??
+                  user['converted_project_id'] ??
+                  user['erp_project_id'])
+              ?.toString()
+              .trim();
+          final clientName =
+              (user['client_name'] ?? user['project_name'] ?? user['name'])
+                  ?.toString()
+                  .trim();
+          if (sopId != null &&
+              sopId.isNotEmpty &&
+              sopId.toLowerCase() != 'null') {
+            await prefs.setString('sales_sop_id', sopId);
+            DataProvider().clientSalesSopId = sopId;
+          }
+          if (projectId != null &&
+              projectId.isNotEmpty &&
+              projectId.toLowerCase() != 'null') {
+            await prefs.setString('project_id', projectId);
+            if (sopId != null &&
+                sopId.isNotEmpty &&
+                sopId.toLowerCase() != 'null') {
+              await prefs.setString('sales_sop_erp_project_id', projectId);
+            }
+          }
+          if (role == 'Client' &&
+              clientName != null &&
+              clientName.isNotEmpty) {
+            await prefs.setString('client_name', clientName);
+          }
+        } catch (_) {}
 
         await DataProvider().initializeData(force: true);
 

@@ -30,6 +30,8 @@ import 'MyTasksScreen.dart';
 import 'Skin2/loginPage.dart';
 import 'NavMenu.dart';
 import 'NotesAndComments.dart';
+import 'chat_v1/chat_v1_app.dart';
+import 'ProjectStatusScreen.dart';
 import 'utilities/role_app_bar_color.dart';
 import 'widgets/dashboard_chrome.dart';
 import 'widgets/modern_task_card.dart';
@@ -615,6 +617,9 @@ class AdminHomeState extends State<AdminHome> {
       task['project_name'],
       task['can_update_workflow_task'],
       task['can_approve_workflow_task'],
+      task['can_complete_workflow_task'],
+      task['indent_reason_blocks_complete'],
+      task['indent_reason_block_message'],
       task['pending_manager_approval'],
       jsonEncode(task['workflow_task_actions'] ?? const []),
       jsonEncode(task['workflow_actions'] ?? const []),
@@ -697,6 +702,9 @@ class AdminHomeState extends State<AdminHome> {
           }
         }
         allTasks = taskMap.values.toList();
+
+        // Learn sales_sop_id from tasks (chat is keyed by SOP id, not ERP project_id).
+        await DataProvider().cacheSalesSopIdsFromTasks(allTasks);
 
         // API uses OR logic across filters, so keep only tasks assigned to user.
         allTasks = filterTasksForProjectAndAssignee(
@@ -1051,6 +1059,27 @@ class AdminHomeState extends State<AdminHome> {
         'route': () => NotesAndComments(),
       });
     }
+    // Chat V1 — Client always allowed (General + DOC approval).
+    if (currentUserRole == 'Client' ||
+        (rbac.canViewSync(currentUserRole, RBACService.tasksAndNotes) &&
+            currentUserRole != 'Site Engineer')) {
+      menuItems.add({
+        'title': 'Chat V1',
+        'icon': Icons.forum_outlined,
+        'route': () => ChatV1App.openQuick(tasksHint: _tasks),
+      });
+    }
+
+    // Project Status — pending tasks for selected sales_sop (after Chat V1).
+    if (currentUserRole == 'Client' ||
+        (rbac.canViewSync(currentUserRole, RBACService.tasksAndNotes) &&
+            currentUserRole != 'Site Engineer')) {
+      menuItems.add({
+        'title': 'Project Status',
+        'icon': Icons.flag_outlined,
+        'route': () => ProjectStatusScreen.openQuick(tasksHint: _tasks),
+      });
+    }
 
     // My Notifications
     menuItems.add({
@@ -1077,10 +1106,33 @@ class AdminHomeState extends State<AdminHome> {
     return menuItems;
   }
 
+  /// Keep Chat V1 + Project Status immediately after Chat in Quick Actions.
+  List<Map<String, dynamic>> _visibleQuickActions(
+      List<Map<String, dynamic>> items,
+      {int max = 8}) {
+    final visible = items.take(max).toList();
+    final chatPos = visible.indexWhere((e) => e['title'] == 'ChatBox');
+    final v1InVisible = visible.any((e) => e['title'] == 'Chat V1');
+    final v1Index = items.indexWhere((e) => e['title'] == 'Chat V1');
+    if (chatPos >= 0 && !v1InVisible && v1Index >= 0) {
+      visible.insert(chatPos + 1, items[v1Index]);
+    }
+    final statusInVisible = visible.any((e) => e['title'] == 'Project Status');
+    final statusIndex = items.indexWhere((e) => e['title'] == 'Project Status');
+    final v1Pos = visible.indexWhere((e) => e['title'] == 'Chat V1');
+    if (!statusInVisible && statusIndex >= 0) {
+      final insertAt = v1Pos >= 0
+          ? v1Pos + 1
+          : (chatPos >= 0 ? chatPos + 1 : visible.length);
+      visible.insert(insertAt.clamp(0, visible.length), items[statusIndex]);
+    }
+    return visible;
+  }
+
   Widget build(BuildContext context) {
     currentWidgetContext = context;
     final menuItems = getMenuItems();
-    final visibleActions = menuItems.take(8).toList();
+    final visibleActions = _visibleQuickActions(menuItems);
     final totalProjects = projects.length;
     final pendingCount = _tasks.where((task) {
       if (task is Map) {
@@ -1740,6 +1792,7 @@ class AdminHomeState extends State<AdminHome> {
         };
       case 'chatbox':
       case 'chat':
+      case 'chat v1':
         return {
           'bg': const Color(0xFFE0E7FF),
           'fg': const Color(0xFF4F46E5),
@@ -1771,6 +1824,10 @@ class AdminHomeState extends State<AdminHome> {
         return 'Tests';
       case 'ChatBox':
         return 'Chat';
+      case 'Chat V1':
+        return 'Chat V1';
+      case 'Project Status':
+        return 'Status';
       case 'My Notifications':
         return 'Alerts';
       default:
@@ -1798,6 +1855,10 @@ class AdminHomeState extends State<AdminHome> {
         return Icons.checklist_rtl_rounded;
       case 'ChatBox':
         return Icons.chat_bubble_outline_rounded;
+      case 'Chat V1':
+        return Icons.forum_outlined;
+      case 'Project Status':
+        return Icons.flag_outlined;
       case 'My Notifications':
         return Icons.notifications_none_rounded;
       default:
@@ -2610,7 +2671,10 @@ class AdminHomeState extends State<AdminHome> {
     final taskId = task['id']?.toString() ?? '';
     final projectName = task['project_name']?.toString() ?? '';
     final assignedToName = task['assigned_to_name']?.toString() ?? '';
-    final status = task['status']?.toString() ?? 'pending';
+    final delayGated = isWorkflowDelayGated(task);
+    final status = delayGated
+        ? 'pending'
+        : normalizeTaskStatusValue(task);
     final note = task['note']?.toString() ?? '';
     final createdAt = task['created_at']?.toString() ?? '';
     final title = note.trim().isNotEmpty
@@ -2633,6 +2697,7 @@ class AdminHomeState extends State<AdminHome> {
       assigneeName: assignedToName,
       dateLabel: dateLabel,
       status: status,
+      statusLabel: workflowStatusDisplayLabel(task),
       accentIndex: index,
       onTap: () {
         Navigator.push(

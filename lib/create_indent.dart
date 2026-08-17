@@ -67,12 +67,16 @@ class CreateIndentState extends State<CreateIndent> {
   var unit = 'Unit';
   var quantityTextController = new TextEditingController();
   var purposeTextController = new TextEditingController();
+  var reasonCommentTextController = new TextEditingController();
   var diffCostTextController = new TextEditingController(text: '0');
   var approvalTaken = false;
   var attachedFileName = '';
   var attachedFile;
   var projects = [];
   var materials = [];
+  List<dynamic> reasonTasks = [];
+  Map? selectedReasonTask;
+  bool isLoadingReasonTasks = false;
 
   // Upload progress tracking
   double uploadProgress = 0.0;
@@ -83,7 +87,7 @@ class CreateIndentState extends State<CreateIndent> {
   // PageView and step management
   late PageController _pageController;
   int _currentStep = 0;
-  final int _totalSteps = 6;
+  final int _totalSteps = 7;
 
   // Material units list
   final materialUnits = [
@@ -112,6 +116,7 @@ class CreateIndentState extends State<CreateIndent> {
     _pageController.dispose();
     quantityTextController.dispose();
     purposeTextController.dispose();
+    reasonCommentTextController.dispose();
     diffCostTextController.dispose();
     super.dispose();
   }
@@ -146,6 +151,9 @@ class CreateIndentState extends State<CreateIndent> {
       projects = DataProvider().projects;
       _applyInitialProjectSelection();
     });
+    if (projectId != null && projectId.toString().trim().isNotEmpty) {
+      loadReasonTasks(projectId.toString());
+    }
   }
 
   void _applyInitialProjectSelection() {
@@ -174,6 +182,79 @@ class CreateIndentState extends State<CreateIndent> {
       };
       projectId = id;
     }
+  }
+
+  Future<void> loadReasonTasks(String selectedProjectId) async {
+    if (selectedProjectId.trim().isEmpty) {
+      if (!mounted) return;
+      setState(() {
+        reasonTasks = [];
+        selectedReasonTask = null;
+        isLoadingReasonTasks = false;
+      });
+      return;
+    }
+
+    if (!mounted) return;
+    setState(() {
+      isLoadingReasonTasks = true;
+      reasonTasks = [];
+      selectedReasonTask = null;
+    });
+
+    try {
+      var url =
+          'https://office.buildahome.in/API/indent_reason_tasks?project_id=$selectedProjectId';
+      var response = await http.get(Uri.parse(url)).timeout(
+        Duration(seconds: 20),
+        onTimeout: () {
+          throw TimeoutException('Reason tasks request timeout');
+        },
+      );
+      if (!mounted) return;
+      if (response.statusCode == 200) {
+        var res = jsonDecode(response.body);
+        if (res is Map && res['message'] == 'success') {
+          setState(() {
+            reasonTasks = res['tasks'] is List ? res['tasks'] : [];
+            isLoadingReasonTasks = false;
+          });
+          return;
+        }
+      }
+      setState(() {
+        reasonTasks = [];
+        isLoadingReasonTasks = false;
+      });
+    } catch (e) {
+      print('[CreateIndent] Error loading reason tasks: $e');
+      if (!mounted) return;
+      setState(() {
+        reasonTasks = [];
+        isLoadingReasonTasks = false;
+      });
+    }
+  }
+
+  String _reasonTaskLabel(dynamic task) {
+    if (task is! Map) return task?.toString() ?? 'Unknown';
+    final name = task['name']?.toString() ?? 'Unknown';
+    final workflowName = task['workflow_name']?.toString() ?? '';
+    final sameNameCount = reasonTasks.where((t) {
+      if (t is! Map) return false;
+      return (t['name']?.toString() ?? '') == name;
+    }).length;
+    if (sameNameCount > 1 && workflowName.isNotEmpty) {
+      return '$name ($workflowName)';
+    }
+    return name;
+  }
+
+  void _clearReasonFields() {
+    selectedReasonTask = null;
+    reasonCommentTextController.text = '';
+    reasonTasks = [];
+    isLoadingReasonTasks = false;
   }
 
   void loadMaterials() async {
@@ -248,6 +329,7 @@ class CreateIndentState extends State<CreateIndent> {
   List<String> _getStepTitles() {
     return [
       'Select Project',
+      'Reason',
       'Select Material',
       'Quantity & Unit',
       'Details',
@@ -259,6 +341,7 @@ class CreateIndentState extends State<CreateIndent> {
   List<String> _getStepInstructions() {
     return [
       'Choose the project for this indent',
+      'Optionally select a reason task and comment',
       'Select the material you need',
       'Enter quantity and select unit',
       'Enter difference cost, approval status, and purpose',
@@ -389,20 +472,28 @@ class CreateIndentState extends State<CreateIndent> {
     );
   }
 
+  bool _isReasonStepFilled() {
+    return selectedReasonTask != null ||
+        reasonCommentTextController.text.trim().isNotEmpty;
+  }
+
   bool _isStepCompleted(int stepIndex) {
     switch (stepIndex) {
       case 0:
         return selectedProject != null;
       case 1:
-        return selectedMaterial != null && selectedMaterial.isNotEmpty;
+        // Optional: green only after filled, or after user continues past it
+        return _isReasonStepFilled() || _currentStep > 1;
       case 2:
-        return quantityTextController.text.trim().isNotEmpty && unit != 'Unit';
+        return selectedMaterial != null && selectedMaterial.isNotEmpty;
       case 3:
-        return purposeTextController.text.trim().isNotEmpty;
+        return quantityTextController.text.trim().isNotEmpty && unit != 'Unit';
       case 4:
-        // Attachment is optional, so always completed
-        return true;
+        return purposeTextController.text.trim().isNotEmpty;
       case 5:
+        // Optional: green only after attached, or after user continues past it
+        return attachedFileName.isNotEmpty || _currentStep > 5;
+      case 6:
         // Preview step is completed if all required steps are completed
         return selectedProject != null && 
                selectedMaterial != null &&
@@ -431,11 +522,12 @@ class CreateIndentState extends State<CreateIndent> {
                 },
             children: [
               _buildStep1Project(),
-              _buildStep2Material(),
-              _buildStep3QuantityUnit(),
-              _buildStep4Details(),
-              _buildStep5Attachment(),
-              _buildStep6Preview(),
+              _buildStep2Reason(),
+              _buildStep3Material(),
+              _buildStep4QuantityUnit(),
+              _buildStep5Details(),
+              _buildStep6Attachment(),
+              _buildStep7Preview(),
             ],
           ),
         ),
@@ -446,6 +538,11 @@ class CreateIndentState extends State<CreateIndent> {
   }
 
   Widget _buildNavigationButtons() {
+    final isReasonStep = _currentStep == 1;
+    final reasonIsEmpty = selectedReasonTask == null &&
+        reasonCommentTextController.text.trim().isEmpty;
+    final showSkip = isReasonStep && reasonIsEmpty;
+
     return Container(
       padding: EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -572,7 +669,7 @@ class CreateIndentState extends State<CreateIndent> {
                         ),
                       ] else ...[
                         Text(
-                          'Next',
+                          showSkip ? 'Skip' : 'Next',
                           style: TextStyle(
                             color: Colors.white,
                             fontSize: 16,
@@ -636,7 +733,7 @@ class CreateIndentState extends State<CreateIndent> {
         ),
       );
       _pageController.animateToPage(
-        1,
+        2,
         duration: Duration(milliseconds: 300),
         curve: Curves.easeInOut,
       );
@@ -658,7 +755,7 @@ class CreateIndentState extends State<CreateIndent> {
         ),
       );
       _pageController.animateToPage(
-        2,
+        3,
         duration: Duration(milliseconds: 300),
         curve: Curves.easeInOut,
       );
@@ -697,7 +794,7 @@ class CreateIndentState extends State<CreateIndent> {
         ),
       );
       _pageController.animateToPage(
-        2,
+        3,
         duration: Duration(milliseconds: 300),
         curve: Curves.easeInOut,
       );
@@ -736,7 +833,7 @@ class CreateIndentState extends State<CreateIndent> {
         ),
       );
       _pageController.animateToPage(
-        3,
+        4,
         duration: Duration(milliseconds: 300),
         curve: Curves.easeInOut,
       );
@@ -758,17 +855,26 @@ class CreateIndentState extends State<CreateIndent> {
             DateTime now = DateTime.now();
             String formattedDate = DateFormat('EEEE d MMMM H:m').format(now);
             var url = 'https://office.buildahome.in/API/create_indent';
-            var response = await http.post(Uri.parse(url), body: {
+            final body = <String, String>{
         'project_id': projectId.toString(),
-        'material': selectedMaterial,
+        'material': selectedMaterial.toString(),
               'quantity': quantityTextController.text.trim(),
-              'unit': unit,
+              'unit': unit.toString(),
               'differenceCost': diffCostTextController.text.trim(),
               'purpose': purposeTextController.text.trim(),
               'approvalTaken': approvalTaken ? '1' : '0',
-              'user_id': user_id,
+              'user_id': user_id?.toString() ?? '',
               'timestamp': formattedDate,
-      }).timeout(
+      };
+      final reasonTaskId = selectedReasonTask?['id']?.toString().trim() ?? '';
+      final reasonComment = reasonCommentTextController.text.trim();
+      if (reasonTaskId.isNotEmpty) {
+        body['reason_task_id'] = reasonTaskId;
+      }
+      if (reasonComment.isNotEmpty) {
+        body['reason_comment'] = reasonComment;
+      }
+            var response = await http.post(Uri.parse(url), body: body).timeout(
         Duration(seconds: 30),
         onTimeout: () {
           throw TimeoutException('Request timeout');
@@ -845,6 +951,7 @@ class CreateIndentState extends State<CreateIndent> {
               approvalTaken = false;
               attachedFileName = '';
         attachedFile = null;
+        _clearReasonFields();
         _currentStep = 0;
       });
       
@@ -978,7 +1085,10 @@ class CreateIndentState extends State<CreateIndent> {
                 setState(() {
                   selectedProject = result;
                   projectId = result['id'].toString();
+                  selectedReasonTask = null;
+                  reasonCommentTextController.text = '';
                 });
+                loadReasonTasks(projectId.toString());
               }
             },
             borderRadius: BorderRadius.circular(16),
@@ -1034,7 +1144,203 @@ class CreateIndentState extends State<CreateIndent> {
     );
   }
 
-  Widget _buildStep2Material() {
+  Widget _buildStep2Reason() {
+    final hasTasks = reasonTasks.isNotEmpty;
+
+    return SingleChildScrollView(
+      padding: EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          _buildSectionHeader(
+            'Reason for indent',
+            Icons.fact_check_outlined,
+            isCompleted: _isReasonStepFilled() || _currentStep > 1,
+            instruction:
+                'Optionally select a workflow task and add a comment. You can skip this step',
+          ),
+          SizedBox(height: 20),
+          if (isLoadingReasonTasks)
+            Container(
+              padding: EdgeInsets.all(18),
+              decoration: BoxDecoration(
+                color: AppTheme.getBackgroundSecondary(context),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Row(
+                children: [
+                  SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                  SizedBox(width: 12),
+                  Text(
+                    'Loading reason tasks...',
+                    style: TextStyle(
+                      color: AppTheme.getTextSecondary(context),
+                      fontSize: 14,
+                    ),
+                  ),
+                ],
+              ),
+            )
+          else if (hasTasks) ...[
+            Text(
+              'Reason task (optional)',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: AppTheme.getTextSecondary(context),
+              ),
+            ),
+            SizedBox(height: 8),
+            InkWell(
+              onTap: () async {
+                final result = await SearchableSelect.show(
+                  context: context,
+                  title: 'Select Reason Task',
+                  items: reasonTasks,
+                  itemLabel: _reasonTaskLabel,
+                  selectedItem: selectedReasonTask,
+                );
+                if (result != null) {
+                  setState(() {
+                    selectedReasonTask = result is Map ? result : null;
+                  });
+                }
+              },
+              borderRadius: BorderRadius.circular(16),
+              child: Container(
+                padding: EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      AppTheme.getBackgroundSecondary(context),
+                      AppTheme.getBackgroundPrimaryLight(context),
+                    ],
+                  ),
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.2),
+                      blurRadius: 8,
+                      offset: Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        selectedReasonTask != null
+                            ? _reasonTaskLabel(selectedReasonTask)
+                            : 'Select a reason task',
+                        style: TextStyle(
+                          color: selectedReasonTask != null
+                              ? AppTheme.getTextPrimary(context)
+                              : AppTheme.getTextSecondary(context),
+                          fontSize: 16,
+                          fontWeight: selectedReasonTask != null
+                              ? FontWeight.w500
+                              : FontWeight.normal,
+                        ),
+                      ),
+                    ),
+                    if (selectedReasonTask != null)
+                      IconButton(
+                        icon: Icon(Icons.close, color: Colors.red, size: 20),
+                        onPressed: () {
+                          setState(() {
+                            selectedReasonTask = null;
+                          });
+                        },
+                      ),
+                    Icon(
+                      Icons.arrow_forward_ios,
+                      color: AppTheme.getPrimaryColor(context),
+                      size: 18,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ] else
+            Container(
+              width: double.infinity,
+              padding: EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: AppTheme.getBackgroundSecondary(context),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: AppTheme.getTextSecondary(context).withOpacity(0.2),
+                ),
+              ),
+              child: Text(
+                'No reason tasks available for this project. You can continue without selecting one.',
+                style: TextStyle(
+                  color: AppTheme.getTextSecondary(context),
+                  fontSize: 14,
+                  height: 1.4,
+                ),
+              ),
+            ),
+          SizedBox(height: 20),
+          Text(
+            'Comment (optional)',
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: AppTheme.getTextSecondary(context),
+            ),
+          ),
+          SizedBox(height: 8),
+          Container(
+            padding: EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  AppTheme.getBackgroundSecondary(context),
+                  AppTheme.getBackgroundPrimaryLight(context),
+                ],
+              ),
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.2),
+                  blurRadius: 8,
+                  offset: Offset(0, 4),
+                ),
+              ],
+            ),
+            child: TextFormField(
+              controller: reasonCommentTextController,
+              maxLines: 4,
+              style: TextStyle(
+                fontSize: 16,
+                color: AppTheme.getTextPrimary(context),
+              ),
+              onChanged: (value) {
+                setState(() {});
+              },
+              decoration: InputDecoration(
+                hintText: 'Add an optional comment',
+                hintStyle: TextStyle(color: AppTheme.getTextSecondary(context)),
+                border: InputBorder.none,
+                contentPadding: EdgeInsets.symmetric(horizontal: 0, vertical: 0),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStep3Material() {
     return SingleChildScrollView(
       padding: EdgeInsets.all(20),
       child: Column(
@@ -1114,7 +1420,7 @@ class CreateIndentState extends State<CreateIndent> {
     );
   }
 
-  Widget _buildStep3QuantityUnit() {
+  Widget _buildStep4QuantityUnit() {
     return SingleChildScrollView(
       padding: EdgeInsets.all(20),
       child: Column(
@@ -1252,7 +1558,7 @@ class CreateIndentState extends State<CreateIndent> {
     );
   }
 
-  Widget _buildStep4Details() {
+  Widget _buildStep5Details() {
     return SingleChildScrollView(
       padding: EdgeInsets.all(20),
       child: Column(
@@ -1395,7 +1701,7 @@ class CreateIndentState extends State<CreateIndent> {
     );
   }
 
-  Widget _buildStep5Attachment() {
+  Widget _buildStep6Attachment() {
     return SingleChildScrollView(
       padding: EdgeInsets.all(20),
       child: Column(
@@ -1404,7 +1710,7 @@ class CreateIndentState extends State<CreateIndent> {
           _buildSectionHeader(
             'Attachment',
             Icons.attach_file,
-            isCompleted: true,
+            isCompleted: attachedFileName.isNotEmpty || _currentStep > 5,
             instruction: 'Add an attachment file (optional). This step can be skipped',
           ),
           SizedBox(height: 20),
@@ -1479,7 +1785,7 @@ class CreateIndentState extends State<CreateIndent> {
     );
   }
 
-  Widget _buildStep6Preview() {
+  Widget _buildStep7Preview() {
     return SingleChildScrollView(
       padding: EdgeInsets.all(20),
       child: Column(
@@ -1501,6 +1807,24 @@ class CreateIndentState extends State<CreateIndent> {
                 ? (selectedProject['name'] ?? 'Unknown')
                 : 'Not selected',
             isComplete: selectedProject != null,
+          ),
+          SizedBox(height: 16),
+
+          // Reason Preview
+          _buildPreviewCard(
+            icon: Icons.fact_check_outlined,
+            title: 'Reason for indent',
+            content: [
+              selectedReasonTask != null
+                  ? 'Task: ${_reasonTaskLabel(selectedReasonTask)}'
+                  : 'Task: Not selected',
+              reasonCommentTextController.text.trim().isNotEmpty
+                  ? 'Comment: ${reasonCommentTextController.text.trim()}'
+                  : 'Comment: None',
+            ].join('\n'),
+            isComplete: selectedReasonTask != null ||
+                reasonCommentTextController.text.trim().isNotEmpty,
+            isTextContent: true,
           ),
           SizedBox(height: 16),
           

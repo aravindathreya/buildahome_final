@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../Skin2/loginPage.dart';
 import '../app_navigator.dart';
+import '../chat_v1/chat_v1_socket.dart';
 import 'data_provider.dart';
 
 /// Handles single-device session invalidation.
@@ -177,6 +178,7 @@ class SessionManager {
     _isLoggingOut = true;
 
     try {
+      ChatV1Socket.instance.disconnect();
       DataProvider().clearData();
 
       try {

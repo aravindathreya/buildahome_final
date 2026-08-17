@@ -14,6 +14,8 @@ import 'Scheduler.dart';
 import 'Gallery.dart' hide TimelineGallery;
 import 'TimelineGallery.dart';
 import 'NotesAndComments.dart';
+import 'chat_v1/chat_v1_app.dart';
+import 'ProjectStatusScreen.dart';
 import 'checklist_categories.dart';
 import 'services/api_http.dart';
 import 'services/data_provider.dart';
@@ -1406,7 +1408,9 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
       projectName: task['project_name']?.toString(),
       assigneeName: assigneeText.isEmpty ? null : assigneeText,
       dateLabel: dateText,
-      status: normalizeTaskStatusValue(task),
+      status: isWorkflowDelayGated(task)
+          ? 'pending'
+          : normalizeTaskStatusValue(task),
       statusLabel: workflowStatusDisplayLabel(task),
       accentIndex: index,
       onTap: () => _openTaskDetails(task),
@@ -2516,6 +2520,25 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
         'route': () => NotesAndComments(),
       });
     }
+    // Chat V1 — Client always allowed (General channel + DOC approve).
+    if (_currentRole == 'Client' ||
+        rbac.canViewSync(_currentRole, RBACService.tasksAndNotes)) {
+      menuItems.add({
+        'title': 'Chat V1',
+        'icon': Icons.forum_outlined,
+        'route': () => ChatV1App.openQuick(),
+      });
+    }
+
+    // Project Status — after Chat V1
+    if (_currentRole == 'Client' ||
+        rbac.canViewSync(_currentRole, RBACService.tasksAndNotes)) {
+      menuItems.add({
+        'title': 'Project Status',
+        'icon': Icons.flag_outlined,
+        'route': () => ProjectStatusScreen.openQuick(),
+      });
+    }
 
     // Checklist - check RBAC
     if (rbac.canViewSync(_currentRole, RBACService.checklist)) {
@@ -2572,9 +2595,32 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
     return menuItems;
   }
 
+  /// Keep Chat V1 + Project Status immediately after Chat in Quick Actions.
+  List<Map<String, dynamic>> _visibleQuickActions(
+      List<Map<String, dynamic>> items,
+      {int max = 8}) {
+    final visible = items.take(max).toList();
+    final chatPos = visible.indexWhere((e) => e['title'] == 'ChatBox');
+    final v1InVisible = visible.any((e) => e['title'] == 'Chat V1');
+    final v1Index = items.indexWhere((e) => e['title'] == 'Chat V1');
+    if (chatPos >= 0 && !v1InVisible && v1Index >= 0) {
+      visible.insert(chatPos + 1, items[v1Index]);
+    }
+    final statusInVisible = visible.any((e) => e['title'] == 'Project Status');
+    final statusIndex = items.indexWhere((e) => e['title'] == 'Project Status');
+    final v1Pos = visible.indexWhere((e) => e['title'] == 'Chat V1');
+    if (!statusInVisible && statusIndex >= 0) {
+      final insertAt = v1Pos >= 0
+          ? v1Pos + 1
+          : (chatPos >= 0 ? chatPos + 1 : visible.length);
+      visible.insert(insertAt.clamp(0, visible.length), items[statusIndex]);
+    }
+    return visible;
+  }
+
   Widget build(BuildContext context) {
     final menuItems = _orderedMenuItems(getMenuItems());
-    final visibleActions = menuItems.take(8).toList();
+    final visibleActions = _visibleQuickActions(menuItems);
 
     final dashboardContent = Container(
       color: Colors.white,
@@ -3205,6 +3251,7 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
         };
       case 'chatbox':
       case 'chat':
+      case 'chat v1':
         return {
           'bg': const Color(0xFFE0E7FF),
           'fg': const Color(0xFF4F46E5),
@@ -3252,6 +3299,10 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
         return 'Schedule';
       case 'ChatBox':
         return 'Chat';
+      case 'Chat V1':
+        return 'Chat V1';
+      case 'Project Status':
+        return 'Status';
       case 'Site Visit Reports':
         return 'Site Visits';
       case 'Timeline Gallery':
@@ -3283,6 +3334,10 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
         return Icons.description_outlined;
       case 'ChatBox':
         return Icons.chat_bubble_outline_rounded;
+      case 'Chat V1':
+        return Icons.forum_outlined;
+      case 'Project Status':
+        return Icons.flag_outlined;
       case 'Checklist':
         return Icons.checklist_rtl_rounded;
       case 'Virtual Tour':
@@ -3304,6 +3359,8 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
       'Scheduler',
       'Documents',
       'ChatBox',
+      'Chat V1',
+      'Project Status',
       'Checklist',
     ];
     final byTitle = <String, Map<String, dynamic>>{};

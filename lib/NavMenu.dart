@@ -13,6 +13,9 @@ import 'Gallery.dart';
 import 'InspectionRequest.dart';
 import 'MyTasksScreen.dart';
 import 'NotesAndComments.dart';
+import 'chat_v1/chat_v1_app.dart';
+import 'chat_v1/chat_v1_socket.dart';
+import 'ProjectStatusScreen.dart';
 import 'Payments.dart';
 import 'ProjectTimelineScreen.dart';
 import 'RequestDrawing.dart';
@@ -151,6 +154,7 @@ class NavMenuItem extends StatelessWidget {
   const NavMenuItem(this.entry, {Key? key}) : super(key: key);
 
   Future<void> _logout() async {
+    ChatV1Socket.instance.disconnect();
     DataProvider().clearData();
     await ClientPortalService().clearSession();
     await NotificationService.instance.clear();
@@ -608,14 +612,30 @@ class NavMenuWidgetState extends State<NavMenuWidget> {
       sections.add(_NavSection('Operations', opsEntries));
     }
 
-    // Collaboration
+    // Collaboration — Chat V1 must allow Client (General + DOC approve).
     final collabEntries = <_NavEntry>[];
-    if (rbac.canViewSync(currentRole, RBACService.tasksAndNotes) &&
-        currentRole != 'Site Engineer') {
+    final canChatBox = rbac.canViewSync(currentRole, RBACService.tasksAndNotes) &&
+        currentRole != 'Site Engineer';
+    final canChatV1 = currentRole == 'Client' ||
+        (rbac.canViewSync(currentRole, RBACService.tasksAndNotes) &&
+            currentRole != 'Site Engineer');
+    if (canChatBox) {
       collabEntries.add(_NavEntry(
         title: 'ChatBox',
         icon: Icons.chat_rounded,
         route: () => NotesAndComments(),
+      ));
+    }
+    if (canChatV1) {
+      collabEntries.add(_NavEntry(
+        title: 'Chat V1',
+        icon: Icons.forum_rounded,
+        route: () => ChatV1App.openQuick(),
+      ));
+      collabEntries.add(_NavEntry(
+        title: 'Project Status',
+        icon: Icons.flag_rounded,
+        route: () => ProjectStatusScreen.openQuick(),
       ));
     }
     if (collabEntries.isNotEmpty) {

@@ -44,23 +44,42 @@ const Set<String> kCompletedTaskStatuses = {
 };
 
 String normalizeTaskStatusValue(Map task) {
+  // Delayed tasks must never surface as ready/open for UI or filters.
+  if (isWorkflowDelayGated(task)) return 'pending';
+
   final isWorkflow = task['is_workflow_task'] == true ||
       task['workflow_item_run_id'] != null;
   if (isWorkflow) {
     final workflowStatus =
         task['workflow_status']?.toString().trim().toLowerCase();
     if (workflowStatus != null && workflowStatus.isNotEmpty) {
-      return workflowStatus.replaceAll(' ', '_');
+      final normalized = workflowStatus.replaceAll(' ', '_');
+      // Product mapping: Ready displays/behaves as Pending in My Tasks.
+      if (normalized == 'ready') return 'pending';
+      return normalized;
     }
   }
 
-  return (task['status']?.toString().trim().toLowerCase() ?? 'pending')
+  final status = (task['status']?.toString().trim().toLowerCase() ?? 'pending')
       .replaceAll(' ', '_');
+  if (status == 'ready') return 'pending';
+  return status;
 }
 
 String workflowStatusDisplayLabel(Map task) {
+  // While delay-gated, always Scheduled (API sends workflow_status_label).
+  if (isWorkflowDelayGated(task)) {
+    final delayedLabel = task['workflow_status_label']?.toString().trim();
+    if (delayedLabel != null && delayedLabel.isNotEmpty) return delayedLabel;
+    return 'Scheduled';
+  }
+
   final apiLabel = task['workflow_status_label']?.toString().trim();
-  if (apiLabel != null && apiLabel.isNotEmpty) return apiLabel;
+  if (apiLabel != null && apiLabel.isNotEmpty) {
+    // Never show "Ready" — map to Pending.
+    if (apiLabel.toLowerCase() == 'ready') return 'Pending';
+    return apiLabel;
+  }
 
   switch (normalizeTaskStatusValue(task)) {
     case 'in_progress':
@@ -71,13 +90,19 @@ String workflowStatusDisplayLabel(Map task) {
       return 'Completed';
     case 'rejected':
       return 'Rejected';
-    case 'ready':
-      return 'Ready';
     case 'scheduled':
       return 'Scheduled';
+    case 'ready':
+    case 'pending':
+    case 'not_started':
+      return 'Pending';
     default:
       final status = task['status']?.toString().trim();
-      if (status != null && status.isNotEmpty) return status;
+      if (status != null &&
+          status.isNotEmpty &&
+          status.toLowerCase() != 'ready') {
+        return status;
+      }
       return 'Pending';
   }
 }
@@ -99,7 +124,16 @@ bool _isAssigneeInteractiveWorkflowAction(String type) {
 }
 
 Map<String, dynamic>? workflowDelayGate(Map task) {
-  final gate = task['workflow_delay_gate'];
+  dynamic gate = task['workflow_delay_gate'] ??
+      task['workflowDelayGate'] ??
+      task['delay_gate'];
+  if (gate is String && gate.trim().isNotEmpty) {
+    try {
+      gate = jsonDecode(gate);
+    } catch (_) {
+      return null;
+    }
+  }
   if (gate is Map) return Map<String, dynamic>.from(gate);
   return null;
 }
@@ -109,7 +143,8 @@ DateTime? parseWorkflowAvailableAt(dynamic value) {
   final raw = value.toString().trim();
   if (raw.isEmpty) return null;
   try {
-    return DateTime.parse(raw).toUtc();
+    final parsed = DateTime.parse(raw);
+    return parsed.isUtc ? parsed : parsed.toUtc();
   } catch (_) {
     return null;
   }
@@ -128,56 +163,200 @@ int workflowDelayRemainingSeconds(Map<String, dynamic>? gate) {
 
   final fromApi = gate['seconds_remaining'];
   if (fromApi is num) return fromApi.floor().clamp(0, 999999999);
+  final asInt = int.tryParse(fromApi?.toString() ?? '');
+  if (asInt != null) return asInt.clamp(0, 999999999);
   return 0;
 }
 
 String formatWorkflowCountdown(int totalSeconds) {
-  if (totalSeconds <= 0) return '0d 0h 0m';
+  if (totalSeconds <= 0) return 'Available now';
   final days = totalSeconds ~/ 86400;
   final hours = (totalSeconds % 86400) ~/ 3600;
   final minutes = (totalSeconds % 3600) ~/ 60;
-  return '${days}d ${hours}h ${minutes}m';
+  final seconds = totalSeconds % 60;
+  if (days > 0) return '${days}d ${hours}h';
+  if (hours > 0) return '${hours}h ${minutes}m';
+  if (minutes > 0) return '${minutes}m';
+  return '${seconds}s';
 }
 
+List<Map<String, dynamic>> workflowActionsFromTask(Map task) {
+  final fromActions = _mapListFlexible(task['workflow_actions']);
+  if (fromActions.isNotEmpty) return fromActions;
+  return _mapListFlexible(task['workflow_task_actions']);
+}
+
+Map<String, dynamic>? findDelayTimerAction(List<Map<String, dynamic>> actions) {
+  for (final action in actions) {
+    if (action['type']?.toString() == 'delay_timer') {
+      return action;
+    }
+  }
+  return null;
+}
+
+bool _looksLikeDelayBlockedMessage(String? message) {
+  final msg = (message ?? '').trim().toLowerCase();
+  if (msg.isEmpty) return false;
+  return msg.contains('unlock') ||
+      msg.contains('scheduled') ||
+      msg.contains('delay') ||
+      msg.contains('later') ||
+      msg.contains('cannot be worked on') ||
+      msg.contains('waiting to start');
+}
+
+/// Spec: `workflow_delay_gate.is_delay_gated === true` while unlock time remains.
+/// Once available_at / seconds_remaining are past, treat as unlocked locally
+/// (timer disappears) and refresh will confirm with the API.
 bool isWorkflowDelayGated(Map task) {
   final gate = workflowDelayGate(task);
-  if (gate == null) return false;
-  if (gate['is_delay_gated'] == true) return true;
-
-  final availableAt = parseWorkflowAvailableAt(
-    gate['available_at_iso'] ?? gate['available_at'],
+  final delayTimer = findDelayTimerAction(workflowActionsFromTask(task));
+  final gateData = resolveWorkflowDelayGateData(gate: gate, action: delayTimer);
+  final remaining = workflowDelayRemainingSeconds(
+    gateData.isNotEmpty ? gateData : gate,
   );
-  if (availableAt != null && availableAt.isAfter(DateTime.now().toUtc())) {
-    return true;
+  final hasUnlockTime = _gateHasUnlockTime(gate) || _gateHasUnlockTime(gateData) ||
+      (delayTimer != null &&
+          (delayTimer['available_at'] != null ||
+              delayTimer['available_at_iso'] != null ||
+              delayTimer['seconds_remaining'] != null));
+
+  // Explicit ungated from API.
+  if (gate != null &&
+      !_truthyValue(gate['is_delay_gated'] ?? gate['isDelayGated']) &&
+      gate.containsKey('is_delay_gated')) {
+    return false;
   }
 
-  return workflowDelayRemainingSeconds(gate) > 0;
+  final flagged = gate != null &&
+      _truthyValue(gate['is_delay_gated'] ?? gate['isDelayGated']);
+  final hasTimerAction = delayTimer != null;
+
+  if (!flagged && !hasTimerAction) return false;
+
+  // Unlock time from API has passed → no longer gated (hide timer + unmute).
+  if (hasUnlockTime && remaining <= 0) return false;
+
+  return flagged || hasTimerAction;
+}
+
+bool _gateHasUnlockTime(Map<String, dynamic>? gate) {
+  if (gate == null) return false;
+  final at = gate['available_at_iso'] ?? gate['available_at'];
+  if (at != null && at.toString().trim().isNotEmpty) return true;
+  return gate['seconds_remaining'] != null;
 }
 
 bool canUpdateWorkflowTask(Map task) {
   if (isWorkflowDelayGated(task)) return false;
-  if (task['can_update_workflow_task'] == false) return false;
-  if (task['can_update'] == false) return false;
+  if (_falseyValue(task['can_update_workflow_task'])) return false;
+  if (_falseyValue(task['can_update'])) return false;
   return true;
+}
+
+/// True when linked indent reason blocks completing this workflow task.
+bool isIndentReasonBlockingComplete(Map task) {
+  if (_truthyValue(task['indent_reason_blocks_complete'])) return true;
+  // Once linked indents reach Approved POs, API sets this true again.
+  if (task.containsKey('can_complete_workflow_task') &&
+      _falseyValue(task['can_complete_workflow_task'])) {
+    return true;
+  }
+  return false;
+}
+
+bool canCompleteWorkflowTask(Map task) {
+  return !isIndentReasonBlockingComplete(task);
+}
+
+String indentReasonBlockMessage(Map task) {
+  final msg = task['indent_reason_block_message']?.toString().trim() ?? '';
+  if (msg.isNotEmpty) return msg;
+  return 'Complete is blocked until linked indent purchase orders are approved.';
+}
+
+bool isWorkflowCompleteAction(Map action) {
+  final type = action['type']?.toString() ?? '';
+  if (type == 'complete_button') return true;
+  final endpoint = (action['submit_endpoint'] ??
+          action['endpoint'] ??
+          action['url'] ??
+          '')
+      .toString()
+      .toLowerCase();
+  return endpoint.contains('/complete');
+}
+
+bool _looksLikeIndentReasonBlockMessage(String? message) {
+  final msg = (message ?? '').trim().toLowerCase();
+  if (msg.isEmpty) return false;
+  return msg.contains('indent') ||
+      msg.contains('purchase order') ||
+      msg.contains('approved po') ||
+      msg.contains('reason for indent') ||
+      msg.contains('cannot be completed') ||
+      msg.contains('cannot complete');
+}
+
+String workflowDelayBlockedMessage(Map task, {Map<String, dynamic>? action}) {
+  final actionMsg = action?['blocked_message']?.toString().trim();
+  if (actionMsg != null && actionMsg.isNotEmpty) return actionMsg;
+
+  if (isIndentReasonBlockingComplete(task) &&
+      (action == null || isWorkflowCompleteAction(action))) {
+    return indentReasonBlockMessage(task);
+  }
+
+  final gate = workflowDelayGate(task);
+  final gateMsg = gate?['message']?.toString().trim();
+  if (gateMsg != null && gateMsg.isNotEmpty) return gateMsg;
+
+  final unlocksAt = gate?['available_at_display']?.toString().trim();
+  if (unlocksAt != null && unlocksAt.isNotEmpty) {
+    return 'This task is scheduled to start later. Opens at $unlocksAt.';
+  }
+  return 'This task is scheduled to start later and cannot be worked on yet.';
 }
 
 Map<String, dynamic> resolveWorkflowDelayGateData({
   Map<String, dynamic>? gate,
   Map<String, dynamic>? action,
 }) {
-  if (gate != null && gate.isNotEmpty) return gate;
-  if (action == null) return const {};
+  Map<String, dynamic> fromAction(Map<String, dynamic> action) {
+    return {
+      'is_delay_gated': true,
+      'available_at': action['available_at'],
+      'available_at_iso':
+          action['available_at_iso'] ?? action['available_at'],
+      'available_at_display': action['available_at_display'],
+      'seconds_remaining': action['seconds_remaining'],
+      'countdown_label': action['countdown_label'] ?? action['label'],
+      'message': action['message'],
+      'heading': action['heading'],
+      'blocked_message': action['blocked_message'],
+    };
+  }
 
-  return {
-    'is_delay_gated': true,
-    'available_at': action['available_at'],
-    'available_at_iso': action['available_at'],
-    'available_at_display': action['available_at_display'],
-    'seconds_remaining': action['seconds_remaining'],
-    'countdown_label': action['label'],
-    'message': action['message'],
-    'heading': action['heading'],
-  };
+  if (gate != null && gate.isNotEmpty) {
+    final merged = Map<String, dynamic>.from(gate);
+    if (action != null) {
+      final fallback = fromAction(action);
+      for (final entry in fallback.entries) {
+        final current = merged[entry.key];
+        final empty = current == null || current.toString().trim().isEmpty;
+        if (empty &&
+            entry.value != null &&
+            entry.value.toString().trim().isNotEmpty) {
+          merged[entry.key] = entry.value;
+        }
+      }
+    }
+    return merged;
+  }
+
+  if (action == null) return const {};
+  return fromAction(action);
 }
 
 List<Map<String, dynamic>> filterVisibleWorkflowActions(
@@ -192,41 +371,51 @@ List<Map<String, dynamic>> filterVisibleWorkflowActions(
   final isWaitingApproval = status == 'waiting_approval' ||
       task['pending_manager_approval'] == true;
   final isCompleted = kCompletedTaskStatuses.contains(status);
+  final indentBlocksComplete = isIndentReasonBlockingComplete(task);
 
+  List<Map<String, dynamic>> result;
   if (delayGated) {
-    return actions
+    // Timer is shown as the dedicated banner; keep real actions visible but muted.
+    // delay_timer is display-only — never treat it as a submitable action button.
+    result = actions
         .where((action) => action['type']?.toString() != 'delay_timer')
         .toList();
-  }
-
-  if (isWaitingApproval) {
-    return actions
+  } else if (isWaitingApproval) {
+    result = actions
         .where(
           (action) => !_isAssigneeInteractiveWorkflowAction(
             action['type']?.toString() ?? '',
           ),
         )
         .toList();
-  }
-
-  if (isCompleted || !canUpdate) {
-    return actions
+  } else if (isCompleted || !canUpdate) {
+    result = actions
         .where(
           (action) => !_isAssigneeInteractiveWorkflowAction(
             action['type']?.toString() ?? '',
           ),
         )
         .toList();
+  } else {
+    result = actions;
   }
 
-  return actions;
+  // Hide Complete while linked indent reason blocks completion.
+  if (indentBlocksComplete) {
+    result = result.where((action) => !isWorkflowCompleteAction(action)).toList();
+  }
+
+  return result;
 }
 
 Future<Map<String, dynamic>> mergeWorkflowTaskDetail(
   Map<String, dynamic> task,
 ) async {
-  final runId = task['workflow_item_run_id']?.toString().trim() ?? '';
-  if (runId.isEmpty || task['is_workflow_task'] != true) return task;
+  if (task['is_workflow_task'] != true) return task;
+
+  // get_tasks often omits workflow_item_run_id and only sends id: -<runId>.
+  final runId = _resolvedWorkflowItemRunIdFromTask(task);
+  if (runId.isEmpty) return task;
 
   try {
     final prefs = await SharedPreferences.getInstance();
@@ -252,17 +441,33 @@ Future<Map<String, dynamic>> mergeWorkflowTaskDetail(
 
     if (response.statusCode < 200 || response.statusCode >= 300) return task;
 
-    final decoded = jsonDecode(response.body);
+    dynamic decoded = jsonDecode(response.body);
     if (decoded is! Map || decoded['success'] == false) return task;
 
+    // Some payloads nest fields under `data`.
+    final Map<String, dynamic> payload = Map<String, dynamic>.from(decoded);
+    final nested = payload['data'];
+    if (nested is Map) {
+      for (final entry in Map<String, dynamic>.from(nested).entries) {
+        payload.putIfAbsent(entry.key, () => entry.value);
+      }
+    }
+
     final merged = Map<String, dynamic>.from(task);
+    merged['workflow_item_run_id'] = runId;
+
+    final existingGate = workflowDelayGate(merged);
+    final existingGated = isWorkflowDelayGated(merged);
+
     for (final key in const [
       'workflow_status',
       'workflow_status_label',
       'can_update',
       'can_update_workflow_task',
-      'workflow_delay_gate',
       'can_approve_workflow_task',
+      'can_complete_workflow_task',
+      'indent_reason_blocks_complete',
+      'indent_reason_block_message',
       'pending_manager_approval',
       'is_workflow_approval_task',
       'workflow_actions',
@@ -270,18 +475,111 @@ Future<Map<String, dynamic>> mergeWorkflowTaskDetail(
       'workflow_action_responses',
       'workflow_prior_picture_choice_lists',
     ]) {
-      if (decoded[key] != null) {
-        merged[key] = decoded[key];
+      if (payload[key] != null) {
+        merged[key] = payload[key];
       }
     }
 
-    if (decoded['status'] != null) {
-      merged['workflow_status'] = decoded['status'];
-      merged['status'] = decoded['status'];
+    final incomingGateRaw =
+        payload['workflow_delay_gate'] ?? payload['workflowDelayGate'];
+    Map<String, dynamic>? incomingGate;
+    if (incomingGateRaw is String && incomingGateRaw.trim().isNotEmpty) {
+      try {
+        final parsed = jsonDecode(incomingGateRaw);
+        if (parsed is Map) incomingGate = Map<String, dynamic>.from(parsed);
+      } catch (_) {}
+    } else if (incomingGateRaw is Map) {
+      incomingGate = Map<String, dynamic>.from(incomingGateRaw);
     }
-    if (decoded['item_run_id'] != null) {
-      merged['workflow_item_run_id'] = decoded['item_run_id'];
+
+    if (incomingGate != null) {
+      final incomingGated = _truthyValue(
+        incomingGate['is_delay_gated'] ?? incomingGate['isDelayGated'],
+      );
+      final incomingRemaining = workflowDelayRemainingSeconds(incomingGate);
+      final existingRemaining = workflowDelayRemainingSeconds(existingGate);
+
+      // Unlock time already passed — force clear local gate even if API is slow.
+      if (incomingGated &&
+          _gateHasUnlockTime(incomingGate) &&
+          incomingRemaining <= 0) {
+        incomingGate = Map<String, dynamic>.from(incomingGate)
+          ..['is_delay_gated'] = false
+          ..['seconds_remaining'] = 0;
+        print(
+          '[WorkflowTaskDetail] unlock time passed — clearing gate locally '
+          'item_run_id=$runId',
+        );
+      }
+
+      // Never clobber a still-active list gate with a bare ungated detail stub
+      // while unlock time is still in the future.
+      if (!_truthyValue(incomingGate['is_delay_gated']) &&
+          existingGated &&
+          existingRemaining > 0) {
+        print(
+          '[WorkflowTaskDetail] keeping list delay gate over ungated detail '
+          'item_run_id=$runId existing=$existingGate incoming=$incomingGate',
+        );
+        merged['workflow_delay_gate'] = existingGate;
+      } else {
+        merged['workflow_delay_gate'] = incomingGate;
+      }
     }
+
+    // Drop synthetic delay_timer once unlock time has passed.
+    if (!isWorkflowDelayGated(merged)) {
+      for (final key in const ['workflow_actions', 'workflow_task_actions']) {
+        final list = _mapListFlexible(merged[key]);
+        if (list.isEmpty) continue;
+        final filtered = list
+            .where((a) => a['type']?.toString() != 'delay_timer')
+            .toList();
+        if (filtered.length != list.length) {
+          merged[key] = filtered;
+        }
+      }
+    }
+
+    // Indent reason gate: mark complete actions blocked so UI + guards agree.
+    if (isIndentReasonBlockingComplete(merged)) {
+      final blockMsg = indentReasonBlockMessage(merged);
+      for (final key in const ['workflow_actions', 'workflow_task_actions']) {
+        final list = _mapListFlexible(merged[key]);
+        if (list.isEmpty) continue;
+        merged[key] = list.map((action) {
+          if (!isWorkflowCompleteAction(action)) return action;
+          final copy = Map<String, dynamic>.from(action);
+          copy['blocked'] = true;
+          if ((copy['blocked_message']?.toString().trim() ?? '').isEmpty) {
+            copy['blocked_message'] = blockMsg;
+          }
+          return copy;
+        }).toList();
+      }
+    }
+
+    if (payload['status'] != null) {
+      merged['workflow_status'] = payload['status'];
+      merged['status'] = payload['status'];
+    }
+    if (payload['item_run_id'] != null) {
+      merged['workflow_item_run_id'] = payload['item_run_id'];
+    }
+
+    final gate = workflowDelayGate(merged);
+    print(
+      '[WorkflowTaskDetail] item_run_id=$runId '
+      'is_delay_gated=${gate?['is_delay_gated']} '
+      'status_label=${merged['workflow_status_label']} '
+      'can_update=${merged['can_update_workflow_task'] ?? merged['can_update']} '
+      'can_complete=${merged['can_complete_workflow_task']} '
+      'indent_reason_blocks=${merged['indent_reason_blocks_complete']} '
+      'seconds_remaining=${gate?['seconds_remaining']} '
+      'available_at=${gate?['available_at_iso'] ?? gate?['available_at']} '
+      'actions=${workflowActionsFromTask(merged).map((a) => '${a['type']}:${a['blocked']}').toList()} '
+      'computed_gated=${isWorkflowDelayGated(merged)}',
+    );
 
     return merged;
   } catch (e) {
@@ -413,6 +711,9 @@ class _MyTasksScreenState extends State<MyTasksScreen>
         task['updated_at'],
         task['can_update_workflow_task'],
         task['can_approve_workflow_task'],
+        task['can_complete_workflow_task'],
+        task['indent_reason_blocks_complete'],
+        task['indent_reason_block_message'],
         jsonEncode(task['workflow_task_actions'] ?? const []),
         jsonEncode(task['workflow_actions'] ?? const []),
         jsonEncode(task['workflow_delay_gate'] ?? const {}),
@@ -442,10 +743,34 @@ class _MyTasksScreenState extends State<MyTasksScreen>
     );
     _tasks = List<dynamic>.from(widget.tasks);
     _tasksSignature = _tasksListSignature(_tasks);
+    _logDelayGatedTasks(_tasks);
     _searchController.addListener(() {
       if (mounted) setState(() {});
     });
     _loadCurrentUserId();
+  }
+
+  void _logDelayGatedTasks(List<dynamic> tasks) {
+    var gatedCount = 0;
+    for (final task in tasks.whereType<Map>()) {
+      if (task['is_workflow_task'] != true) continue;
+      final gate = workflowDelayGate(task);
+      final gated = isWorkflowDelayGated(task);
+      if (gate == null && !gated) continue;
+      if (gated) gatedCount++;
+      print(
+        '[DelayGate] list_task id=${task['id']} '
+        'computed_gated=$gated '
+        'label=${task['workflow_status_label']} '
+        'is_delay_gated=${gate?['is_delay_gated']} '
+        'delay_minutes=${gate?['delay_minutes']} '
+        'available_at=${gate?['available_at_display'] ?? gate?['available_at']} '
+        'seconds_remaining=${gate?['seconds_remaining']} '
+        'can_update=${task['can_update_workflow_task'] ?? task['can_update']} '
+        'actions=${workflowActionsFromTask(task).map((a) => '${a['type']}:${a['blocked']}').toList()}',
+      );
+    }
+    print('[DelayGate] workflow tasks with active gate: $gatedCount');
   }
 
   Future<void> _loadCurrentUserId() async {
@@ -807,6 +1132,7 @@ class _MyTasksScreenState extends State<MyTasksScreen>
           _tasksSignature = nextSignature;
           _isRefreshing = false;
         });
+        _logDelayGatedTasks(nextTasks);
       } else {
         _isRefreshing = false;
       }
@@ -1319,6 +1645,9 @@ class _TaskCardState extends State<_TaskCard> {
       task['updated_at'],
       task['can_update_workflow_task'],
       task['can_approve_workflow_task'],
+      task['can_complete_workflow_task'],
+      task['indent_reason_blocks_complete'],
+      task['indent_reason_block_message'],
       jsonEncode(task['workflow_task_actions'] ?? const []),
       jsonEncode(task['workflow_actions'] ?? const []),
       jsonEncode(task['workflow_delay_gate'] ?? const {}),
@@ -1360,8 +1689,46 @@ class _TaskCardState extends State<_TaskCard> {
     if (_isRefreshingAfterDelay || !mounted) return;
     setState(() => _isRefreshingAfterDelay = true);
     try {
+      // Optimistically clear local gate so the timer disappears immediately.
+      final gate = workflowDelayGate(_task);
+      if (gate != null) {
+        final cleared = Map<String, dynamic>.from(gate)
+          ..['is_delay_gated'] = false
+          ..['seconds_remaining'] = 0;
+        final next = Map<String, dynamic>.from(_task);
+        next['workflow_delay_gate'] = cleared;
+        for (final key in const ['workflow_actions', 'workflow_task_actions']) {
+          final list = _mapListFlexible(next[key]);
+          if (list.isEmpty) continue;
+          next[key] = list
+              .where((a) => a['type']?.toString() != 'delay_timer')
+              .map((a) {
+                final copy = Map<String, dynamic>.from(a);
+                if (_truthyValue(copy['blocked'])) {
+                  copy['blocked'] = false;
+                }
+                return copy;
+              })
+              .toList();
+        }
+        next['can_update_workflow_task'] = true;
+        if (next.containsKey('can_update')) next['can_update'] = true;
+        if (mounted) setState(() => _task = next);
+      }
+
+      print(
+        '[DelayGate] countdown expired — refreshing item_run '
+        '${_resolvedWorkflowItemRunIdFromTask(_task)}',
+      );
       await widget.onWorkflowActionCompleted();
       await _loadWorkflowDetail();
+
+      // If API is briefly stale, retry once after a short wait.
+      if (mounted && isWorkflowDelayGated(_task)) {
+        await Future<void>.delayed(const Duration(seconds: 2));
+        if (!mounted) return;
+        await _loadWorkflowDetail();
+      }
     } finally {
       if (mounted) {
         setState(() => _isRefreshingAfterDelay = false);
@@ -1378,18 +1745,24 @@ class _TaskCardState extends State<_TaskCard> {
     final assignedToName = task['assigned_to_name']?.toString() ?? '';
     final createdAt = task['created_at']?.toString() ?? '';
     final status = normalizeTaskStatusValue(task);
-    final statusLabel = workflowStatusDisplayLabel(task);
     final delayGated = isWorkflowDelayGated(task);
-    final delayGateData = workflowDelayGate(task);
-    final statusColor = delayGated
-        ? const Color(0xFF6366F1)
-        : _statusColor(status);
+    final delayTimerAction = findDelayTimerAction(_workflowActions);
+    final delayGateData = resolveWorkflowDelayGateData(
+      gate: workflowDelayGate(task),
+      action: delayTimerAction,
+    );
+    final statusLabel = workflowStatusDisplayLabel(task);
     final workflowActions =
         filterVisibleWorkflowActions(task, _workflowActions);
     final title = _taskTitle(note, taskId, _workflowActions);
     final uploadedPhotos = _uploadedPhotos;
     final showApprovalButtons = shouldShowWorkflowApprovalButtons(task);
     final completeAction = _findSwipeCompleteAction(workflowActions);
+    // One timer banner while gated; delay_timer action is filtered out of buttons.
+    final showDelayGateBanner = delayGated && delayGateData.isNotEmpty;
+    final showIndentReasonBanner = isIndentReasonBlockingComplete(task);
+    final indentReasonMessage =
+        showIndentReasonBanner ? indentReasonBlockMessage(task) : '';
 
     final taskUserId =
         (task['user_id'] ?? task['created_by'])?.toString() ?? '';
@@ -1399,31 +1772,22 @@ class _TaskCardState extends State<_TaskCard> {
 
     final footerChildren = <Widget>[
       if (showStatusEditor) _buildStatusDropdown(taskId, status),
-      if (delayGated && delayGateData != null) ...[
+      if (showDelayGateBanner) ...[
         if (showStatusEditor) const SizedBox(height: 10),
-        Row(
-          children: [
-            Icon(Icons.timer_outlined, size: 15, color: statusColor),
-            const SizedBox(width: 6),
-            WorkflowDelayCountdownText(
-              gateData: delayGateData,
-              onExpired: _handleDelayExpired,
-              style: TextStyle(
-                color: statusColor,
-                fontSize: 12.5,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 10),
         _WorkflowDelayGateCard(
           gateData: delayGateData,
           onExpired: _handleDelayExpired,
         ),
       ],
+      if (showIndentReasonBanner) ...[
+        if (showStatusEditor || showDelayGateBanner)
+          const SizedBox(height: 10),
+        _IndentReasonBlockBanner(message: indentReasonMessage),
+      ],
       if (uploadedPhotos.isNotEmpty) ...[
-        if (showStatusEditor || (delayGated && delayGateData != null))
+        if (showStatusEditor ||
+            showDelayGateBanner ||
+            showIndentReasonBanner)
           const SizedBox(height: 10),
         _UploadedPhotosSection(photos: uploadedPhotos),
       ],
@@ -1437,15 +1801,17 @@ class _TaskCardState extends State<_TaskCard> {
           ),
         ),
       ],
-      if (showApprovalButtons) ...[
+      if (showApprovalButtons && !_isLoadingWorkflowDetail) ...[
         const SizedBox(height: 10),
         _WorkflowManagerApprovalSection(
           task: task,
           onActionCompleted: _handleWorkflowActionCompleted,
         ),
       ],
+      // Wait for item-runs/actions merge so delay_gate / blocked flags are fresh.
       if (widget.showWorkflowActions &&
           _isWorkflowTask &&
+          !_isLoadingWorkflowDetail &&
           workflowActions.isNotEmpty) ...[
         const SizedBox(height: 10),
         _WorkflowActionsSection(
@@ -1462,7 +1828,8 @@ class _TaskCardState extends State<_TaskCard> {
       projectName: projectName,
       assigneeName: assignedToName,
       dateLabel: createdAt.isNotEmpty ? _formatDate(createdAt) : null,
-      status: status,
+      // Delayed → pending/scheduled chip styling, never Ready.
+      status: delayGated ? 'pending' : status,
       statusLabel: statusLabel,
       accentIndex: widget.accentIndex,
       isSelected: widget.isSelected,
@@ -1517,11 +1884,13 @@ class _TaskCardState extends State<_TaskCard> {
     List<Map<String, dynamic>> actions,
   ) {
     if (!widget.showWorkflowActions || !_isWorkflowTask) return null;
+    if (_isLoadingWorkflowDetail) return null;
     if (!canUpdateWorkflowTask(_task)) return null;
+    if (!canCompleteWorkflowTask(_task)) return null;
 
     for (final action in actions) {
-      if (action['type']?.toString() != 'complete_button') continue;
-      if (action['blocked'] == true) continue;
+      if (!isWorkflowCompleteAction(action)) continue;
+      if (_truthyValue(action['blocked'])) continue;
       return action;
     }
     return null;
@@ -1548,6 +1917,17 @@ class _TaskCardState extends State<_TaskCard> {
 
   Future<bool> _handleSwipeComplete(Map<String, dynamic> action) async {
     if (_isSwipeCompleting) return false;
+
+    if (!canCompleteWorkflowTask(_task) || _truthyValue(action['blocked'])) {
+      if (!mounted) return false;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(indentReasonBlockMessage(_task)),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return false;
+    }
 
     final runId = _resolvedWorkflowItemRunIdFor(_task, action);
     final actionId = action['id'];
@@ -1617,12 +1997,18 @@ class _TaskCardState extends State<_TaskCard> {
       return true;
     } catch (e) {
       if (!mounted) return false;
+      final cleaned = e.toString().replaceAll('Exception: ', '');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(e.toString().replaceAll('Exception: ', '')),
+          content: Text(cleaned),
           backgroundColor: Colors.red,
         ),
       );
+      // Keep task open and refresh lock state when complete is blocked.
+      if (_looksLikeIndentReasonBlockMessage(cleaned) ||
+          _looksLikeDelayBlockedMessage(cleaned)) {
+        await _handleWorkflowActionCompleted();
+      }
       return false;
     } finally {
       if (mounted) setState(() => _isSwipeCompleting = false);
@@ -1825,27 +2211,6 @@ class _TaskCardState extends State<_TaskCard> {
 
   List<String> get _uploadedPhotos => _taskUploadedPhotoUrls(_task);
 
-  Color _statusColor(String status) {
-    switch (status.toLowerCase()) {
-      case 'completed':
-      case 'done':
-      case 'finished':
-      case 'skipped':
-        return const Color(0xFF047857);
-      case 'in_progress':
-      case 'ready':
-        return AppTheme.accentBlue;
-      case 'waiting_approval':
-      case 'scheduled':
-        return AppTheme.navySoft;
-      case 'cancelled':
-      case 'rejected':
-        return const Color(0xFFB91C1C);
-      default:
-        return const Color(0xFFB45309);
-    }
-  }
-
   String _formatDate(String value) {
     try {
       final parsed = DateTime.parse(value);
@@ -1891,12 +2256,14 @@ class WorkflowDelayCountdownText extends StatefulWidget {
 class _WorkflowDelayCountdownTextState extends State<WorkflowDelayCountdownText> {
   Timer? _timer;
   late int _remainingSeconds;
+  DateTime? _secondsRemainingAnchorAt;
+  int? _secondsRemainingAnchorValue;
   bool _expiredHandled = false;
 
   @override
   void initState() {
     super.initState();
-    _remainingSeconds = workflowDelayRemainingSeconds(widget.gateData);
+    _remainingSeconds = _computeRemaining();
     _timer = Timer.periodic(const Duration(seconds: 1), (_) => _tick());
   }
 
@@ -1904,14 +2271,38 @@ class _WorkflowDelayCountdownTextState extends State<WorkflowDelayCountdownText>
   void didUpdateWidget(covariant WorkflowDelayCountdownText oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.gateData != widget.gateData) {
-      _remainingSeconds = workflowDelayRemainingSeconds(widget.gateData);
+      _secondsRemainingAnchorAt = null;
+      _secondsRemainingAnchorValue = null;
+      _remainingSeconds = _computeRemaining();
       _expiredHandled = false;
     }
   }
 
+  int _computeRemaining() {
+    final gate = widget.gateData;
+    final availableAt = parseWorkflowAvailableAt(
+      gate['available_at_iso'] ?? gate['available_at'],
+    );
+    if (availableAt != null) {
+      final diff = availableAt.difference(DateTime.now().toUtc()).inSeconds;
+      return diff > 0 ? diff : 0;
+    }
+
+    final fromApi = gate['seconds_remaining'];
+    if (fromApi is! num) return 0;
+
+    final apiSeconds = fromApi.floor().clamp(0, 999999999);
+    _secondsRemainingAnchorValue ??= apiSeconds;
+    _secondsRemainingAnchorAt ??= DateTime.now();
+    final elapsed =
+        DateTime.now().difference(_secondsRemainingAnchorAt!).inSeconds;
+    final remaining = _secondsRemainingAnchorValue! - elapsed;
+    return remaining > 0 ? remaining : 0;
+  }
+
   void _tick() {
     if (!mounted) return;
-    final next = workflowDelayRemainingSeconds(widget.gateData);
+    final next = _computeRemaining();
     setState(() => _remainingSeconds = next);
     if (next <= 0 && !_expiredHandled) {
       _expiredHandled = true;
@@ -1927,12 +2318,79 @@ class _WorkflowDelayCountdownTextState extends State<WorkflowDelayCountdownText>
 
   @override
   Widget build(BuildContext context) {
-    final fallback = widget.gateData['countdown_label']?.toString().trim();
-    final label = _remainingSeconds > 0
-        ? formatWorkflowCountdown(_remainingSeconds)
-        : (fallback != null && fallback.isNotEmpty ? fallback : '0d 0h 0m');
+    if (_remainingSeconds <= 0) {
+      return Text('Available now — refreshing…', style: widget.style);
+    }
 
-    return Text(label, style: widget.style);
+    return Text(
+      '${formatWorkflowCountdown(_remainingSeconds)} remaining',
+      style: widget.style,
+    );
+  }
+}
+
+class _IndentReasonBlockBanner extends StatelessWidget {
+  final String message;
+
+  const _IndentReasonBlockBanner({required this.message});
+
+  @override
+  Widget build(BuildContext context) {
+    const accent = Color(0xFFB45309);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: accent.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: accent.withValues(alpha: 0.18)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: accent.withValues(alpha: 0.14),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: const Icon(
+              Icons.lock_outline,
+              color: accent,
+              size: 22,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Complete blocked',
+                  style: TextStyle(
+                    color: _premiumInk,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.2,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  message,
+                  style: TextStyle(
+                    color: _premiumMuted,
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w600,
+                    height: 1.35,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -1949,10 +2407,8 @@ class _WorkflowDelayGateCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final heading = gateData['heading']?.toString().trim();
-    final title = heading != null && heading.isNotEmpty
-        ? heading
-        : 'Waiting to start';
+    // Spec UI: Waiting to start + Opens at + live countdown + message.
+    final title = 'Waiting to start';
     final message = gateData['message']?.toString().trim() ?? '';
     final unlocksAt = gateData['available_at_display']?.toString().trim() ?? '';
     final accent = const Color(0xFF6366F1);
@@ -1961,9 +2417,9 @@ class _WorkflowDelayGateCard extends StatelessWidget {
       width: double.infinity,
       padding: EdgeInsets.all(compact ? 14 : 16),
       decoration: BoxDecoration(
-        color: accent.withOpacity(0.08),
+        color: accent.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(compact ? 16 : 20),
-        border: Border.all(color: accent.withOpacity(0.18)),
+        border: Border.all(color: accent.withValues(alpha: 0.18)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1972,11 +2428,11 @@ class _WorkflowDelayGateCard extends StatelessWidget {
             width: compact ? 40 : 44,
             height: compact ? 40 : 44,
             decoration: BoxDecoration(
-              color: accent.withOpacity(0.14),
+              color: accent.withValues(alpha: 0.14),
               borderRadius: BorderRadius.circular(compact ? 12 : 14),
             ),
             child: Icon(
-              Icons.schedule_rounded,
+              Icons.timer_outlined,
               color: accent,
               size: compact ? 20 : 22,
             ),
@@ -1986,29 +2442,38 @@ class _WorkflowDelayGateCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                WorkflowDelayCountdownText(
-                  gateData: gateData,
-                  onExpired: onExpired,
+                Text(
+                  title,
                   style: TextStyle(
                     color: _premiumInk,
-                    fontSize: compact ? 15 : 17,
+                    fontSize: compact ? 15 : 16,
                     fontWeight: FontWeight.w800,
                     letterSpacing: -0.2,
                   ),
                 ),
-                if (!compact && title.isNotEmpty) ...[
-                  SizedBox(height: 4),
+                if (unlocksAt.isNotEmpty) ...[
+                  SizedBox(height: 6),
                   Text(
-                    title,
+                    'Opens at $unlocksAt',
                     style: TextStyle(
-                      color: _premiumMuted,
-                      fontSize: 12.5,
-                      fontWeight: FontWeight.w600,
+                      color: accent,
+                      fontSize: compact ? 13.5 : 15,
+                      fontWeight: FontWeight.w800,
                     ),
                   ),
                 ],
+                SizedBox(height: 4),
+                WorkflowDelayCountdownText(
+                  gateData: gateData,
+                  onExpired: onExpired,
+                  style: TextStyle(
+                    color: _premiumMuted,
+                    fontSize: compact ? 12.5 : 13.5,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
                 if (message.isNotEmpty) ...[
-                  SizedBox(height: 6),
+                  SizedBox(height: 8),
                   Text(
                     message,
                     style: TextStyle(
@@ -2016,17 +2481,6 @@ class _WorkflowDelayGateCard extends StatelessWidget {
                       fontSize: compact ? 12 : 13,
                       fontWeight: FontWeight.w600,
                       height: 1.35,
-                    ),
-                  ),
-                ],
-                if (unlocksAt.isNotEmpty) ...[
-                  SizedBox(height: 6),
-                  Text(
-                    'Unlocks at $unlocksAt',
-                    style: TextStyle(
-                      color: accent,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
                     ),
                   ),
                 ],
@@ -2640,8 +3094,12 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
       );
     }
 
-    final taskBlocked = !canUpdateWorkflowTask(task);
-    final blocked = action['blocked'] == true || taskBlocked;
+    final taskBlocked =
+        isWorkflowDelayGated(task) || !canUpdateWorkflowTask(task);
+    final completeBlocked = isWorkflowCompleteAction(action) &&
+        !canCompleteWorkflowTask(task);
+    final blocked =
+        _truthyValue(action['blocked']) || taskBlocked || completeBlocked;
     final buttonData = _buttonData(type);
 
     if (buttonData == null) {
@@ -2665,20 +3123,44 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
       isOutlined: buttonData.outlined,
       isLoading: _isSubmitting,
       expand: widget.expand,
-      onPressed: blocked || _isSubmitting ? null : () => _handleTap(type),
-      blockedMessage: blocked ? _blockedMessageForAction(taskBlocked) : null,
+      // Keep locked actions tappable so we can show blocked_message (web parity).
+      visuallyDisabled: blocked,
+      onPressed: _isSubmitting
+          ? null
+          : () {
+              if (blocked) {
+                _showSnackBar(
+                  _blockedMessageForAction(taskBlocked),
+                  isError: true,
+                );
+                return;
+              }
+              _handleTap(type);
+            },
     );
   }
 
   String _blockedMessageForAction(bool taskBlocked) {
-    if (action['blocked_message']?.toString().trim().isNotEmpty == true) {
-      return action['blocked_message'].toString().trim();
+    return workflowDelayBlockedMessage(task, action: action);
+  }
+
+  /// Hard stop before any action sheet / POST while delay-gated.
+  bool _guardActionAllowed() {
+    final locked = isWorkflowDelayGated(task) ||
+        !canUpdateWorkflowTask(task) ||
+        _truthyValue(action['blocked']) ||
+        action['type']?.toString() == 'delay_timer';
+    if (!locked) {
+      if (isWorkflowCompleteAction(action) &&
+          !canCompleteWorkflowTask(task)) {
+        _showSnackBar(indentReasonBlockMessage(task), isError: true);
+        return false;
+      }
+      return true;
     }
-    if (taskBlocked) {
-      final gateMessage = workflowDelayGate(task)?['message']?.toString().trim();
-      if (gateMessage != null && gateMessage.isNotEmpty) return gateMessage;
-    }
-    return 'This action is blocked.';
+    _showSnackBar(workflowDelayBlockedMessage(task, action: action),
+        isError: true);
+    return false;
   }
 
   String get _actionType => action['type']?.toString() ?? '';
@@ -2767,6 +3249,8 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
       bool? canUpdate;
       if (decoded.containsKey('can_update') ||
           decoded.containsKey('can_update_workflow_task') ||
+          decoded.containsKey('can_complete_workflow_task') ||
+          decoded.containsKey('indent_reason_blocks_complete') ||
           decoded.containsKey('workflow_delay_gate')) {
         final probeTask = Map<String, dynamic>.from(task);
         if (decoded['can_update'] != null) {
@@ -2775,6 +3259,18 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
         if (decoded['can_update_workflow_task'] != null) {
           probeTask['can_update_workflow_task'] =
               decoded['can_update_workflow_task'];
+        }
+        if (decoded['can_complete_workflow_task'] != null) {
+          probeTask['can_complete_workflow_task'] =
+              decoded['can_complete_workflow_task'];
+        }
+        if (decoded['indent_reason_blocks_complete'] != null) {
+          probeTask['indent_reason_blocks_complete'] =
+              decoded['indent_reason_blocks_complete'];
+        }
+        if (decoded['indent_reason_block_message'] != null) {
+          probeTask['indent_reason_block_message'] =
+              decoded['indent_reason_block_message'];
         }
         if (decoded['workflow_delay_gate'] != null) {
           probeTask['workflow_delay_gate'] = decoded['workflow_delay_gate'];
@@ -2925,10 +3421,7 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
   }
 
   Future<void> _handleTap(String type) async {
-    if (!canUpdateWorkflowTask(task) || action['blocked'] == true) {
-      _showSnackBar(_blockedMessageForAction(true), isError: true);
-      return;
-    }
+    if (!_guardActionAllowed()) return;
 
     if (_resolvedWorkflowItemRunId.isEmpty) {
       _showSnackBar('Missing workflow item run id.', isError: true);
@@ -3009,8 +3502,12 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
     String successMessage = 'Action completed successfully',
     bool refreshOnSuccess = true,
   }) async {
-    if (!canUpdateWorkflowTask(task) || action['blocked'] == true) {
-      _showSnackBar(_blockedMessageForAction(true), isError: true);
+    if (!_guardActionAllowed()) return false;
+
+    if (endpoint.toLowerCase().contains('/complete') &&
+        !canCompleteWorkflowTask(task)) {
+      _showSnackBar(indentReasonBlockMessage(task), isError: true);
+      await widget.onActionCompleted();
       return false;
     }
 
@@ -3047,7 +3544,15 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
       }
       return true;
     } catch (e) {
-      _showSnackBar(e.toString().replaceAll('Exception: ', ''), isError: true);
+      final cleaned = e.toString().replaceAll('Exception: ', '');
+      _showSnackBar(cleaned, isError: true);
+      if (_looksLikeDelayBlockedMessage(cleaned) ||
+          cleaned.toLowerCase().contains('cannot be worked on yet') ||
+          _looksLikeIndentReasonBlockMessage(cleaned) ||
+          cleaned.toLowerCase().contains('indent_reason')) {
+        // Server rejected complete / action — refresh lock state, keep task open.
+        await widget.onActionCompleted();
+      }
       return false;
     } finally {
       if (mounted) {
@@ -3063,6 +3568,12 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
     String? note,
     bool refreshOnSuccess = true,
   }) async {
+    if (!canCompleteWorkflowTask(task) || _truthyValue(action['blocked'])) {
+      _showSnackBar(indentReasonBlockMessage(task), isError: true);
+      await widget.onActionCompleted();
+      return false;
+    }
+
     final payload = <String, dynamic>{
       'action_id': action['id'],
     };
@@ -3164,13 +3675,55 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
 
   List<Map<String, dynamic>> get _checklistFollowupItems {
     final directItems = _mapListFlexible(action['items']);
-    if (directItems.isNotEmpty) return directItems;
-
     final priorChecklist = _configMap(action['prior_checklist']);
     final priorItems = _mapListFlexible(priorChecklist?['items']);
-    if (priorItems.isNotEmpty) return priorItems;
 
-    return <Map<String, dynamic>>[];
+    if (directItems.isEmpty) {
+      return priorItems.isNotEmpty ? priorItems : <Map<String, dynamic>>[];
+    }
+    if (priorItems.isEmpty) return directItems;
+
+    // Prefer direct items for order/labels, but merge attachment fields from
+    // prior_checklist when the direct stub has no files (common for web uploads).
+    return directItems.map((item) {
+      if (_followupItemFiles(item).isNotEmpty) return item;
+      final itemId = _followupItemId(item);
+      final label = (_firstString(item, ['label', 'name', 'title']) ?? '')
+          .toLowerCase();
+      for (final prior in priorItems) {
+        final priorId = _followupItemId(prior);
+        final priorLabel =
+            (_firstString(prior, ['label', 'name', 'title']) ?? '')
+                .toLowerCase();
+        final idMatch = priorId == itemId;
+        final labelMatch =
+            label.isNotEmpty && priorLabel.isNotEmpty && label == priorLabel;
+        if (!idMatch && !labelMatch) continue;
+        if (_followupItemFiles(prior).isEmpty) continue;
+        final merged = Map<String, dynamic>.from(item);
+        for (final key in _checklistAttachmentKeys) {
+          if (prior[key] != null &&
+              (merged[key] == null ||
+                  (merged[key] is List && (merged[key] as List).isEmpty))) {
+            merged[key] = prior[key];
+          }
+        }
+        // Also keep common comment/text fields from prior when missing.
+        for (final key in const [
+          'comment',
+          'note',
+          'remarks',
+          'original_comment',
+        ]) {
+          if (_hasChecklistValue(prior[key]) &&
+              !_hasChecklistValue(merged[key])) {
+            merged[key] = prior[key];
+          }
+        }
+        return merged;
+      }
+      return item;
+    }).toList();
   }
 
   Future<void> _showUserChecklistFollowupSheet() async {
@@ -3497,14 +4050,7 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
         ? <String, dynamic>{}
         : Map<String, dynamic>.fromEntries(
             firstItem.entries.where(
-              (entry) => const {
-                'image',
-                'file',
-                'files',
-                'attachments',
-                'uploaded_file',
-                'uploaded_files',
-              }.contains(entry.key),
+              (entry) => _checklistAttachmentKeys.contains(entry.key),
             ),
           );
     final normalizedAttachments = firstItem == null
@@ -3529,6 +4075,8 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
   Future<bool> _submitUserChecklistFollowup(
     List<_ChecklistFollowupResponse> responses,
   ) async {
+    if (!_guardActionAllowed()) return false;
+
     final responsePayload = responses
         .map(
           (response) => {
@@ -9088,7 +9636,21 @@ class _ResponseEntryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final files = _mapList(entry['files']);
+    final files = <Map<String, dynamic>>[];
+    final seen = <String>{};
+    for (final key in _checklistAttachmentKeys) {
+      _collectChecklistAttachment(entry[key], files);
+    }
+    final uniqueFiles = files.where((file) {
+      final key = (_workflowAttachmentUrl(file) ??
+              _firstString(file, ['name', 'filename', 'file_name']) ??
+              file.toString())
+          .toLowerCase();
+      if (seen.contains(key)) return false;
+      seen.add(key);
+      return true;
+    }).toList();
+
     final title = _firstString(entry, [
           'source_task_name',
           'task_name',
@@ -9101,7 +9663,7 @@ class _ResponseEntryCard extends StatelessWidget {
     final comment = _firstString(entry, ['comment', 'note', 'remarks']);
     final qaItems = _mapList(entry['qa_items']);
     final lines = _responseLines(entry['lines']);
-    final checklistFollowupResponses = _mapList(entry['responses']);
+    final checklistFollowupResponses = _mapListFlexible(entry['responses']);
     final completedAt =
         _firstString(entry, ['completed_at', 'updated_at', 'created_at']);
     final entryType = entry['type']?.toString().trim() ?? '';
@@ -9109,7 +9671,7 @@ class _ResponseEntryCard extends StatelessWidget {
     final showMultipleSubmissions = (totalEntries ?? 1) > 1;
     final showTitle = _shouldShowResponseEntryTitle(
       title,
-      hasFiles: files.isNotEmpty,
+      hasFiles: uniqueFiles.isNotEmpty,
       hasComment: comment != null,
     );
     final fields = entry.entries
@@ -9167,7 +9729,7 @@ class _ResponseEntryCard extends StatelessWidget {
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: Icon(
-                    files.isNotEmpty
+                    uniqueFiles.isNotEmpty
                         ? Icons.attach_file_rounded
                         : Icons.article_outlined,
                     color: AppTheme.getPrimaryColor(context),
@@ -9201,15 +9763,18 @@ class _ResponseEntryCard extends StatelessWidget {
               ),
             ),
           ],
-          if (files.isNotEmpty) ...[
+          if (uniqueFiles.isNotEmpty) ...[
             SizedBox(height: showTitle ? 14 : 0),
             _ResponseSectionHeader(
               icon: Icons.attach_file_rounded,
-              label: files.length == 1 ? 'Uploaded file' : 'Uploaded files',
+              label: uniqueFiles.length == 1
+                  ? 'Uploaded file'
+                  : 'Uploaded files',
             ),
             SizedBox(height: 10),
-            ...files.map(
-              (file) => _ResponseFileTile(file: file, relatedFiles: files),
+            ...uniqueFiles.map(
+              (file) =>
+                  _ResponseFileTile(file: file, relatedFiles: uniqueFiles),
             ),
           ],
           if (comment != null) ...[
@@ -9453,11 +10018,22 @@ class _ChecklistFollowupResponseTile extends StatelessWidget {
       'item_name',
     ]);
     final comment = _firstString(response, ['comment', 'note', 'remarks']);
-    final files = [
-      ..._mapListFlexible(response['files']),
-      ..._mapListFlexible(response['attachments']),
-      ..._mapListFlexible(response['uploaded_files']),
-    ];
+    final uniqueFiles = <Map<String, dynamic>>[];
+    final seen = <String>{};
+    for (final key in _checklistAttachmentKeys) {
+      _collectChecklistAttachment(response[key], uniqueFiles);
+    }
+    // Rebuild with dedupe — collector already appended; re-filter.
+    final files = <Map<String, dynamic>>[];
+    for (final f in uniqueFiles) {
+      final key = (_workflowAttachmentUrl(f) ??
+              _firstString(f, ['name', 'filename', 'file_name']) ??
+              f.toString())
+          .toLowerCase();
+      if (seen.contains(key)) continue;
+      seen.add(key);
+      files.add(f);
+    }
 
     return Container(
       width: double.infinity,
@@ -11704,7 +12280,7 @@ class _NearSiteStatusBanner extends StatelessWidget {
     final ink = hasError ? const Color(0xFF991B1B) : const Color(0xFF065F46);
     final distanceText = distanceMeters == null
         ? null
-        : 'You are ${distanceMeters!.round()} m from site (limit $radiusMeters m)';
+        : 'You are ${distanceMeters!.round()} m from site';
     final siteCoordsText = siteLatitude != null && siteLongitude != null
         ? 'Site: ${siteLatitude!.toStringAsFixed(7)}, ${siteLongitude!.toStringAsFixed(7)}'
         : null;
@@ -11744,7 +12320,7 @@ class _NearSiteStatusBanner extends StatelessWidget {
                       : (hasError
                           ? error!
                           : (distanceText ??
-                              'You are within $radiusMeters m of the project site.')),
+                              'You are near the project site.')),
                   style: TextStyle(
                     color: ink,
                     fontSize: 12,
@@ -14090,6 +14666,7 @@ class _ActionChipButton extends StatelessWidget {
   final VoidCallback? onPressed;
   final String? blockedMessage;
   final bool expand;
+  final bool visuallyDisabled;
 
   const _ActionChipButton({
     required this.label,
@@ -14100,11 +14677,12 @@ class _ActionChipButton extends StatelessWidget {
     this.onPressed,
     this.blockedMessage,
     this.expand = false,
+    this.visuallyDisabled = false,
   });
 
   @override
   Widget build(BuildContext context) {
-    final disabled = onPressed == null;
+    final disabled = onPressed == null || visuallyDisabled;
     final effectiveColor = disabled ? AppTheme.mutedGrey : color;
     final isPrimary = !isOutlined && !disabled;
     // Soft tinted fills keep action identity without neon solid blocks.
@@ -15750,6 +16328,26 @@ String _itemId(Map<String, dynamic> item) {
       .toString();
 }
 
+const _checklistAttachmentKeys = <String>{
+  'image',
+  'images',
+  'file',
+  'files',
+  'attachments',
+  'attachment',
+  'uploaded_file',
+  'uploaded_files',
+  'document',
+  'documents',
+  'doc',
+  'docs',
+  'pdf',
+  'pdfs',
+  'media',
+  'video',
+  'videos',
+};
+
 String _followupItemId(Map<String, dynamic> item) {
   return (item['id'] ?? item['item_id'] ?? item['label'] ?? 'item_1')
       .toString();
@@ -15758,20 +16356,14 @@ String _followupItemId(Map<String, dynamic> item) {
 List<Map<String, dynamic>> _followupItemFiles(Map<String, dynamic> item) {
   final files = <Map<String, dynamic>>[];
 
-  for (final key in const [
-    'image',
-    'file',
-    'files',
-    'attachments',
-    'uploaded_file',
-    'uploaded_files',
-  ]) {
+  for (final key in _checklistAttachmentKeys) {
     _collectChecklistAttachment(item[key], files);
   }
 
   final seen = <String>{};
   return files.where((file) {
-    final key = (_firstString(file, ['url', 'file_url', 'path', 'name']) ??
+    final key = (_workflowAttachmentUrl(file) ??
+            _firstString(file, ['url', 'file_url', 'path', 'name']) ??
             file.toString())
         .toLowerCase();
     if (seen.contains(key)) return false;
@@ -15789,6 +16381,16 @@ void _collectChecklistAttachment(
   if (value is String) {
     final trimmed = value.trim();
     if (trimmed.isEmpty || trimmed == 'null') return;
+    // Ignore bare JSON-looking blobs that aren't URLs/paths.
+    if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+      try {
+        final decoded = jsonDecode(trimmed);
+        _collectChecklistAttachment(decoded, files);
+        return;
+      } catch (_) {
+        // fall through and treat as URL/name
+      }
+    }
     files.add(_normalizedChecklistAttachment(url: trimmed));
     return;
   }
@@ -15810,6 +16412,12 @@ void _collectChecklistAttachment(
       'image_url',
       'photo_url',
       'attachment_url',
+      'download_url',
+      'signed_url',
+      'public_url',
+      'href',
+      'src',
+      'storage_path',
     ]);
     final name = _firstString(map, [
       'filename',
@@ -15820,11 +16428,22 @@ void _collectChecklistAttachment(
       'label',
     ]);
 
+    // Nested containers like { documents: [...] }
+    var nestedFound = false;
+    for (final key in _checklistAttachmentKeys) {
+      if (map[key] == null) continue;
+      nestedFound = true;
+      _collectChecklistAttachment(map[key], files);
+    }
+
     if (url != null || name != null) {
       files.add(_normalizedChecklistAttachment(
         url: url,
         name: name,
       ));
+    } else if (!nestedFound) {
+      // Some payloads nest the file under a single "data"/"file" map already
+      // handled above; nothing else to do.
     }
   }
 }
@@ -16166,6 +16785,15 @@ String? _workflowAttachmentUrl(Map<String, dynamic> file) {
     'file_url',
     'file_path',
     'path',
+    'attachment_url',
+    'download_url',
+    'signed_url',
+    'public_url',
+    'href',
+    'src',
+    'storage_path',
+    'image_url',
+    'photo_url',
   ]);
 }
 
@@ -16252,8 +16880,14 @@ Future<void> _openWorkflowAttachment(
     return;
   }
 
-  if (_isPdfAttachment(url, contentType: contentType, name: name) ||
-      _isVideoAttachment(url, contentType: contentType, name: name)) {
+  // Android WebView cannot render PDFs — inAppWebView shows a blank screen.
+  // Open PDFs in an external app (Chrome / Drive / system viewer) instead.
+  if (_isPdfAttachment(url, contentType: contentType, name: name)) {
+    await _openExternalUrl(url, mode: LaunchMode.externalApplication);
+    return;
+  }
+
+  if (_isVideoAttachment(url, contentType: contentType, name: name)) {
     await _openExternalUrl(url, mode: LaunchMode.inAppWebView);
     return;
   }
