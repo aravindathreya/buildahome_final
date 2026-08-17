@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:percent_indicator/circular_percent_indicator.dart';
 import 'package:percent_indicator/linear_percent_indicator.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -682,46 +683,6 @@ class _DashNavItem {
   final IconData icon;
   final String label;
   const _DashNavItem(this.activeIcon, this.icon, this.label);
-}
-
-class _HeroStat extends StatelessWidget {
-  final String value;
-  final String label;
-  const _HeroStat({required this.value, required this.label});
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.baseline,
-      textBaseline: TextBaseline.alphabetic,
-      children: [
-        Text(
-          value,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 16,
-            fontWeight: FontWeight.w800,
-            height: 1.1,
-            letterSpacing: -0.2,
-          ),
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Text(
-            label,
-            style: const TextStyle(
-              color: Color(0xFFC7D0E0),
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              height: 1.15,
-            ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ),
-      ],
-    );
-  }
 }
 
 class UserDashboardScreen extends StatefulWidget {
@@ -2855,6 +2816,13 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
   }
 
   Widget _buildHeroBanner() {
+    final progress = ((double.tryParse(completed ?? '') ?? 0.0) / 100)
+        .clamp(0.0, 1.0)
+        .toDouble();
+    final percentLabel = completed == null || completed!.isEmpty
+        ? '--'
+        : '${completed!.replaceAll('%', '')}%';
+
     return ClipRRect(
       borderRadius: BorderRadius.circular(18),
       child: Container(
@@ -2885,14 +2853,81 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
               children: [
                 Expanded(
                   child: Padding(
-                    padding: const EdgeInsets.fromLTRB(18, 16, 8, 16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                      children: const [
-                        _HeroStat(value: '1700+', label: 'Projects'),
-                        _HeroStat(value: '18+', label: 'Cities'),
-                        _HeroStat(value: '5M+', label: 'Sq. Ft of Build Area'),
+                    padding: const EdgeInsets.fromLTRB(16, 16, 8, 16),
+                    child: Row(
+                      children: [
+                        SizedBox(
+                          width: 76,
+                          height: 76,
+                          child: CircularPercentIndicator(
+                            radius: 34,
+                            lineWidth: 7,
+                            percent: progress,
+                            animation: true,
+                            animationDuration: 1000,
+                            circularStrokeCap: CircularStrokeCap.round,
+                            progressColor: const Color(0xFF60A5FA),
+                            backgroundColor: Colors.white.withValues(alpha: 0.18),
+                            center: Text(
+                              percentLabel,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 15,
+                                fontWeight: FontWeight.w800,
+                                height: 1,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const Text(
+                                'Project Completion',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 14.5,
+                                  fontWeight: FontWeight.w700,
+                                  height: 1.2,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              InkWell(
+                                onTap: location.isEmpty
+                                    ? null
+                                    : () async {
+                                        await launchUrl(
+                                          Uri.parse(location),
+                                          mode: LaunchMode.externalApplication,
+                                        );
+                                      },
+                                borderRadius: BorderRadius.circular(6),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      Icons.location_on_outlined,
+                                      size: 14,
+                                      color: Colors.white.withValues(alpha: 0.85),
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      'View on Map',
+                                      style: TextStyle(
+                                        color: Colors.white.withValues(alpha: 0.85),
+                                        fontSize: 12.5,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                       ],
                     ),
                   ),
