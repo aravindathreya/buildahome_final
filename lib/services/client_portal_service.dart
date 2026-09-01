@@ -4,6 +4,19 @@ import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+class ClientPortalApiException implements Exception {
+  final String message;
+  final int statusCode;
+
+  ClientPortalApiException(this.message, {required this.statusCode});
+
+  bool get isUnauthorized => statusCode == 401;
+  bool get isNotFound => statusCode == 404;
+
+  @override
+  String toString() => message;
+}
+
 /// JSON Client Portal API (`/api/client_portal/*`).
 ///
 /// Auth: session cookie (role=Client) **or** `api_token` via query /
@@ -22,6 +35,7 @@ class ClientPortalService {
     'demolition',
     'site_inspection',
     'all_documents',
+    'payment_proof',
   ];
 
   static final ClientPortalService _instance = ClientPortalService._();
@@ -111,26 +125,44 @@ class ClientPortalService {
     } catch (_) {}
 
     if (response.statusCode == 401) {
-      throw Exception(json?['message']?.toString() ?? 'Unauthorized');
+      throw ClientPortalApiException(
+        json?['message']?.toString() ?? 'Unauthorized',
+        statusCode: 401,
+      );
     }
     if (response.statusCode == 404) {
-      throw Exception(
+      throw ClientPortalApiException(
         json?['message']?.toString() ?? 'No project linked to this client',
+        statusCode: 404,
       );
     }
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw Exception(
+      throw ClientPortalApiException(
         json?['message']?.toString() ??
             'Request failed (${response.statusCode})',
+        statusCode: response.statusCode,
       );
     }
     if (json == null) {
-      throw Exception('Invalid response from server');
+      throw ClientPortalApiException(
+        'Invalid response from server',
+        statusCode: response.statusCode,
+      );
     }
     if (json['success'] == false) {
-      throw Exception(json['message']?.toString() ?? 'Request failed');
+      throw ClientPortalApiException(
+        json['message']?.toString() ?? 'Request failed',
+        statusCode: response.statusCode,
+      );
     }
     return json;
+  }
+
+  Never _throwLastError(Object? lastError, String fallback) {
+    if (lastError is ClientPortalApiException) throw lastError;
+    throw Exception(
+      lastError?.toString().replaceFirst('Exception: ', '') ?? fallback,
+    );
   }
 
   Future<void> _cacheIdsFromPayload(Map<String, dynamic> payload) async {
@@ -151,7 +183,10 @@ class ClientPortalService {
   }) async {
     final token = await _apiToken();
     if (token == null) {
-      throw Exception('Not authenticated. Please log in again.');
+      throw ClientPortalApiException(
+        'Not authenticated. Please log in again.',
+        statusCode: 401,
+      );
     }
 
     Object? lastError;
@@ -171,10 +206,7 @@ class ClientPortalService {
         lastError = e;
       }
     }
-    throw Exception(
-      lastError?.toString().replaceFirst('Exception: ', '') ??
-          'Unable to load client portal data',
-    );
+    _throwLastError(lastError, 'Unable to load client portal data');
   }
 
   Future<Map<String, dynamic>> _postJson(
@@ -183,7 +215,10 @@ class ClientPortalService {
   ) async {
     final token = await _apiToken();
     if (token == null) {
-      throw Exception('Not authenticated. Please log in again.');
+      throw ClientPortalApiException(
+        'Not authenticated. Please log in again.',
+        statusCode: 401,
+      );
     }
     final payload = <String, dynamic>{...body, 'api_token': token};
 
@@ -209,10 +244,7 @@ class ClientPortalService {
         lastError = e;
       }
     }
-    throw Exception(
-      lastError?.toString().replaceFirst('Exception: ', '') ??
-          'Request failed',
-    );
+    _throwLastError(lastError, 'Request failed');
   }
 
   Future<Map<String, dynamic>> _postMultipart(
@@ -224,7 +256,10 @@ class ClientPortalService {
   }) async {
     final token = await _apiToken();
     if (token == null) {
-      throw Exception('Not authenticated. Please log in again.');
+      throw ClientPortalApiException(
+        'Not authenticated. Please log in again.',
+        statusCode: 401,
+      );
     }
 
     Object? lastError;
@@ -256,10 +291,62 @@ class ClientPortalService {
         lastError = e;
       }
     }
-    throw Exception(
-      lastError?.toString().replaceFirst('Exception: ', '') ??
-          'Upload failed',
-    );
+    _throwLastError(lastError, 'Upload failed');
+  }
+
+  Future<Map<String, dynamic>> _postMultipartMany(
+    String path,
+    Map<String, String> fields, {
+    required String fileField,
+    required List<File> files,
+  }) async {
+    if (files.isEmpty) {
+      throw ClientPortalApiException(
+        'Select at least one payment image or PDF to upload',
+        statusCode: 400,
+      );
+    }
+
+    final token = await _apiToken();
+    if (token == null) {
+      throw ClientPortalApiException(
+        'Not authenticated. Please log in again.',
+        statusCode: 401,
+      );
+    }
+
+    Object? lastError;
+    for (final alias in _pathAliases(path)) {
+      try {
+        final request = http.MultipartRequest(
+          'POST',
+          _uri(alias, apiToken: token),
+        );
+        request.headers.addAll(
+          await _headers(apiToken: token, multipart: true),
+        );
+        request.fields.addAll({...fields, 'api_token': token});
+        for (final file in files) {
+          request.files.add(
+            await http.MultipartFile.fromPath(
+              fileField,
+              file.path,
+              filename: file.path.split(Platform.pathSeparator).last,
+            ),
+          );
+        }
+        final streamed =
+            await request.send().timeout(const Duration(seconds: 90));
+        final response = await http.Response.fromStream(streamed);
+        await _persistCookieFrom(response);
+        final json = _decodeOrThrow(response);
+        await _cacheIdsFromPayload(json);
+        return json;
+      } catch (e) {
+        lastError = e;
+      }
+    }
+    _throwLastError(lastError, 'Upload failed');
   }
 
   // ── Reads ─────────────────────────────────────────────────────────────────
@@ -297,6 +384,8 @@ class ClientPortalService {
   Future<Map<String, dynamic>> getAllDocuments() =>
       getSection('all_documents');
   Future<Map<String, dynamic>> getProject() => getSection('project');
+  Future<Map<String, dynamic>> getPaymentProof() =>
+      getSection('payment_proof');
 
   Map<String, dynamic> sectionOf(Map<String, dynamic> payload) {
     if (payload['section'] is Map) {
@@ -315,6 +404,49 @@ class ClientPortalService {
   }
 
   // ── Mutations ─────────────────────────────────────────────────────────────
+
+  /// POST /api/client_portal/payment-proof/upload
+  /// multipart: repeat `payment_screenshot` for each file (fallback: `files`).
+  /// Do not send `stage_task_id` — client upload has no stage selection.
+  Future<Map<String, dynamic>> uploadPaymentProofs(List<File> files) async {
+    try {
+      return await _postMultipartMany(
+        '/api/client_portal/payment-proof/upload',
+        const {},
+        fileField: 'payment_screenshot',
+        files: files,
+      );
+    } on ClientPortalApiException catch (e) {
+      if (e.statusCode != 400) rethrow;
+      if (!isStalePaymentProofStageError(e) &&
+          !_looksLikeMissingFileField(e.message)) {
+        rethrow;
+      }
+      return _postMultipartMany(
+        '/api/client_portal/payment-proof/upload',
+        const {},
+        fileField: 'files',
+        files: files,
+      );
+    }
+  }
+
+  static bool isStalePaymentProofStageError(Object error) {
+    final message = error is ClientPortalApiException
+        ? error.message
+        : error.toString();
+    final lower = message.toLowerCase();
+    return lower.contains('select the stage this payment') ||
+        lower.contains('stage this payment proof is for') ||
+        lower.contains('stage_task_id');
+  }
+
+  static bool _looksLikeMissingFileField(String message) {
+    final lower = message.toLowerCase();
+    return lower.contains('payment_screenshot') ||
+        lower.contains('no file') ||
+        lower.contains('select at least one');
+  }
 
   /// POST /api/client_portal/documents/upload
   /// multipart: `doc_key=aadhar` + field named after doc_key, or
@@ -418,7 +550,10 @@ class ClientPortalService {
     // Multipart when attaching proof.
     final token = await _apiToken();
     if (token == null) {
-      throw Exception('Not authenticated. Please log in again.');
+      throw ClientPortalApiException(
+        'Not authenticated. Please log in again.',
+        statusCode: 401,
+      );
     }
     Object? lastError;
     for (final alias in _pathAliases('/api/client_portal/site-inspection')) {
@@ -451,10 +586,7 @@ class ClientPortalService {
         lastError = e;
       }
     }
-    throw Exception(
-      lastError?.toString().replaceFirst('Exception: ', '') ??
-          'Could not submit site inspection',
-    );
+    _throwLastError(lastError, 'Could not submit site inspection');
   }
 
   /// POST /api/client_portal/tutorial_complete
@@ -468,6 +600,12 @@ class ClientPortalService {
     if (path.startsWith('http://') || path.startsWith('https://')) return path;
     if (path.startsWith('/')) return '$baseUrl$path';
     return '$baseUrl/$path';
+  }
+
+  /// Session cookie for authenticated document URLs (e.g. `/serve_sales_sop_*`).
+  Future<String?> sessionCookieHeader() async {
+    await _ensureCookieLoaded();
+    return _sessionCookie;
   }
 
   Future<void> clearSession() async {

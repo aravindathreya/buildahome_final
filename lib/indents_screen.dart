@@ -17,17 +17,59 @@ import 'widgets/full_screen_message.dart';
 import 'widgets/full_screen_progress.dart';
 import 'widgets/themed_scaffold.dart';
 import 'services/data_provider.dart';
+import 'indent_proof.dart';
+
+const int kIndentsCreateTab = 0;
+const int kIndentsViewOpenTab = 1;
+const int kIndentsMyIndentsTab = 2;
+const int kIndentsIndentProofTab = 3;
+
+Future<void> openIndentProofScreen(
+  BuildContext context, {
+  required String indentId,
+}) {
+  return Navigator.of(context).push(
+    MaterialPageRoute(
+      builder: (_) => IndentsScreenLayout(
+        initialTab: kIndentsIndentProofTab,
+        initialIndentId: indentId,
+      ),
+    ),
+  );
+}
+
+Future<void> openIndentProofFromTask(
+  BuildContext context,
+  Map task, {
+  Map<String, dynamic>? action,
+}) async {
+  final indentId = indentProofIndentId(task, action: action)?.trim() ?? '';
+  if (indentId.isEmpty) {
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Missing indent id for indent proof.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+    return;
+  }
+  await openIndentProofScreen(context, indentId: indentId);
+}
 
 class IndentsScreenLayout extends StatelessWidget {
   final int initialTab;
   final String? initialProjectId;
   final String? initialProjectName;
+  final String? initialIndentId;
 
   const IndentsScreenLayout({
     Key? key,
     this.initialTab = 0,
     this.initialProjectId,
     this.initialProjectName,
+    this.initialIndentId,
   }) : super(key: key);
 
   @override
@@ -39,6 +81,7 @@ class IndentsScreenLayout extends StatelessWidget {
           initialTab: initialTab,
           initialProjectId: initialProjectId,
           initialProjectName: initialProjectName,
+          initialIndentId: initialIndentId,
         ),
       ),
     );
@@ -49,12 +92,14 @@ class IndentsScreen extends StatefulWidget {
   final int initialTab;
   final String? initialProjectId;
   final String? initialProjectName;
+  final String? initialIndentId;
 
   const IndentsScreen({
     Key? key,
     this.initialTab = 0,
     this.initialProjectId,
     this.initialProjectName,
+    this.initialIndentId,
   }) : super(key: key);
 
   @override
@@ -64,14 +109,32 @@ class IndentsScreen extends StatefulWidget {
 }
 
 class IndentsScreenState extends State<IndentsScreen> {
-  late int selectedTab; // 0: Create, 1: View Open, 2: My Indents
-  final GlobalKey<ViewOpenIndentsTabState> _viewOpenIndentsKey = GlobalKey<ViewOpenIndentsTabState>();
+  late int selectedTab; // 0: Create, 1: View Open, 2: My Indents, 3: Indent Proof
+  final GlobalKey<ViewOpenIndentsTabState> _viewOpenIndentsKey =
+      GlobalKey<ViewOpenIndentsTabState>();
+  String? _userRole;
+  bool _roleLoaded = false;
+
+  bool get _showIndentProofTab => showIndentProofTabForRole(_userRole);
 
   @override
   void initState() {
     super.initState();
     final tab = widget.initialTab;
-    selectedTab = (tab >= 0 && tab <= 2) ? tab : 0;
+    selectedTab = (tab >= 0 && tab <= kIndentsIndentProofTab) ? tab : 0;
+    _loadRole();
+  }
+
+  Future<void> _loadRole() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    setState(() {
+      _userRole = prefs.getString('role');
+      _roleLoaded = true;
+      if (!_showIndentProofTab && selectedTab == kIndentsIndentProofTab) {
+        selectedTab = kIndentsMyIndentsTab;
+      }
+    });
   }
 
   void _refreshViewOpenIndents() {
@@ -80,6 +143,7 @@ class IndentsScreenState extends State<IndentsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final showProofChip = _roleLoaded && _showIndentProofTab;
     return Column(
       children: [
         // Filter chip tabs
@@ -94,6 +158,10 @@ class IndentsScreenState extends State<IndentsScreen> {
               _buildFilterChip('View Open', 1),
               SizedBox(width: 10),
               _buildFilterChip('My Indents', 2),
+              if (showProofChip) ...[
+                SizedBox(width: 10),
+                _buildFilterChip('Indent Proof', 3),
+              ],
             ],
           ),
         ),
@@ -109,6 +177,7 @@ class IndentsScreenState extends State<IndentsScreen> {
               ),
               ViewOpenIndentsTab(key: _viewOpenIndentsKey),
               MyIndentsTab(),
+              IndentProofTab(initialIndentId: widget.initialIndentId),
             ],
           ),
         ),

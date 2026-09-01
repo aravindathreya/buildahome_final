@@ -7,7 +7,15 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'app_theme.dart';
+import 'client_portal/client_portal_document_ui.dart';
+import 'client_portal/client_portal_kyc_checklist.dart';
+import 'client_portal/client_portal_kyc_document_screen.dart';
+import 'client_portal/kyc_document_record.dart';
+import 'documents_v1/client_journey_hybrid_screens.dart';
+import 'documents_v1/documents_v1_home_screen.dart';
+import 'models/workflow_document.dart';
 import 'services/client_portal_service.dart';
+import 'services/workflow_document_service.dart';
 import 'widgets/skeleton_loader.dart';
 
 /// Client Portal hub — pre-construction documents, design, site prep & inspection.
@@ -25,6 +33,7 @@ class _ClientPortalScreenState extends State<ClientPortalScreen> {
   String? _error;
   Map<String, dynamic>? _project;
   bool _tutorialDone = false;
+  WorkflowDocumentLibrary? _docLibrary;
 
   @override
   void initState() {
@@ -88,9 +97,17 @@ class _ClientPortalScreenState extends State<ClientPortalScreen> {
           payload['tutorial_completed'] == true;
       if (apiTutorial) _tutorialDone = true;
 
+      WorkflowDocumentLibrary? library;
+      try {
+        library = await WorkflowDocumentService().fetchLibrary();
+      } catch (_) {
+        library = null;
+      }
+
       setState(() {
         _loading = false;
         _project = project.isEmpty ? <String, dynamic>{'client_name': 'Your project'} : project;
+        _docLibrary = library;
       });
     } catch (e) {
       if (!mounted) return;
@@ -165,19 +182,16 @@ class _ClientPortalScreenState extends State<ClientPortalScreen> {
       return const _NoProjectState();
     }
 
-    final p = _project!;
     return RefreshIndicator(
       color: AppTheme.navy,
       onRefresh: _bootstrap,
       child: ListView(
         padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
         children: [
-          _ProjectHeader(project: p),
           if (!_tutorialDone) ...[
-            const SizedBox(height: 14),
             _TutorialBanner(onComplete: _completeTutorial),
+            const SizedBox(height: 14),
           ],
-          const SizedBox(height: 22),
           const Text(
             'Your journey',
             style: TextStyle(
@@ -187,13 +201,29 @@ class _ClientPortalScreenState extends State<ClientPortalScreen> {
             ),
           ),
           const SizedBox(height: 12),
-          ..._portalSections.map((section) {
+          ..._portalSections.asMap().entries.map((entry) {
+            final index = entry.key;
+            final section = entry.value;
+            final visual = categoryVisualFor(
+              journeyKey: section.journeyKey,
+              categoryId: section.id,
+              label: section.title,
+            );
+            final badgeCount = section.journeyKey != null
+                ? workflowDocCountForJourney(_docLibrary, section.journeyKey!)
+                : section.id == 'documents'
+                    ? workflowDocCountForJourney(
+                        _docLibrary, ClientJourneyKeys.preConversion)
+                    : 0;
             return Padding(
               padding: const EdgeInsets.only(bottom: 10),
               child: _PortalNavTile(
                 icon: section.icon,
-                title: section.title,
+                title: '${index + 1}. ${section.title}',
                 subtitle: section.subtitle,
+                badgeCount: badgeCount,
+                iconBg: visual.iconBg,
+                iconFg: visual.iconFg,
                 onTap: () => _openSection(section),
               ),
             );
@@ -210,10 +240,34 @@ class _ClientPortalScreenState extends State<ClientPortalScreen> {
         page = const _DocumentsKycScreen();
         break;
       case 'floor_plan':
-        page = const _FloorPlanElevationScreen();
+        page = const ClientFloorPlanElevationScreen();
         break;
       case 'design':
-        page = const _DesignElementScreen();
+        page = const ClientDesignElementsScreen();
+        break;
+      case 'gfc':
+        page = ClientJourneyDocumentsScreen(
+          title: section.title,
+          journeyKey: section.journeyKey!,
+        );
+        break;
+      case 'quality':
+        page = ClientJourneyDocumentsScreen(
+          title: section.title,
+          journeyKey: section.journeyKey!,
+        );
+        break;
+      case 'site_records':
+        page = ClientJourneyDocumentsScreen(
+          title: section.title,
+          journeyKey: section.journeyKey!,
+        );
+        break;
+      case 'doors_windows':
+        page = ClientJourneyDocumentsScreen(
+          title: section.title,
+          journeyKey: section.journeyKey!,
+        );
         break;
       case 'site_prep':
         page = const _SitePreparationScreen();
@@ -223,9 +277,6 @@ class _ClientPortalScreenState extends State<ClientPortalScreen> {
         break;
       case 'inspection':
         page = const _SiteInspectionScreen();
-        break;
-      case 'all_docs':
-        page = const _AllDocumentsScreen();
         break;
       default:
         return;
@@ -242,12 +293,14 @@ class _PortalSectionMeta {
   final String title;
   final String subtitle;
   final IconData icon;
+  final String? journeyKey;
 
   const _PortalSectionMeta({
     required this.id,
     required this.title,
     required this.subtitle,
     required this.icon,
+    this.journeyKey,
   });
 }
 
@@ -255,44 +308,71 @@ const _portalSections = <_PortalSectionMeta>[
   _PortalSectionMeta(
     id: 'documents',
     title: 'KYC & Documents',
-    subtitle: 'Upload ID proofs and leave a note',
+    subtitle: 'KYC and other project documents',
     icon: Icons.folder_shared_outlined,
   ),
   _PortalSectionMeta(
     id: 'floor_plan',
     title: 'Floor Plan & Elevation',
-    subtitle: 'View drawings and framing plans',
+    subtitle: 'View floor plans and elevations',
     icon: Icons.architecture_outlined,
+    journeyKey: ClientJourneyKeys.floorPlan,
   ),
   _PortalSectionMeta(
     id: 'design',
     title: 'Design Elements',
     subtitle: 'Vastu, elevation refs & bylaws',
     icon: Icons.auto_awesome_outlined,
+    journeyKey: ClientJourneyKeys.design,
+  ),
+  _PortalSectionMeta(
+    id: 'gfc',
+    title: 'GFC / Construction Drawings',
+    subtitle: 'Architectural, structural & electrical',
+    icon: Icons.domain_outlined,
+    journeyKey: ClientJourneyKeys.gfc,
+  ),
+  _PortalSectionMeta(
+    id: 'quality',
+    title: 'Quality & Test Reports',
+    subtitle: 'NDT & construction test reports',
+    icon: Icons.science_outlined,
+    journeyKey: ClientJourneyKeys.quality,
+  ),
+  _PortalSectionMeta(
+    id: 'site_records',
+    title: 'Site & Construction Records',
+    subtitle: 'Site marking, conduit marking & more',
+    icon: Icons.engineering_outlined,
+    journeyKey: ClientJourneyKeys.siteRecords,
+  ),
+  _PortalSectionMeta(
+    id: 'doors_windows',
+    title: 'Doors, Windows & Grills',
+    subtitle: 'Designs and details',
+    icon: Icons.grid_view_rounded,
+    journeyKey: ClientJourneyKeys.doorsWindows,
   ),
   _PortalSectionMeta(
     id: 'site_prep',
     title: 'Site Preparation',
     subtitle: 'Demolition & borewell questionnaire',
     icon: Icons.construction_outlined,
+    journeyKey: ClientJourneyKeys.sitePrep,
   ),
   _PortalSectionMeta(
     id: 'demolition',
     title: 'Demolition Details',
-    subtitle: 'Completion date and comments',
+    subtitle: 'Demolition completion & comments',
     icon: Icons.domain_disabled_outlined,
+    journeyKey: ClientJourneyKeys.demolition,
   ),
   _PortalSectionMeta(
     id: 'inspection',
     title: 'Site Inspection',
-    subtitle: 'Book a slot or view your report',
+    subtitle: 'Book a slot or view reports',
     icon: Icons.event_available_outlined,
-  ),
-  _PortalSectionMeta(
-    id: 'all_docs',
-    title: 'All Documents',
-    subtitle: 'Proposal, costing, agreements & more',
-    icon: Icons.library_books_outlined,
+    journeyKey: ClientJourneyKeys.inspection,
   ),
 ];
 
@@ -383,201 +463,6 @@ class _NoProjectState extends StatelessWidget {
   }
 }
 
-class _ProjectHeader extends StatelessWidget {
-  final Map<String, dynamic> project;
-
-  const _ProjectHeader({required this.project});
-
-  @override
-  Widget build(BuildContext context) {
-    final name = project['client_name']?.toString() ?? 'Your project';
-    final package = project['package']?.toString();
-    final location = project['location']?.toString();
-    final status = _statusLabel(project);
-
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: AppTheme.border),
-        boxShadow: const [
-          BoxShadow(color: AppTheme.softShadow, blurRadius: 12, offset: Offset(0, 4)),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFEEF2FF),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Icon(Icons.home_outlined, color: AppTheme.navy),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      name,
-                      style: const TextStyle(
-                        fontSize: 17,
-                        fontWeight: FontWeight.w800,
-                        color: AppTheme.navy,
-                      ),
-                    ),
-                    if (package != null && package.isNotEmpty)
-                      Text(
-                        package,
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: AppTheme.getTextSecondary(context),
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFECFDF5),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Text(
-                  status,
-                  style: const TextStyle(
-                    fontSize: 11.5,
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xFF059669),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          if (location != null && location.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Icon(Icons.place_outlined,
-                    size: 16, color: AppTheme.getTextSecondary(context)),
-                const SizedBox(width: 4),
-                Expanded(
-                  child: Text(
-                    location,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 12.5,
-                      color: AppTheme.getTextSecondary(context),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ],
-          const SizedBox(height: 14),
-          _ProgressRow(project: project),
-        ],
-      ),
-    );
-  }
-
-  String _statusLabel(Map p) {
-    if (p['is_converted'] == true) return 'Converted';
-    if (p['is_approved'] == true) return 'Approved';
-    if (p['send_costing_completed'] == true) return 'Costing';
-    if (p['finalize_elevation_completed'] == true) return 'Elevation';
-    return 'In progress';
-  }
-}
-
-class _ProgressRow extends StatelessWidget {
-  final Map<String, dynamic> project;
-  const _ProgressRow({required this.project});
-
-  @override
-  Widget build(BuildContext context) {
-    final steps = [
-      project['finalize_elevation_completed'] == true,
-      project['send_costing_completed'] == true,
-      project['is_approved'] == true,
-      project['is_converted'] == true,
-    ];
-    final labels = ['Elevation', 'Costing', 'Approved', 'Converted'];
-    final done = steps.where((e) => e).length;
-
-    return Column(
-      children: [
-        Row(
-          children: [
-            Expanded(
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: LinearProgressIndicator(
-                  value: done / steps.length,
-                  minHeight: 6,
-                  backgroundColor: const Color(0xFFE8ECF1),
-                  valueColor:
-                      const AlwaysStoppedAnimation<Color>(AppTheme.navy),
-                ),
-              ),
-            ),
-            const SizedBox(width: 10),
-            Text(
-              '$done/${steps.length}',
-              style: const TextStyle(
-                fontWeight: FontWeight.w700,
-                fontSize: 12.5,
-                color: AppTheme.navy,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 10),
-        Row(
-          children: List.generate(steps.length, (i) {
-            final active = steps[i];
-            return Expanded(
-              child: Column(
-                children: [
-                  Icon(
-                    active
-                        ? Icons.check_circle_rounded
-                        : Icons.radio_button_unchecked,
-                    size: 18,
-                    color: active
-                        ? AppTheme.navy
-                        : AppTheme.getTextSecondary(context).withOpacity(0.5),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    labels[i],
-                    style: TextStyle(
-                      fontSize: 10.5,
-                      fontWeight: active ? FontWeight.w700 : FontWeight.w500,
-                      color: active
-                          ? AppTheme.navy
-                          : AppTheme.getTextSecondary(context),
-                    ),
-                  ),
-                ],
-              ),
-            );
-          }),
-        ),
-      ],
-    );
-  }
-}
-
 class _TutorialBanner extends StatelessWidget {
   final VoidCallback onComplete;
   const _TutorialBanner({required this.onComplete});
@@ -642,39 +527,42 @@ class _PortalNavTile extends StatelessWidget {
   final IconData icon;
   final String title;
   final String subtitle;
+  final int badgeCount;
   final VoidCallback onTap;
+  final Color? iconBg;
+  final Color? iconFg;
 
   const _PortalNavTile({
     required this.icon,
     required this.title,
     required this.subtitle,
+    this.badgeCount = 0,
     required this.onTap,
+    this.iconBg,
+    this.iconFg,
   });
 
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(16),
+      color: ClientPortalDocTheme.cardBackground,
+      borderRadius: BorderRadius.circular(14),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(14),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: AppTheme.border),
-          ),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+          decoration: ClientPortalDocTheme.cardDecoration(),
           child: Row(
             children: [
               Container(
                 width: 44,
                 height: 44,
                 decoration: BoxDecoration(
-                  color: const Color(0xFFF0F4FF),
+                  color: iconBg ?? const Color(0xFFF0F4FF),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: Icon(icon, color: AppTheme.navy, size: 22),
+                child: Icon(icon, color: iconFg ?? AppTheme.navy, size: 22),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -684,24 +572,28 @@ class _PortalNavTile extends StatelessWidget {
                     Text(
                       title,
                       style: const TextStyle(
-                        fontSize: 14.5,
+                        fontSize: 14,
                         fontWeight: FontWeight.w800,
                         color: AppTheme.navy,
+                        height: 1.25,
                       ),
                     ),
                     const SizedBox(height: 2),
                     Text(
                       subtitle,
                       style: TextStyle(
-                        fontSize: 12.5,
+                        fontSize: 12,
+                        height: 1.3,
                         color: AppTheme.getTextSecondary(context),
                       ),
                     ),
                   ],
                 ),
               ),
+              ClientPortalCountBadge(count: badgeCount),
+              const SizedBox(width: 6),
               Icon(Icons.chevron_right_rounded,
-                  color: AppTheme.getTextSecondary(context)),
+                  color: AppTheme.getTextSecondary(context), size: 22),
             ],
           ),
         ),
@@ -845,7 +737,7 @@ Widget _docTile(
   );
 }
 
-// ── 1. Documents / KYC ──────────────────────────────────────────────────────
+// ── 1. KYC & Documents (checklist only) ─────────────────────────────────────
 
 class _DocumentsKycScreen extends StatefulWidget {
   const _DocumentsKycScreen();
@@ -984,6 +876,9 @@ class _DocumentsKycScreenState extends State<_DocumentsKycScreen> {
           _kycDocs = data['existing'] is List
               ? List.from(data['existing'] as List)
               : _kycDocs;
+          if (data['uploaded_types'] is List) {
+            _data['uploaded_types'] = data['uploaded_types'];
+          }
         });
       } else {
         await _load();
@@ -999,6 +894,21 @@ class _DocumentsKycScreenState extends State<_DocumentsKycScreen> {
     } finally {
       if (mounted) setState(() => _saving = false);
     }
+  }
+
+  void _openUploaded(String label, KycDocumentRecord record) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ClientPortalKycDocumentScreen(
+          label: label,
+          record: record,
+          onReplace: () => _upload(record.docKey),
+        ),
+      ),
+    ).then((_) {
+      if (mounted) _load();
+    });
   }
 
   Future<void> _saveComment() async {
@@ -1024,164 +934,24 @@ class _DocumentsKycScreenState extends State<_DocumentsKycScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final body = _loading
+        ? const SkeletonListLoader(cardCount: 4)
+        : _error != null
+            ? _ErrorState(message: _error!, onRetry: _load)
+            : ClientPortalKycChecklist(
+                data: _data,
+                docTypes: _docTypes,
+                kycDocs: _kycDocs,
+                saving: _saving,
+                commentCtrl: _commentCtrl,
+                onUpload: _upload,
+                onOpenUploaded: _openUploaded,
+                onSaveComment: _saveComment,
+              );
+
     return _PortalScaffold(
       title: 'KYC & Documents',
-      body: _loading
-          ? const SkeletonListLoader(cardCount: 4)
-          : _error != null
-              ? _ErrorState(message: _error!, onRetry: _load)
-              : ListView(
-                  padding: const EdgeInsets.all(20),
-                  children: [
-                    const Text(
-                      'Upload documents',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w800,
-                        fontSize: 15,
-                        color: AppTheme.navy,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Share Aadhaar or other KYC files requested by your team.',
-                      style: TextStyle(
-                        color: AppTheme.getTextSecondary(context),
-                        fontSize: 13,
-                      ),
-                    ),
-                    const SizedBox(height: 14),
-                    ..._docTypes.map((raw) {
-                      final map = raw is Map
-                          ? Map<String, dynamic>.from(raw)
-                          : <String, dynamic>{
-                              'key': raw.toString(),
-                              'label': raw.toString(),
-                            };
-                      final key = map['key']?.toString() ??
-                          map['doc_key']?.toString() ??
-                          'custom';
-                      final label = map['label']?.toString() ??
-                          map['name']?.toString() ??
-                          key;
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 8),
-                        child: OutlinedButton.icon(
-                          onPressed: _saving ? null : () => _upload(key),
-                          icon: const Icon(Icons.upload_file_outlined),
-                          label: Text('Upload $label'),
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: AppTheme.navy,
-                            side: const BorderSide(color: AppTheme.border),
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
-                        ),
-                      );
-                    }),
-                    const SizedBox(height: 18),
-                    const Text(
-                      'Uploaded KYC',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w800,
-                        fontSize: 15,
-                        color: AppTheme.navy,
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    if (_kycDocs.isEmpty)
-                      _emptyDocHint(context, 'KYC documents')
-                    else
-                      ..._kycDocs.map((raw) {
-                        final doc = raw is Map
-                            ? Map<String, dynamic>.from(raw)
-                            : <String, dynamic>{};
-                        final title = doc['document_label']?.toString() ??
-                            doc['document_type']?.toString() ??
-                            doc['doc_type']?.toString() ??
-                            doc['name']?.toString() ??
-                            'Document';
-                        final url = doc['view_url']?.toString() ??
-                            doc['download_url']?.toString() ??
-                            doc['url']?.toString() ??
-                            doc['file_url']?.toString();
-                        return Padding(
-                          padding: const EdgeInsets.only(bottom: 8),
-                          child: _docTile(context, title: title, url: url),
-                        );
-                      }),
-                    const SizedBox(height: 22),
-                    const Text(
-                      'Your comment',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w800,
-                        fontSize: 15,
-                        color: AppTheme.navy,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: _commentCtrl,
-                      maxLines: 4,
-                      decoration: InputDecoration(
-                        hintText: 'Any notes for the team…',
-                        filled: true,
-                        fillColor: Colors.white,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: const BorderSide(color: AppTheme.border),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: const BorderSide(color: AppTheme.border),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    ElevatedButton(
-                      onPressed: _saving ? null : _saveComment,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppTheme.navy,
-                        foregroundColor: Colors.white,
-                        minimumSize: const Size.fromHeight(48),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      child: Text(_saving ? 'Saving…' : 'Save comment'),
-                    ),
-                    if (_data['demolition_contact'] != null ||
-                        _data['borewell_contact'] != null) ...[
-                      const SizedBox(height: 22),
-                      const Text(
-                        'Contacts',
-                        style: TextStyle(
-                          fontWeight: FontWeight.w800,
-                          fontSize: 15,
-                          color: AppTheme.navy,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      if (_data['demolition_contact'] != null)
-                        _infoLine('Demolition',
-                            _data['demolition_contact'].toString()),
-                      if (_data['borewell_contact'] != null)
-                        _infoLine(
-                            'Borewell', _data['borewell_contact'].toString()),
-                    ],
-                  ],
-                ),
-    );
-  }
-
-  Widget _infoLine(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
-      child: Text(
-        '$label: $value',
-        style: const TextStyle(fontSize: 13.5, color: AppTheme.navy),
-      ),
+      body: body,
     );
   }
 }
@@ -1993,254 +1763,328 @@ class _SiteInspectionScreenState extends State<_SiteInspectionScreen> {
             ? Map<String, dynamic>.from(_data['booking'] as Map)
             : <String, dynamic>{});
 
-    return _PortalScaffold(
-      title: 'Site Inspection',
-      actions: [
-        IconButton(onPressed: _load, icon: const Icon(Icons.refresh_rounded)),
-      ],
-      body: _loading
-          ? const SkeletonListLoader(cardCount: 4)
-          : _error != null
-              ? _ErrorState(message: _error!, onRetry: _load)
-              : ListView(
-                  padding: const EdgeInsets.all(20),
-                  children: [
-                    if (accepted != null) ...[
-                      Container(
-                        padding: const EdgeInsets.all(14),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFECFDF5),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Text(
-                          'Accepted slot: $accepted',
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w700,
-                            color: Color(0xFF059669),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                    ],
-                    if (booking.isNotEmpty) ...[
-                      const Text(
-                        'Current booking',
-                        style: TextStyle(
-                          fontWeight: FontWeight.w800,
-                          color: AppTheme.navy,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      ...[
-                        if (booking['presence_type'] != null)
-                          'Presence: ${booking['presence_type']}',
-                        if (booking['slot1_display'] != null)
-                          'Slot 1: ${booking['slot1_display']}',
-                        if (booking['slot2_display'] != null)
-                          'Slot 2: ${booking['slot2_display']}',
-                        if (booking['slot3_display'] != null)
-                          'Slot 3: ${booking['slot3_display']}',
-                      ].map((line) => Padding(
-                            padding: const EdgeInsets.only(bottom: 4),
-                            child: Text(
-                              line,
-                              style: TextStyle(
-                                fontSize: 13,
-                                color: AppTheme.getTextSecondary(context),
-                              ),
-                            ),
-                          )),
-                      // Fallback for unexpected booking shapes.
-                      if (booking['slot1_display'] == null)
-                        ...booking.entries
-                            .where((e) =>
-                                e.value != null &&
-                                e.value.toString().trim().isNotEmpty)
-                            .take(6)
-                            .map((e) => Padding(
-                                  padding: const EdgeInsets.only(bottom: 4),
-                                  child: Text(
-                                    '${e.key}: ${e.value}',
-                                    style: TextStyle(
-                                      fontSize: 13,
-                                      color:
-                                          AppTheme.getTextSecondary(context),
-                                    ),
-                                  ),
-                                )),
-                      const SizedBox(height: 12),
-                    ],
-                    _docTile(
-                      context,
-                      title: 'Inspection report',
-                      url: _data['site_inspection_report_url']?.toString() ??
-                          _data['inspection_report_url']?.toString(),
-                      icon: Icons.assignment_outlined,
-                    ),
-                    const SizedBox(height: 8),
-                    _docTile(
-                      context,
-                      title: 'Site cleaned proof',
-                      url: _data['site_cleaned_proof_url']?.toString(),
-                      icon: Icons.cleaning_services_outlined,
-                    ),
-                    if (canSubmit) ...[
-                      const SizedBox(height: 22),
-                      const Text(
-                        'Book inspection',
-                        style: TextStyle(
-                          fontWeight: FontWeight.w800,
-                          fontSize: 15,
-                          color: AppTheme.navy,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        'Choose 3 unique slots, each at least 48 hours from now.',
-                        style: TextStyle(
-                          fontSize: 12.5,
-                          color: AppTheme.getTextSecondary(context),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: ChoiceChip(
-                              label: const Center(child: Text('At site')),
-                              selected: _presenceType == 'at_site',
-                              onSelected: (_) =>
-                                  setState(() => _presenceType = 'at_site'),
-                              selectedColor: const Color(0xFFDBEAFE),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: ChoiceChip(
-                              label: const Center(child: Text('Virtually')),
-                              selected: _presenceType == 'virtually',
-                              onSelected: (_) =>
-                                  setState(() => _presenceType = 'virtually'),
-                              selectedColor: const Color(0xFFDBEAFE),
-                            ),
-                          ),
-                        ],
-                      ),
-                      if (_presenceType == 'virtually') ...[
-                        const SizedBox(height: 12),
-                        TextField(
-                          controller: _virtualCtrl,
-                          decoration: InputDecoration(
-                            labelText: 'Virtual connection details',
-                            hintText: 'Zoom / Google Meet link',
-                            filled: true,
-                            fillColor: Colors.white,
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
-                        ),
-                      ],
-                      const SizedBox(height: 16),
-                      ...List.generate(3, (i) {
-                        final slot = _slots[i];
-                        return Container(
-                          margin: const EdgeInsets.only(bottom: 10),
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: AppTheme.border),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Slot ${i + 1}',
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w800,
-                                  color: AppTheme.navy,
-                                ),
-                              ),
-                              ListTile(
-                                contentPadding: EdgeInsets.zero,
-                                title: Text(
-                                  slot.date == null
-                                      ? 'Pick date'
-                                      : DateFormat('dd MMM yyyy')
-                                          .format(slot.date!),
-                                ),
-                                trailing:
-                                    const Icon(Icons.calendar_today_outlined),
-                                onTap: () => _pickSlotDate(i),
-                              ),
-                              Wrap(
-                                spacing: 8,
-                                children: [
-                                  for (final period in const [
-                                    {'key': 'morning', 'label': '10 AM'},
-                                    {'key': 'afternoon', 'label': '1 PM'},
-                                    {'key': 'evening', 'label': '4 PM'},
-                                  ])
-                                    ChoiceChip(
-                                      label: Text(period['label']!),
-                                      selected: slot.period == period['key'],
-                                      onSelected: (_) => setState(
-                                          () => slot.period = period['key']),
-                                      selectedColor: const Color(0xFFDBEAFE),
-                                    ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        );
-                      }),
-                      CheckboxListTile(
-                        value: _siteCleaned,
-                        onChanged: (v) =>
-                            setState(() => _siteCleaned = v ?? false),
-                        contentPadding: EdgeInsets.zero,
-                        title: const Text(
-                          'I confirm the site is cleaned',
-                          style: TextStyle(fontWeight: FontWeight.w600),
-                        ),
-                        activeColor: AppTheme.navy,
-                        controlAffinity: ListTileControlAffinity.leading,
-                      ),
-                      OutlinedButton.icon(
-                        onPressed: _pickProof,
-                        icon: const Icon(Icons.attach_file),
-                        label: Text(
-                          _proofFile == null
-                              ? 'Attach site cleaned proof'
-                              : 'Proof attached',
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      ElevatedButton(
-                        onPressed: _saving ? null : _submit,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppTheme.navy,
-                          foregroundColor: Colors.white,
-                          minimumSize: const Size.fromHeight(48),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                        child:
-                            Text(_saving ? 'Submitting…' : 'Submit booking'),
-                      ),
-                    ] else ...[
-                      const SizedBox(height: 16),
-                      Text(
-                        'A booking has already been submitted. You cannot resubmit.',
-                        style: TextStyle(
-                          color: AppTheme.getTextSecondary(context),
-                        ),
+    return DefaultTabController(
+      length: 2,
+      child: Scaffold(
+        backgroundColor: AppTheme.getBackgroundPrimary(context),
+        appBar: AppBar(
+          backgroundColor: AppTheme.getBackgroundSecondary(context),
+          foregroundColor: AppTheme.navy,
+          elevation: 0,
+          title: const Text(
+            'Site Inspection',
+            style: TextStyle(
+              color: AppTheme.navy,
+              fontSize: 17,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          actions: [
+            IconButton(onPressed: _load, icon: const Icon(Icons.refresh_rounded)),
+          ],
+          bottom: const TabBar(
+            labelColor: AppTheme.navy,
+            unselectedLabelColor: AppTheme.mutedGrey,
+            indicatorColor: AppTheme.navy,
+            tabs: [
+              Tab(text: 'My Reports'),
+              Tab(text: 'Book Slot'),
+            ],
+          ),
+        ),
+        body: _loading
+            ? const SkeletonListLoader(cardCount: 4)
+            : _error != null
+                ? _ErrorState(message: _error!, onRetry: _load)
+                : TabBarView(
+                    children: [
+                      _SiteInspectionReportsTab(data: _data),
+                      _SiteInspectionBookSlotTab(
+                        data: _data,
+                        canSubmit: canSubmit,
+                        accepted: accepted,
+                        booking: booking,
+                        presenceType: _presenceType,
+                        virtualCtrl: _virtualCtrl,
+                        slots: _slots,
+                        siteCleaned: _siteCleaned,
+                        proofFile: _proofFile,
+                        saving: _saving,
+                        onPresenceChanged: (v) => setState(() => _presenceType = v),
+                        onSiteCleanedChanged: (v) => setState(() => _siteCleaned = v),
+                        onProofPicked: _pickProof,
+                        onPickSlotDate: _pickSlotDate,
+                        onSlotPeriodChanged: (index, period) =>
+                            setState(() => _slots[index].period = period),
+                        onSubmit: _submit,
                       ),
                     ],
-                  ],
+                  ),
+      ),
+    );
+  }
+}
+
+class _SiteInspectionReportsTab extends StatelessWidget {
+  final Map<String, dynamic> data;
+
+  const _SiteInspectionReportsTab({required this.data});
+
+  @override
+  Widget build(BuildContext context) {
+    return ClientJourneyDocumentsScreen(
+      title: 'Inspection Reports',
+      journeyKey: ClientJourneyKeys.inspection,
+      clientMode: true,
+      embedded: true,
+      legacyReportUrl: data['site_inspection_report_url']?.toString() ??
+          data['inspection_report_url']?.toString(),
+      legacyProofUrl: data['site_cleaned_proof_url']?.toString(),
+    );
+  }
+}
+
+class _SiteInspectionBookSlotTab extends StatelessWidget {
+  final Map<String, dynamic> data;
+  final bool canSubmit;
+  final dynamic accepted;
+  final Map<String, dynamic> booking;
+  final String presenceType;
+  final TextEditingController virtualCtrl;
+  final List<_SlotDraft> slots;
+  final bool siteCleaned;
+  final File? proofFile;
+  final bool saving;
+  final ValueChanged<String> onPresenceChanged;
+  final ValueChanged<bool> onSiteCleanedChanged;
+  final VoidCallback onProofPicked;
+  final Future<void> Function(int index) onPickSlotDate;
+  final void Function(int index, String period) onSlotPeriodChanged;
+  final Future<void> Function() onSubmit;
+
+  const _SiteInspectionBookSlotTab({
+    required this.data,
+    required this.canSubmit,
+    required this.accepted,
+    required this.booking,
+    required this.presenceType,
+    required this.virtualCtrl,
+    required this.slots,
+    required this.siteCleaned,
+    required this.proofFile,
+    required this.saving,
+    required this.onPresenceChanged,
+    required this.onSiteCleanedChanged,
+    required this.onProofPicked,
+    required this.onPickSlotDate,
+    required this.onSlotPeriodChanged,
+    required this.onSubmit,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      padding: const EdgeInsets.all(20),
+      children: [
+        const ClientPortalScreenHeader(
+          title: 'Book a site inspection',
+          subtitle: 'Choose 3 unique slots at least 48 hours from now',
+        ),
+        const SizedBox(height: 14),
+        if (accepted != null) ...[
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: const Color(0xFFECFDF5),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(
+              'Accepted slot: $accepted',
+              style: const TextStyle(
+                fontWeight: FontWeight.w700,
+                color: Color(0xFF059669),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+        ],
+        if (booking.isNotEmpty) ...[
+          const Text(
+            'Current booking',
+            style: TextStyle(
+              fontWeight: FontWeight.w800,
+              color: AppTheme.navy,
+            ),
+          ),
+          const SizedBox(height: 8),
+          ...[
+            if (booking['presence_type'] != null)
+              'Presence: ${booking['presence_type']}',
+            if (booking['slot1_display'] != null)
+              'Slot 1: ${booking['slot1_display']}',
+            if (booking['slot2_display'] != null)
+              'Slot 2: ${booking['slot2_display']}',
+            if (booking['slot3_display'] != null)
+              'Slot 3: ${booking['slot3_display']}',
+          ].map((line) => Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: Text(
+                  line,
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: AppTheme.getTextSecondary(context),
+                  ),
                 ),
+              )),
+          if (booking['slot1_display'] == null)
+            ...booking.entries
+                .where((e) =>
+                    e.value != null && e.value.toString().trim().isNotEmpty)
+                .take(6)
+                .map((e) => Padding(
+                      padding: const EdgeInsets.only(bottom: 4),
+                      child: Text(
+                        '${e.key}: ${e.value}',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: AppTheme.getTextSecondary(context),
+                        ),
+                      ),
+                    )),
+          const SizedBox(height: 12),
+        ],
+        if (canSubmit) ...[
+          Row(
+            children: [
+              Expanded(
+                child: ChoiceChip(
+                  label: const Center(child: Text('At site')),
+                  selected: presenceType == 'at_site',
+                  onSelected: (_) => onPresenceChanged('at_site'),
+                  selectedColor: const Color(0xFFDBEAFE),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: ChoiceChip(
+                  label: const Center(child: Text('Virtually')),
+                  selected: presenceType == 'virtually',
+                  onSelected: (_) => onPresenceChanged('virtually'),
+                  selectedColor: const Color(0xFFDBEAFE),
+                ),
+              ),
+            ],
+          ),
+          if (presenceType == 'virtually') ...[
+            const SizedBox(height: 12),
+            TextField(
+              controller: virtualCtrl,
+              decoration: InputDecoration(
+                labelText: 'Virtual connection details',
+                hintText: 'Zoom / Google Meet link',
+                filled: true,
+                fillColor: Colors.white,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+          ],
+          const SizedBox(height: 16),
+          ...List.generate(3, (i) {
+            final slot = slots[i];
+            return Container(
+              margin: const EdgeInsets.only(bottom: 10),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppTheme.border),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Slot ${i + 1}',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w800,
+                      color: AppTheme.navy,
+                    ),
+                  ),
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(
+                      slot.date == null
+                          ? 'Pick date'
+                          : DateFormat('dd MMM yyyy').format(slot.date!),
+                    ),
+                    trailing: const Icon(Icons.calendar_today_outlined),
+                    onTap: () => onPickSlotDate(i),
+                  ),
+                  Wrap(
+                    spacing: 8,
+                    children: [
+                      for (final period in const [
+                        {'key': 'morning', 'label': '10 AM'},
+                        {'key': 'afternoon', 'label': '1 PM'},
+                        {'key': 'evening', 'label': '4 PM'},
+                      ])
+                        ChoiceChip(
+                          label: Text(period['label']!),
+                          selected: slot.period == period['key'],
+                          onSelected: (_) =>
+                              onSlotPeriodChanged(i, period['key']!),
+                          selectedColor: const Color(0xFFDBEAFE),
+                        ),
+                    ],
+                  ),
+                ],
+              ),
+            );
+          }),
+          CheckboxListTile(
+            value: siteCleaned,
+            onChanged: (v) => onSiteCleanedChanged(v ?? false),
+            contentPadding: EdgeInsets.zero,
+            title: const Text(
+              'I confirm the site is cleaned',
+              style: TextStyle(fontWeight: FontWeight.w600),
+            ),
+            activeColor: AppTheme.navy,
+            controlAffinity: ListTileControlAffinity.leading,
+          ),
+          OutlinedButton.icon(
+            onPressed: onProofPicked,
+            icon: const Icon(Icons.attach_file),
+            label: Text(
+              proofFile == null
+                  ? 'Attach site cleaned proof'
+                  : 'Proof attached',
+            ),
+          ),
+          const SizedBox(height: 12),
+          ElevatedButton(
+            onPressed: saving ? null : onSubmit,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.navy,
+              foregroundColor: Colors.white,
+              minimumSize: const Size.fromHeight(48),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            child: Text(saving ? 'Submitting…' : 'Submit booking'),
+          ),
+        ] else ...[
+          const SizedBox(height: 16),
+          Text(
+            'A booking has already been submitted. You cannot resubmit.',
+            style: TextStyle(
+              color: AppTheme.getTextSecondary(context),
+            ),
+          ),
+        ],
+      ],
     );
   }
 }

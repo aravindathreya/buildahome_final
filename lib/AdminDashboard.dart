@@ -31,7 +31,7 @@ import 'Skin2/loginPage.dart';
 import 'NavMenu.dart';
 import 'NotesAndComments.dart';
 import 'chat_v1/chat_v1_app.dart';
-import 'ProjectStatusScreen.dart';
+import 'ProjectFocusScreen.dart';
 import 'utilities/role_app_bar_color.dart';
 import 'widgets/dashboard_chrome.dart';
 import 'widgets/modern_task_card.dart';
@@ -1070,14 +1070,14 @@ class AdminHomeState extends State<AdminHome> {
       });
     }
 
-    // Project Status — pending tasks for selected sales_sop (after Chat V1).
+    // Project Status — opens Project Focus (current situation dashboard).
     if (currentUserRole == 'Client' ||
         (rbac.canViewSync(currentUserRole, RBACService.tasksAndNotes) &&
             currentUserRole != 'Site Engineer')) {
       menuItems.add({
         'title': 'Project Status',
         'icon': Icons.flag_outlined,
-        'route': () => ProjectStatusScreen.openQuick(tasksHint: _tasks),
+        'route': () => ProjectFocusScreen.openQuick(tasksHint: _tasks),
       });
     }
 

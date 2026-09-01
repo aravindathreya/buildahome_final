@@ -403,6 +403,14 @@ class DataProvider {
           },
         });
       }
+      if (!isClient &&
+          (salesSopId == null || salesSopId.isEmpty) &&
+          projectId != null &&
+          projectId.isNotEmpty) {
+        // Staff timeline requires sales_sop_id. Calling with only project_id
+        // returns 401 and was being shown as "session expired".
+        continue;
+      }
       if (projectId != null && projectId.isNotEmpty) {
         endpointAttempts.add({
           'uri': Uri.parse(basePath),
@@ -437,7 +445,17 @@ class DataProvider {
         lastStatusCode = response.statusCode;
         if (response.statusCode != 200) {
           lastError = _timelineErrorMessage(response);
-          if (response.statusCode == 401) {
+          // 401 on a project_id-only URL usually means the endpoint wants
+          // sales_sop_id, not that the user's session is dead.
+          final query = attempt['query'] as Map<String, String>;
+          final usedSop = (salesSopId != null &&
+                  salesSopId.isNotEmpty &&
+                  ((attempt['uri'] as Uri)
+                          .path
+                          .contains('/$salesSopId') ||
+                      query['sales_sop_id'] == salesSopId ||
+                      query['id'] == salesSopId));
+          if (response.statusCode == 401 && usedSop) {
             break;
           }
           continue;
@@ -476,16 +494,17 @@ class DataProvider {
       }
     }
 
-    clientTimelineLoaded = true;
+    if (salesSopId == null || salesSopId.isEmpty) {
+      if (!isClient) {
+        throw Exception(
+          'This project does not have a sales SOP id yet, so the timeline cannot load. '
+          'Select the project again or contact support.',
+        );
+      }
+    }
     if (lastStatusCode == 401) {
       throw Exception(
         'Unauthorized. Your API token is missing or expired. Please log out and log in again.',
-      );
-    }
-    if (salesSopId == null && !isClient) {
-      throw Exception(
-        'Could not resolve sales SOP id for this project. '
-        'Try selecting the project again or contact support.',
       );
     }
     throw Exception(

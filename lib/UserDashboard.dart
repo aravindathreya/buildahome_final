@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:percent_indicator/linear_percent_indicator.dart';
+import 'package:percent_indicator/circular_percent_indicator.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:shimmer/shimmer.dart';
@@ -15,7 +15,7 @@ import 'Gallery.dart' hide TimelineGallery;
 import 'TimelineGallery.dart';
 import 'NotesAndComments.dart';
 import 'chat_v1/chat_v1_app.dart';
-import 'ProjectStatusScreen.dart';
+import 'ProjectFocusScreen.dart';
 import 'checklist_categories.dart';
 import 'services/api_http.dart';
 import 'services/data_provider.dart';
@@ -27,11 +27,15 @@ import 'RequestDrawing.dart';
 import 'InspectionRequest.dart';
 import 'SiteVisitReports.dart';
 import 'indents_screen.dart';
+import 'indent_proof.dart';
+import 'approved_pos_screen.dart';
 import 'main.dart';
 import 'MyTasksScreen.dart';
 import 'ProjectTimelineScreen.dart';
 import 'SalesSopCardsScreen.dart';
 import 'ClientPortalScreen.dart';
+import 'UploadPaymentProofScreen.dart';
+import 'documents_v1/documents_v1_home_screen.dart';
 import 'VirtualTour.dart';
 import 'NavMenu.dart';
 import 'notifcations.dart';
@@ -684,46 +688,6 @@ class _DashNavItem {
   const _DashNavItem(this.activeIcon, this.icon, this.label);
 }
 
-class _HeroStat extends StatelessWidget {
-  final String value;
-  final String label;
-  const _HeroStat({required this.value, required this.label});
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.baseline,
-      textBaseline: TextBaseline.alphabetic,
-      children: [
-        Text(
-          value,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 16,
-            fontWeight: FontWeight.w800,
-            height: 1.1,
-            letterSpacing: -0.2,
-          ),
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Text(
-            label,
-            style: const TextStyle(
-              color: Color(0xFFC7D0E0),
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              height: 1.15,
-            ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
 class UserDashboardScreen extends StatefulWidget {
   const UserDashboardScreen({Key? key}) : super(key: key);
 
@@ -741,9 +705,7 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
 
   List dailyUpdateList = [];
   var username = ' ';
-  var projectName = 'My Project';
   var updatePostedOnDate = " ";
-  var value = " ";
   String? completed;
   dynamic updateResponseBody;
   var blocked = false;
@@ -791,7 +753,7 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
     loadDataFromProvider();
     // Fetch fresh data asynchronously and preload project data for non-Client users
     _initializeData();
-    // Load tasks for the project
+    // Load tasks for the current user
     loadTasks();
 
     // Add listener to scroll to top when search field is focused
@@ -905,7 +867,6 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
     final String? nextCompletion = dataProvider.clientProjectCompletion;
     final bool nextBlocked = dataProvider.clientProjectBlocked ?? false;
     final String nextBlockReason = dataProvider.clientProjectBlockReason ?? '';
-    final String nextValue = dataProvider.clientProjectValue ?? '';
     final dynamic nextUpdates = dataProvider.clientProjectUpdates;
     final List<dynamic> nextWorkflowSlots =
         List<dynamic>.from(dataProvider.clientWorkflowDashboardSlots);
@@ -943,10 +904,8 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
       completed = nextCompletion;
       blocked = nextBlocked;
       bolckReason = nextBlockReason;
-      value = nextValue;
       workflowDashboardSlots = nextWorkflowSlots;
       username = loadedUsername;
-      projectName = _resolveProjectName(loadedUsername);
       _isLoadingSummary = false;
       _hasLoadedSummary = true;
     });
@@ -1208,13 +1167,9 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
   bool get _shouldShowInitialSummarySkeleton =>
       _isLoadingSummary && !_hasLoadedSummary;
 
-  bool get _shouldShowInitialUpdatesSkeleton =>
-      _isLoadingUpdates && !_hasLoadedUpdates;
+  bool get _shouldShowInitialPageSkeleton => _shouldShowInitialSummarySkeleton;
 
-  bool get _shouldShowInitialPageSkeleton =>
-      _shouldShowInitialSummarySkeleton && _shouldShowInitialUpdatesSkeleton;
-
-  bool get _isAnySectionLoading => _isLoadingSummary || _isLoadingUpdates;
+  bool get _isAnySectionLoading => _isLoadingSummary || _isLoadingTasks;
 
   Widget _buildSkeleton(double height, double width) {
     return Container(
@@ -1230,8 +1185,418 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
   List<Map<String, dynamic>> get _activeRecentTasks =>
       filterActiveRecentTasks(_tasks);
 
+  bool get _isClientUser =>
+      (_currentRole ?? '').trim().toLowerCase() == 'client';
+
+  BoxDecoration get _dashboardSurfaceDecoration => BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: _cardBorder),
+        boxShadow: const [
+          BoxShadow(
+            color: _softShadow,
+            blurRadius: 16,
+            offset: Offset(0, 6),
+          ),
+        ],
+      );
+
+  void _openChat() {
+    _navigateToWidget(
+      ChatV1App.openQuick(
+        tasksHint: _tasks,
+      ),
+    );
+  }
+
+  void _openAllProjectTasks() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => MyTasksScreen(
+          tasks: _tasks,
+          onRefresh: _refreshTasksForMyTasks,
+          initialTabIndex: 0,
+        ),
+      ),
+    );
+  }
+
+  void _openProjectTaskDetails(Map<String, dynamic> task) {
+    if (isIndentProofReviewTask(task) || isIndentProofDeeplinkTask(task)) {
+      if (isIndentProofReviewTask(task)) {
+        openIndentProofReviewFromTask(
+          context,
+          Map<String, dynamic>.from(task),
+          onRefresh: _refreshTasksForMyTasks,
+        );
+      } else {
+        openIndentProofFromTask(context, task).then((_) {
+          _refreshTasksForMyTasks();
+        });
+      }
+      return;
+    }
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => MyTasksScreen(
+          tasks: _tasks,
+          onRefresh: _refreshTasksForMyTasks,
+          focusTaskId: task['id']?.toString(),
+        ),
+      ),
+    );
+  }
+
+  String _compactTaskDate(Map<String, dynamic> task) {
+    final iso = _firstTaskString(task, [
+      'due_date',
+      'updated_at',
+      'created_at',
+      'completed_at',
+    ]);
+    if (iso == null) return '';
+    try {
+      return DateFormat('d MMM').format(DateTime.parse(iso));
+    } catch (_) {
+      return iso;
+    }
+  }
+
+  Map<String, dynamic> _compactTaskStatusMeta(Map<String, dynamic> task) {
+    if (_isTaskOverdue(task)) {
+      return {
+        'label': 'Overdue',
+        'color': const Color(0xFFDC2626),
+        'bg': const Color(0xFFFEE2E2),
+      };
+    }
+
+    final status = _normalizedTaskStatus(task);
+    switch (status) {
+      case 'in_progress':
+      case 'ready':
+      case 'waiting_approval':
+        return {
+          'label': status == 'waiting_approval' ? 'In Review' : 'In Progress',
+          'color': status == 'waiting_approval'
+              ? const Color(0xFF2563EB)
+              : const Color(0xFFEA580C),
+          'bg': status == 'waiting_approval'
+              ? const Color(0xFFDBEAFE)
+              : const Color(0xFFFFEDD5),
+        };
+      case 'scheduled':
+        return {
+          'label': 'Scheduled',
+          'color': const Color(0xFF6366F1),
+          'bg': const Color(0xFFEEF2FF),
+        };
+      default:
+        final label = workflowStatusDisplayLabel(task);
+        if (label.toLowerCase().contains('progress')) {
+          return {
+            'label': label,
+            'color': const Color(0xFFEA580C),
+            'bg': const Color(0xFFFFEDD5),
+          };
+        }
+        return {
+          'label': label == 'Pending' ? 'On Track' : label,
+          'color': const Color(0xFF16A34A),
+          'bg': const Color(0xFFDCFCE7),
+        };
+    }
+  }
+
+  Widget _buildChatAndLatestTasksRow() {
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(child: _buildBahChatCard()),
+          const SizedBox(width: 12),
+          Expanded(child: _buildProjectLatestTasksCard()),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBahChatCard() {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: _openChat,
+        borderRadius: BorderRadius.circular(18),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(14, 14, 14, 16),
+          decoration: _dashboardSurfaceDecoration,
+          child: Stack(
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'bAh Chat',
+                    style: TextStyle(
+                      color: _navy,
+                      fontSize: 14.5,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  Center(
+                    child: Container(
+                      width: 88,
+                      height: 88,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFEFF6FF),
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: const Color(0xFFDBEAFE),
+                        ),
+                      ),
+                      child: Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          Icon(
+                            Icons.forum_outlined,
+                            size: 34,
+                            color: AppTheme.getPrimaryColor(context),
+                          ),
+                          Positioned(
+                            bottom: 18,
+                            child: Icon(
+                              Icons.home_work_outlined,
+                              size: 16,
+                              color: AppTheme.getPrimaryColor(context)
+                                  .withValues(alpha: 0.85),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  const Center(
+                    child: Text(
+                      'Start a conversation',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: _mutedGrey,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                        height: 1.3,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              Positioned(
+                right: 0,
+                top: 54,
+                child: Container(
+                  width: 28,
+                  height: 28,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: const Color(0xFFE8ECF1)),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Color(0x12000000),
+                        blurRadius: 8,
+                        offset: Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: const Icon(
+                    Icons.chevron_right_rounded,
+                    color: Color(0xFF2563EB),
+                    size: 18,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildProjectLatestTasksCard() {
+    final recent = _activeRecentTasks.take(_isClientUser ? 1 : 2).toList();
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
+      decoration: _dashboardSurfaceDecoration,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  'Latest Tasks',
+                  style: TextStyle(
+                    color: _navy,
+                    fontSize: 14.5,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+              if (!_isClientUser)
+                TextButton(
+                  onPressed: _openAllProjectTasks,
+                  style: TextButton.styleFrom(
+                    padding: EdgeInsets.zero,
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  child: const Text(
+                    'View all',
+                    style: TextStyle(
+                      color: Color(0xFF2563EB),
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          if (_isLoadingTasks && recent.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 18),
+              child: Center(
+                child: SizedBox(
+                  width: 22,
+                  height: 22,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              ),
+            )
+          else if (recent.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 18),
+              child: Text(
+                'No pending tasks',
+                style: TextStyle(
+                  color: _mutedGrey,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            )
+          else
+            for (var index = 0; index < recent.length; index++) ...[
+              if (index > 0)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 10),
+                  child: Divider(height: 1, color: Color(0xFFEEF2F6)),
+                ),
+              _buildCompactProjectTaskRow(
+                recent[index],
+                showAction: !_isClientUser,
+              ),
+            ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCompactProjectTaskRow(
+    Map<String, dynamic> task, {
+    bool showAction = true,
+  }) {
+    final status = _compactTaskStatusMeta(task);
+    final description = showAction
+        ? _clientTaskDescription(task)
+        : _clientTaskTitle(task);
+    final dateLabel = _compactTaskDate(task);
+
+    final content = Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 7,
+                height: 7,
+                decoration: BoxDecoration(
+                  color: status['color'] as Color,
+                  shape: BoxShape.circle,
+                ),
+              ),
+              const SizedBox(width: 6),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: status['bg'] as Color,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  status['label'] as String,
+                  style: TextStyle(
+                    color: status['color'] as Color,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            description,
+            style: const TextStyle(
+              color: _navy,
+              fontSize: 12.5,
+              fontWeight: FontWeight.w600,
+              height: 1.35,
+            ),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+          if (dateLabel.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text(
+              dateLabel,
+              style: const TextStyle(
+                color: _mutedGrey,
+                fontSize: 11,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+
+    if (!showAction) return content;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () => _openProjectTaskDetails(task),
+        borderRadius: BorderRadius.circular(10),
+        child: content,
+      ),
+    );
+  }
+
+  bool get _shouldShowMyPendingTasksSection =>
+      _activeRecentTasks.isNotEmpty;
+
   Widget _buildTasksSection() {
-    final recent = _activeRecentTasks.take(4).toList();
+    final recent = _activeRecentTasks.take(2).toList();
+    if (recent.isEmpty) {
+      return const SizedBox.shrink();
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1240,7 +1605,7 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
           children: [
             const Expanded(
               child: Text(
-                'Pending tasks',
+                'My Pending Tasks',
                 style: TextStyle(
                   fontSize: 15.5,
                   fontWeight: FontWeight.w800,
@@ -1268,126 +1633,36 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
           ],
         ),
         const SizedBox(height: 12),
-        if (_tasksError != null)
-          Container(
-            margin: const EdgeInsets.only(bottom: 10),
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: const Color(0xFFFFF1F2),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: const Color(0xFFFECACA)),
-            ),
-            child: Row(
-              children: [
-                const Icon(Icons.error_outline,
-                    color: Color(0xFFDC2626), size: 16),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    _tasksError!,
-                    style: const TextStyle(
-                      color: Color(0xFFB91C1C),
-                      fontSize: 11.5,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        if (_isLoadingTasks && _tasks.isEmpty)
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 8),
-            child: SkeletonListLoader(
-              showSummary: false,
-              cardCount: 3,
-              shrinkWrap: true,
-              physics: NeverScrollableScrollPhysics(),
-              padding: EdgeInsets.zero,
-            ),
-          )
-        else if (!_isLoadingTasks && recent.isEmpty && _tasksError == null)
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: _cardBorder),
-            ),
-            child: Column(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: const BoxDecoration(
-                    color: Color(0xFFEEF2FF),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(Icons.task_alt, size: 28, color: _navy),
-                ),
-                const SizedBox(height: 12),
-                const Text(
-                  'No tasks found',
-                  style: TextStyle(
-                    color: _navy,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                const Text(
-                  'Tasks for this project will appear here',
-                  style: TextStyle(
-                    color: _mutedGrey,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                TextButton(
-                  onPressed: _openAllTasks,
-                  child: const Text(
-                    'Open all tasks',
-                    style: TextStyle(
-                      color: Color(0xFF2563EB),
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          )
-        else
-          Column(
-            children: [
-              for (var index = 0; index < recent.length; index++)
-                _buildModernDashboardTaskCard(recent[index], index),
-              Align(
-                alignment: Alignment.centerRight,
-                child: TextButton(
-                  onPressed: _openAllTasks,
-                  child: const Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        'View all tasks',
-                        style: TextStyle(
-                          color: Color(0xFF2563EB),
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      SizedBox(width: 2),
-                      Icon(
-                        Icons.arrow_forward_rounded,
-                        size: 16,
+        Column(
+          children: [
+            for (var index = 0; index < recent.length; index++)
+              _buildModernDashboardTaskCard(recent[index], index),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton(
+                onPressed: _openAllTasks,
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'View all tasks',
+                      style: TextStyle(
                         color: Color(0xFF2563EB),
+                        fontWeight: FontWeight.w700,
                       ),
-                    ],
-                  ),
+                    ),
+                    SizedBox(width: 2),
+                    Icon(
+                      Icons.arrow_forward_rounded,
+                      size: 16,
+                      color: Color(0xFF2563EB),
+                    ),
+                  ],
                 ),
               ),
-            ],
-          ),
+            ),
+          ],
+        ),
       ],
     );
   }
@@ -1828,6 +2103,20 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
   }
 
   void _openTaskDetails(Map<String, dynamic> task) {
+    if (isIndentProofReviewTask(task) || isIndentProofDeeplinkTask(task)) {
+      if (isIndentProofReviewTask(task)) {
+        openIndentProofReviewFromTask(
+          context,
+          Map<String, dynamic>.from(task),
+          onRefresh: _refreshTasksForMyTasks,
+        );
+      } else {
+        openIndentProofFromTask(context, task).then((_) {
+          _refreshTasksForMyTasks();
+        });
+      }
+      return;
+    }
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -2463,6 +2752,19 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
         'icon': Icons.request_quote,
         'route': () => IndentsScreenLayout(),
       });
+      menuItems.add({
+        'title': 'Approved POs',
+        'icon': Icons.receipt_long_outlined,
+        'route': () async {
+          final prefs = await SharedPreferences.getInstance();
+          final projectId = prefs.getString('project_id');
+          final projectName = prefs.getString('client_name');
+          return ApprovedPosScreenLayout(
+            initialProjectId: projectId,
+            initialProjectName: projectName,
+          );
+        },
+      });
     }
 
     // Payments - check RBAC
@@ -2474,6 +2776,15 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
       });
     }
 
+    // Client-only: upload UPI / bank / cheque screenshots for Finance review.
+    if (_currentRole?.toLowerCase() == 'client') {
+      menuItems.add({
+        'title': 'Upload payment proofs',
+        'icon': Icons.cloud_upload_outlined,
+        'route': () => const UploadPaymentProofScreen(),
+      });
+    }
+
     // Documents - check RBAC
     if (rbac.canViewSync(_currentRole, RBACService.documents)) {
       menuItems.add({
@@ -2481,6 +2792,13 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
         'icon': Icons.description,
         'route': () => Documents(),
       });
+      if (_currentRole != null && _currentRole!.toLowerCase() != 'client') {
+        menuItems.add({
+          'title': 'Documents V1',
+          'icon': Icons.folder_copy_outlined,
+          'route': () => const DocumentsV1HomeScreen(),
+        });
+      }
     }
 
     // Scheduler - check RBAC
@@ -2536,7 +2854,7 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
       menuItems.add({
         'title': 'Project Status',
         'icon': Icons.flag_outlined,
-        'route': () => ProjectStatusScreen.openQuick(),
+        'route': () => ProjectFocusScreen.openQuick(),
       });
     }
 
@@ -2595,32 +2913,51 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
     return menuItems;
   }
 
-  /// Keep Chat V1 + Project Status immediately after Chat in Quick Actions.
-  List<Map<String, dynamic>> _visibleQuickActions(
-      List<Map<String, dynamic>> items,
-      {int max = 8}) {
-    final visible = items.take(max).toList();
-    final chatPos = visible.indexWhere((e) => e['title'] == 'ChatBox');
-    final v1InVisible = visible.any((e) => e['title'] == 'Chat V1');
-    final v1Index = items.indexWhere((e) => e['title'] == 'Chat V1');
-    if (chatPos >= 0 && !v1InVisible && v1Index >= 0) {
-      visible.insert(chatPos + 1, items[v1Index]);
+  /// Pinned quick actions for clients on the project dashboard.
+  static const List<String> _clientPinnedQuickActionTitles = [
+    'Client Portal',
+    'Site Visit Reports',
+    'Project Timeline',
+    'Project Status',
+    'Gallery',
+    'Payments',
+    'Upload payment proofs',
+  ];
+
+  /// Pinned quick actions for staff / other roles on the project dashboard.
+  static const List<String> _staffPinnedQuickActionTitles = [
+    'My tasks',
+    'Project Timeline',
+    'Project Status',
+    'Timeline Gallery',
+    'Indents',
+    'Approved POs',
+    'Documents V1',
+    'Payments',
+  ];
+
+  List<Map<String, dynamic>> _pinnedQuickActions(
+      List<Map<String, dynamic>> items) {
+    final byTitle = <String, Map<String, dynamic>>{};
+    for (final item in items) {
+      byTitle[item['title'].toString()] = item;
     }
-    final statusInVisible = visible.any((e) => e['title'] == 'Project Status');
-    final statusIndex = items.indexWhere((e) => e['title'] == 'Project Status');
-    final v1Pos = visible.indexWhere((e) => e['title'] == 'Chat V1');
-    if (!statusInVisible && statusIndex >= 0) {
-      final insertAt = v1Pos >= 0
-          ? v1Pos + 1
-          : (chatPos >= 0 ? chatPos + 1 : visible.length);
-      visible.insert(insertAt.clamp(0, visible.length), items[statusIndex]);
+
+    final titles = _isClientUser
+        ? _clientPinnedQuickActionTitles
+        : _staffPinnedQuickActionTitles;
+
+    final pinned = <Map<String, dynamic>>[];
+    for (final title in titles) {
+      final item = byTitle[title];
+      if (item != null) pinned.add(item);
     }
-    return visible;
+    return pinned;
   }
 
   Widget build(BuildContext context) {
     final menuItems = _orderedMenuItems(getMenuItems());
-    final visibleActions = _visibleQuickActions(menuItems);
+    final pinnedActions = _pinnedQuickActions(menuItems);
 
     final dashboardContent = Container(
       color: Colors.white,
@@ -2666,39 +3003,25 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
               ),
             ],
             _buildHeroBanner(),
-            const SizedBox(height: 16),
-            _buildSummarySection(),
             if (workflowDashboardSlots.isNotEmpty) ...[
               const SizedBox(height: 12),
               _buildWorkflowSlotsSection(),
             ],
-            if (_currentRole != 'Billing' && _currentRole != 'Client') ...[
-              const SizedBox(height: 12),
+            if (_shouldShowMyPendingTasksSection) ...[
+              const SizedBox(height: 16),
               _buildTasksSection(),
             ],
-            const SizedBox(height: 16),
-            _buildUpdatesSection(),
+            const SizedBox(height: 12),
+            _buildChatAndLatestTasksRow(),
             const SizedBox(height: 22),
             Row(
-              children: [
-                const Text(
+              children: const [
+                Text(
                   'Quick Actions',
                   style: TextStyle(
                     fontSize: 15.5,
                     fontWeight: FontWeight.w800,
                     color: _navy,
-                  ),
-                ),
-                const Spacer(),
-                GestureDetector(
-                  onTap: () => _showAllQuickActions(menuItems),
-                  child: const Text(
-                    'View all',
-                    style: TextStyle(
-                      fontSize: 13.5,
-                      fontWeight: FontWeight.w700,
-                      color: Color(0xFF2563EB),
-                    ),
                   ),
                 ),
               ],
@@ -2713,9 +3036,9 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
                 mainAxisSpacing: 14,
                 childAspectRatio: 0.78,
               ),
-              itemCount: visibleActions.length,
+              itemCount: pinnedActions.length,
               itemBuilder: (BuildContext context, int index) {
-                final item = visibleActions[index];
+                final item = pinnedActions[index];
                 final title = item['title'].toString();
                 final colors = _quickActionColors(title);
                 return InkWell(
@@ -2724,18 +3047,47 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.start,
                     children: [
-                      Container(
-                        width: 56,
-                        height: 56,
-                        decoration: BoxDecoration(
-                          color: colors['bg'],
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        child: Icon(
-                          _quickActionIcon(title, item['icon'] as IconData),
-                          size: 24,
-                          color: colors['fg'],
-                        ),
+                      Stack(
+                        clipBehavior: Clip.none,
+                        children: [
+                          Container(
+                            width: 56,
+                            height: 56,
+                            decoration: BoxDecoration(
+                              color: colors['bg'],
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            child: Icon(
+                              _quickActionIcon(title, item['icon'] as IconData),
+                              size: 24,
+                              color: colors['fg'],
+                            ),
+                          ),
+                          if (_quickActionBadgeCount(title) != null)
+                            Positioned(
+                              right: -4,
+                              top: -4,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFEF4444),
+                                  borderRadius: BorderRadius.circular(999),
+                                  border: Border.all(
+                                      color: Colors.white, width: 1.2),
+                                ),
+                                child: Text(
+                                  _quickActionBadgeCount(title).toString(),
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 9.5,
+                                    fontWeight: FontWeight.w800,
+                                    height: 1,
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ],
                       ),
                       const SizedBox(height: 8),
                       Text(
@@ -2767,94 +3119,14 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
     return dashboardContent;
   }
 
-  Future<void> _showAllQuickActions(List<Map<String, dynamic>> items) async {
-    await showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) {
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'All Actions',
-                  style: TextStyle(
-                    color: _navy,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const SizedBox(height: 14),
-                Flexible(
-                  child: GridView.builder(
-                    shrinkWrap: true,
-                    gridDelegate:
-                        const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 4,
-                      crossAxisSpacing: 10,
-                      mainAxisSpacing: 14,
-                      childAspectRatio: 0.78,
-                    ),
-                    itemCount: items.length,
-                    itemBuilder: (_, index) {
-                      final item = items[index];
-                      final title = item['title'].toString();
-                      final colors = _quickActionColors(title);
-                      return InkWell(
-                        onTap: () {
-                          Navigator.pop(ctx);
-                          _handleMenuTap(item);
-                        },
-                        borderRadius: BorderRadius.circular(16),
-                        child: Column(
-                          children: [
-                            Container(
-                              width: 56,
-                              height: 56,
-                              decoration: BoxDecoration(
-                                color: colors['bg'],
-                                borderRadius: BorderRadius.circular(16),
-                              ),
-                              child: Icon(
-                                _quickActionIcon(
-                                    title, item['icon'] as IconData),
-                                size: 24,
-                                color: colors['fg'],
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              _quickActionLabel(title),
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(
-                                color: _navy,
-                                fontSize: 11.5,
-                                fontWeight: FontWeight.w600,
-                              ),
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ],
-                        ),
-                      );
-                    },
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-
   Widget _buildHeroBanner() {
+    final progress = ((double.tryParse(completed ?? '') ?? 0.0) / 100)
+        .clamp(0.0, 1.0)
+        .toDouble();
+    final percentLabel = completed == null || completed!.isEmpty
+        ? '--'
+        : '${completed!.replaceAll('%', '')}%';
+
     return ClipRRect(
       borderRadius: BorderRadius.circular(18),
       child: Container(
@@ -2885,14 +3157,81 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
               children: [
                 Expanded(
                   child: Padding(
-                    padding: const EdgeInsets.fromLTRB(18, 16, 8, 16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                      children: const [
-                        _HeroStat(value: '1700+', label: 'Projects'),
-                        _HeroStat(value: '18+', label: 'Cities'),
-                        _HeroStat(value: '5M+', label: 'Sq. Ft of Build Area'),
+                    padding: const EdgeInsets.fromLTRB(16, 16, 8, 16),
+                    child: Row(
+                      children: [
+                        SizedBox(
+                          width: 76,
+                          height: 76,
+                          child: CircularPercentIndicator(
+                            radius: 34,
+                            lineWidth: 7,
+                            percent: progress,
+                            animation: true,
+                            animationDuration: 1000,
+                            circularStrokeCap: CircularStrokeCap.round,
+                            progressColor: const Color(0xFF60A5FA),
+                            backgroundColor: Colors.white.withValues(alpha: 0.18),
+                            center: Text(
+                              percentLabel,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 15,
+                                fontWeight: FontWeight.w800,
+                                height: 1,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const Text(
+                                'Project Completion',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 14.5,
+                                  fontWeight: FontWeight.w700,
+                                  height: 1.2,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              InkWell(
+                                onTap: location.isEmpty
+                                    ? null
+                                    : () async {
+                                        await launchUrl(
+                                          Uri.parse(location),
+                                          mode: LaunchMode.externalApplication,
+                                        );
+                                      },
+                                borderRadius: BorderRadius.circular(6),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      Icons.location_on_outlined,
+                                      size: 14,
+                                      color: Colors.white.withValues(alpha: 0.85),
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      'View on Map',
+                                      style: TextStyle(
+                                        color: Colors.white.withValues(alpha: 0.85),
+                                        fontSize: 12.5,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                       ],
                     ),
                   ),
@@ -3135,7 +3474,16 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
         _DashboardSearchItem(
           title: title,
           icon: item['icon'] as IconData? ?? Icons.circle,
-          keywords: [title],
+          keywords: title == 'Upload payment proofs'
+              ? [
+                  title,
+                  'proof',
+                  'screenshot',
+                  'upi',
+                  'receipt',
+                  'cheque',
+                ]
+              : [title],
           onSelected: () => _handleMenuTap(item),
         ),
       );
@@ -3183,36 +3531,6 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
     await _navigateToWidget(Documents());
   }
 
-  String _resolveProjectName(String raw) {
-    final trimmed = raw.trim();
-    if (trimmed.isEmpty) return 'My Project';
-    final first = trimmed.split('-').first.trim();
-    return first.isNotEmpty ? first : trimmed;
-  }
-
-  String _relativeUpdateLabel(String rawDate) {
-    try {
-      DateTime? parsed = DateTime.tryParse(rawDate);
-      parsed ??= DateFormat('EEEE dd MMMM').parseLoose(rawDate);
-      final diff = DateTime.now().difference(parsed);
-      if (diff.inMinutes < 60) {
-        final m = diff.inMinutes.clamp(1, 59);
-        return '$m ${m == 1 ? 'minute' : 'minutes'} ago';
-      }
-      if (diff.inHours < 24) {
-        final h = diff.inHours;
-        return '$h ${h == 1 ? 'hour' : 'hours'} ago';
-      }
-      if (diff.inDays < 7) {
-        final d = diff.inDays;
-        return '$d ${d == 1 ? 'day' : 'days'} ago';
-      }
-      return DateFormat('dd MMM').format(parsed);
-    } catch (_) {
-      return rawDate.trim().isEmpty ? 'Recently' : rawDate;
-    }
-  }
-
   Map<String, Color> _quickActionColors(String title) {
     switch (title.toLowerCase()) {
       case 'gallery':
@@ -3227,6 +3545,12 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
           'bg': const Color(0xFFDCFCE7),
           'fg': const Color(0xFF16A34A),
         };
+      case 'project status':
+      case 'status':
+        return {
+          'bg': const Color(0xFFDBEAFE),
+          'fg': const Color(0xFF2563EB),
+        };
       case 'my tasks':
       case 'tasks':
         return {
@@ -3237,6 +3561,11 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
         return {
           'bg': const Color(0xFFFFE4E6),
           'fg': const Color(0xFFE11D48),
+        };
+      case 'upload payment proofs':
+        return {
+          'bg': const Color(0xFFE0F2FE),
+          'fg': const Color(0xFF0369A1),
         };
       case 'scheduler':
       case 'schedule':
@@ -3266,7 +3595,18 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
           'bg': const Color(0xFFFFEDD5),
           'fg': const Color(0xFFEA580C),
         };
+      case 'approved pos':
+        return {
+          'bg': const Color(0xFFE0E7FF),
+          'fg': const Color(0xFF4338CA),
+        };
+      case 'documents v1':
+        return {
+          'bg': const Color(0xFFCCFBF1),
+          'fg': const Color(0xFF0D9488),
+        };
       case 'site visit reports':
+      case 'upcoming visits':
         return {
           'bg': const Color(0xFFE0F2FE),
           'fg': const Color(0xFF0284C7),
@@ -3292,9 +3632,15 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
   String _quickActionLabel(String title) {
     switch (title) {
       case 'My tasks':
-        return 'Tasks';
+        return 'My tasks';
       case 'Project Timeline':
         return 'Timeline';
+      case 'Indents':
+        return 'Indents';
+      case 'Approved POs':
+        return 'POs';
+      case 'Documents V1':
+        return 'Docs V1';
       case 'Scheduler':
         return 'Schedule';
       case 'ChatBox':
@@ -3304,30 +3650,47 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
       case 'Project Status':
         return 'Status';
       case 'Site Visit Reports':
-        return 'Site Visits';
+        return 'Upcoming visits';
       case 'Timeline Gallery':
-        return 'Timeline';
+        return 'Timeline Gallery';
       case 'Virtual Tour':
         return '3D Tour';
       case 'Client Portal':
-        return 'Portal';
+        return 'For me';
       default:
         return title;
     }
+  }
+
+  int? _quickActionBadgeCount(String title) {
+    if (title == 'Site Visit Reports') return 6;
+    return null;
   }
 
   IconData _quickActionIcon(String title, IconData fallback) {
     switch (title) {
       case 'Client Portal':
         return Icons.dashboard_customize_outlined;
+      case 'Site Visit Reports':
+        return Icons.event_available_outlined;
       case 'Gallery':
         return Icons.photo_library_rounded;
       case 'Project Timeline':
         return Icons.view_timeline_rounded;
       case 'My tasks':
         return Icons.assignment_outlined;
+      case 'Timeline Gallery':
+        return Icons.auto_awesome_motion;
+      case 'Indents':
+        return Icons.request_quote_outlined;
+      case 'Approved POs':
+        return Icons.receipt_long_outlined;
+      case 'Documents V1':
+        return Icons.folder_copy_outlined;
       case 'Payments':
         return Icons.account_balance_wallet_outlined;
+      case 'Upload payment proofs':
+        return Icons.cloud_upload_outlined;
       case 'Scheduler':
         return Icons.calendar_month_rounded;
       case 'Documents':
@@ -3349,13 +3712,16 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
 
   List<Map<String, dynamic>> _orderedMenuItems(
       List<Map<String, dynamic>> items) {
-    const preferred = [
+    const clientPreferred = [
       'Client Portal',
-      'Virtual Tour',
-      'Gallery',
+      'Site Visit Reports',
       'Project Timeline',
-      'My tasks',
+      'Gallery',
+      'Timeline Gallery',
       'Payments',
+      'Upload payment proofs',
+      'Virtual Tour',
+      'My tasks',
       'Scheduler',
       'Documents',
       'ChatBox',
@@ -3363,6 +3729,28 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
       'Project Status',
       'Checklist',
     ];
+    const staffPreferred = [
+      'My tasks',
+      'Project Timeline',
+      'Timeline Gallery',
+      'Indents',
+      'Approved POs',
+      'Documents V1',
+      'Payments',
+      'Project Details',
+      'Documents',
+      'Scheduler',
+      'Gallery',
+      'Virtual Tour',
+      'ChatBox',
+      'Chat V1',
+      'Project Status',
+      'Checklist',
+      'Request Drawings',
+      'Inspection Requests',
+      'Site Visit Reports',
+    ];
+    final preferred = _isClientUser ? clientPreferred : staffPreferred;
     final byTitle = <String, Map<String, dynamic>>{};
     for (final item in items) {
       byTitle[item['title'].toString()] = item;
@@ -3403,252 +3791,6 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
     print('[UserDashboard] Route popped - returned from: $routeName');
     print('[UserDashboard] ===============================================');
     reloadData();
-  }
-
-  Widget _buildSummarySection() {
-    final summaryCard = TweenAnimationBuilder<double>(
-      tween: Tween(begin: 0.0, end: 1.0),
-      duration: Duration(milliseconds: 600),
-      curve: Curves.easeOut,
-      child: _buildSummaryCardBody(),
-      builder: (context, value, child) {
-        return Transform.scale(
-          scale: 0.95 + (0.05 * value),
-          child: Opacity(
-            opacity: value,
-            child: child,
-          ),
-        );
-      },
-    );
-
-    return _wrapSectionWithLoader(
-      isLoading: _isLoadingSummary,
-      hasLoaded: _hasLoadedSummary,
-      skeleton: _buildSummarySkeleton(),
-      borderRadius: BorderRadius.circular(18),
-      margin: EdgeInsets.zero,
-      child: summaryCard,
-    );
-  }
-
-  Widget _buildSummaryCardBody() {
-    final progress = ((double.tryParse(completed ?? '') ?? 0.0) / 100)
-        .clamp(0.0, 1.0)
-        .toDouble();
-    final percentLabel = completed == null || completed!.isEmpty
-        ? '--'
-        : '${completed!.replaceAll('%', '')}%';
-    final onTrack = progress < 1.0;
-
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: _cardBorder),
-        boxShadow: const [
-          BoxShadow(
-            color: _softShadow,
-            blurRadius: 18,
-            offset: Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: Image.asset(
-                  'assets/images/home1.jpg',
-                  width: 64,
-                  height: 64,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => Container(
-                    width: 64,
-                    height: 64,
-                    color: const Color(0xFFEEF2FF),
-                    child: const Icon(Icons.home_work_outlined, color: _navy),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'MY PROJECT',
-                      style: TextStyle(
-                        color: _mutedGrey,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 0.8,
-                      ),
-                    ),
-                    const SizedBox(height: 3),
-                    Text(
-                      projectName,
-                      style: const TextStyle(
-                        color: _navy,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w800,
-                        height: 1.2,
-                      ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 6),
-                    InkWell(
-                      onTap: location.isEmpty
-                          ? null
-                          : () async {
-                              await launchUrl(
-                                Uri.parse(location),
-                                mode: LaunchMode.externalApplication,
-                              );
-                            },
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Padding(
-                            padding: EdgeInsets.only(top: 1),
-                            child: Icon(
-                              Icons.location_on_outlined,
-                              size: 14,
-                              color: _mutedGrey,
-                            ),
-                          ),
-                          const SizedBox(width: 4),
-                          Expanded(
-                            child: Text(
-                              location.isNotEmpty
-                                  ? 'View project location'
-                                  : 'Location not available',
-                              style: const TextStyle(
-                                color: _mutedGrey,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w500,
-                                height: 1.3,
-                              ),
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 4),
-              PopupMenuButton<String>(
-                padding: EdgeInsets.zero,
-                icon: const Icon(Icons.more_vert, color: _mutedGrey, size: 20),
-                onSelected: (value) async {
-                  if (value == 'directions' && location.isNotEmpty) {
-                    await launchUrl(
-                      Uri.parse(location),
-                      mode: LaunchMode.externalApplication,
-                    );
-                  } else if (value == 'timeline') {
-                    await _navigateToWidget(const ProjectTimelineScreen());
-                  }
-                },
-                itemBuilder: (_) => [
-                  if (location.isNotEmpty)
-                    const PopupMenuItem(
-                      value: 'directions',
-                      child: Text('Get directions'),
-                    ),
-                  const PopupMenuItem(
-                    value: 'timeline',
-                    child: Text('View timeline'),
-                  ),
-                ],
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              const Text(
-                'Overall Progress',
-                style: TextStyle(
-                  color: _navy,
-                  fontSize: 13.5,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const Spacer(),
-              Container(
-                width: 7,
-                height: 7,
-                decoration: BoxDecoration(
-                  color: onTrack
-                      ? const Color(0xFF22C55E)
-                      : const Color(0xFF2563EB),
-                  shape: BoxShape.circle,
-                ),
-              ),
-              const SizedBox(width: 6),
-              Text(
-                onTrack ? 'On track' : 'Completed',
-                style: TextStyle(
-                  color: onTrack
-                      ? const Color(0xFF16A34A)
-                      : const Color(0xFF2563EB),
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              Text(
-                percentLabel,
-                style: const TextStyle(
-                  color: _navy,
-                  fontSize: 22,
-                  fontWeight: FontWeight.w800,
-                  height: 1,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: LinearPercentIndicator(
-                  barRadius: const Radius.circular(10),
-                  padding: EdgeInsets.zero,
-                  lineHeight: 8,
-                  percent: progress,
-                  animation: true,
-                  animationDuration: 1000,
-                  backgroundColor: const Color(0xFFE8ECF1),
-                  progressColor: _navy,
-                ),
-              ),
-            ],
-          ),
-          if (value.toString().trim().isNotEmpty) ...[
-            const SizedBox(height: 12),
-            Text(
-              'Project value • $value',
-              style: const TextStyle(
-                color: _mutedGrey,
-                fontSize: 11.5,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
   }
 
   Widget _buildWorkflowSlotsSection() {
@@ -3864,300 +4006,6 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
       } catch (_) {}
     }
     return null;
-  }
-
-  Widget _buildUpdatesSection() {
-    final updatesCard = TweenAnimationBuilder<double>(
-      tween: Tween(begin: 0.0, end: 1.0),
-      duration: Duration(milliseconds: 700),
-      curve: Curves.easeOut,
-      child: _buildUpdatesCardBody(context),
-      builder: (context, value, child) {
-        return Transform.translate(
-          offset: Offset(0, 20 * (1 - value)),
-          child: Opacity(
-            opacity: value,
-            child: child,
-          ),
-        );
-      },
-    );
-
-    return _wrapSectionWithLoader(
-      isLoading: _isLoadingUpdates,
-      hasLoaded: _hasLoadedUpdates,
-      skeleton: _buildUpdatesSkeleton(),
-      borderRadius: BorderRadius.circular(18),
-      margin: EdgeInsets.zero,
-      child: updatesCard,
-    );
-  }
-
-  Widget _buildUpdatesCardBody(BuildContext context) {
-    final primaryUpdate = dailyUpdateList.isNotEmpty
-        ? dailyUpdateList.first.toString()
-        : 'Stay tuned for updates about your home';
-    final nextUpdate = dailyUpdateList.length > 1
-        ? 'Next: ${dailyUpdateList[1]}'
-        : (updateResponseBody != null &&
-                updateResponseBody is List &&
-                updateResponseBody.isNotEmpty &&
-                updateResponseBody[0] != null &&
-                updateResponseBody[0]['tradesmenMap'] != null)
-            ? parsedUpdateTradesmen(updateResponseBody[0]['tradesmenMap'])
-            : null;
-
-    return Container(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(18),
-        color: Colors.white,
-        border: Border.all(color: _cardBorder),
-        boxShadow: const [
-          BoxShadow(
-            color: _softShadow,
-            blurRadius: 16,
-            offset: Offset(0, 6),
-          ),
-        ],
-      ),
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 28,
-                height: 28,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFDBEAFE),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Icon(
-                  Icons.campaign_rounded,
-                  color: Color(0xFF2563EB),
-                  size: 16,
-                ),
-              ),
-              const SizedBox(width: 8),
-              const Text(
-                'Latest Update',
-                style: TextStyle(
-                  color: _navy,
-                  fontSize: 14.5,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-              const Spacer(),
-              Text(
-                _relativeUpdateLabel(updatePostedOnDate),
-                style: const TextStyle(
-                  color: _mutedGrey,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: Image.asset(
-                  'assets/images/bricks.jpg.png',
-                  width: 72,
-                  height: 72,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => Container(
-                    width: 72,
-                    height: 72,
-                    color: const Color(0xFFF1F5F9),
-                    child: const Icon(Icons.construction, color: _mutedGrey),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFFFF4D6),
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                      child: const Text(
-                        'Work in Progress',
-                        style: TextStyle(
-                          color: Color(0xFFB45309),
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      primaryUpdate,
-                      style: const TextStyle(
-                        color: _navy,
-                        fontSize: 13.5,
-                        fontWeight: FontWeight.w600,
-                        height: 1.35,
-                      ),
-                      maxLines: 3,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    if (nextUpdate != null && nextUpdate.trim().isNotEmpty) ...[
-                      const SizedBox(height: 4),
-                      Text(
-                        nextUpdate,
-                        style: const TextStyle(
-                          color: _mutedGrey,
-                          fontSize: 12.5,
-                          fontWeight: FontWeight.w500,
-                          height: 1.3,
-                        ),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          InkWell(
-            onTap: () {
-              final fromAdmin = context
-                      .findAncestorWidgetOfExactType<UserDashboardLayout>()
-                      ?.fromAdminDashboard ??
-                  false;
-              final chrome = fromAdmin
-                  ? DashboardChromeStyle.admin
-                  : DashboardChromeStyle.user;
-              final appBarColor = chrome == DashboardChromeStyle.admin
-                  ? RoleAppBarColor.forRole(_currentRole)
-                  : null;
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => DashboardChrome.wrap(
-                    chrome,
-                    const DprScreen(),
-                    appBarColor: appBarColor,
-                  ),
-                ),
-              );
-            },
-            borderRadius: BorderRadius.circular(8),
-            child: const Padding(
-              padding: EdgeInsets.symmetric(vertical: 4),
-              child: Row(
-                children: [
-                  Text(
-                    'View all updates',
-                    style: TextStyle(
-                      color: Color(0xFF2563EB),
-                      fontSize: 13.5,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  Spacer(),
-                  Icon(
-                    Icons.chevron_right_rounded,
-                    color: Color(0xFF2563EB),
-                    size: 20,
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSummarySkeleton() {
-    return _buildCardSkeleton(
-        height: 170, borderRadius: BorderRadius.circular(20));
-  }
-
-  Widget _buildUpdatesSkeleton() {
-    return _buildCardSkeleton(
-        height: 220, borderRadius: BorderRadius.circular(16));
-  }
-
-  Widget _wrapSectionWithLoader({
-    required bool isLoading,
-    required bool hasLoaded,
-    required Widget child,
-    required Widget skeleton,
-    required BorderRadius borderRadius,
-    EdgeInsetsGeometry? margin,
-  }) {
-    Widget withMargin(Widget widget) {
-      final padding = margin;
-      if (padding == null) return widget;
-      return Padding(
-        padding: padding,
-        child: widget,
-      );
-    }
-
-    if (isLoading && !hasLoaded) {
-      return withMargin(skeleton);
-    }
-
-    Widget content = child;
-
-    if (isLoading && hasLoaded) {
-      content = Stack(
-        children: [
-          child,
-          Positioned.fill(
-            child: IgnorePointer(
-              child: ClipRRect(
-                borderRadius: borderRadius,
-                child: Container(
-                  color:
-                      AppTheme.getBackgroundPrimary(context).withOpacity(0.65),
-                  child: Center(
-                    child: _buildSkeleton(
-                        80, MediaQuery.of(context).size.width - 32),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
-      );
-    }
-
-    return withMargin(content);
-  }
-
-  Widget _buildCardSkeleton(
-      {required double height,
-      required BorderRadius borderRadius,
-      double? width}) {
-    return Shimmer.fromColors(
-      baseColor: AppTheme.getBackgroundSecondary(context).withOpacity(0.4),
-      highlightColor: Colors.white.withOpacity(0.35),
-      child: Container(
-        height: height,
-        width: width,
-        constraints: width != null ? BoxConstraints(maxWidth: width) : null,
-        decoration: BoxDecoration(
-          color: AppTheme.getBackgroundSecondary(context).withOpacity(0.4),
-          borderRadius: borderRadius,
-        ),
-      ),
-    );
   }
 
   Widget _buildLoadingState() {
@@ -4400,42 +4248,6 @@ class _AnimatedWidgetSlideState extends State<AnimatedWidgetSlide>
   void dispose() {
     _animationController.dispose();
     super.dispose();
-  }
-}
-
-String parsedUpdateTradesmen(dynamic tradesmenMap) {
-  try {
-    // Try parsing as JSON Map<String,int>
-    final jsonMap = tradesmenMap.toString().trim();
-    if (jsonMap == 'null' || jsonMap.isEmpty) {
-      return '';
-    }
-    print("jsonMap: $jsonMap");
-    // Try decode as JSON
-    if (jsonMap.startsWith('{') && jsonMap.endsWith('}')) {
-      final List<String> parsed =
-          jsonMap.substring(1, jsonMap.length - 1).split(',');
-      String result = '';
-      int index = 0;
-      for (final item in parsed) {
-        final key = item.split(':')[0].trim();
-        final value = item.split(':')[1].trim();
-        if (index == parsed.length - 1) {
-          result += '$value ${key}s';
-        } else if (parsed.length > 2 && index == parsed.length - 2) {
-          result += '$value ${key}s and ';
-        } else {
-          result += '$value ${key}s, ';
-        }
-        index++;
-      }
-      return 'Resources: $result';
-    }
-    return '';
-  } catch (e) {
-    return tradesmenMap.toString().trim() == 'null'
-        ? ''
-        : tradesmenMap.toString().trim();
   }
 }
 

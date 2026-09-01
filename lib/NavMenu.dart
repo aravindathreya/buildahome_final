@@ -10,12 +10,13 @@ import 'AddDailyUpdate.dart';
 import 'Dpr.dart';
 import 'Drawings.dart';
 import 'Gallery.dart';
+import 'documents_v1/documents_v1_home_screen.dart';
 import 'InspectionRequest.dart';
 import 'MyTasksScreen.dart';
 import 'NotesAndComments.dart';
 import 'chat_v1/chat_v1_app.dart';
 import 'chat_v1/chat_v1_socket.dart';
-import 'ProjectStatusScreen.dart';
+import 'ProjectFocusScreen.dart';
 import 'Payments.dart';
 import 'ProjectTimelineScreen.dart';
 import 'RequestDrawing.dart';
@@ -26,6 +27,7 @@ import 'TestReportsScreen.dart';
 import 'UserHome.dart';
 import 'VirtualTour.dart';
 import 'ClientPortalScreen.dart';
+import 'UploadPaymentProofScreen.dart';
 import 'app_theme.dart';
 import 'checklist_categories.dart';
 import 'indents_screen.dart';
@@ -484,6 +486,13 @@ class NavMenuWidgetState extends State<NavMenuWidget> {
         route: isClient ? () => Documents() : null,
         action: isClient ? null : _openAfterProjectPick(() => Documents()),
       ));
+      if (!isClient) {
+        projectEntries.add(_NavEntry(
+          title: 'Documents V1',
+          icon: Icons.folder_copy_outlined,
+          action: _openAfterProjectPick(() => const DocumentsV1HomeScreen()),
+        ));
+      }
     }
 
     if (rbac.canViewSync(currentRole, RBACService.gallery)) {
@@ -519,6 +528,14 @@ class NavMenuWidgetState extends State<NavMenuWidget> {
         route: isClient ? () => PaymentTaskWidget() : null,
         action:
             isClient ? null : _openAfterProjectPick(() => PaymentTaskWidget()),
+      ));
+    }
+
+    if (isClient) {
+      projectEntries.add(_NavEntry(
+        title: 'Upload payment proofs',
+        icon: Icons.cloud_upload_outlined,
+        route: () => const UploadPaymentProofScreen(),
       ));
     }
 
@@ -635,7 +652,7 @@ class NavMenuWidgetState extends State<NavMenuWidget> {
       collabEntries.add(_NavEntry(
         title: 'Project Status',
         icon: Icons.flag_rounded,
-        route: () => ProjectStatusScreen.openQuick(),
+        route: () => ProjectFocusScreen.openQuick(),
       ));
     }
     if (collabEntries.isNotEmpty) {

@@ -48,6 +48,8 @@ dependencies:
   permission_handler:
   geolocator: ^13.0.2
   model_viewer_plus: ^1.10.0
+  webview_flutter: ^4.13.0
+  pdfx: ^2.9.2
 
 dependency_overrides:
   win32: 5.15.0

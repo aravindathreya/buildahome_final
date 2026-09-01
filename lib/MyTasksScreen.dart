@@ -21,6 +21,7 @@ import 'FullScreenImage.dart';
 import 'NotesAndComments.dart';
 import 'TasksScreen.dart';
 import 'indents_screen.dart';
+import 'indent_proof.dart';
 import 'services/api_http.dart';
 import 'services/data_provider.dart';
 import 'services/session_manager.dart';
@@ -184,6 +185,94 @@ List<Map<String, dynamic>> workflowActionsFromTask(Map task) {
   final fromActions = _mapListFlexible(task['workflow_actions']);
   if (fromActions.isNotEmpty) return fromActions;
   return _mapListFlexible(task['workflow_task_actions']);
+}
+
+const Set<String> _indentPoSiteProofActionIds = {
+  'indent_po_quantity',
+  'indent_po_measurement',
+  'indent_po_video',
+  'indent_po_vehicle',
+  'indent_po_image',
+  'indent_po_weight',
+  'indent_po_site_comment',
+};
+
+const Set<String> _indentPoReviewActionIds = {
+  'indent_po_review_comment',
+  'indent_po_proof_approve',
+};
+
+const Set<String> _legacyIndentPoActionIds = {
+  'indent_po_upload',
+  'indent_po_live_media',
+  'indent_po_near_site',
+};
+
+const List<String> _indentPoVideoFormats = ['mp4', 'mov', 'webm', 'm4v'];
+const List<String> _indentPoImageFormats = ['jpg', 'jpeg', 'png', 'webp'];
+
+enum _IndentPoSiteProofKind { text, video, image }
+
+bool isIndentPoSiteProofActionId(String? id) {
+  final normalized = (id ?? '').trim();
+  return _indentPoSiteProofActionIds.contains(normalized);
+}
+
+bool isLegacyIndentPoActionId(String? id) {
+  final normalized = (id ?? '').trim();
+  return _legacyIndentPoActionIds.contains(normalized);
+}
+
+bool isIndentPoSiteProofTask(Map task) {
+  return indentPoSiteProofActions(workflowActionsFromTask(task)).isNotEmpty;
+}
+
+bool isIndentProofReviewTask(Map task) {
+  if (isIndentPoSiteProofTask(task)) return false;
+  final actions = workflowActionsFromTask(task);
+  for (final action in actions) {
+    final id = action['id']?.toString() ?? '';
+    if (_indentPoReviewActionIds.contains(id)) return true;
+  }
+  return isIndentProofDeeplinkTask(task);
+}
+
+List<Map<String, dynamic>> indentProofReviewActions(
+  List<Map<String, dynamic>> actions,
+) {
+  return actions
+      .where(
+        (action) =>
+            _indentPoReviewActionIds.contains(action['id']?.toString()),
+      )
+      .toList();
+}
+
+List<Map<String, dynamic>> indentPoSiteProofActions(
+  List<Map<String, dynamic>> actions,
+) {
+  return actions
+      .where(
+        (action) => isIndentPoSiteProofActionId(action['id']?.toString()),
+      )
+      .toList();
+}
+
+_IndentPoSiteProofKind? indentPoSiteProofKind(String? id) {
+  switch ((id ?? '').trim()) {
+    case 'indent_po_quantity':
+    case 'indent_po_measurement':
+    case 'indent_po_vehicle':
+    case 'indent_po_weight':
+    case 'indent_po_site_comment':
+      return _IndentPoSiteProofKind.text;
+    case 'indent_po_video':
+      return _IndentPoSiteProofKind.video;
+    case 'indent_po_image':
+      return _IndentPoSiteProofKind.image;
+    default:
+      return null;
+  }
 }
 
 Map<String, dynamic>? findDelayTimerAction(List<Map<String, dynamic>> actions) {
@@ -404,6 +493,10 @@ List<Map<String, dynamic>> filterVisibleWorkflowActions(
   if (indentBlocksComplete) {
     result = result.where((action) => !isWorkflowCompleteAction(action)).toList();
   }
+
+  result = result
+      .where((action) => !isLegacyIndentPoActionId(action['id']?.toString()))
+      .toList();
 
   return result;
 }
@@ -644,12 +737,175 @@ List<dynamic> filterTasksForProjectAndAssignee(
   }).toList();
 }
 
-List<Map<String, dynamic>> filterActiveRecentTasks(List<dynamic> tasks) {
+List<Map<String, dynamic>> filterActiveRecentTasks(
+  List<dynamic> tasks, {
+  String? userRole,
+}) {
   return tasks
       .whereType<Map>()
       .where((task) => !isTaskCompletedStatus(task))
+      .where((task) => !shouldHideIndentProofReviewTask(task, userRole))
       .map((task) => Map<String, dynamic>.from(task))
       .toList();
+}
+
+Future<void> openIndentProofReviewFromTask(
+  BuildContext context,
+  Map<String, dynamic> task, {
+  Future<void> Function()? onRefresh,
+}) async {
+  await Navigator.of(context).push(
+    MaterialPageRoute(
+      builder: (_) => _IndentProofReviewScreen(
+        task: task,
+        onChanged: onRefresh ?? () async {},
+      ),
+    ),
+  );
+  if (onRefresh != null) await onRefresh();
+}
+
+Future<Map<String, dynamic>?> findIndentSiteProofTask({
+  required String indentId,
+  String? projectId,
+  bool fetchIfMissing = true,
+}) async {
+  final needle = indentId.trim();
+  if (needle.isEmpty) return null;
+
+  Map<String, dynamic>? match;
+  void scan(List<dynamic> tasks) {
+    if (match != null) return;
+    for (final raw in tasks) {
+      if (raw is! Map) continue;
+      final task = Map<String, dynamic>.from(raw);
+      final taskIndent = task['indent_id']?.toString().trim() ??
+          indentProofIndentId(task) ??
+          '';
+      if (taskIndent != needle) continue;
+      if (!isIndentPoSiteProofTask(task)) continue;
+      if (isTaskCompletedStatus(task)) continue;
+      match = task;
+      return;
+    }
+  }
+
+  final dp = DataProvider();
+  scan(dp.clientPendingTasks);
+  scan(dp.clientTimelineTasks);
+
+  if (match != null || !fetchIfMissing) return match;
+
+  final fetched = await _fetchTasksForIndentSiteProof(projectId: projectId);
+  scan(fetched);
+  return match;
+}
+
+Future<List<dynamic>> _fetchTasksForIndentSiteProof({
+  String? projectId,
+}) async {
+  final prefs = await SharedPreferences.getInstance();
+  final userId = prefs.getString('userId') ?? prefs.getString('user_id');
+  final apiToken = prefs.getString('api_token');
+  if (userId == null || apiToken == null) return const [];
+
+  final query = <String, String>{
+    'user_id': userId,
+    'assigned_to': userId,
+    'api_token': apiToken,
+  };
+  final resolvedProjectId =
+      projectId?.trim() ?? prefs.getString('project_id')?.trim() ?? '';
+  if (resolvedProjectId.isNotEmpty) {
+    query['project_id'] = resolvedProjectId;
+  }
+
+  try {
+    final uri = Uri.parse('https://office.buildahome.in/API/get_tasks')
+        .replace(queryParameters: query);
+    final response =
+        await ApiHttp.get(uri).timeout(const Duration(seconds: 20));
+    if (response.statusCode != 200) return const [];
+
+    final decoded = jsonDecode(response.body);
+    if (decoded is Map && decoded['tasks'] is List) {
+      return decoded['tasks'] as List;
+    }
+    if (decoded is List) return decoded;
+  } catch (_) {}
+  return const [];
+}
+
+Future<void> openIndentSiteProofForIndent(
+  BuildContext context, {
+  required String indentId,
+  String? projectId,
+  Future<void> Function()? onRefresh,
+}) async {
+  final trimmed = indentId.trim();
+  if (trimmed.isEmpty) {
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Missing indent id for site proof.'),
+        backgroundColor: Colors.red,
+      ),
+    );
+    return;
+  }
+
+  final task = await findIndentSiteProofTask(
+    indentId: trimmed,
+    projectId: projectId,
+    fetchIfMissing: true,
+  );
+
+  if (task == null) {
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'No active site-proof task for this PO. '
+          'Open My tasks and look for “Upload site proof for approved PO”.',
+        ),
+      ),
+    );
+    return;
+  }
+
+  if (isWorkflowDelayGated(task) || !canUpdateWorkflowTask(task)) {
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(workflowDelayBlockedMessage(task)),
+        backgroundColor: Colors.red,
+      ),
+    );
+    return;
+  }
+
+  await Navigator.of(context).push(
+    MaterialPageRoute(
+      builder: (_) => _IndentSiteProofScreen(
+        task: task,
+        onChanged: onRefresh ?? () async {},
+      ),
+    ),
+  );
+  if (onRefresh != null) await onRefresh();
+}
+
+bool indentPoSiteProofStepDone(
+  Map<String, dynamic> task,
+  Map<String, dynamic> action,
+) =>
+    _indentPoStepDone(task, action);
+
+int indentPoSiteProofDoneCount(Map<String, dynamic> task) {
+  final steps = indentPoSiteProofActions(workflowActionsFromTask(task));
+  return steps
+      .where((action) => indentPoSiteProofStepDone(task, action))
+      .length;
 }
 
 class MyTasksScreen extends StatefulWidget {
@@ -681,6 +937,7 @@ class _MyTasksScreenState extends State<MyTasksScreen>
   final FocusNode _searchFocusNode = FocusNode();
   bool _isSearchVisible = false;
   String? _currentUserId;
+  String? _currentUserRole;
   String? _selectedProjectId;
   String? _selectedProjectName;
   bool _showAssignedToMeOnly = false;
@@ -779,6 +1036,7 @@ class _MyTasksScreenState extends State<MyTasksScreen>
     setState(() {
       _currentUserId =
           prefs.getString('userId') ?? prefs.getString('user_id');
+      _currentUserRole = prefs.getString('role');
     });
   }
 
@@ -825,6 +1083,10 @@ class _MyTasksScreenState extends State<MyTasksScreen>
               task['workflow_status'],
             ].map((value) => value?.toString().toLowerCase() ?? '').join(' ');
             if (!haystack.contains(query)) return false;
+          }
+
+          if (shouldHideIndentProofReviewTask(task, _currentUserRole)) {
+            return false;
           }
 
           return true;
@@ -1811,15 +2073,30 @@ class _TaskCardState extends State<_TaskCard> {
       // Wait for item-runs/actions merge so delay_gate / blocked flags are fresh.
       if (widget.showWorkflowActions &&
           _isWorkflowTask &&
-          !_isLoadingWorkflowDetail &&
-          workflowActions.isNotEmpty) ...[
-        const SizedBox(height: 10),
-        _WorkflowActionsSection(
-          task: task,
-          actions: workflowActions,
-          onActionCompleted: _handleWorkflowActionCompleted,
-          onDelayExpired: _handleDelayExpired,
-        ),
+          !_isLoadingWorkflowDetail) ...[
+        if (isIndentProofReviewTask(task) &&
+            !kCompletedTaskStatuses.contains(status)) ...[
+          const SizedBox(height: 10),
+          _IndentProofReviewLaunchCard(
+            onOpen: () => _openIndentProofReviewScreen(),
+          ),
+        ] else if (workflowActions.isNotEmpty) ...[
+          const SizedBox(height: 10),
+          if (isIndentPoSiteProofTask(task) &&
+              !kCompletedTaskStatuses.contains(status))
+            _IndentSiteProofLaunchCard(
+              task: task,
+              actions: indentPoSiteProofActions(_workflowActions),
+              onOpen: () => _openIndentSiteProofScreen(),
+            )
+          else
+            _WorkflowActionsSection(
+              task: task,
+              actions: workflowActions,
+              onActionCompleted: _handleWorkflowActionCompleted,
+              onDelayExpired: _handleDelayExpired,
+            ),
+        ],
       ],
     ];
 
@@ -1880,11 +2157,61 @@ class _TaskCardState extends State<_TaskCard> {
     );
   }
 
+  Future<void> _openIndentProofReviewScreen() async {
+    if (isWorkflowDelayGated(_task) || !canUpdateWorkflowTask(_task)) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(workflowDelayBlockedMessage(_task)),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => _IndentProofReviewScreen(
+          task: _task,
+          onChanged: _handleWorkflowActionCompleted,
+        ),
+      ),
+    );
+    if (!mounted) return;
+    await _handleWorkflowActionCompleted();
+  }
+
+  Future<void> _openIndentSiteProofScreen() async {
+    if (isWorkflowDelayGated(_task) || !canUpdateWorkflowTask(_task)) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(workflowDelayBlockedMessage(_task)),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => _IndentSiteProofScreen(
+          task: _task,
+          onChanged: _handleWorkflowActionCompleted,
+        ),
+      ),
+    );
+    if (!mounted) return;
+    await _handleWorkflowActionCompleted();
+  }
+
   Map<String, dynamic>? _findSwipeCompleteAction(
     List<Map<String, dynamic>> actions,
   ) {
     if (!widget.showWorkflowActions || !_isWorkflowTask) return null;
     if (_isLoadingWorkflowDetail) return null;
+    if (isIndentProofReviewTask(_task)) return null;
+    if (isIndentPoSiteProofTask(_task)) return null;
     if (!canUpdateWorkflowTask(_task)) return null;
     if (!canCompleteWorkflowTask(_task)) return null;
 
@@ -2851,6 +3178,1151 @@ class _WorkflowActionsSection extends StatelessWidget {
   }
 }
 
+class _IndentProofReviewScreen extends StatefulWidget {
+  final Map<String, dynamic> task;
+  final Future<void> Function() onChanged;
+
+  const _IndentProofReviewScreen({
+    required this.task,
+    required this.onChanged,
+  });
+
+  @override
+  State<_IndentProofReviewScreen> createState() =>
+      _IndentProofReviewScreenState();
+}
+
+class _IndentProofReviewScreenState extends State<_IndentProofReviewScreen> {
+  late Map<String, dynamic> _task;
+  bool _loading = true;
+  bool _savingComment = false;
+  bool _approving = false;
+  final _reviewCommentController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _task = Map<String, dynamic>.from(widget.task);
+    _bootstrap();
+  }
+
+  @override
+  void dispose() {
+    _reviewCommentController.dispose();
+    super.dispose();
+  }
+
+  List<Map<String, dynamic>> get _reviewActions =>
+      indentProofReviewActions(workflowActionsFromTask(_task));
+
+  Map<String, dynamic>? get _reviewCommentAction {
+    for (final action in _reviewActions) {
+      if (action['id']?.toString() == 'indent_po_review_comment') return action;
+    }
+    return null;
+  }
+
+  Map<String, dynamic>? get _approveAction {
+    for (final action in _reviewActions) {
+      if (action['id']?.toString() == 'indent_po_proof_approve') return action;
+    }
+    for (final action in workflowActionsFromTask(_task)) {
+      if (isWorkflowCompleteAction(action)) return action;
+    }
+    return null;
+  }
+
+  String get _itemRunId => _resolvedWorkflowItemRunIdFromTask(_task);
+
+  String? get _indentId => indentProofIndentId(_task);
+
+  bool get _commentSaved {
+    final action = _reviewCommentAction;
+    if (action == null) return false;
+    return _truthyValue(action['submitted']) ||
+        _truthyValue(action['completed']) ||
+        _truthyValue(action['done']) ||
+        _truthyValue(action['has_response']) ||
+        _indentPoSavedText(_task, action).isNotEmpty;
+  }
+
+  bool get _isAlreadyApproved {
+    if (isTaskCompletedStatus(_task)) return true;
+    final approve = _approveAction;
+    if (approve != null &&
+        (_truthyValue(approve['submitted']) ||
+            _truthyValue(approve['completed']) ||
+            _truthyValue(approve['done']))) {
+      return true;
+    }
+    final status = normalizeTaskStatusValue(_task);
+    return status == 'approved' ||
+        status == 'completed' ||
+        status == 'done' ||
+        status == 'finished';
+  }
+
+  bool get _canApprove {
+    if (_isAlreadyApproved) return false;
+    final approve = _approveAction;
+    if (approve == null) return false;
+    if (_truthyValue(approve['blocked'])) return false;
+    return canCompleteWorkflowTask(_task) && canUpdateWorkflowTask(_task);
+  }
+
+  Future<void> _bootstrap() async {
+    await _reloadTask(showSpinner: true);
+    _syncReviewCommentFromTask();
+  }
+
+  void _syncReviewCommentFromTask() {
+    final action = _reviewCommentAction;
+    if (action == null) return;
+    final saved = _indentPoSavedText(_task, action);
+    if (saved.isNotEmpty) {
+      _reviewCommentController.text = saved;
+    }
+  }
+
+  Future<void> _reloadTask({bool showSpinner = false}) async {
+    if (showSpinner && mounted) setState(() => _loading = true);
+    final merged = await mergeWorkflowTaskDetail(_task);
+    if (!mounted) return;
+    setState(() {
+      _task = merged;
+      _loading = false;
+    });
+    _syncReviewCommentFromTask();
+  }
+
+  Future<void> _saveReviewComment() async {
+    final action = _reviewCommentAction;
+    if (action == null || _savingComment) return;
+    if (_itemRunId.trim().isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Missing workflow item run id.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    setState(() => _savingComment = true);
+    try {
+      final message = await _submitIndentPoWorkflowTextUpload(
+        itemRunId: _itemRunId,
+        action: action,
+        comment: _reviewCommentController.text.trim(),
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            message.isNotEmpty ? message : 'Review comment saved',
+          ),
+          backgroundColor: Colors.green,
+        ),
+      );
+      await widget.onChanged();
+      await _reloadTask();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e.toString().replaceAll('Exception: ', '')),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _savingComment = false);
+    }
+  }
+
+  Future<void> _approveProof() async {
+    final approve = _approveAction;
+    if (approve == null || _approving || !_canApprove) return;
+    if (_itemRunId.trim().isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Missing workflow item run id.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Approve site proof'),
+        content: const Text(
+          'Approve this indent site proof? Any unsaved review comment should be saved first.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Approve'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    setState(() => _approving = true);
+    try {
+      final credentials = await _workflowCredentials();
+      final response = await http
+          .post(
+            Uri.parse(
+              '$_workflowApiBaseUrl/API/workflow/item-runs/$_itemRunId/complete',
+            ),
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Api-Token': credentials.apiToken,
+            },
+            body: jsonEncode({
+              'user_id': credentials.userId,
+              'api_token': credentials.apiToken,
+              'action_id': approve['id']?.toString() ?? '',
+            }),
+          )
+          .timeout(const Duration(seconds: 30));
+      final message = _workflowResponseMessageOrThrow(
+        response,
+        'Site proof approved',
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: Colors.green,
+        ),
+      );
+      await widget.onChanged();
+      Navigator.of(context).pop();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e.toString().replaceAll('Exception: ', '')),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _approving = false);
+    }
+  }
+
+  Future<void> _openIndentProofDetail() async {
+    final indentId = _indentId;
+    if (indentId == null || indentId.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Indent id not found on this task.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+    await openIndentProofScreen(context, indentId: indentId);
+    await _reloadTask();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final title = (_task['title'] ?? _task['s_title'] ?? 'Review indent site proof')
+        .toString()
+        .trim();
+    final project = (_task['project_name'] ?? '').toString().trim();
+    final reviewAction = _reviewCommentAction;
+    final placeholder = reviewAction?['comment_placeholder']?.toString().trim() ?? '';
+    final approveLabel =
+        (_approveAction?['label']?.toString().trim().isNotEmpty == true)
+            ? _approveAction!['label'].toString().trim()
+            : 'Approve site proof';
+
+    return ThemedScaffold(
+      title: title.isNotEmpty ? title : 'Review indent site proof',
+      backgroundColor: _premiumBackground,
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : RefreshIndicator(
+              onRefresh: _reloadTask,
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+                children: [
+                  if (project.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: Text(
+                        project,
+                        style: const TextStyle(
+                          color: _premiumMuted,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: _premiumSurface,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: AppTheme.border),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Review comment',
+                          style: TextStyle(
+                            color: _premiumInk,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        const Text(
+                          'Optional comment for PC/APC review. Site engineer comment is shown on Indent Proof detail.',
+                          style: TextStyle(
+                            color: _premiumMuted,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            height: 1.35,
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+                        TextField(
+                          controller: _reviewCommentController,
+                          enabled: reviewAction != null && !_savingComment,
+                          maxLines: 4,
+                          decoration: InputDecoration(
+                            labelText: 'Review comment',
+                            hintText: placeholder.isNotEmpty
+                                ? placeholder
+                                : 'Add a review comment (optional)',
+                            filled: true,
+                            fillColor: _premiumBackground,
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                        ),
+                        if (_commentSaved) ...[
+                          const SizedBox(height: 8),
+                          const Text(
+                            'Review comment saved',
+                            style: TextStyle(
+                              color: Colors.green,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                        const SizedBox(height: 14),
+                        SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton.icon(
+                            onPressed: reviewAction == null || _savingComment
+                                ? null
+                                : _saveReviewComment,
+                            icon: _savingComment
+                                ? const SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : const Icon(Icons.save_outlined, size: 18),
+                            label: const Text('Save review comment'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  if (_indentId != null && _indentId!.isNotEmpty)
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: _openIndentProofDetail,
+                        icon: const Icon(Icons.open_in_new, size: 18),
+                        label: Text('Open Indent Proof (#$_indentId)'),
+                      ),
+                    ),
+                  const SizedBox(height: 16),
+                  if (_isAlreadyApproved)
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 12,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFDCFCE7),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: const Color(0xFF86EFAC)),
+                      ),
+                      child: const Text(
+                        'This indent proof is already approved.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: Color(0xFF166534),
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    )
+                  else
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        onPressed:
+                            !_canApprove || _approving ? null : _approveProof,
+                        icon: _approving
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Icon(Icons.check_circle_outline, size: 18),
+                        label: Text(approveLabel),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppTheme.primaryColorConst,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+    );
+  }
+}
+
+class _IndentProofReviewLaunchCard extends StatelessWidget {
+  final Future<void> Function() onOpen;
+
+  const _IndentProofReviewLaunchCard({required this.onOpen});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: _premiumSurface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppTheme.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Indent proof review',
+            style: TextStyle(
+              color: _premiumInk,
+              fontSize: 14,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'Review indent site proof. Save an optional review comment, then approve.',
+            style: TextStyle(
+              color: _premiumMuted,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              height: 1.35,
+            ),
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: onOpen,
+              icon: const Icon(Icons.fact_check_outlined, size: 18),
+              label: const Text('Review site proof'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primaryColorConst,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _IndentSiteProofLaunchCard extends StatelessWidget {
+  final Map<String, dynamic> task;
+  final List<Map<String, dynamic>> actions;
+  final Future<void> Function() onOpen;
+
+  const _IndentSiteProofLaunchCard({
+    required this.task,
+    required this.actions,
+    required this.onOpen,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final doneCount =
+        actions.where((action) => _indentPoStepDone(task, action)).length;
+    final total = actions.length;
+    final started = doneCount > 0;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: _premiumSurface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppTheme.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Upload site proof for approved PO',
+            style: TextStyle(
+              color: _premiumInk,
+              fontSize: 14,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            total == 0
+                ? 'Complete the on-site steps in order.'
+                : '$doneCount of $total steps complete. Go to the project site, then finish each step in order.',
+            style: const TextStyle(
+              color: _premiumMuted,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              height: 1.35,
+            ),
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: onOpen,
+              icon: const Icon(Icons.pin_drop_outlined, size: 18),
+              label: Text(started ? 'Continue site proof' : 'Start site proof'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primaryColorConst,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _IndentSiteProofScreen extends StatefulWidget {
+  final Map<String, dynamic> task;
+  final Future<void> Function() onChanged;
+
+  const _IndentSiteProofScreen({
+    required this.task,
+    required this.onChanged,
+  });
+
+  @override
+  State<_IndentSiteProofScreen> createState() => _IndentSiteProofScreenState();
+}
+
+class _IndentSiteProofScreenState extends State<_IndentSiteProofScreen> {
+  late Map<String, dynamic> _task;
+  bool _loading = true;
+  bool _checkingLocation = true;
+  bool _leaving = false;
+  String? _locationError;
+  bool _openSettingsHint = false;
+  bool _onSite = false;
+  bool _siteConfigured = true;
+  double? _distanceMeters;
+  int _radiusMeters = 500;
+
+  @override
+  void initState() {
+    super.initState();
+    _task = Map<String, dynamic>.from(widget.task);
+    _bootstrap();
+  }
+
+  List<Map<String, dynamic>> get _steps =>
+      indentPoSiteProofActions(workflowActionsFromTask(_task));
+
+  String get _itemRunId => _resolvedWorkflowItemRunIdFromTask(_task);
+
+  String get _subtitle {
+    final note = (_task['note'] ?? _task['s_note'] ?? '').toString().trim();
+    if (note.isNotEmpty) return note;
+    return _task['project_name']?.toString().trim() ?? '';
+  }
+
+  Map<String, dynamic>? get _locationAction =>
+      _steps.isNotEmpty ? _steps.first : null;
+
+  Future<void> _bootstrap() async {
+    await _reloadTask(showSpinner: true);
+    await _refreshLocation();
+  }
+
+  Future<void> _reloadTask({bool showSpinner = false}) async {
+    if (showSpinner && mounted) {
+      setState(() => _loading = true);
+    }
+    final merged = await mergeWorkflowTaskDetail(_task);
+    if (!mounted) return;
+    setState(() {
+      _task = merged;
+      _loading = false;
+    });
+  }
+
+  Future<void> _refreshLocation() async {
+    final action = _locationAction;
+    if (action == null) {
+      if (!mounted) return;
+      setState(() {
+        _checkingLocation = false;
+        _onSite = false;
+        _locationError = 'No site-proof steps were found for this task.';
+      });
+      return;
+    }
+
+    setState(() {
+      _checkingLocation = true;
+      _locationError = null;
+      _openSettingsHint = false;
+    });
+
+    final availableRaw =
+        _indentPoActionValue(action, 'site_location_available');
+    final siteLocation = _parseSiteLocation(
+      _indentPoActionValue(action, 'site_location') ?? action['site_location'],
+    );
+    final available = availableRaw == null
+        ? siteLocation != null
+        : _truthyValue(availableRaw);
+    final radius = _intValue(
+          _indentPoActionValue(action, 'near_site_radius_meters'),
+        ) ??
+        500;
+
+    if (!available || siteLocation == null) {
+      if (!mounted) return;
+      setState(() {
+        _checkingLocation = false;
+        _siteConfigured = false;
+        _onSite = false;
+        _radiusMeters = radius;
+        _locationError = 'Project site location is not configured.';
+      });
+      return;
+    }
+
+    final result = await _checkIndentPoNearSite(
+      context: context,
+      task: _task,
+      action: action,
+      itemRunId: _itemRunId,
+    );
+    if (!mounted) return;
+    setState(() {
+      _checkingLocation = false;
+      _siteConfigured = true;
+      _radiusMeters = radius;
+      _distanceMeters = result.distanceMeters;
+      _openSettingsHint = result.openSettings;
+      _onSite = result.ok;
+      _locationError = result.ok ? null : result.error;
+    });
+  }
+
+  bool _stepDone(Map<String, dynamic> action) =>
+      _indentPoStepDone(_task, action);
+
+  bool _stepLocked(Map<String, dynamic> action) {
+    if (_stepDone(action)) return false;
+    if (!_siteConfigured) return true;
+    if (!_onSite) return true;
+    if (isWorkflowDelayGated(_task) || !canUpdateWorkflowTask(_task)) {
+      return true;
+    }
+    return _truthyValue(action['blocked']);
+  }
+
+  String _lockedMessage(Map<String, dynamic> action) {
+    if (!_siteConfigured) {
+      return 'Project site location is not configured.';
+    }
+    if (!_onSite) {
+      if ((_locationError ?? '').trim().isNotEmpty) return _locationError!.trim();
+      if (_distanceMeters != null) {
+        return 'Go to the project site to unlock these actions. You are about ${_distanceMeters!.round()} m away.';
+      }
+      return 'Go to the project site to unlock these actions.';
+    }
+    final blocked = action['blocked_message']?.toString().trim() ?? '';
+    if (blocked.isNotEmpty) return blocked;
+    if (isWorkflowDelayGated(_task) || !canUpdateWorkflowTask(_task)) {
+      return workflowDelayBlockedMessage(_task, action: action);
+    }
+    return 'Complete the previous step first.';
+  }
+
+  Future<void> _openStep(Map<String, dynamic> action) async {
+    if (_leaving) return;
+    final done = _stepDone(action);
+    if (_stepLocked(action) && !done) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(_lockedMessage(action)),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    final result = await _presentIndentPoSiteProofAction(
+      context: context,
+      task: _task,
+      action: action,
+      itemRunId: _itemRunId,
+      reviewOnly: done && !_onSite,
+    );
+    if (!mounted) return;
+    if (!result.success) return;
+
+    if ((result.message ?? '').trim().isNotEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(result.message!.trim()),
+          backgroundColor: Colors.green,
+        ),
+      );
+    }
+
+    await widget.onChanged();
+    await _reloadTask();
+    await _refreshLocation();
+
+    if (result.taskCompleted && mounted) {
+      setState(() => _leaving = true);
+      Navigator.of(context).pop();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final steps = _steps;
+    return ThemedScaffold(
+      title: 'Upload site proof for approved PO',
+      backgroundColor: _premiumBackground,
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : RefreshIndicator(
+              onRefresh: () async {
+                await _reloadTask();
+                await _refreshLocation();
+              },
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+                children: [
+                  if (_subtitle.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: Text(
+                        _subtitle,
+                        style: const TextStyle(
+                          color: _premiumMuted,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          height: 1.35,
+                        ),
+                      ),
+                    ),
+                  _IndentSiteProofGpsBanner(
+                    isChecking: _checkingLocation,
+                    onSite: _onSite,
+                    siteConfigured: _siteConfigured,
+                    error: _locationError,
+                    distanceMeters: _distanceMeters,
+                    radiusMeters: _radiusMeters,
+                    showOpenSettings: _openSettingsHint,
+                    onRecheck: _checkingLocation ? null : _refreshLocation,
+                    onOpenSettings: _openSettingsHint
+                        ? () async {
+                            await Geolocator.openAppSettings();
+                          }
+                        : null,
+                  ),
+                  const SizedBox(height: 16),
+                  if (steps.isEmpty)
+                    const Text(
+                      'No site-proof steps are available yet.',
+                      style: TextStyle(
+                        color: _premiumMuted,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    )
+                  else
+                    ...List.generate(steps.length, (index) {
+                      final action = steps[index];
+                      return Padding(
+                        padding: EdgeInsets.only(
+                          bottom: index == steps.length - 1 ? 0 : 10,
+                        ),
+                        child: _IndentSiteProofStepTile(
+                          index: index + 1,
+                          action: action,
+                          preview: _indentPoStepPreview(_task, action),
+                          thumbnailUrl: _indentPoStepThumbnailUrl(_task, action),
+                          done: _stepDone(action),
+                          locked: _stepLocked(action) && !_stepDone(action),
+                          onTap: () => _openStep(action),
+                        ),
+                      );
+                    }),
+                ],
+              ),
+            ),
+    );
+  }
+}
+
+class _IndentSiteProofGpsBanner extends StatelessWidget {
+  final bool isChecking;
+  final bool onSite;
+  final bool siteConfigured;
+  final String? error;
+  final double? distanceMeters;
+  final int radiusMeters;
+  final bool showOpenSettings;
+  final Future<void> Function()? onRecheck;
+  final Future<void> Function()? onOpenSettings;
+
+  const _IndentSiteProofGpsBanner({
+    required this.isChecking,
+    required this.onSite,
+    required this.siteConfigured,
+    required this.error,
+    required this.distanceMeters,
+    required this.radiusMeters,
+    required this.showOpenSettings,
+    required this.onRecheck,
+    required this.onOpenSettings,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final hasError = !onSite || !siteConfigured;
+    final bg = isChecking
+        ? const Color(0xFFEFF6FF)
+        : hasError
+            ? const Color(0xFFFEF2F2)
+            : const Color(0xFFECFDF5);
+    final border = isChecking
+        ? const Color(0xFFBFDBFE)
+        : hasError
+            ? const Color(0xFFFECACA)
+            : const Color(0xFFA7F3D0);
+    final ink = isChecking
+        ? const Color(0xFF1D4ED8)
+        : hasError
+            ? const Color(0xFF991B1B)
+            : const Color(0xFF065F46);
+    final icon = isChecking
+        ? Icons.my_location
+        : hasError
+            ? Icons.lock_outline
+            : Icons.check_circle_outline;
+
+    String message;
+    if (isChecking) {
+      message = 'Checking your distance from the project site…';
+    } else if (!siteConfigured) {
+      message = 'Project site location is not configured.';
+    } else if (!onSite) {
+      final distance = distanceMeters == null
+          ? ''
+          : ' You are about ${distanceMeters!.round()} m away.';
+      message =
+          'Go to the project site to unlock these actions.$distance';
+    } else {
+      message = 'You are on site. Complete the steps in order.';
+    }
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (isChecking)
+                const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              else
+                Icon(icon, size: 20, color: ink),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  message,
+                  style: TextStyle(
+                    color: ink,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    height: 1.35,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          if (!isChecking &&
+              onSite &&
+              distanceMeters != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              'About ${distanceMeters!.round()} m from site · ${radiusMeters}m radius',
+              style: TextStyle(
+                color: ink.withValues(alpha: 0.8),
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+          if ((error ?? '').trim().isNotEmpty && !onSite && siteConfigured) ...[
+            const SizedBox(height: 8),
+            Text(
+              error!.trim(),
+              style: TextStyle(
+                color: ink.withValues(alpha: 0.85),
+                fontSize: 11.5,
+                fontWeight: FontWeight.w600,
+                height: 1.35,
+              ),
+            ),
+          ],
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              OutlinedButton.icon(
+                onPressed: onRecheck,
+                icon: const Icon(Icons.my_location, size: 16),
+                label: const Text('Recheck location'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: ink,
+                  side: BorderSide(color: border),
+                  visualDensity: VisualDensity.compact,
+                ),
+              ),
+              if (showOpenSettings && onOpenSettings != null)
+                TextButton(
+                  onPressed: onOpenSettings,
+                  style: TextButton.styleFrom(
+                    foregroundColor: ink,
+                    visualDensity: VisualDensity.compact,
+                  ),
+                  child: const Text('Open settings'),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _IndentSiteProofStepTile extends StatelessWidget {
+  final int index;
+  final Map<String, dynamic> action;
+  final String? preview;
+  final String? thumbnailUrl;
+  final bool done;
+  final bool locked;
+  final VoidCallback onTap;
+
+  const _IndentSiteProofStepTile({
+    required this.index,
+    required this.action,
+    required this.preview,
+    required this.thumbnailUrl,
+    required this.done,
+    required this.locked,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final label = toSentenceCaseLabel(
+      (action['label']?.toString().trim().isNotEmpty == true)
+          ? action['label'].toString().trim()
+          : (action['id']?.toString() ?? 'Step'),
+    );
+    final Color accent = done
+        ? const Color(0xFF047857)
+        : locked
+            ? AppTheme.mutedGrey
+            : AppTheme.primaryColorConst;
+    final statusLabel = done
+        ? 'Done'
+        : locked
+            ? 'Locked'
+            : 'Unlocked';
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: done
+                  ? const Color(0xFFA7F3D0)
+                  : locked
+                      ? AppTheme.border
+                      : accent.withValues(alpha: 0.35),
+            ),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 34,
+                height: 34,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: accent.withValues(alpha: 0.12),
+                  shape: BoxShape.circle,
+                ),
+                child: done
+                    ? Icon(Icons.check, size: 18, color: accent)
+                    : locked
+                        ? Icon(Icons.lock_outline, size: 16, color: accent)
+                        : Text(
+                            '$index',
+                            style: TextStyle(
+                              color: accent,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      label,
+                      style: const TextStyle(
+                        color: _premiumInk,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    if ((preview ?? '').trim().isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        preview!,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: _premiumMuted,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              if ((thumbnailUrl ?? '').isNotEmpty) ...[
+                const SizedBox(width: 8),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: Image.network(
+                    _absoluteWorkflowUrl(thumbnailUrl!),
+                    width: 42,
+                    height: 42,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => Container(
+                      width: 42,
+                      height: 42,
+                      color: accent.withValues(alpha: 0.08),
+                      child: Icon(_indentPoStepIcon(action), size: 18, color: accent),
+                    ),
+                  ),
+                ),
+              ] else ...[
+                const SizedBox(width: 8),
+                Icon(_indentPoStepIcon(action), size: 18, color: accent),
+              ],
+              const SizedBox(width: 8),
+              Text(
+                statusLabel,
+                style: TextStyle(
+                  color: accent,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _UploadedPhotosSection extends StatelessWidget {
   final List<String> photos;
 
@@ -3421,6 +4893,13 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
   }
 
   Future<void> _handleTap(String type) async {
+    if (isIndentProofDeeplinkTask(task, action: action) ||
+        isIndentProofDeeplinkTask(action)) {
+      await openIndentProofFromTask(context, task, action: action);
+      if (mounted) await widget.onActionCompleted();
+      return;
+    }
+
     if (!_guardActionAllowed()) return;
 
     if (_resolvedWorkflowItemRunId.isEmpty) {
@@ -3482,18 +4961,7 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
   }
 
   Future<_WorkflowCredentials> _credentials() async {
-    final prefs = await SharedPreferences.getInstance();
-    final userId = prefs.getString('userId') ?? prefs.getString('user_id');
-    final apiToken = prefs.getString('api_token');
-
-    if (userId == null ||
-        userId.isEmpty ||
-        apiToken == null ||
-        apiToken.isEmpty) {
-      throw Exception('Missing credentials. Please log in again.');
-    }
-
-    return _WorkflowCredentials(userId: userId, apiToken: apiToken);
+    return _workflowCredentials();
   }
 
   Future<bool> _submitJson({
@@ -4166,6 +5634,22 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
             ? uploadAction['blocked_message'].toString().trim()
             : 'Upload not available',
       );
+      return;
+    }
+    if (isIndentPoSiteProofActionId(uploadAction['id']?.toString())) {
+      final result = await _presentIndentPoSiteProofAction(
+        context: context,
+        task: task,
+        action: uploadAction,
+        itemRunId: _resolvedWorkflowItemRunId,
+      );
+      if (!mounted) return;
+      if (result.success) {
+        if ((result.message ?? '').trim().isNotEmpty) {
+          _showSnackBar(result.message!.trim());
+        }
+        await widget.onActionCompleted();
+      }
       return;
     }
     if (uploadAction['add_percent_to_task'] == true) {
@@ -6561,6 +8045,12 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
   }
 
   Future<void> _openRedirect() async {
+    if (isIndentProofDeeplinkTask(task, action: action) ||
+        isIndentProofDeeplinkTask(action)) {
+      await openIndentProofFromTask(context, task, action: action);
+      return;
+    }
+
     // Native Indent Creation for workflow redirect_button → create_indent.
     // Opening this screen must NOT complete the workflow task.
     if (isCreateIndentRedirectAction(action)) {
@@ -7314,46 +8804,7 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
   }
 
   String _successMessageOrThrow(http.Response response, String fallback) {
-    // Safety net: if ApiHttp somehow returned an invalid-token body (e.g. the
-    // soft confirm probe failed), still show the popup and log the user out.
-    if (SessionManager.instance.isSessionInvalidResponse(response)) {
-      SessionManager.instance.handleResponse(
-        response,
-        confirmBeforeLogout: false,
-      );
-      throw SessionInvalidatedException();
-    }
-
-    dynamic decoded;
-    try {
-      decoded = jsonDecode(response.body);
-    } catch (_) {}
-
-    if (response.statusCode >= 200 && response.statusCode < 300) {
-      if (decoded is Map && decoded['success'] == false) {
-        final message = decoded['message']?.toString() ?? 'Action failed';
-        throw Exception(message);
-      }
-      if (decoded is Map && decoded['message'] != null) {
-        return decoded['message'].toString();
-      }
-      return fallback;
-    }
-
-    if (decoded is Map && decoded['message'] != null) {
-      final message = decoded['message'].toString().trim();
-      if (message.isNotEmpty) {
-        throw Exception(message);
-      }
-    }
-    if (response.statusCode >= 300 && response.statusCode < 400) {
-      final location = response.headers['location'];
-      if (location != null && location.trim().isNotEmpty) {
-        throw Exception('Request was redirected to $location');
-      }
-      throw Exception('Request was redirected by the server.');
-    }
-    throw Exception('Server error: ${response.statusCode}');
+    return _workflowResponseMessageOrThrow(response, fallback);
   }
 
   dynamic _workflowResponseForAction(dynamic responses, dynamic actionId) {
@@ -7414,6 +8865,62 @@ class _WorkflowCredentials {
     required this.userId,
     required this.apiToken,
   });
+}
+
+Future<_WorkflowCredentials> _workflowCredentials() async {
+  final prefs = await SharedPreferences.getInstance();
+  final userId = prefs.getString('userId') ?? prefs.getString('user_id');
+  final apiToken = prefs.getString('api_token');
+
+  if (userId == null ||
+      userId.isEmpty ||
+      apiToken == null ||
+      apiToken.isEmpty) {
+    throw Exception('Missing credentials. Please log in again.');
+  }
+
+  return _WorkflowCredentials(userId: userId, apiToken: apiToken);
+}
+
+String _workflowResponseMessageOrThrow(http.Response response, String fallback) {
+  if (SessionManager.instance.isSessionInvalidResponse(response)) {
+    SessionManager.instance.handleResponse(
+      response,
+      confirmBeforeLogout: false,
+    );
+    throw SessionInvalidatedException();
+  }
+
+  dynamic decoded;
+  try {
+    decoded = jsonDecode(response.body);
+  } catch (_) {}
+
+  if (response.statusCode >= 200 && response.statusCode < 300) {
+    if (decoded is Map && decoded['success'] == false) {
+      final message = decoded['message']?.toString() ?? 'Action failed';
+      throw Exception(message);
+    }
+    if (decoded is Map && decoded['message'] != null) {
+      return decoded['message'].toString();
+    }
+    return fallback;
+  }
+
+  if (decoded is Map && decoded['message'] != null) {
+    final message = decoded['message'].toString().trim();
+    if (message.isNotEmpty) {
+      throw Exception(message);
+    }
+  }
+  if (response.statusCode >= 300 && response.statusCode < 400) {
+    final location = response.headers['location'];
+    if (location != null && location.trim().isNotEmpty) {
+      throw Exception('Request was redirected to $location');
+    }
+    throw Exception('Request was redirected by the server.');
+  }
+  throw Exception('Server error: ${response.statusCode}');
 }
 
 class _FreshWorkflowActionContext {
@@ -10907,6 +12414,53 @@ _WorkflowUploadSourceConfig _resolveWorkflowUploadSources(
   Map<String, dynamic> action, {
   List<String>? allowedFormats,
 }) {
+  final actionId = action['id']?.toString().trim() ?? '';
+  if (actionId == 'indent_po_quantity' ||
+      actionId == 'indent_po_measurement' ||
+      actionId == 'indent_po_vehicle' ||
+      actionId == 'indent_po_weight' ||
+      actionId == 'indent_po_site_comment' ||
+      actionId == 'indent_po_review_comment') {
+    return const _WorkflowUploadSourceConfig(
+      allowGallery: false,
+      allowCamera: false,
+      allowDocument: false,
+      allowVideo: false,
+    );
+  }
+  if (actionId == 'indent_po_video') {
+    final videoFormats = _normalizeAllowedFormats(
+      _stringList(action['video_formats']).isNotEmpty
+          ? _stringList(action['video_formats'])
+          : _indentPoVideoFormats,
+    );
+    return _WorkflowUploadSourceConfig(
+      allowGallery: false,
+      allowCamera: false,
+      allowDocument: false,
+      allowVideo: true,
+      videoFormats: videoFormats.isNotEmpty
+          ? videoFormats
+          : List<String>.from(_indentPoVideoFormats),
+    );
+  }
+  if (actionId == 'indent_po_image') {
+    final imageFormats = _normalizeAllowedFormats(
+      _stringList(action['image_formats']).isNotEmpty
+          ? _stringList(action['image_formats'])
+          : _indentPoImageFormats,
+    );
+    return _WorkflowUploadSourceConfig(
+      allowGallery: false,
+      allowCamera: true,
+      allowDocument: false,
+      allowVideo: false,
+      imageFormats: imageFormats.isNotEmpty
+          ? imageFormats
+          : List<String>.from(_indentPoImageFormats),
+    );
+  }
+
   final imageFormats = _workflowFormatsFromAction(
     action,
     key: 'image_formats',
@@ -11719,6 +13273,699 @@ class _WorkflowVideoRecorderPageState extends State<_WorkflowVideoRecorderPage> 
                     ),
     );
   }
+}
+
+dynamic _indentPoActionValue(Map<String, dynamic> action, String key) {
+  final directValue = action[key];
+  if (!_isBlankConfigValue(directValue)) return directValue;
+  for (final configKey in const [
+    'config',
+    'action_config',
+    'task_action_config',
+    'settings',
+  ]) {
+    final config = _configMap(action[configKey]);
+    if (config == null) continue;
+    final value = config[key];
+    if (!_isBlankConfigValue(value)) return value;
+  }
+  return null;
+}
+
+Map<String, dynamic>? _indentPoResponseFor(
+  Map<String, dynamic> task,
+  Map<String, dynamic> action,
+) {
+  final actionId = action['id'];
+  final candidates = <dynamic>[
+    action['response'],
+    action['latest_response'],
+  ];
+
+  final decodedTaskResponses =
+      _decodeResponsePayload(task['workflow_action_responses']);
+  if (decodedTaskResponses is Map) {
+    candidates.add(
+      decodedTaskResponses[actionId?.toString()] ?? decodedTaskResponses[actionId],
+    );
+  } else if (decodedTaskResponses is List) {
+    for (final item in decodedTaskResponses) {
+      if (item is Map &&
+          item['action_id']?.toString() == actionId?.toString()) {
+        candidates.add(item);
+      }
+    }
+  }
+
+  for (final candidate in candidates) {
+    final normalized = _decodeResponsePayload(candidate);
+    if (normalized is Map && !_isEmptyResponse(normalized)) {
+      return Map<String, dynamic>.from(normalized);
+    }
+  }
+  return null;
+}
+
+String _indentPoSavedText(
+  Map<String, dynamic> task,
+  Map<String, dynamic> action,
+) {
+  final response = _indentPoResponseFor(task, action) ?? {};
+  return (
+    response['upload_comment'] ??
+        response['comment'] ??
+        response['value'] ??
+        response['text'] ??
+        action['upload_comment'] ??
+        ''
+  )
+      .toString()
+      .trim();
+}
+
+List<Map<String, dynamic>> _indentPoSavedFiles(
+  Map<String, dynamic> task,
+  Map<String, dynamic> action,
+) {
+  final response = _indentPoResponseFor(task, action) ?? {};
+  final files = _mapListFlexible(response['files']);
+  if (files.isNotEmpty) return files;
+  return _mapListFlexible(response['file']);
+}
+
+bool _indentPoStepDone(
+  Map<String, dynamic> task,
+  Map<String, dynamic> action,
+) {
+  if (_truthyValue(action['submitted']) ||
+      _truthyValue(action['completed']) ||
+      _truthyValue(action['done']) ||
+      _truthyValue(action['has_response'])) {
+    return true;
+  }
+  final actionId = action['id']?.toString() ?? '';
+  if (actionId == 'indent_po_site_comment' ||
+      actionId == 'indent_po_review_comment') {
+    return false;
+  }
+  final kind = indentPoSiteProofKind(action['id']?.toString());
+  if (kind == _IndentPoSiteProofKind.text) {
+    return _indentPoSavedText(task, action).isNotEmpty;
+  }
+  return _indentPoSavedFiles(task, action).isNotEmpty;
+}
+
+String? _indentPoStepPreview(
+  Map<String, dynamic> task,
+  Map<String, dynamic> action,
+) {
+  final kind = indentPoSiteProofKind(action['id']?.toString());
+  if (kind == _IndentPoSiteProofKind.text) {
+    final text = _indentPoSavedText(task, action);
+    return text.isEmpty ? null : text;
+  }
+  final files = _indentPoSavedFiles(task, action);
+  if (files.isEmpty) return null;
+  if (kind == _IndentPoSiteProofKind.video) return 'Video uploaded';
+  if (kind == _IndentPoSiteProofKind.image) return 'Photo uploaded';
+  return files.length == 1 ? '1 file uploaded' : '${files.length} files uploaded';
+}
+
+String? _indentPoStepThumbnailUrl(
+  Map<String, dynamic> task,
+  Map<String, dynamic> action,
+) {
+  final files = _indentPoSavedFiles(task, action);
+  if (files.isEmpty) return null;
+  return _workflowAttachmentUrl(files.first);
+}
+
+IconData _indentPoStepIcon(Map<String, dynamic> action) {
+  switch ((action['id']?.toString() ?? '').trim()) {
+    case 'indent_po_quantity':
+      return Icons.pin_outlined;
+    case 'indent_po_measurement':
+      return Icons.straighten;
+    case 'indent_po_video':
+      return Icons.videocam_outlined;
+    case 'indent_po_vehicle':
+      return Icons.local_shipping_outlined;
+    case 'indent_po_image':
+      return Icons.photo_camera_outlined;
+    case 'indent_po_weight':
+      return Icons.scale_outlined;
+    case 'indent_po_site_comment':
+      return Icons.comment_outlined;
+    default:
+      return Icons.checklist_outlined;
+  }
+}
+
+Future<String> _submitIndentPoWorkflowTextUpload({
+  required String itemRunId,
+  required Map<String, dynamic> action,
+  required String comment,
+}) async {
+  final credentials = await _workflowCredentials();
+  final response = await http
+      .post(
+        Uri.parse(
+          '$_workflowApiBaseUrl/API/workflow/item-runs/$itemRunId/upload',
+        ),
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Api-Token': credentials.apiToken,
+        },
+        body: jsonEncode({
+          'user_id': credentials.userId,
+          'api_token': credentials.apiToken,
+          'action_id': action['id']?.toString() ?? '',
+          'comment': comment,
+        }),
+      )
+      .timeout(const Duration(seconds: 30));
+  return _workflowResponseMessageOrThrow(response, 'Saved');
+}
+
+class _IndentPoSiteProofSubmitResult {
+  final bool success;
+  final bool taskCompleted;
+  final String? message;
+
+  const _IndentPoSiteProofSubmitResult({
+    required this.success,
+    this.taskCompleted = false,
+    this.message,
+  });
+}
+
+Future<_NearSiteCheckResult> _checkIndentPoNearSite({
+  required BuildContext context,
+  required Map<String, dynamic> task,
+  required Map<String, dynamic> action,
+  required String itemRunId,
+}) async {
+  final requireNearSite = _truthyValue(
+        _indentPoActionValue(action, 'unlock_requires_near_site'),
+      ) ||
+      _truthyValue(_indentPoActionValue(action, 'require_near_site'));
+  final requireGps = requireNearSite ||
+      _truthyValue(_indentPoActionValue(action, 'require_gps_for_upload'));
+  final radius = _intValue(
+        _indentPoActionValue(action, 'near_site_radius_meters'),
+      ) ??
+      500;
+  final siteLocation = _parseSiteLocation(
+    _indentPoActionValue(action, 'site_location') ?? action['site_location'],
+  );
+  final availableRaw =
+      _indentPoActionValue(action, 'site_location_available');
+  final available = availableRaw == null
+      ? siteLocation != null
+      : _truthyValue(availableRaw);
+
+  _logNearSiteUploadConfig(
+    task: task,
+    action: action,
+    itemRunId: itemRunId,
+    requireNearSite: requireNearSite,
+    nearSiteRadiusMeters: radius,
+    siteLocationRaw:
+        _indentPoActionValue(action, 'site_location') ?? action['site_location'],
+    siteLocationAvailableRaw: availableRaw,
+    siteLocationAvailable: available,
+    parsedSiteLocation: siteLocation,
+  );
+
+  if (!requireGps) {
+    return const _NearSiteCheckResult(ok: true);
+  }
+  if (requireNearSite && (!available || siteLocation == null)) {
+    return const _NearSiteCheckResult(
+      ok: false,
+      error: 'Project site location is not configured.',
+    );
+  }
+
+  final permission = await _ensureLocationPermission();
+  if (!permission.ok) return permission;
+
+  Future<_NearSiteCheckResult> runCheck() async {
+    try {
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+        ),
+      ).timeout(const Duration(seconds: 15));
+      final distance = siteLocation == null
+          ? 0.0
+          : Geolocator.distanceBetween(
+              position.latitude,
+              position.longitude,
+              siteLocation.latitude,
+              siteLocation.longitude,
+            );
+      if (requireNearSite && siteLocation != null) {
+        _logNearSiteDistanceCheck(
+          itemRunId: itemRunId,
+          projectId: task['project_id']?.toString() ?? '',
+          siteLatitude: siteLocation.latitude,
+          siteLongitude: siteLocation.longitude,
+          deviceLatitude: position.latitude,
+          deviceLongitude: position.longitude,
+          distanceMeters: distance,
+          nearSiteRadiusMeters: radius,
+          withinRadius: distance <= radius,
+        );
+        if (distance > radius) {
+          return _NearSiteCheckResult(
+            ok: false,
+            error:
+                'You must be within $radius m of the project site (you are about ${distance.round()} m away).',
+            distanceMeters: distance,
+            latitude: position.latitude,
+            longitude: position.longitude,
+          );
+        }
+      }
+      return _NearSiteCheckResult(
+        ok: true,
+        distanceMeters: siteLocation == null ? null : distance,
+        latitude: position.latitude,
+        longitude: position.longitude,
+      );
+    } on TimeoutException {
+      return const _NearSiteCheckResult(
+        ok: false,
+        error: 'Could not get your location in time. Please try again.',
+      );
+    } catch (e) {
+      return _NearSiteCheckResult(
+        ok: false,
+        error: e.toString().replaceAll('Exception: ', ''),
+      );
+    }
+  }
+
+  final result = await runCheck();
+  return _applyDebugNearSiteOverrideIfNeeded(
+    context,
+    result,
+    siteLocation: siteLocation,
+  );
+}
+
+Future<_IndentPoSiteProofSubmitResult> _presentIndentPoSiteProofAction({
+  required BuildContext context,
+  required Map<String, dynamic> task,
+  required Map<String, dynamic> action,
+  required String itemRunId,
+  bool reviewOnly = false,
+}) async {
+  final kind = indentPoSiteProofKind(action['id']?.toString());
+  if (kind == null) {
+    return const _IndentPoSiteProofSubmitResult(
+      success: false,
+      message: 'This action is not supported.',
+    );
+  }
+  if (itemRunId.trim().isEmpty) {
+    return const _IndentPoSiteProofSubmitResult(
+      success: false,
+      message: 'Missing workflow item run id.',
+    );
+  }
+
+  final label = (action['label']?.toString().trim().isNotEmpty == true)
+      ? action['label'].toString().trim()
+      : 'Step';
+  final submitLabel =
+      (action['submit_button_label']?.toString().trim().isNotEmpty == true)
+          ? action['submit_button_label'].toString().trim()
+          : (kind == _IndentPoSiteProofKind.text ? 'Save' : 'Submit');
+  final placeholder = action['comment_placeholder']?.toString().trim() ?? '';
+  final actionId = action['id']?.toString().trim() ?? '';
+  final allowEmptyComment = actionId == 'indent_po_site_comment' ||
+      actionId == 'indent_po_review_comment' ||
+      action['require_comment'] == false;
+  final requireNearSite = _truthyValue(
+        _indentPoActionValue(action, 'unlock_requires_near_site'),
+      ) ||
+      _truthyValue(_indentPoActionValue(action, 'require_near_site'));
+  final savedText = _indentPoSavedText(task, action);
+  final existingFiles = _indentPoSavedFiles(task, action);
+  final commentController = TextEditingController(text: savedText);
+  final uploadSources = _resolveWorkflowUploadSources(action);
+  final videoFormats = uploadSources.videoFormats.isNotEmpty
+      ? uploadSources.videoFormats
+      : List<String>.from(_indentPoVideoFormats);
+  final maxVideoDuration =
+      _intValue(action['max_video_duration_seconds']) ?? 60;
+  final maxVideoSizeMb = _intValue(action['max_video_size_mb']) ?? 50;
+  final icon = _indentPoStepIcon(action);
+
+  _SelectedUploadFile? selectedFile;
+  var isSubmitting = false;
+  var isCheckingLocation = true;
+  String? nearSiteError;
+  var openSettingsHint = false;
+  double? distanceMeters;
+  double? deviceLatitude;
+  _IndentPoSiteProofSubmitResult? submitResult;
+
+  void applyNearSite(_NearSiteCheckResult result) {
+    isCheckingLocation = false;
+    nearSiteError = result.ok ? null : result.error;
+    openSettingsHint = result.openSettings;
+    distanceMeters = result.distanceMeters;
+    deviceLatitude = result.latitude;
+  }
+
+  Future<_NearSiteCheckResult> checkNearSite() {
+    if (!requireNearSite && kind == _IndentPoSiteProofKind.text) {
+      return Future.value(const _NearSiteCheckResult(ok: true));
+    }
+    return _checkIndentPoNearSite(
+      context: context,
+      task: task,
+      action: action,
+      itemRunId: itemRunId,
+    );
+  }
+
+  applyNearSite(await checkNearSite());
+
+  if (kind == _IndentPoSiteProofKind.image &&
+      !reviewOnly &&
+      nearSiteError == null &&
+      deviceLatitude != null) {
+    final captured = await _pickWorkflowCameraFile();
+    if (captured != null) selectedFile = captured;
+  }
+
+  await showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: Colors.transparent,
+    builder: (sheetContext) {
+      return StatefulBuilder(
+        builder: (context, setSheetState) {
+          final canSubmit = !reviewOnly &&
+              !isSubmitting &&
+              !isCheckingLocation &&
+              (nearSiteError == null || !requireNearSite);
+
+          Future<void> refreshLocation() async {
+            setSheetState(() {
+              isCheckingLocation = true;
+              nearSiteError = null;
+              openSettingsHint = false;
+            });
+            final result = await checkNearSite();
+            if (!sheetContext.mounted) return;
+            setSheetState(() {
+              applyNearSite(result);
+            });
+          }
+
+          Future<void> capturePhoto() async {
+            final captured = await _pickWorkflowCameraFile();
+            if (captured == null || !sheetContext.mounted) return;
+            setSheetState(() => selectedFile = captured);
+          }
+
+          Future<void> recordVideo() async {
+            final recorded = await _recordWorkflowVideoFile(
+              context: context,
+              videoFormats: videoFormats,
+              maxDurationSeconds: maxVideoDuration,
+              maxSizeMb: maxVideoSizeMb,
+            );
+            if (recorded == null || !sheetContext.mounted) return;
+            setSheetState(() => selectedFile = recorded);
+          }
+
+          Future<void> submit() async {
+            FocusManager.instance.primaryFocus?.unfocus();
+            if (kind == _IndentPoSiteProofKind.text &&
+                !allowEmptyComment &&
+                commentController.text.trim().isEmpty) {
+              await _showWorkflowUploadAlert(
+                context,
+                message: placeholder.isNotEmpty
+                    ? placeholder
+                    : 'Please enter ${label.toLowerCase()}.',
+              );
+              return;
+            }
+            if (kind == _IndentPoSiteProofKind.video && selectedFile == null) {
+              await _showWorkflowUploadAlert(
+                context,
+                message: 'Please record a video.',
+              );
+              return;
+            }
+            if (kind == _IndentPoSiteProofKind.image && selectedFile == null) {
+              await _showWorkflowUploadAlert(
+                context,
+                message: 'Please take a live photo.',
+              );
+              return;
+            }
+
+            setSheetState(() => isSubmitting = true);
+            try {
+              _NearSiteCheckResult nearSiteResult =
+                  const _NearSiteCheckResult(ok: true);
+              if (requireNearSite || kind != _IndentPoSiteProofKind.text) {
+                nearSiteResult = await checkNearSite();
+                if (!sheetContext.mounted) return;
+                setSheetState(() => applyNearSite(nearSiteResult));
+                if (!nearSiteResult.ok) {
+                  await _showWorkflowUploadAlert(
+                    context,
+                    title: 'Location required',
+                    message: nearSiteResult.error ??
+                        'Your device location is required to submit near the site.',
+                  );
+                  return;
+                }
+              }
+
+              final uploadLat = nearSiteResult.latitude;
+              final uploadLng = nearSiteResult.longitude;
+              if (requireNearSite &&
+                  (uploadLat == null || uploadLng == null)) {
+                await _showWorkflowUploadAlert(
+                  context,
+                  title: 'Location required',
+                  message: 'Could not read GPS coordinates. Please try again.',
+                );
+                return;
+              }
+
+              if (kind == _IndentPoSiteProofKind.text && !requireNearSite) {
+                final message = await _submitIndentPoWorkflowTextUpload(
+                  itemRunId: itemRunId,
+                  action: action,
+                  comment: commentController.text.trim(),
+                );
+                submitResult = _IndentPoSiteProofSubmitResult(
+                  success: true,
+                  taskCompleted: _truthyValue(action['completes_task']),
+                  message: message,
+                );
+                if (sheetContext.mounted) Navigator.pop(sheetContext);
+                return;
+              }
+
+              final credentials = await _workflowCredentials();
+              final request = http.MultipartRequest(
+                'POST',
+                Uri.parse(
+                  '$_workflowApiBaseUrl/API/workflow/item-runs/$itemRunId/upload',
+                ),
+              );
+              request.fields['user_id'] = credentials.userId;
+              request.fields['api_token'] = credentials.apiToken;
+              request.fields['action_id'] = action['id']?.toString() ?? '';
+              if (uploadLat != null && uploadLng != null) {
+                request.fields['latitude'] = uploadLat.toString();
+                request.fields['longitude'] = uploadLng.toString();
+              }
+              if (kind == _IndentPoSiteProofKind.text) {
+                final value = commentController.text.trim();
+                request.fields['upload_comment'] = value;
+                request.fields['comment'] = value;
+              }
+              if (kind == _IndentPoSiteProofKind.image && selectedFile != null) {
+                request.fields['live_image_only'] = 'true';
+                if (selectedFile!.capturedAt != null) {
+                  request.fields['captured_at'] =
+                      selectedFile!.capturedAt!.toIso8601String();
+                }
+              }
+              if (selectedFile != null) {
+                request.files.add(
+                  await _workflowUploadMultipartFile(selectedFile!),
+                );
+                _appendWorkflowVideoDurationField(request, [selectedFile!]);
+              }
+
+              final streamedResponse =
+                  await ApiHttp.send(request).timeout(const Duration(seconds: 90));
+              final response = await http.Response.fromStream(streamedResponse);
+              final message = _workflowResponseMessageOrThrow(
+                response,
+                kind == _IndentPoSiteProofKind.text
+                    ? '$label saved'
+                    : 'Upload saved',
+              );
+
+              dynamic decoded;
+              try {
+                decoded = jsonDecode(response.body);
+              } catch (_) {
+                decoded = null;
+              }
+              final taskCompleted = (decoded is Map &&
+                      decoded['task_completed'] == true) ||
+                  _truthyValue(action['completes_task']);
+              submitResult = _IndentPoSiteProofSubmitResult(
+                success: true,
+                taskCompleted: taskCompleted,
+                message: message,
+              );
+              if (sheetContext.mounted) Navigator.pop(sheetContext);
+            } catch (e) {
+              final errorMessage =
+                  e.toString().replaceAll('Exception: ', '').trim();
+              if (errorMessage.isNotEmpty) {
+                await _showWorkflowUploadAlert(
+                  context,
+                  title: 'Submit failed',
+                  message: errorMessage,
+                );
+              }
+            } finally {
+              if (sheetContext.mounted && submitResult == null) {
+                setSheetState(() => isSubmitting = false);
+              }
+            }
+          }
+
+          return _BottomSheetFrame(
+            title: label,
+            icon: icon,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (kind == _IndentPoSiteProofKind.video)
+                  const _ActionMetaText(
+                    label: 'Video',
+                    value: 'Record on this device. Gallery is not allowed.',
+                  ),
+                if (kind == _IndentPoSiteProofKind.image)
+                  const _ActionMetaText(
+                    label: 'Photo',
+                    value: 'Live camera only. Gallery is not allowed.',
+                  ),
+                if (existingFiles.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  ...existingFiles.map(
+                    (file) => _ResponseFileTile(
+                      file: file,
+                      relatedFiles: existingFiles,
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 12),
+                if (requireNearSite)
+                  _NearSiteStatusBanner(
+                  isChecking: isCheckingLocation,
+                  error: nearSiteError,
+                  distanceMeters: distanceMeters,
+                  radiusMeters: _intValue(
+                        _indentPoActionValue(action, 'near_site_radius_meters'),
+                      ) ??
+                      500,
+                  siteLatitude: _parseSiteLocation(
+                    _indentPoActionValue(action, 'site_location') ??
+                        action['site_location'],
+                  )?.latitude,
+                  siteLongitude: _parseSiteLocation(
+                    _indentPoActionValue(action, 'site_location') ??
+                        action['site_location'],
+                  )?.longitude,
+                  showOpenSettings: openSettingsHint,
+                  onRecheck: isSubmitting ? null : refreshLocation,
+                  onOpenSettings: openSettingsHint
+                      ? () async {
+                          await Geolocator.openAppSettings();
+                        }
+                      : null,
+                ),
+                if (kind == _IndentPoSiteProofKind.text) ...[
+                  const SizedBox(height: 14),
+                  _SheetTextField(
+                    controller: commentController,
+                    label: label,
+                    hintText: placeholder.isNotEmpty ? placeholder : null,
+                    maxLines: 3,
+                  ),
+                ],
+                if (kind == _IndentPoSiteProofKind.video) ...[
+                  const SizedBox(height: 14),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: canSubmit ? recordVideo : null,
+                      icon: const Icon(Icons.videocam_outlined),
+                      label: Text(
+                        selectedFile == null ? 'Record video' : 'Retake video',
+                      ),
+                    ),
+                  ),
+                ],
+                if (kind == _IndentPoSiteProofKind.image) ...[
+                  const SizedBox(height: 14),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: canSubmit ? capturePhoto : null,
+                      icon: const Icon(Icons.photo_camera_outlined),
+                      label: Text(
+                        selectedFile == null ? 'Take photo' : 'Retake photo',
+                      ),
+                    ),
+                  ),
+                ],
+                if (selectedFile != null) ...[
+                  const SizedBox(height: 12),
+                  _SelectedUploadFilesPreview(
+                    files: [selectedFile!],
+                    onRemove: isSubmitting
+                        ? null
+                        : (_) => setSheetState(() => selectedFile = null),
+                  ),
+                ],
+                const SizedBox(height: 20),
+                _SheetSubmitButton(
+                  label: submitLabel,
+                  isSubmitting: isSubmitting,
+                  onPressed: canSubmit ? submit : null,
+                ),
+              ],
+            ),
+          );
+        },
+      );
+    },
+  );
+
+  commentController.dispose();
+  return submitResult ??
+      const _IndentPoSiteProofSubmitResult(success: false);
 }
 
 Future<void> _showWorkflowUploadAlert(
@@ -14877,11 +17124,13 @@ class _SheetTextField extends StatelessWidget {
   final TextEditingController controller;
   final String label;
   final int maxLines;
+  final String? hintText;
 
   const _SheetTextField({
     required this.controller,
     required this.label,
     this.maxLines = 1,
+    this.hintText,
   });
 
   @override
@@ -14890,7 +17139,11 @@ class _SheetTextField extends StatelessWidget {
       controller: controller,
       maxLines: maxLines,
       style: TextStyle(color: AppTheme.getTextPrimary(context)),
-      decoration: _sheetInputDecoration(context, label),
+      decoration: _sheetInputDecoration(
+        context,
+        label,
+        hintText: hintText,
+      ),
     );
   }
 }
@@ -15866,9 +18119,15 @@ class _EmptyTasksState extends StatelessWidget {
   }
 }
 
-InputDecoration _sheetInputDecoration(BuildContext context, String label) {
+InputDecoration _sheetInputDecoration(
+  BuildContext context,
+  String label, {
+  String? hintText,
+}) {
   return InputDecoration(
     labelText: label,
+    hintText: hintText,
+    hintStyle: TextStyle(color: AppTheme.getTextSecondary(context)),
     labelStyle: TextStyle(color: AppTheme.getTextSecondary(context)),
     filled: true,
     fillColor: AppTheme.getBackgroundPrimary(context),

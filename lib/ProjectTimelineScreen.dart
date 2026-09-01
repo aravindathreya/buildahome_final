@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
+import 'ProjectFocusScreen.dart';
 import 'app_theme.dart';
 import 'services/data_provider.dart';
+import 'widgets/project_situation_switcher.dart';
 import 'widgets/skeleton_loader.dart';
 
 const Color _pageBackground = Color(0xFFF8F9FC);
@@ -136,6 +138,18 @@ class _ProjectTimelineScreenState extends State<ProjectTimelineScreen> {
             fontWeight: FontWeight.w800,
             letterSpacing: -0.4,
           ),
+        ),
+        bottom: ProjectSituationSwitcher(
+          selected: ProjectSituationTab.timeline,
+          onChanged: (tab) {
+            if (tab == ProjectSituationTab.focus) {
+              Navigator.of(context).pushReplacement(
+                MaterialPageRoute(
+                  builder: (_) => ProjectFocusScreen.openQuick(),
+                ),
+              );
+            }
+          },
         ),
         actions: [
           IconButton(
@@ -377,7 +391,7 @@ class _ProjectTimelineScreenState extends State<ProjectTimelineScreen> {
   Widget _buildErrorState() {
     final message = _errorMessage ?? 'Please try again.';
     final isAuthError = message.toLowerCase().contains('unauthorized') ||
-        message.toLowerCase().contains('log in');
+        message.toLowerCase().contains('log in again');
 
     return Center(
       child: Padding(
@@ -386,14 +400,16 @@ class _ProjectTimelineScreenState extends State<ProjectTimelineScreen> {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(
-              isAuthError ? Icons.lock_outline_rounded : Icons.error_outline_rounded,
+              isAuthError
+                  ? Icons.lock_outline_rounded
+                  : Icons.error_outline_rounded,
               color: Colors.red,
               size: 48,
             ),
             const SizedBox(height: 16),
             Text(
               isAuthError
-                  ? 'Session expired'
+                  ? 'Could not authorize this request'
                   : 'Could not load project timeline',
               style: const TextStyle(
                 color: _ink,
@@ -409,12 +425,12 @@ class _ProjectTimelineScreenState extends State<ProjectTimelineScreen> {
             ),
             const SizedBox(height: 20),
             ElevatedButton(
-              onPressed: isAuthError ? null : () => _loadTimeline(),
+              onPressed: () => _loadTimeline(),
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppTheme.getPrimaryColor(context),
                 foregroundColor: Colors.white,
               ),
-              child: Text(isAuthError ? 'Please log in again' : 'Retry'),
+              child: const Text('Retry'),
             ),
           ],
         ),
