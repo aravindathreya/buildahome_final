@@ -36,7 +36,9 @@ import 'utilities/role_app_bar_color.dart';
 import 'widgets/dashboard_chrome.dart';
 import 'widgets/modern_task_card.dart';
 import 'widgets/opening_project_splash.dart';
+import 'widgets/attendance_prompt_dialog.dart';
 import 'widgets/profile_picture_dialog.dart';
+import 'AttendanceScreen.dart';
 
 class AdminDashboard extends StatefulWidget {
   @override
@@ -70,8 +72,11 @@ class _AdminDashboardState extends State<AdminDashboard> {
         setState(() {});
       }
     });
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) maybePromptForProfilePicture(context);
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      await maybePromptForAttendance(context);
+      if (!mounted) return;
+      await maybePromptForProfilePicture(context);
     });
   }
 
@@ -997,6 +1002,14 @@ class AdminHomeState extends State<AdminHome> {
           ),
     });
 
+    if (currentUserRole != 'Client') {
+      menuItems.add({
+        'title': 'Attendance',
+        'icon': Icons.fingerprint_rounded,
+        'route': () => const AttendanceScreen(),
+      });
+    }
+
     // Add Daily Update - check RBAC
     if (rbac.canViewSync(currentUserRole, RBACService.dailyUpdate)) {
       menuItems.add({
@@ -1760,6 +1773,11 @@ class AdminHomeState extends State<AdminHome> {
           'bg': const Color(0xFFFFF1D6),
           'fg': const Color(0xFFEAB308),
         };
+      case 'attendance':
+        return {
+          'bg': const Color(0xFFDCFCE7),
+          'fg': const Color(0xFF059669),
+        };
       case 'daily update':
         return {
           'bg': const Color(0xFFE0E7FF),
@@ -1814,6 +1832,8 @@ class AdminHomeState extends State<AdminHome> {
     switch (title) {
       case 'My tasks':
         return 'Tasks';
+      case 'Attendance':
+        return 'Attendance';
       case 'Daily Update':
         return 'Updates';
       case 'Stock Report':
@@ -1841,6 +1861,8 @@ class AdminHomeState extends State<AdminHome> {
         return Icons.folder_special_rounded;
       case 'My tasks':
         return Icons.assignment_outlined;
+      case 'Attendance':
+        return Icons.fingerprint_rounded;
       case 'Daily Update':
         return Icons.campaign_rounded;
       case 'Indents':

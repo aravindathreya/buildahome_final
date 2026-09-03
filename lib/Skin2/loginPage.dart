@@ -12,6 +12,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../AdminDashboard.dart';
 import '../UserHome.dart';
 import '../chat_v1/chat_v1_api.dart';
+import '../services/client_generation_service.dart';
 import '../services/data_provider.dart';
 import '../services/profile_picture_service.dart';
 
@@ -127,9 +128,15 @@ class LoginScreenNewState extends State<LoginScreenNew>
         });
       }
       await ProfilePictureService.getStoredPath();
+      if ((role ?? '').trim().toLowerCase() == 'client') {
+        await DataProvider().ensureClientProjectSelected();
+      }
+      final projectId =
+          (await SharedPreferences.getInstance()).getString('project_id');
+      await ClientGenerationService.instance.ensureLoaded(projectId: projectId);
       await DataProvider().initializeData(force: true);
       if (!mounted) return;
-      if (role == 'Client') {
+      if ((role ?? '').trim().toLowerCase() == 'client') {
         await _openAppScreen(Home());
       } else {
         await _openAppScreen(AdminDashboard());
@@ -451,16 +458,25 @@ class LoginScreenNewState extends State<LoginScreenNew>
         );
 
         // Cache Client project / sales_sop context for Chat V1 (DOC + General).
+        String? projectId;
         try {
           final prefs = await SharedPreferences.getInstance();
           final sopId = (user['sales_sop_id'] ??
                   user['sop_id'] ??
-                  user['sales_sop_project_id'])
+                  user['sales_sop_project_id'] ??
+                  body['sales_sop_id'])
               ?.toString()
               .trim();
-          final projectId = (user['project_id'] ??
+          projectId = (user['project_id'] ??
                   user['converted_project_id'] ??
-                  user['erp_project_id'])
+                  user['erp_project_id'] ??
+                  user['projectId'] ??
+                  body['project_id'] ??
+                  body['converted_project_id'] ??
+                  body['erp_project_id'] ??
+                  (user['project'] is Map
+                      ? (user['project'] as Map)['id']
+                      : null))
               ?.toString()
               .trim();
           final clientName =
@@ -482,13 +498,47 @@ class LoginScreenNewState extends State<LoginScreenNew>
                 sopId.toLowerCase() != 'null') {
               await prefs.setString('sales_sop_erp_project_id', projectId);
             }
+          } else {
+            projectId = null;
           }
-          if (role == 'Client' &&
+          if (role.trim().toLowerCase() == 'client' &&
               clientName != null &&
               clientName.isNotEmpty) {
             await prefs.setString('client_name', clientName);
           }
         } catch (_) {}
+
+        // OTP verify often omits project_id for legacy clients — resolve it now.
+        if (role.trim().toLowerCase() == 'client') {
+          projectId = await DataProvider().ensureClientProjectSelected(
+            loginPayload: {
+              ...body,
+              'user': user,
+            },
+          );
+        }
+
+        if ((projectId == null || projectId.isEmpty) &&
+            role.trim().toLowerCase() == 'client') {
+          debugPrint(
+              '[Login] Client login missing project_id. user keys=${user.keys.toList()} body keys=${body.keys.toList()}');
+        }
+
+        await ClientGenerationService.instance.applyFromPayload(
+          {
+            ...body,
+            ...user,
+          },
+          projectId: projectId,
+        );
+        unawaited(ClientGenerationService.instance.refresh(
+          projectId: projectId,
+          userId: userId.toString(),
+          extraPayload: {
+            ...body,
+            ...user,
+          },
+        ));
 
         await DataProvider().initializeData(force: true);
 

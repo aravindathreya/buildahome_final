@@ -33,12 +33,15 @@ import 'checklist_categories.dart';
 import 'indents_screen.dart';
 import 'notifcations.dart';
 import 'project_picker.dart';
+import 'services/client_generation_service.dart';
 import 'services/client_portal_service.dart';
 import 'services/data_provider.dart';
+import 'services/legacy_client_features.dart';
 import 'services/notification_service.dart';
 import 'services/profile_picture_service.dart';
 import 'services/rbac_service.dart';
 import 'stock_report.dart';
+import 'AttendanceScreen.dart';
 import 'widgets/profile_picture_dialog.dart';
 
 typedef NavRouteBuilder = FutureOr<Widget?> Function();
@@ -139,6 +142,7 @@ class _NavEntry {
   final Future<void> Function(BuildContext context)? action;
   final bool isHome;
   final bool isLogout;
+  final bool comingSoon;
 
   const _NavEntry({
     required this.title,
@@ -147,6 +151,7 @@ class _NavEntry {
     this.action,
     this.isHome = false,
     this.isLogout = false,
+    this.comingSoon = false,
   });
 }
 
@@ -158,6 +163,7 @@ class NavMenuItem extends StatelessWidget {
   Future<void> _logout() async {
     ChatV1Socket.instance.disconnect();
     DataProvider().clearData();
+    await ClientGenerationService.instance.clear();
     await ClientPortalService().clearSession();
     await NotificationService.instance.clear();
     ProfilePictureService.promptShownThisSession = false;
@@ -186,6 +192,13 @@ class NavMenuItem extends StatelessWidget {
     // item's context can be disposed once the drawer route pops.
     final navigator = Navigator.of(context);
     final hostContext = navigator.context;
+
+    if (entry.comingSoon) {
+      navigator.pop();
+      if (!hostContext.mounted) return;
+      await showFeatureComingSoon(hostContext, featureName: entry.title);
+      return;
+    }
 
     if (entry.action != null) {
       navigator.pop();
@@ -254,16 +267,38 @@ class NavMenuItem extends StatelessWidget {
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
-                  entry.title,
+                  entry.comingSoon && entry.title == 'ChatBox'
+                      ? 'Notes & Comments'
+                      : entry.title,
                   style: TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w700,
                     color: isLogout
                         ? const Color(0xFFB91C1C)
-                        : AppTheme.getTextPrimary(context),
+                        : entry.comingSoon
+                            ? const Color(0xFF8A94A6)
+                            : AppTheme.getTextPrimary(context),
                   ),
                 ),
               ),
+              if (entry.comingSoon)
+                Container(
+                  margin: const EdgeInsets.only(right: 8),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFEEF2F6),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: const Text(
+                    'Soon',
+                    style: TextStyle(
+                      color: Color(0xFF5B6578),
+                      fontSize: 10,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
               if (entry.title == 'Notifications')
                 ValueListenableBuilder<int>(
                   valueListenable:
@@ -321,7 +356,50 @@ class NavMenuWidgetState extends State<NavMenuWidget> {
   @override
   void initState() {
     super.initState();
+    ClientGenerationService.instance.generation
+        .addListener(_onClientGenerationChanged);
     _loadProfile();
+  }
+
+  @override
+  void dispose() {
+    ClientGenerationService.instance.generation
+        .removeListener(_onClientGenerationChanged);
+    super.dispose();
+  }
+
+  void _onClientGenerationChanged() {
+    if (mounted) setState(() {});
+  }
+
+  bool get _restrictLegacyClientFeatures =>
+      ClientGenerationService.instance.restrictsClientFeatures(role);
+
+  List<_NavSection> _applyLegacyComingSoon(List<_NavSection> sections) {
+    if (!_restrictLegacyClientFeatures) return sections;
+    return sections
+        .map((section) => _NavSection(
+              section.title,
+              section.entries.map((entry) {
+                if (entry.isHome ||
+                    entry.isLogout ||
+                    entry.title == 'Notifications' ||
+                    entry.title == 'Updates') {
+                  return entry;
+                }
+                if (LegacyClientFeatures.isAllowed(entry.title)) return entry;
+                return _NavEntry(
+                  title: entry.title,
+                  icon: entry.icon,
+                  route: entry.route,
+                  action: entry.action,
+                  isHome: entry.isHome,
+                  isLogout: entry.isLogout,
+                  comingSoon: true,
+                );
+              }).toList(),
+            ))
+        .toList();
   }
 
   Future<void> _loadProfile() async {
@@ -423,6 +501,14 @@ class NavMenuWidgetState extends State<NavMenuWidget> {
           title: 'Projects',
           icon: Icons.folder_special_rounded,
           action: (context) => ProjectPickerScreen.show(context),
+        ),
+      );
+      homeEntries.insert(
+        3,
+        _NavEntry(
+          title: 'Attendance',
+          icon: Icons.fingerprint_rounded,
+          route: () => const AttendanceScreen(),
         ),
       );
     } else {
@@ -529,6 +615,15 @@ class NavMenuWidgetState extends State<NavMenuWidget> {
         action:
             isClient ? null : _openAfterProjectPick(() => PaymentTaskWidget()),
       ));
+      if (isClient) {
+        projectEntries.add(_NavEntry(
+          title: 'NT Payments',
+          icon: Icons.receipt_long_rounded,
+          route: () => const PaymentTaskWidget(
+            initialCategory: PaymentCategory.nonTender,
+          ),
+        ));
+      }
     }
 
     if (isClient) {
@@ -681,7 +776,7 @@ class NavMenuWidgetState extends State<NavMenuWidget> {
         ((role == 'Client' ? clientName : username) ?? 'User').toString();
     final subtitle =
         role == 'Client' ? (email ?? '').toString() : (role ?? '').toString();
-    final sections = _sectionsForRole(role);
+    final sections = _applyLegacyComingSoon(_sectionsForRole(role));
 
     return Drawer(
       backgroundColor: Colors.white,

@@ -36,7 +36,7 @@
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Record audio when capturing workflow progress videos</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>Your location is used to confirm you are near the project site before uploading workflow files</string>
+	<string>Your location is used to confirm you are at an assigned workspace for attendance, and near the project site before uploading workflow files</string>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 	<key>UIBackgroundModes</key>
