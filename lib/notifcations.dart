@@ -1,9 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
+
+import 'MyTasksScreen.dart';
+import 'SlotsScreen.dart';
+import 'SiteVisitReports.dart';
 import 'app_theme.dart';
+import 'approved_pos_screen.dart';
+import 'indents_screen.dart';
+import 'services/data_provider.dart';
 import 'services/notification_service.dart';
 import 'widgets/themed_scaffold.dart';
 import 'widgets/skeleton_loader.dart';
+
+const int kNotificationPageSize = 20;
 
 class Notifications extends StatelessWidget {
   const Notifications({super.key});
@@ -31,18 +42,29 @@ class NotificationPageBodyState extends State<NotificationPageBody> {
   static const Color _cardBorder = AppTheme.border;
 
   final NotificationService _service = NotificationService.instance;
+  final ScrollController _scrollController = ScrollController();
+
   bool _bootstrapping = true;
+  bool _opening = false;
+  int _visibleCount = kNotificationPageSize;
 
   @override
   void initState() {
     super.initState();
+    _scrollController.addListener(_onScroll);
     _bootstrap();
+  }
+
+  @override
+  void dispose() {
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
+    super.dispose();
   }
 
   Future<void> _bootstrap() async {
     await _service.ensureHydrated();
     if (mounted) setState(() {});
-    // Open screen: sync delta (or full snapshot) then mark read so the badge clears.
     await _service.markAllAsRead();
     if (mounted) {
       setState(() => _bootstrapping = false);
@@ -50,10 +72,43 @@ class NotificationPageBodyState extends State<NotificationPageBody> {
   }
 
   Future<void> _handleRefresh() async {
+    setState(() => _visibleCount = kNotificationPageSize);
     await _service.markAllAsRead();
   }
 
+  void _onScroll() {
+    if (!_scrollController.hasClients) return;
+    if (_scrollController.position.pixels >=
+        _scrollController.position.maxScrollExtent - 240) {
+      _showMore();
+    }
+  }
+
+  void _showMore() {
+    final total = _sortedNotifications(_service.notifications).length;
+    if (_visibleCount >= total) return;
+    setState(() {
+      _visibleCount =
+          (_visibleCount + kNotificationPageSize).clamp(0, total).toInt();
+    });
+  }
+
+  List<Map<String, dynamic>> _sortedNotifications(
+    List<Map<String, dynamic>> notifications,
+  ) {
+    final dated = notifications.map((notification) {
+      return MapEntry(_parseNotificationDate(notification), notification);
+    }).toList()
+      ..sort((a, b) {
+        final aDate = a.key ?? DateTime.fromMillisecondsSinceEpoch(0);
+        final bDate = b.key ?? DateTime.fromMillisecondsSinceEpoch(0);
+        return bDate.compareTo(aDate);
+      });
+    return dated.map((e) => e.value).toList();
+  }
+
   DateTime? _parseNotificationDate(dynamic notification) {
+    if (notification is! Map) return null;
     final candidates = [
       notification['created_at'],
       notification['createdAt'],
@@ -108,6 +163,7 @@ class NotificationPageBodyState extends State<NotificationPageBody> {
       'dd MMM yyyy',
       'd MMM yyyy',
       'EEEE d MMMM HH:mm',
+      'EEEE dd MMMM H:m',
       'EEEE dd MMMM HH:mm',
     ]) {
       try {
@@ -118,8 +174,7 @@ class NotificationPageBodyState extends State<NotificationPageBody> {
     final lower = value.toLowerCase();
     final now = DateTime.now();
 
-    final minuteMatch =
-        RegExp(r'(\d+)\s*minutes?\s*ago').firstMatch(lower);
+    final minuteMatch = RegExp(r'(\d+)\s*minutes?\s*ago').firstMatch(lower);
     if (minuteMatch != null) {
       return now.subtract(Duration(minutes: int.parse(minuteMatch.group(1)!)));
     }
@@ -164,7 +219,7 @@ class NotificationPageBodyState extends State<NotificationPageBody> {
     return 'Older';
   }
 
-  List<MapEntry<String, List<dynamic>>> _groupedNotifications(
+  List<MapEntry<String, List<Map<String, dynamic>>>> _groupedNotifications(
     List<Map<String, dynamic>> notifications,
   ) {
     const order = [
@@ -179,22 +234,13 @@ class NotificationPageBodyState extends State<NotificationPageBody> {
       'Earlier',
     ];
 
-    final buckets = <String, List<dynamic>>{
-      for (final label in order) label: <dynamic>[],
+    final buckets = <String, List<Map<String, dynamic>>>{
+      for (final label in order) label: <Map<String, dynamic>>[],
     };
 
-    final dated = notifications.map((notification) {
-      return MapEntry(_parseNotificationDate(notification), notification);
-    }).toList()
-      ..sort((a, b) {
-        final aDate = a.key ?? DateTime.fromMillisecondsSinceEpoch(0);
-        final bDate = b.key ?? DateTime.fromMillisecondsSinceEpoch(0);
-        return bDate.compareTo(aDate);
-      });
-
-    for (final entry in dated) {
-      final label = _groupLabelFor(entry.key);
-      buckets.putIfAbsent(label, () => <dynamic>[]).add(entry.value);
+    for (final notification in notifications) {
+      final label = _groupLabelFor(_parseNotificationDate(notification));
+      buckets.putIfAbsent(label, () => <Map<String, dynamic>>[]).add(notification);
     }
 
     return order
@@ -203,7 +249,7 @@ class NotificationPageBodyState extends State<NotificationPageBody> {
         .toList();
   }
 
-  String _displayTime(dynamic notification, DateTime? date) {
+  String _displayTime(Map<String, dynamic> notification, DateTime? date) {
     final raw = notification['timestamp']?.toString() ?? '';
     if (raw == '0' || raw.toLowerCase() == 'just now') return 'Just now';
     if (date != null) {
@@ -219,12 +265,202 @@ class NotificationPageBodyState extends State<NotificationPageBody> {
     return '';
   }
 
-  bool _isUnread(dynamic notification) {
-    final value = notification is Map ? notification['unread'] : null;
+  bool _isUnread(Map<String, dynamic> notification) {
+    final value = notification['unread'];
     if (value is bool) return value;
     if (value is num) return value != 0;
     final asString = value?.toString().trim().toLowerCase();
     return asString == '1' || asString == 'true' || asString == 'yes';
+  }
+
+  String? _firstString(Map<String, dynamic> map, List<String> keys) {
+    for (final key in keys) {
+      final value = map[key]?.toString().trim() ?? '';
+      if (value.isNotEmpty && value.toLowerCase() != 'null') return value;
+    }
+    return null;
+  }
+
+  Future<void> _openNotification(Map<String, dynamic> notification) async {
+    if (_opening) return;
+    setState(() => _opening = true);
+    try {
+      final opened = await _navigateForNotification(notification);
+      if (!opened && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('No linked page for this notification yet.'),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _opening = false);
+    }
+  }
+
+  Future<bool> _navigateForNotification(
+    Map<String, dynamic> notification,
+  ) async {
+    final link = _firstString(notification, [
+      'redirect_url',
+      'url',
+      'link',
+      'deep_link',
+      'deeplink',
+      'href',
+      'open_url',
+    ]);
+    if (link != null) {
+      final uri = Uri.tryParse(link);
+      if (uri != null &&
+          (uri.scheme == 'http' || uri.scheme == 'https') &&
+          await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+        return true;
+      }
+    }
+
+    final screen = (_firstString(notification, [
+              'screen',
+              'open_tab',
+              'native_screen',
+              'wf_native_screen',
+              'redirect_page',
+              'type',
+              'category',
+              'notification_type',
+            ]) ??
+            '')
+        .toLowerCase()
+        .replaceAll('-', '_')
+        .replaceAll(' ', '_');
+
+    final taskId = _firstString(notification, [
+      'task_id',
+      'erp_task_id',
+      'workflow_task_id',
+      'focus_task_id',
+    ]);
+    final indentId = _firstString(notification, [
+      'indent_id',
+      'indentId',
+      'wf_indent_id',
+    ]);
+    final projectId = _firstString(notification, [
+      'project_id',
+      'projectId',
+      'pr_id',
+    ]);
+    final projectName = _firstString(notification, [
+      'project_name',
+      'client_name',
+      'project',
+    ]);
+
+    final blob =
+        '${notification['title'] ?? ''} ${notification['body'] ?? ''} $screen'
+            .toLowerCase();
+
+    if (indentId != null &&
+        (screen.contains('indent_proof') ||
+            screen.contains('site_proof') ||
+            blob.contains('indent proof') ||
+            blob.contains('site proof'))) {
+      await openIndentProofScreen(context, indentId: indentId);
+      return true;
+    }
+
+    if (taskId != null ||
+        screen.contains('task') ||
+        blob.contains('task') ||
+        blob.contains('assigned')) {
+      await _openMyTasks(focusTaskId: taskId);
+      return true;
+    }
+
+    if (indentId != null ||
+        screen.contains('indent') ||
+        blob.contains('indent')) {
+      final prefs = await SharedPreferences.getInstance();
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => IndentsScreenLayout(
+            initialTab: blob.contains('my indent')
+                ? kIndentsMyIndentsTab
+                : kIndentsViewOpenTab,
+            initialProjectId: projectId ?? prefs.getString('project_id'),
+            initialProjectName: projectName ?? prefs.getString('client_name'),
+          ),
+        ),
+      );
+      return true;
+    }
+
+    if (screen.contains('approved_po') ||
+        screen.contains('purchase_order') ||
+        blob.contains('approved po') ||
+        blob.contains('purchase order') ||
+        RegExp(r'\bpo\b').hasMatch(blob)) {
+      final prefs = await SharedPreferences.getInstance();
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => ApprovedPosScreenLayout(
+            initialProjectId: projectId ?? prefs.getString('project_id'),
+            initialProjectName: projectName ?? prefs.getString('client_name'),
+          ),
+        ),
+      );
+      return true;
+    }
+
+    if (screen.contains('slot') ||
+        blob.contains('visit date') ||
+        blob.contains('site visit slot') ||
+        blob.contains('slots')) {
+      await Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => const SlotsScreen()),
+      );
+      return true;
+    }
+
+    if (screen.contains('site_visit') || blob.contains('site visit')) {
+      final prefs = await SharedPreferences.getInstance();
+      final fixedId = projectId ?? prefs.getString('project_id');
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => SiteVisitReportsScreen(
+            fixedProjectId: fixedId,
+            projectFixed: fixedId != null && fixedId.isNotEmpty,
+          ),
+        ),
+      );
+      return true;
+    }
+
+    return false;
+  }
+
+  Future<void> _openMyTasks({String? focusTaskId}) async {
+    final dp = DataProvider();
+    final tasks = <dynamic>[
+      ...dp.clientPendingTasks,
+      ...dp.clientTimelineTasks,
+    ];
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => MyTasksScreen(
+          tasks: tasks,
+          focusTaskId: focusTaskId,
+          onRefresh: () async {
+            await dp.reloadData();
+            return <dynamic>[
+              ...DataProvider().clientPendingTasks,
+              ...DataProvider().clientTimelineTasks,
+            ];
+          },
+        ),
+      ),
+    );
   }
 
   @override
@@ -235,10 +471,16 @@ class NotificationPageBodyState extends State<NotificationPageBody> {
         _service.isSyncingNotifier,
       ]),
       builder: (context, _) {
-        final notifications = _service.notificationsNotifier.value;
+        final all = _sortedNotifications(_service.notificationsNotifier.value);
         final syncing = _service.isSyncingNotifier.value;
         final showInitialLoader =
-            notifications.isEmpty && (_bootstrapping || syncing);
+            all.isEmpty && (_bootstrapping || syncing);
+
+        if (_visibleCount > all.length && all.isNotEmpty) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) setState(() => _visibleCount = all.length);
+          });
+        }
 
         Widget content;
         if (showInitialLoader) {
@@ -247,17 +489,35 @@ class NotificationPageBodyState extends State<NotificationPageBody> {
             cardCount: 6,
             padding: EdgeInsets.fromLTRB(20, 8, 20, 32),
           );
-        } else if (notifications.isEmpty) {
+        } else if (all.isEmpty) {
           content = _buildEmptyState();
         } else {
-          final groups = _groupedNotifications(notifications);
+          final visible = all.take(_visibleCount).toList();
+          final groups = _groupedNotifications(visible);
+          final hasMore = _visibleCount < all.length;
           content = ListView.builder(
+            controller: _scrollController,
             physics: const AlwaysScrollableScrollPhysics(),
             padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
-            itemCount: groups.length,
-            itemBuilder: (context, groupIndex) {
-              final group = groups[groupIndex];
-              return _buildGroup(group.key, group.value, groupIndex == 0);
+            itemCount: groups.length + (hasMore ? 1 : 0),
+            itemBuilder: (context, index) {
+              if (index >= groups.length) {
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  if (mounted) _showMore();
+                });
+                return const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 18),
+                  child: Center(
+                    child: SizedBox(
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(strokeWidth: 2.4),
+                    ),
+                  ),
+                );
+              }
+              final group = groups[index];
+              return _buildGroup(group.key, group.value, index == 0);
             },
           );
         }
@@ -271,7 +531,11 @@ class NotificationPageBodyState extends State<NotificationPageBody> {
     );
   }
 
-  Widget _buildGroup(String label, List<dynamic> items, bool isFirst) {
+  Widget _buildGroup(
+    String label,
+    List<Map<String, dynamic>> items,
+    bool isFirst,
+  ) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -302,7 +566,7 @@ class NotificationPageBodyState extends State<NotificationPageBody> {
   }
 
   Widget _buildNotificationRow(
-    dynamic notification,
+    Map<String, dynamic> notification,
     DateTime? date, {
     required bool showDivider,
   }) {
@@ -311,73 +575,91 @@ class NotificationPageBodyState extends State<NotificationPageBody> {
 
     return Column(
       children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 14),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                width: 10,
-                height: 10,
-                margin: const EdgeInsets.only(top: 5),
-                decoration: BoxDecoration(
-                  color: isUnread ? _navy : const Color(0xFFD5DBE5),
-                  shape: BoxShape.circle,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
+        Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: _opening ? null : () => _openNotification(notification),
+            borderRadius: BorderRadius.circular(12),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 2),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 10,
+                    height: 10,
+                    margin: const EdgeInsets.only(top: 5),
+                    decoration: BoxDecoration(
+                      color: isUnread ? _navy : const Color(0xFFD5DBE5),
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Expanded(
-                          child: Text(
-                            notification['title'] ?? 'Notification',
-                            style: TextStyle(
-                              fontWeight:
-                                  isUnread ? FontWeight.w800 : FontWeight.w700,
-                              fontSize: 14.5,
-                              color: _navy,
-                              letterSpacing: -0.1,
-                              height: 1.25,
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              child: Text(
+                                notification['title']?.toString() ??
+                                    'Notification',
+                                style: TextStyle(
+                                  fontWeight: isUnread
+                                      ? FontWeight.w800
+                                      : FontWeight.w700,
+                                  fontSize: 14.5,
+                                  color: _navy,
+                                  letterSpacing: -0.1,
+                                  height: 1.25,
+                                ),
+                              ),
                             ),
-                          ),
+                            if (timeLabel.isNotEmpty) ...[
+                              const SizedBox(width: 10),
+                              Text(
+                                timeLabel,
+                                style: const TextStyle(
+                                  color: _mutedGrey,
+                                  fontSize: 11.5,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ],
                         ),
-                        if (timeLabel.isNotEmpty) ...[
-                          const SizedBox(width: 10),
+                        if ((notification['body'] ?? '')
+                            .toString()
+                            .trim()
+                            .isNotEmpty) ...[
+                          const SizedBox(height: 5),
                           Text(
-                            timeLabel,
+                            notification['body']?.toString() ?? '',
                             style: const TextStyle(
                               color: _mutedGrey,
-                              fontSize: 11.5,
-                              fontWeight: FontWeight.w600,
+                              fontSize: 13.5,
+                              fontWeight: FontWeight.w500,
+                              height: 1.4,
                             ),
                           ),
                         ],
                       ],
                     ),
-                    if ((notification['body'] ?? '')
-                        .toString()
-                        .trim()
-                        .isNotEmpty) ...[
-                      const SizedBox(height: 5),
-                      Text(
-                        notification['body'] ?? '',
-                        style: const TextStyle(
-                          color: _mutedGrey,
-                          fontSize: 13.5,
-                          fontWeight: FontWeight.w500,
-                          height: 1.4,
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
+                  ),
+                  const SizedBox(width: 6),
+                  const Padding(
+                    padding: EdgeInsets.only(top: 2),
+                    child: Icon(
+                      Icons.chevron_right_rounded,
+                      size: 20,
+                      color: Color(0xFFC0C7D4),
+                    ),
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
         ),
         if (showDivider)

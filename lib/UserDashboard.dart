@@ -22,6 +22,7 @@ import 'services/data_provider.dart';
 import 'services/notification_service.dart';
 import 'services/rbac_service.dart';
 import 'services/session_manager.dart';
+import 'services/mobile_live_test_access.dart';
 import 'AdminDashboard.dart';
 import 'RequestDrawing.dart';
 import 'InspectionRequest.dart';
@@ -29,10 +30,14 @@ import 'SiteVisitReports.dart';
 import 'indents_screen.dart';
 import 'indent_proof.dart';
 import 'approved_pos_screen.dart';
+// import 'work_orders_screen.dart';
+import 'mobile_live_test_screen.dart';
 import 'main.dart';
 import 'MyTasksScreen.dart';
+import 'task_display_title.dart';
 import 'ProjectTimelineScreen.dart';
 import 'SalesSopCardsScreen.dart';
+import 'SlotsScreen.dart';
 import 'ClientPortalScreen.dart';
 import 'UploadPaymentProofScreen.dart';
 import 'documents_v1/documents_v1_home_screen.dart';
@@ -711,7 +716,6 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
   var blocked = false;
   var bolckReason = '';
   var location = '';
-  List<dynamic> workflowDashboardSlots = [];
   var expanded = false;
   bool _isLoadingSummary = true;
   bool _isLoadingUpdates = true;
@@ -729,6 +733,7 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
   );
   String _quickSearchQuery = '';
   String? _currentRole;
+  bool _openingMenu = false;
 
   // Tasks state
   List<dynamic> _tasks = [];
@@ -868,8 +873,6 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
     final bool nextBlocked = dataProvider.clientProjectBlocked ?? false;
     final String nextBlockReason = dataProvider.clientProjectBlockReason ?? '';
     final dynamic nextUpdates = dataProvider.clientProjectUpdates;
-    final List<dynamic> nextWorkflowSlots =
-        List<dynamic>.from(dataProvider.clientWorkflowDashboardSlots);
 
     List<String> nextDailyUpdates = [];
     String nextUpdateDate =
@@ -904,7 +907,6 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
       completed = nextCompletion;
       blocked = nextBlocked;
       bolckReason = nextBlockReason;
-      workflowDashboardSlots = nextWorkflowSlots;
       username = loadedUsername;
       _isLoadingSummary = false;
       _hasLoadedSummary = true;
@@ -1012,12 +1014,12 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
           fetchedTasks = decoded;
         }
 
-        // Add tasks to our list (deduplicate by task id)
-        Map<int, dynamic> taskMap = {};
+        // Deduplicate by task id (workflow ids may not be integers).
+        final taskMap = <String, dynamic>{};
         for (var task in fetchedTasks) {
           if (task is Map && task['id'] != null) {
-            int taskId = int.tryParse(task['id'].toString()) ?? 0;
-            if (taskId != 0) {
+            final taskId = task['id'].toString().trim();
+            if (taskId.isNotEmpty && taskId != '0') {
               taskMap[taskId] = task;
             }
           }
@@ -1025,12 +1027,25 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
 
         List<dynamic> allTasks = taskMap.values.toList();
 
-        // API uses OR logic across filters; keep assignee tasks and workflow
-        // reviewer approval tasks for the current project.
+        await DataProvider().cacheSalesSopIdsFromTasks(allTasks);
+        String? salesSopId;
+        if (projectId != null && projectId.isNotEmpty) {
+          salesSopId = await DataProvider().resolveSalesSopId(
+            projectId: projectId,
+            apiToken: apiToken,
+            tasksHint: allTasks,
+          );
+        }
+
+        // API uses OR logic across filters. Keep this user's tasks for the
+        // selected project, including workflow rows keyed by sales_sop_id.
         allTasks = filterTasksForProjectAndAssignee(
           allTasks,
           userId: userId,
           projectId: projectId,
+          alsoMatchProjectIds: [
+            if (salesSopId != null && salesSopId.isNotEmpty) salesSopId,
+          ],
         );
 
         // Sort by creation date (newest first)
@@ -1511,9 +1526,7 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
     bool showAction = true,
   }) {
     final status = _compactTaskStatusMeta(task);
-    final description = showAction
-        ? _clientTaskDescription(task)
-        : _clientTaskTitle(task);
+    final description = _clientTaskTitle(task);
     final dateLabel = _compactTaskDate(task);
 
     final content = Padding(
@@ -1679,9 +1692,11 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
             : '${dateParts[0]} · ${dateParts[1]}';
 
     return ModernTaskCard(
-      title: _clientTaskTitle(task),
-      projectName: task['project_name']?.toString(),
-      assigneeName: assigneeText.isEmpty ? null : assigneeText,
+      title: _dashboardPendingTaskTitle(task),
+      projectName: _isClientUser ? null : task['project_name']?.toString(),
+      assigneeName: _isClientUser
+          ? null
+          : (assigneeText.isEmpty ? null : assigneeText),
       dateLabel: dateText,
       status: isWorkflowDelayGated(task)
           ? 'pending'
@@ -1690,6 +1705,27 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
       accentIndex: index,
       onTap: () => _openTaskDetails(task),
     );
+  }
+
+  String _dashboardPendingTaskTitle(Map<String, dynamic> task) {
+    final title = _clientTaskTitle(task);
+    if (!_isClientUser) return title;
+
+    final projectName = task['project_name']?.toString().trim() ?? '';
+    if (projectName.isEmpty) return title;
+
+    final lowerTitle = title.toLowerCase();
+    final lowerProject = projectName.toLowerCase();
+    if (lowerTitle == lowerProject) return title;
+
+    for (final separator in [' - ', ' – ', ': ']) {
+      final prefix = '$lowerProject$separator';
+      if (lowerTitle.startsWith(prefix)) {
+        final stripped = title.substring(prefix.length).trim();
+        if (stripped.isNotEmpty) return stripped;
+      }
+    }
+    return title;
   }
 
   Widget _buildRecentTaskMetaRow({
@@ -2228,28 +2264,16 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
   }
 
   String _clientTaskTitle(Map<String, dynamic> task) {
-    final title = _firstTaskString(task, [
-      'title',
-      'task_name',
-      'name',
-      'subject',
-      'note',
-      's_note',
-    ]);
-    if (title != null) return _toSentenceCase(title);
-
-    final taskId = task['id']?.toString() ?? '';
-    return taskId.isEmpty ? 'Review your project task' : 'Task #$taskId';
+    return workflowTaskDisplayTitle(
+      task,
+      emptyFallback: 'Review your project task',
+    );
   }
 
   String _clientTaskDescription(Map<String, dynamic> task) {
     final description = _firstTaskString(task, [
       'description',
       'client_description',
-      'message',
-      'remarks',
-      'note',
-      's_note',
     ]);
     if (description != null && description.length > 8) {
       return _toSentenceCase(description);
@@ -2729,6 +2753,11 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
               ),
         });
       }
+      menuItems.add({
+        'title': 'Slots',
+        'icon': Icons.event_available_outlined,
+        'route': () => const SlotsScreen(),
+      });
     }
 
     // Project Details SOP cards — all PDF card APIs for non-clients.
@@ -2750,7 +2779,13 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
       menuItems.add({
         'title': 'Indents',
         'icon': Icons.request_quote,
-        'route': () => IndentsScreenLayout(),
+        'route': () async {
+          final prefs = await SharedPreferences.getInstance();
+          return IndentsScreenLayout(
+            initialProjectId: prefs.getString('project_id'),
+            initialProjectName: prefs.getString('client_name'),
+          );
+        },
       });
       menuItems.add({
         'title': 'Approved POs',
@@ -2767,6 +2802,25 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
       });
     }
 
+    // Work orders — hidden for now.
+    // if (_currentRole != null && _currentRole!.toLowerCase() != 'client') {
+    //   menuItems.add({
+    //     'title': 'Work orders',
+    //     'icon': Icons.engineering_outlined,
+    //     'route': () async {
+    //       final prefs = await SharedPreferences.getInstance();
+    //       final salesSopId = prefs.getString('sales_sop_id');
+    //       final projectId = prefs.getString('project_id');
+    //       final projectName = prefs.getString('client_name');
+    //       return WorkOrdersScreenLayout(
+    //         salesSopId: salesSopId,
+    //         projectId: projectId,
+    //         initialProjectName: projectName,
+    //       );
+    //     },
+    //   });
+    // }
+
     // Payments - check RBAC
     if (rbac.canViewSync(_currentRole, RBACService.payments)) {
       menuItems.add({
@@ -2779,7 +2833,7 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
     // Client-only: upload UPI / bank / cheque screenshots for Finance review.
     if (_currentRole?.toLowerCase() == 'client') {
       menuItems.add({
-        'title': 'Upload payment proofs',
+        'title': 'Upload proof',
         'icon': Icons.cloud_upload_outlined,
         'route': () => const UploadPaymentProofScreen(),
       });
@@ -2810,13 +2864,15 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
       });
     }
 
-    // Gallery - check RBAC
+    // Gallery - check RBAC. Clients get Timeline Gallery only.
     if (rbac.canViewSync(_currentRole, RBACService.gallery)) {
-      menuItems.add({
-        'title': 'Gallery',
-        'icon': Icons.photo_library,
-        'route': () => Gallery(),
-      });
+      if (!_isClientUser) {
+        menuItems.add({
+          'title': 'Gallery',
+          'icon': Icons.photo_library,
+          'route': () => Gallery(),
+        });
+      }
       menuItems.add({
         'title': 'Timeline Gallery',
         'icon': Icons.auto_awesome_motion,
@@ -2848,8 +2904,8 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
       });
     }
 
-    // Project Status — after Chat V1
-    if (_currentRole == 'Client' ||
+    // Project Status — staff only (hidden for clients)
+    if (!_isClientUser &&
         rbac.canViewSync(_currentRole, RBACService.tasksAndNotes)) {
       menuItems.add({
         'title': 'Project Status',
@@ -2910,18 +2966,25 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
       },
     });
 
+    if (MobileLiveTestAccess.canEnable(_currentRole)) {
+      menuItems.add({
+        'title': MobileLiveTestAccess.menuTitle,
+        'icon': Icons.phonelink_setup_outlined,
+        'route': () => const MobileLiveTestScreen(),
+      });
+    }
+
     return menuItems;
   }
 
   /// Pinned quick actions for clients on the project dashboard.
   static const List<String> _clientPinnedQuickActionTitles = [
     'Client Portal',
-    'Site Visit Reports',
+    'Slots',
     'Project Timeline',
-    'Project Status',
-    'Gallery',
+    'Timeline Gallery',
     'Payments',
-    'Upload payment proofs',
+    'Upload proof',
   ];
 
   /// Pinned quick actions for staff / other roles on the project dashboard.
@@ -2932,8 +2995,10 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
     'Timeline Gallery',
     'Indents',
     'Approved POs',
+    'Work orders',
     'Documents V1',
     'Payments',
+    'Slots',
   ];
 
   List<Map<String, dynamic>> _pinnedQuickActions(
@@ -3003,10 +3068,6 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
               ),
             ],
             _buildHeroBanner(),
-            if (workflowDashboardSlots.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              _buildWorkflowSlotsSection(),
-            ],
             if (_shouldShowMyPendingTasksSection) ...[
               const SizedBox(height: 16),
               _buildTasksSection(),
@@ -3474,16 +3535,29 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
         _DashboardSearchItem(
           title: title,
           icon: item['icon'] as IconData? ?? Icons.circle,
-          keywords: title == 'Upload payment proofs'
+          keywords: title == 'Upload proof'
               ? [
                   title,
                   'proof',
+                  'payment proof',
                   'screenshot',
                   'upi',
                   'receipt',
                   'cheque',
                 ]
-              : [title],
+              : title == 'Work orders'
+                  ? [title, 'WO', 'work order', 'contractor']
+                  : title == 'Timeline Gallery'
+                      ? [title, 'gallery', 'photos', 'images']
+                      : title == 'Slots'
+                          ? [
+                              title,
+                              'site inspection',
+                              'times',
+                              'schedule',
+                              'visit',
+                            ]
+                          : [title],
           onSelected: () => _handleMenuTap(item),
         ),
       );
@@ -3513,9 +3587,15 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
   }
 
   Future<void> _handleMenuTap(Map<String, dynamic> item) async {
-    final routeResult = item['route']();
-    final widget = routeResult is Future ? await routeResult : routeResult;
-    await _navigateToWidget(widget);
+    if (_openingMenu) return;
+    _openingMenu = true;
+    try {
+      final routeResult = item['route']();
+      final widget = routeResult is Future ? await routeResult : routeResult;
+      await _navigateToWidget(widget);
+    } finally {
+      _openingMenu = false;
+    }
   }
 
   Future<void> openSiteVisitReports() async {
@@ -3562,7 +3642,7 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
           'bg': const Color(0xFFFFE4E6),
           'fg': const Color(0xFFE11D48),
         };
-      case 'upload payment proofs':
+      case 'upload proof':
         return {
           'bg': const Color(0xFFE0F2FE),
           'fg': const Color(0xFF0369A1),
@@ -3600,6 +3680,11 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
           'bg': const Color(0xFFE0E7FF),
           'fg': const Color(0xFF4338CA),
         };
+      case 'work orders':
+        return {
+          'bg': const Color(0xFFEDE9FE),
+          'fg': const Color(0xFF6D28D9),
+        };
       case 'documents v1':
         return {
           'bg': const Color(0xFFCCFBF1),
@@ -3621,6 +3706,11 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
           'bg': const Color(0xFFE0E7FF),
           'fg': const Color(0xFF1B254B),
         };
+      case 'slots':
+        return {
+          'bg': const Color(0xFFEEF2FF),
+          'fg': const Color(0xFF4F46E5),
+        };
       default:
         return {
           'bg': const Color(0xFFEEF2FF),
@@ -3639,6 +3729,8 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
         return 'Indents';
       case 'Approved POs':
         return 'POs';
+      case 'Work orders':
+        return 'Work orders';
       case 'Documents V1':
         return 'Docs V1';
       case 'Scheduler':
@@ -3685,11 +3777,13 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
         return Icons.request_quote_outlined;
       case 'Approved POs':
         return Icons.receipt_long_outlined;
+      case 'Work orders':
+        return Icons.engineering_outlined;
       case 'Documents V1':
         return Icons.folder_copy_outlined;
       case 'Payments':
         return Icons.account_balance_wallet_outlined;
-      case 'Upload payment proofs':
+      case 'Upload proof':
         return Icons.cloud_upload_outlined;
       case 'Scheduler':
         return Icons.calendar_month_rounded;
@@ -3705,6 +3799,8 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
         return Icons.checklist_rtl_rounded;
       case 'Virtual Tour':
         return Icons.view_in_ar_rounded;
+      case 'Slots':
+        return Icons.event_available_outlined;
       default:
         return fallback;
     }
@@ -3714,19 +3810,18 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
       List<Map<String, dynamic>> items) {
     const clientPreferred = [
       'Client Portal',
-      'Site Visit Reports',
+      'Slots',
       'Project Timeline',
-      'Gallery',
       'Timeline Gallery',
       'Payments',
-      'Upload payment proofs',
+      'Upload proof',
+      'Site Visit Reports',
       'Virtual Tour',
       'My tasks',
       'Scheduler',
       'Documents',
       'ChatBox',
       'Chat V1',
-      'Project Status',
       'Checklist',
     ];
     const staffPreferred = [
@@ -3735,9 +3830,11 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
       'Timeline Gallery',
       'Indents',
       'Approved POs',
+      'Work orders',
       'Documents V1',
       'Payments',
       'Project Details',
+      'Slots',
       'Documents',
       'Scheduler',
       'Gallery',
@@ -3791,221 +3888,6 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
     print('[UserDashboard] Route popped - returned from: $routeName');
     print('[UserDashboard] ===============================================');
     reloadData();
-  }
-
-  Widget _buildWorkflowSlotsSection() {
-    final slotRecords = workflowDashboardSlots
-        .whereType<Map>()
-        .map((slot) => Map<String, dynamic>.from(slot))
-        .toList();
-    if (slotRecords.isEmpty) return SizedBox.shrink();
-
-    return Container(
-      width: double.infinity,
-      padding: EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: Color(0xFFE5E7EB)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.055),
-            blurRadius: 18,
-            offset: Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 38,
-                height: 38,
-                decoration: BoxDecoration(
-                  color: Color(0xFFEFF6FF),
-                  borderRadius: BorderRadius.circular(13),
-                ),
-                child: Icon(
-                  Icons.event_available_outlined,
-                  color: Color(0xFF2563EB),
-                  size: 20,
-                ),
-              ),
-              SizedBox(width: 10),
-              Text(
-                'Workflow Slots',
-                style: TextStyle(
-                  color: AppTheme.getTextPrimary(context),
-                  fontSize: 16,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-            ],
-          ),
-          SizedBox(height: 14),
-          ...slotRecords.map((record) => _buildWorkflowSlotRecord(record)),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildWorkflowSlotRecord(Map<String, dynamic> record) {
-    final taskName = _firstTaskString(record, [
-          'task_name',
-          'source_task_name',
-          'name',
-          'title',
-        ]) ??
-        'Workflow slot';
-    final slots = _mapTaskListFlexible(record['slots']);
-    final acceptedSlot = _configMapFromDynamic(
-      record['accepted_slot'] ?? record['confirmed_slot'],
-    );
-    final acceptedIndex =
-        int.tryParse(record['accepted_slot_index']?.toString() ?? '') ??
-            int.tryParse(acceptedSlot?['index']?.toString() ?? '');
-    final clientComment = _firstTaskString(record, [
-      'client_comment',
-      'note',
-      'comment',
-    ]);
-    final confirmationComment = _firstTaskString(record, [
-      'confirmation_comment',
-      'confirmed_comment',
-      'confirm_note',
-    ]);
-    final confirmedBy =
-        _firstTaskString(record, ['confirmed_by', 'accepted_by']);
-    final confirmedAt =
-        _firstTaskString(record, ['confirmed_at', 'accepted_at']);
-
-    return Container(
-      width: double.infinity,
-      margin: EdgeInsets.only(bottom: 12),
-      padding: EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Color(0xFFF8FAFC),
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            taskName,
-            style: TextStyle(
-              color: AppTheme.getTextPrimary(context),
-              fontSize: 13.5,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          if (slots.isNotEmpty) ...[
-            SizedBox(height: 10),
-            ...slots.asMap().entries.map((entry) {
-              final slot = entry.value;
-              final slotIndex = int.tryParse(slot['index']?.toString() ?? '') ??
-                  entry.key + 1;
-              final accepted =
-                  acceptedIndex != null && acceptedIndex == slotIndex;
-              return _buildWorkflowSlotPill(slot, slotIndex, accepted);
-            }),
-          ],
-          if (clientComment != null)
-            _buildWorkflowSlotNote('Client comment', clientComment),
-          if (confirmationComment != null)
-            _buildWorkflowSlotNote('Confirmation comment', confirmationComment),
-          if (confirmedBy != null || confirmedAt != null) ...[
-            SizedBox(height: 8),
-            Text(
-              [
-                if (confirmedBy != null) 'Confirmed by $confirmedBy',
-                if (confirmedAt != null) confirmedAt,
-              ].join(' • '),
-              style: TextStyle(
-                color: AppTheme.getTextSecondary(context),
-                fontSize: 11.5,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _buildWorkflowSlotPill(
-    Map<String, dynamic> slot,
-    int slotIndex,
-    bool accepted,
-  ) {
-    final display = _firstTaskString(slot, ['display', 'datetime', 'value']) ??
-        'Slot $slotIndex';
-    final timeLabel = _firstTaskString(slot, ['time_label']);
-    final time = _firstTaskString(slot, ['time']);
-
-    return Container(
-      width: double.infinity,
-      margin: EdgeInsets.only(bottom: 8),
-      padding: EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: accepted ? Color(0xFFDCFCE7) : Colors.white,
-        borderRadius: BorderRadius.circular(13),
-        border: Border.all(
-          color: accepted ? Color(0xFF10B981) : Color(0xFFE5E7EB),
-        ),
-      ),
-      child: Row(
-        children: [
-          Icon(
-            accepted ? Icons.check_circle : Icons.schedule_outlined,
-            color: accepted ? Color(0xFF10B981) : Color(0xFF6B7280),
-            size: 18,
-          ),
-          SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              [
-                display,
-                if (timeLabel != null) timeLabel,
-                if (time != null) time,
-              ].join(' • '),
-              style: TextStyle(
-                color: AppTheme.getTextPrimary(context),
-                fontSize: 12.5,
-                fontWeight: accepted ? FontWeight.w800 : FontWeight.w600,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildWorkflowSlotNote(String label, String text) {
-    return Padding(
-      padding: EdgeInsets.only(top: 8),
-      child: Text(
-        '$label: $text',
-        style: TextStyle(
-          color: AppTheme.getTextSecondary(context),
-          fontSize: 12,
-          fontWeight: FontWeight.w600,
-          height: 1.35,
-        ),
-      ),
-    );
-  }
-
-  Map<String, dynamic>? _configMapFromDynamic(dynamic value) {
-    if (value is Map) return Map<String, dynamic>.from(value);
-    if (value is String && value.trim().isNotEmpty) {
-      try {
-        final decoded = jsonDecode(value);
-        if (decoded is Map) return Map<String, dynamic>.from(decoded);
-      } catch (_) {}
-    }
-    return null;
   }
 
   Widget _buildLoadingState() {

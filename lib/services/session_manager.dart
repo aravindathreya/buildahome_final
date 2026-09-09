@@ -8,6 +8,7 @@ import '../Skin2/loginPage.dart';
 import '../app_navigator.dart';
 import '../chat_v1/chat_v1_socket.dart';
 import 'data_provider.dart';
+import 'mobile_live_test_storage.dart';
 
 /// Handles single-device session invalidation.
 ///
@@ -195,6 +196,11 @@ class SessionManager {
         await prefs.clear();
       } catch (e) {
         print('[SessionManager] Failed clearing prefs: $e');
+      }
+      try {
+        await MobileLiveTestCredentials.clearLocal();
+      } catch (e) {
+        print('[SessionManager] Failed clearing Test Device credentials: $e');
       }
 
       final navigator = globalNavigatorKey.currentState;

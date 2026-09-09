@@ -27,6 +27,10 @@ import 'services/session_manager.dart';
 import 'stock_report.dart';
 import 'TasksScreen.dart';
 import 'MyTasksScreen.dart';
+import 'task_display_title.dart';
+import 'mobile_live_test_screen.dart';
+import 'services/mobile_live_test_access.dart';
+import 'services/mobile_live_test_storage.dart';
 import 'Skin2/loginPage.dart';
 import 'NavMenu.dart';
 import 'NotesAndComments.dart';
@@ -315,6 +319,7 @@ class _LogoutButton extends StatelessWidget {
       }).catchError((e) {
         print('Error clearing SharedPreferences: $e');
       });
+      MobileLiveTestCredentials.clearLocal();
     }
   }
 
@@ -1088,6 +1093,14 @@ class AdminHomeState extends State<AdminHome> {
       'route': () => Notifications(),
     });
 
+    if (MobileLiveTestAccess.canEnable(currentUserRole)) {
+      menuItems.add({
+        'title': MobileLiveTestAccess.menuTitle,
+        'icon': Icons.phonelink_setup_outlined,
+        'route': () => const MobileLiveTestScreen(),
+      });
+    }
+
     // // Log out
     // menuItems.add({
     //   'title': 'Log out',
@@ -1802,6 +1815,11 @@ class AdminHomeState extends State<AdminHome> {
           'bg': const Color(0xFFFFE4E6),
           'fg': const Color(0xFFE11D48),
         };
+      case 'mobile live test':
+        return {
+          'bg': const Color(0xFFECFDF5),
+          'fg': const Color(0xFF047857),
+        };
       default:
         return {
           'bg': const Color(0xFFEEF2FF),
@@ -1830,6 +1848,8 @@ class AdminHomeState extends State<AdminHome> {
         return 'Status';
       case 'My Notifications':
         return 'Alerts';
+      case 'Mobile Live Test':
+        return 'Live Test';
       default:
         return title;
     }
@@ -1861,6 +1881,8 @@ class AdminHomeState extends State<AdminHome> {
         return Icons.flag_outlined;
       case 'My Notifications':
         return Icons.notifications_none_rounded;
+      case 'Mobile Live Test':
+        return Icons.phonelink_setup_outlined;
       default:
         return fallback;
     }
@@ -2675,12 +2697,8 @@ class AdminHomeState extends State<AdminHome> {
     final status = delayGated
         ? 'pending'
         : normalizeTaskStatusValue(task);
-    final note = task['note']?.toString() ?? '';
+    final title = workflowTaskDisplayTitle(task);
     final createdAt = task['created_at']?.toString() ?? '';
-    final title = note.trim().isNotEmpty
-        ? _toSentenceCase(note.trim())
-        : 'Task #$taskId';
-
     String? dateLabel;
     if (createdAt.isNotEmpty) {
       try {

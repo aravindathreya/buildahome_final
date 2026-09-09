@@ -210,6 +210,33 @@ class ViewIndentsState extends State<ViewIndents> {
                                 ),
                               ],
                             ),
+                            if (indentCreationComment(indents[Index])
+                                .isNotEmpty)
+                              Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Container(
+                                    width: 100,
+                                    margin: EdgeInsets.only(bottom: 15),
+                                    child: Text(
+                                      'Site Engineer comment',
+                                      style: TextStyle(fontSize: 15),
+                                    ),
+                                  ),
+                                  Container(
+                                    width: (MediaQuery.of(context).size.width -
+                                            40) /
+                                        2,
+                                    margin: EdgeInsets.only(bottom: 15),
+                                    child: Text(
+                                      indentCreationComment(indents[Index]),
+                                      style: TextStyle(
+                                          fontSize: 15,
+                                          fontWeight: FontWeight.w600),
+                                    ),
+                                  ),
+                                ],
+                              ),
                             Container(
                               margin: EdgeInsets.only(bottom: 30),
                               child: Text(

@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'app_theme.dart';
 import 'widgets/modern_task_card.dart';
+import 'task_display_title.dart';
 import 'widgets/skeleton_loader.dart';
 
 class ViewAllTasksScreen extends StatefulWidget {
@@ -1018,7 +1019,7 @@ class _ViewAllTasksScreenState extends State<ViewAllTasksScreen> {
     final note = task['note']?.toString() ?? '';
     final createdAt = task['created_at']?.toString() ?? '';
     final isWorkflowTask = _isWorkflowTask(task);
-    final title = isWorkflowTask && note.isNotEmpty ? note : 'Task #$taskId';
+    final title = workflowTaskDisplayTitle(task);
     final statusColor = _getStatusColor(status);
     final statusIcon = _getStatusIcon(status);
     final isCreatedByMe = _currentUserId != null && taskUserId == _currentUserId;

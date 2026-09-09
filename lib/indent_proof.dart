@@ -7,6 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import 'FullScreenImage.dart';
 import 'app_theme.dart';
+import 'indent_list_helpers.dart';
 import 'services/api_http.dart';
 
 const String _indentProofApiBase = 'https://office.buildahome.in';
@@ -60,7 +61,7 @@ bool isIndentProofReviewerRole(String? role) {
 }
 
 bool showIndentProofTabForRole(String? role) =>
-    isIndentProofReviewerRole(role);
+    isSiteEngineerRole(role) || isIndentProofReviewerRole(role);
 
 bool shouldHideIndentProofReviewTask(Map task, String? role) {
   if (!isSiteEngineerRole(role)) return false;
@@ -245,10 +246,14 @@ bool _indentProofTruthy(dynamic value) {
 
 class IndentProofTab extends StatefulWidget {
   final String? initialIndentId;
+  final String? initialProjectId;
+  final String? initialProjectName;
 
   const IndentProofTab({
     Key? key,
     this.initialIndentId,
+    this.initialProjectId,
+    this.initialProjectName,
   }) : super(key: key);
 
   @override
@@ -260,26 +265,84 @@ class IndentProofTabState extends State<IndentProofTab> {
   String? _error;
   List<Map<String, dynamic>> _items = [];
   bool _openedInitial = false;
+  final _pager = IndentPagedListController();
+  final _searchController = TextEditingController();
+  final _scrollController = ScrollController();
 
   @override
   void initState() {
     super.initState();
+    _pager.lockedProjectId = widget.initialProjectId;
+    _scrollController.addListener(_onScroll);
     _load(openInitial: true);
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _onScroll() {
+    if (!_scrollController.hasClients) return;
+    if (_scrollController.position.pixels >=
+        _scrollController.position.maxScrollExtent - 240) {
+      _loadMore();
+    }
+  }
+
+  Future<void> _loadMore() async {
+    if (_pager.loadingMore || !_pager.hasMore) return;
+    if (_pager.serverPaged) {
+      _pager.loadingMore = true;
+      await _load(openInitial: false, reset: false);
+      return;
+    }
+    setState(() {
+      _pager.showMoreClient();
+      _items = _pager.visible.whereType<Map>().map((item) {
+        return Map<String, dynamic>.from(item);
+      }).toList();
+    });
+  }
+
+  void _onProjectSearch(String value) {
+    _pager.search = value;
+    setState(() {
+      _pager.rebuildVisible(resetClientPage: true);
+      _syncVisibleItems();
+    });
+  }
+
+  void _syncVisibleItems() {
+    _items = _pager.visible.whereType<Map>().map((item) {
+      return Map<String, dynamic>.from(item);
+    }).toList();
   }
 
   Future<void> reload() => _load(openInitial: false);
 
-  Future<void> _load({required bool openInitial}) async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+  Future<void> _load({required bool openInitial, bool reset = true}) async {
+    if (reset) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
     try {
-      final items = await _fetchIndentProofs();
+      final page = await _fetchIndentProofs(
+        projectId: _pager.isLocked ? widget.initialProjectId : null,
+        search: _pager.isLocked ? null : _pager.search,
+        offset: reset ? 0 : _pager.offset,
+        limit: kIndentListPageSize,
+      );
       if (!mounted) return;
       setState(() {
-        _items = items;
+        _pager.acceptPage(page, reset: reset);
+        _syncVisibleItems();
         _loading = false;
+        _pager.loadingMore = false;
       });
       final initialId = widget.initialIndentId?.trim() ?? '';
       if (openInitial &&
@@ -295,6 +358,7 @@ class IndentProofTabState extends State<IndentProofTab> {
       if (!mounted) return;
       setState(() {
         _loading = false;
+        _pager.loadingMore = false;
         _error = e.toString().replaceAll('Exception: ', '');
       });
     }
@@ -311,60 +375,65 @@ class IndentProofTabState extends State<IndentProofTab> {
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) {
-      return const Center(child: CircularProgressIndicator());
-    }
-    if (_error != null) {
-      return _IndentProofMessage(
-        icon: Icons.error_outline,
-        title: 'Could not load indent proofs',
-        message: _error!,
-        actionLabel: 'Retry',
-        onAction: () => _load(openInitial: false),
-      );
-    }
-    if (_items.isEmpty) {
-      return const _IndentProofMessage(
-        icon: Icons.fact_check_outlined,
-        title: 'No indent proofs',
-        message: 'Approved site-proof indents assigned to you will appear here.',
-      );
-    }
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(15, 16, 15, 8),
-          child: Text(
-            'Indent proof (${_items.length})',
-            style: TextStyle(
-              color: AppTheme.getTextPrimary(context),
-              fontSize: 20,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
+        IndentProjectListHeader(
+          title: 'Indent proof',
+          count: _pager.filteredCount,
+          lockedProjectName: widget.initialProjectName,
+          searchController: _pager.isLocked ? null : _searchController,
+          onSearchChanged: _onProjectSearch,
+          onSearchCleared: () {
+            _searchController.clear();
+            _onProjectSearch('');
+          },
         ),
         Expanded(
-          child: RefreshIndicator(
-            onRefresh: reload,
-            child: ListView.builder(
-              padding: const EdgeInsets.fromLTRB(15, 8, 15, 24),
-              itemCount: _items.length,
-              itemBuilder: (context, index) {
-                final item = _items[index];
-                final indentId = _display(item, [
-                      'indent_id',
-                      'id',
-                    ]) ??
-                    '';
-                return _IndentProofListCard(
-                  item: item,
-                  onTap: indentId.isEmpty ? null : () => _openDetail(indentId),
-                );
-              },
-            ),
-          ),
+          child: _loading
+              ? const Center(child: CircularProgressIndicator())
+              : _error != null
+                  ? _IndentProofMessage(
+                      icon: Icons.error_outline,
+                      title: 'Could not load indent proofs',
+                      message: _error!,
+                      actionLabel: 'Retry',
+                      onAction: () => _load(openInitial: false),
+                    )
+                  : _items.isEmpty
+                      ? _IndentProofMessage(
+                          icon: Icons.fact_check_outlined,
+                          title: 'No indent proofs',
+                          message: _pager.search.trim().isEmpty
+                              ? 'Approved site-proof indents assigned to you will appear here.'
+                              : 'No indent proofs for this project.',
+                        )
+                      : RefreshIndicator(
+                          onRefresh: reload,
+                          child: ListView.builder(
+                            controller: _scrollController,
+                            padding: const EdgeInsets.fromLTRB(15, 8, 15, 24),
+                            itemCount:
+                                _items.length + (_pager.hasMore ? 1 : 0),
+                            itemBuilder: (context, index) {
+                              if (index >= _items.length) {
+                                return const IndentListLoadMoreTile();
+                              }
+                              final item = _items[index];
+                              final indentId = _display(item, [
+                                    'indent_id',
+                                    'id',
+                                  ]) ??
+                                  '';
+                              return _IndentProofListCard(
+                                item: item,
+                                onTap: indentId.isEmpty
+                                    ? null
+                                    : () => _openDetail(indentId),
+                              );
+                            },
+                          ),
+                        ),
         ),
       ],
     );
@@ -1051,7 +1120,11 @@ class _IndentProofListCard extends StatelessWidget {
     final proof = _proofMap(item);
     final project = _display(item, ['project_name', 'project']) ?? 'Indent';
     final material = _display(item, ['material', 'item']) ?? '—';
-    final status = _display(item, ['status', 'indent_status']) ?? '—';
+    final quantity = _joinQuantity(
+      _display(item, ['quantity', 'qty']),
+      _display(item, ['unit']),
+    );
+    final status = _display(item, ['status', 'indent_status']) ?? '';
     final proofStatus = _display(proof, [
           'task_status',
           'proof_status',
@@ -1060,86 +1133,279 @@ class _IndentProofListCard extends StatelessWidget {
         _display(item, ['task_status', 'proof_status']) ??
         '';
     final indentId = _display(item, ['indent_id', 'id']) ?? '';
+    final createdBy = _display(item, [
+          'created_by_name',
+          'created_by_user',
+          'created_by',
+          'user_name',
+        ]) ??
+        '';
+    final timestamp = _display(item, [
+          'timestamp',
+          'created_at',
+          'created_on',
+        ]) ??
+        '';
+    final primary = AppTheme.getPrimaryColor(context);
 
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(20),
       child: Container(
-        margin: const EdgeInsets.only(bottom: 16),
+        margin: const EdgeInsets.only(bottom: 18),
         decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surface,
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              Theme.of(context).colorScheme.surface,
+              AppTheme.getBackgroundPrimaryLight(context),
+            ],
+          ),
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
-            color: AppTheme.getPrimaryColor(context).withValues(alpha: 0.2),
+            color: primary.withValues(alpha: 0.2),
+            width: 1.5,
           ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.12),
+              blurRadius: 10,
+              spreadRadius: 1,
+              offset: const Offset(0, 4),
+            ),
+          ],
         ),
-        child: Padding(
-          padding: const EdgeInsets.all(18),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(18),
+              decoration: BoxDecoration(
+                color: primary.withValues(alpha: 0.1),
+                borderRadius: const BorderRadius.only(
+                  topLeft: Radius.circular(20),
+                  topRight: Radius.circular(20),
+                ),
+              ),
+              child: Row(
                 children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: primary.withValues(alpha: 0.18),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(
+                      Icons.fact_check_outlined,
+                      color: primary,
+                      size: 24,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
                   Expanded(
-                    child: Text(
-                      project,
-                      style: TextStyle(
-                        fontSize: 17,
-                        fontWeight: FontWeight.bold,
-                        color: AppTheme.getTextPrimary(context),
-                      ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          project,
+                          style: TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.w800,
+                            color: AppTheme.getTextPrimary(context),
+                          ),
+                        ),
+                        if (createdBy.isNotEmpty) ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            'Created by $createdBy',
+                            style: TextStyle(
+                              color: AppTheme.getTextSecondary(context),
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
                   ),
                   if (indentId.isNotEmpty)
-                    Text(
-                      '#$indentId',
-                      style: TextStyle(
-                        color: AppTheme.getTextSecondary(context),
-                        fontWeight: FontWeight.w700,
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.surface,
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text(
+                        '#$indentId',
+                        style: TextStyle(
+                          color: primary,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 12,
+                        ),
                       ),
                     ),
+                  Icon(
+                    Icons.chevron_right_rounded,
+                    color: AppTheme.getTextSecondary(context),
+                  ),
                 ],
               ),
-              const SizedBox(height: 8),
-              Text(
-                material,
-                style: TextStyle(
-                  color: AppTheme.getTextSecondary(context),
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const SizedBox(height: 10),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _chip(context, status),
-                  if (proofStatus.isNotEmpty) _chip(context, proofStatus),
+                  _cardInfoRow(context, Icons.build_outlined, 'Material', material),
+                  if (quantity != '—') ...[
+                    const SizedBox(height: 14),
+                    _cardInfoRow(
+                      context,
+                      Icons.numbers_rounded,
+                      'Quantity',
+                      quantity,
+                    ),
+                  ],
+                  if (status.isNotEmpty || proofStatus.isNotEmpty) ...[
+                    const SizedBox(height: 14),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        if (status.isNotEmpty)
+                          _statusChip(context, status),
+                        if (proofStatus.isNotEmpty)
+                          _statusChip(context, proofStatus),
+                      ],
+                    ),
+                  ],
+                  if (timestamp.isNotEmpty) ...[
+                    const SizedBox(height: 14),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).scaffoldBackgroundColor,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.access_time,
+                            size: 14,
+                            color: AppTheme.getTextSecondary(context),
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            timestamp,
+                            style: TextStyle(
+                              color: AppTheme.getTextSecondary(context),
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ],
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
   }
 
-  Widget _chip(BuildContext context, String label) {
+  Widget _cardInfoRow(
+    BuildContext context,
+    IconData icon,
+    String label,
+    String value,
+  ) {
+    final primary = AppTheme.getPrimaryColor(context);
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: primary.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Icon(icon, size: 18, color: primary),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: AppTheme.getTextSecondary(context),
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                value,
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                  color: AppTheme.getTextPrimary(context),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _statusChip(BuildContext context, String label) {
+    final colors = _statusChipColors(label);
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
-        color: AppTheme.getPrimaryColor(context).withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(12),
+        color: colors[0],
+        borderRadius: BorderRadius.circular(999),
       ),
       child: Text(
         label,
         style: TextStyle(
-          color: AppTheme.getPrimaryColor(context),
-          fontSize: 12,
-          fontWeight: FontWeight.bold,
+          color: colors[1],
+          fontSize: 11.5,
+          fontWeight: FontWeight.w800,
         ),
       ),
     );
+  }
+
+  List<Color> _statusChipColors(String label) {
+    final normalized = label.toLowerCase();
+    if (normalized.contains('approv') ||
+        normalized.contains('complete') ||
+        normalized.contains('done')) {
+      return const [Color(0xFFDCFCE7), Color(0xFF166534)];
+    }
+    if (normalized.contains('reject') || normalized.contains('fail')) {
+      return const [Color(0xFFFEE2E2), Color(0xFFB91C1C)];
+    }
+    if (normalized.contains('pending') ||
+        normalized.contains('review') ||
+        normalized.contains('open')) {
+      return const [Color(0xFFFFF7ED), Color(0xFFC2410C)];
+    }
+    return const [Color(0xFFEFF6FF), Color(0xFF1D4ED8)];
   }
 }
 
@@ -1558,12 +1824,21 @@ List<Map<String, dynamic>> _asObjectList(dynamic value) {
   return const [];
 }
 
-Future<List<Map<String, dynamic>>> _fetchIndentProofs() async {
+Future<IndentListPageResult> _fetchIndentProofs({
+  String? projectId,
+  String? search,
+  int offset = 0,
+  int limit = kIndentListPageSize,
+}) async {
   final credentials = await _indentProofCredentials();
   final uri = Uri.parse('$_indentProofApiBase/API/get_indent_proofs').replace(
     queryParameters: {
       'user_id': credentials.userId,
       if (credentials.apiToken.isNotEmpty) 'api_token': credentials.apiToken,
+      if ((projectId ?? '').trim().isNotEmpty) 'project_id': projectId!.trim(),
+      if ((search ?? '').trim().isNotEmpty) 'search': search!.trim(),
+      'limit': limit.toString(),
+      'offset': offset.toString(),
     },
   );
   final response = await ApiHttp.get(
@@ -1574,15 +1849,7 @@ Future<List<Map<String, dynamic>>> _fetchIndentProofs() async {
   ).timeout(const Duration(seconds: 25));
   final decoded = _decodeBody(response);
   _throwIfFailed(response, decoded, 'Failed to load indent proofs');
-
-  if (decoded is List) return _asObjectList(decoded);
-  if (decoded is Map) {
-    for (final key in const ['data', 'indents', 'proofs', 'items', 'results']) {
-      final list = _asObjectList(decoded[key]);
-      if (list.isNotEmpty || decoded[key] is List) return list;
-    }
-  }
-  return const [];
+  return parseIndentListResponse(decoded);
 }
 
 Future<Map<String, dynamic>> _fetchIndentProofDetail(String indentId) async {

@@ -1,10 +1,12 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -606,6 +608,8 @@ class _TimelineGalleryState extends State<TimelineGallery> {
   String? _errorMessage;
   int _loadRequestId = 0;
   static const Duration _requestTimeout = Duration(seconds: 20);
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
 
   @override
   void initState() {
@@ -613,54 +617,69 @@ class _TimelineGalleryState extends State<TimelineGallery> {
     _loadGallery();
   }
 
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  List<_GallerySection> get _filteredSections {
+    final query = _searchQuery.trim().toLowerCase();
+    if (query.isEmpty) return _sections;
+    return _sections.where((section) {
+      if (section.label.toLowerCase().contains(query)) return true;
+      if (section.taskNames.any((name) => name.toLowerCase().contains(query))) {
+        return true;
+      }
+      return section.items.any((item) => item.matchesQuery(query));
+    }).toList();
+  }
+
   Future<void> _loadGallery({bool showLoader = true}) async {
     final int requestId = ++_loadRequestId;
-
-    if (showLoader) {
-      if (!mounted) return;
-      setState(() {
-        _isLoading = true;
-        _errorMessage = null;
-      });
-    } else {
-      if (!mounted) return;
-      setState(() {
-        _isRefreshing = true;
-        _errorMessage = null;
-      });
-    }
+    final isPullRefresh = !showLoader;
 
     try {
-      // Try to load from cache first
       final dataProvider = DataProvider();
       final prefs = await SharedPreferences.getInstance();
-      final role = prefs.getString('role');
       final projectId = prefs.getString('project_id');
-      
+
       if (projectId == null) {
-        throw Exception('Project not selected. Please reopen the project and try again.');
+        throw Exception(
+            'Project not selected. Please reopen the project and try again.');
       }
 
-      // For non-Client users, check cache first
-      List<dynamic>? cachedData;
-      if (role != null && role != 'Client' && dataProvider.cachedGallery != null) {
-        cachedData = dataProvider.cachedGallery;
+      if (!isPullRefresh) {
+        final cached = _TimelineGalleryStore.memory(projectId) ??
+            await _TimelineGalleryStore.readDisk(projectId);
+        if (cached != null &&
+            cached.isNotEmpty &&
+            mounted &&
+            !_shouldIgnoreLoad(requestId)) {
+          setState(() {
+            _sections = cached;
+            _isLoading = false;
+            _errorMessage = null;
+          });
+          _prefetchVisibleThumbs(cached);
+        } else if (mounted && !_shouldIgnoreLoad(requestId)) {
+          setState(() {
+            _isLoading = true;
+            _errorMessage = null;
+          });
+        }
+      } else if (mounted && !_shouldIgnoreLoad(requestId)) {
+        setState(() {
+          _isRefreshing = true;
+          _errorMessage = null;
+        });
       }
 
-      // Use cache if available and not refreshing
-      if (cachedData != null && !showLoader) {
-        _processData(cachedData, requestId);
-        
-        // Still refresh in background
-        _fetchGalleryFromApi(projectId, requestId, dataProvider);
-        return;
-      }
-
-      // Fetch from API
       await _fetchGalleryFromApi(projectId, requestId, dataProvider);
     } catch (e) {
       if (_shouldIgnoreLoad(requestId)) return;
       if (!mounted) return;
+      if (_sections.isNotEmpty) return;
       setState(() {
         _errorMessage = e.toString().replaceAll('Exception: ', '');
       });
@@ -680,26 +699,16 @@ class _TimelineGalleryState extends State<TimelineGallery> {
     DataProvider dataProvider,
   ) async {
     try {
-      dynamic galleryData = <dynamic>[];
-      dynamic salesSopDetails;
-      dynamic taskData = <dynamic>[];
+      final results = await Future.wait<dynamic>([
+        _fetchOldGallery(projectId),
+        _fetchSalesSopDetails(projectId),
+        _fetchProjectTasks(projectId),
+      ]);
 
-      try {
-        final response = await http
-            .get(Uri.parse('$_galleryApiBaseUrl/API/get_gallery_data?id=$projectId'))
-            .timeout(_requestTimeout);
+      final galleryData = results[0];
+      final salesSopDetails = results[1];
+      final taskData = results[2];
 
-        if (response.statusCode == 200) {
-          galleryData = jsonDecode(response.body);
-        }
-      } catch (e) {
-        print('[Gallery] Old gallery load skipped: $e');
-      }
-
-      salesSopDetails = await _fetchSalesSopDetails(projectId);
-      taskData = await _fetchProjectTasks(projectId);
-      
-      // Update cache for non-Client users
       final prefs = await SharedPreferences.getInstance();
       final role = prefs.getString('role');
       if (role != null && role != 'Client' && galleryData is List) {
@@ -712,11 +721,26 @@ class _TimelineGalleryState extends State<TimelineGallery> {
         requestId,
         salesSopDetails: salesSopDetails,
         taskData: taskData,
+        projectId: projectId,
       );
     } catch (e) {
       if (_shouldIgnoreLoad(requestId)) return;
       rethrow;
     }
+  }
+
+  Future<dynamic> _fetchOldGallery(String projectId) async {
+    try {
+      final response = await http
+          .get(Uri.parse('$_galleryApiBaseUrl/API/get_gallery_data?id=$projectId'))
+          .timeout(_requestTimeout);
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      }
+    } catch (e) {
+      print('[Gallery] Old gallery load skipped: $e');
+    }
+    return <dynamic>[];
   }
 
   Future<dynamic> _fetchSalesSopDetails(String projectId) async {
@@ -726,7 +750,10 @@ class _TimelineGalleryState extends State<TimelineGallery> {
 
     if (apiToken == null || apiToken.isEmpty) return null;
 
+    final salesSopId = prefs.getString('sales_sop_id')?.trim();
     final queryAttempts = <Map<String, String>>[
+      if (salesSopId != null && salesSopId.isNotEmpty)
+        {'sales_sop_id': salesSopId, 'api_token': apiToken},
       {'project_id': projectId, 'api_token': apiToken},
       {'id': projectId, 'api_token': apiToken},
       if (userId != null && userId.isNotEmpty)
@@ -772,6 +799,7 @@ class _TimelineGalleryState extends State<TimelineGallery> {
     int requestId, {
     dynamic salesSopDetails,
     dynamic taskData,
+    String? projectId,
   }) {
     if (_shouldIgnoreLoad(requestId)) return;
     if (!mounted) return;
@@ -784,6 +812,35 @@ class _TimelineGalleryState extends State<TimelineGallery> {
 
     setState(() {
       _sections = sections;
+    });
+
+    if (projectId != null && projectId.isNotEmpty && sections.isNotEmpty) {
+      _TimelineGalleryStore.saveMemory(projectId, sections);
+      unawaited(_TimelineGalleryStore.writeDisk(projectId, sections));
+      _prefetchVisibleThumbs(sections);
+    }
+  }
+
+  void _prefetchVisibleThumbs(List<_GallerySection> sections) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final width = _galleryImageCacheWidth(context);
+      var count = 0;
+      for (final section in sections) {
+        for (final item in section.items.take(4)) {
+          if (item.isVideo) continue;
+          precacheImage(
+            CachedNetworkImageProvider(
+              item.previewUrl,
+              maxWidth: width,
+              cacheKey: _galleryThumbCacheKey(item.previewUrl),
+            ),
+            context,
+          );
+          count++;
+          if (count >= 16) return;
+        }
+      }
     });
   }
 
@@ -1097,6 +1154,7 @@ class _TimelineGalleryState extends State<TimelineGallery> {
 
     final url = _resolveImageUrl(map);
     if (url == null) return null;
+    final thumbUrl = _resolveThumbnailUrl(map);
 
     final filename = _stringValue(map['filename']) ??
         _stringValue(map['file_name']) ??
@@ -1106,6 +1164,7 @@ class _TimelineGalleryState extends State<TimelineGallery> {
 
     return _GalleryImage(
       imageUrl: url,
+      thumbnailUrl: thumbUrl,
       isVideo: _isVideoEntry(map, filename ?? url),
       sectionId: _stringValue(map['dashboard_section']) ??
           _stringValue(map['section_id']) ??
@@ -1166,6 +1225,16 @@ class _TimelineGalleryState extends State<TimelineGallery> {
     final parsed = DateTime.tryParse(trimmed) ?? _parseLooseDate(trimmed);
     if (parsed == null) return trimmed;
     return DateFormat('dd MMM yyyy, hh:mm a').format(parsed.toLocal());
+  }
+
+  String? _resolveThumbnailUrl(Map<String, dynamic> map) {
+    final thumb = _stringValue(map['thumbnail_url']) ??
+        _stringValue(map['thumb_url']) ??
+        _stringValue(map['preview_url']) ??
+        _stringValue(map['small_url']) ??
+        _stringValue(map['thumbnail']);
+    if (thumb == null) return null;
+    return _absoluteUrl(thumb);
   }
 
   String? _resolveImageUrl(Map<String, dynamic> map) {
@@ -1283,29 +1352,90 @@ class _TimelineGalleryState extends State<TimelineGallery> {
       );
     }
 
-    return ListView(
+    final visibleSections = _filteredSections;
+    return CustomScrollView(
       physics: const AlwaysScrollableScrollPhysics(),
-      padding: const EdgeInsets.fromLTRB(16, 24, 16, 32),
-      children: [
-        _buildHeader(theme),
-        const SizedBox(height: 24),
-        if (_isRefreshing && _sections.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 16),
-            child: Center(
-              child: SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  valueColor: AlwaysStoppedAnimation<Color>(AppTheme.getPrimaryColor(context)),
+      slivers: [
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(16, 24, 16, 0),
+          sliver: SliverToBoxAdapter(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildHeader(theme),
+                const SizedBox(height: 24),
+                if (_isRefreshing && _sections.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 16),
+                    child: Center(
+                      child: SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                              AppTheme.getPrimaryColor(context)),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+        if (visibleSections.isEmpty)
+          SliverFillRemaining(
+            hasScrollBody: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
+              child: _buildSearchEmptyState(),
+            ),
+          )
+        else
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
+            sliver: SliverList(
+              delegate: SliverChildBuilderDelegate(
+                (context, index) => _buildGallerySection(
+                  context,
+                  visibleSections[index],
+                  theme,
                 ),
+                childCount: visibleSections.length,
               ),
             ),
           ),
-        for (final section in _sections)
-          _buildGallerySection(context, section, theme),
       ],
+    );
+  }
+
+  Widget _buildSearchEmptyState() {
+    return Container(
+      padding: const EdgeInsets.all(32),
+      decoration: BoxDecoration(
+        color: AppTheme.getBackgroundSecondary(context),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Column(
+        children: [
+          Icon(Icons.search_off_rounded,
+              color: AppTheme.getPrimaryColor(context), size: 32),
+          const SizedBox(height: 12),
+          Text(
+            'No matching photos',
+            style: TextStyle(
+              fontWeight: FontWeight.w600,
+              color: AppTheme.getTextPrimary(context),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Try a task name, uploader, date, or section.',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: AppTheme.getTextSecondary(context)),
+          ),
+        ],
+      ),
     );
   }
 
@@ -1356,6 +1486,50 @@ class _TimelineGalleryState extends State<TimelineGallery> {
         Text(
           'Workflow task uploads, automatically grouped into project sections.',
           style: theme.textTheme.bodyMedium?.copyWith(color: AppTheme.getTextSecondary(context)),
+        ),
+        const SizedBox(height: 16),
+        TextField(
+          controller: _searchController,
+          onChanged: (value) => setState(() => _searchQuery = value),
+          textInputAction: TextInputAction.search,
+          style: const TextStyle(
+            color: AppTheme.navy,
+            fontWeight: FontWeight.w600,
+          ),
+          decoration: InputDecoration(
+            hintText: 'Search photos by task, uploader, date, or section',
+            hintStyle: const TextStyle(
+              color: Color(0xFF9CA3AF),
+              fontWeight: FontWeight.w500,
+              fontSize: 13.5,
+            ),
+            prefixIcon: const Icon(Icons.search_rounded, color: Color(0xFF9CA3AF)),
+            suffixIcon: _searchQuery.isEmpty
+                ? null
+                : IconButton(
+                    tooltip: 'Clear',
+                    icon: const Icon(Icons.close_rounded, color: Color(0xFF9CA3AF)),
+                    onPressed: () {
+                      _searchController.clear();
+                      setState(() => _searchQuery = '');
+                    },
+                  ),
+            filled: true,
+            fillColor: Colors.white,
+            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14),
+              borderSide: const BorderSide(color: Color(0xFFE8EDF4)),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14),
+              borderSide: const BorderSide(color: AppTheme.navy, width: 1.5),
+            ),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14),
+              borderSide: const BorderSide(color: Color(0xFFE8EDF4)),
+            ),
+          ),
         ),
       ],
     );
@@ -1435,10 +1609,7 @@ class _TimelineGalleryState extends State<TimelineGallery> {
     final icon = _sectionIcon(section);
     final latestItems = section.items.take(4).toList();
 
-    return AnimatedWidgetSlide(
-      direction: SlideDirection.bottomToTop,
-      duration: const Duration(milliseconds: 280),
-      child: InkWell(
+    return InkWell(
         onTap: () => _openSection(context, section),
         borderRadius: BorderRadius.circular(24),
         child: Container(
@@ -1532,7 +1703,6 @@ class _TimelineGalleryState extends State<TimelineGallery> {
             ],
           ),
         ),
-      ),
     );
   }
 
@@ -1628,9 +1798,9 @@ class _TimelineGalleryState extends State<TimelineGallery> {
       );
     }
 
-    return CachedNetworkImage(
-      imageUrl: item.imageUrl,
-      fit: BoxFit.cover,
+    return _buildFastGalleryImage(
+      context,
+      url: item.previewUrl,
       progressIndicatorBuilder: (context, url, progress) =>
           _buildImageSkeleton(),
       errorWidget: (context, url, error) => _buildBrokenImage(context),
@@ -1684,6 +1854,7 @@ class _TimelineGalleryState extends State<TimelineGallery> {
           section: section,
           accentColor: _sectionAccent(section),
           icon: _sectionIcon(section),
+          initialQuery: _searchQuery,
         ),
       ),
     );
@@ -1826,6 +1997,41 @@ class _TimelineGalleryState extends State<TimelineGallery> {
 }
 
 const String _generalSectionId = '__general__';
+const int _galleryPageSize = 20;
+
+int _galleryImageCacheWidth(BuildContext context) {
+  final dpr = MediaQuery.devicePixelRatioOf(context);
+  final width = MediaQuery.sizeOf(context).width;
+  return (width * dpr / 2).round().clamp(200, 800);
+}
+
+String _galleryThumbCacheKey(String url) => 'tg-thumb-$url';
+
+Widget _buildFastGalleryImage(
+  BuildContext context, {
+  required String url,
+  ProgressIndicatorBuilder? progressIndicatorBuilder,
+  LoadingErrorWidgetBuilder? errorWidget,
+}) {
+  final cacheWidth = _galleryImageCacheWidth(context);
+  return CachedNetworkImage(
+    imageUrl: url,
+    cacheKey: _galleryThumbCacheKey(url),
+    fit: BoxFit.cover,
+    width: double.infinity,
+    height: double.infinity,
+    memCacheWidth: cacheWidth,
+    memCacheHeight: cacheWidth,
+    maxWidthDiskCache: 700,
+    maxHeightDiskCache: 700,
+    fadeInDuration: Duration.zero,
+    fadeOutDuration: Duration.zero,
+    placeholderFadeInDuration: Duration.zero,
+    filterQuality: FilterQuality.low,
+    progressIndicatorBuilder: progressIndicatorBuilder,
+    errorWidget: errorWidget,
+  );
+}
 
 class _GallerySection {
   final String id;
@@ -1841,6 +2047,41 @@ class _GallerySection {
     required this.taskNames,
     this.iconName,
   });
+
+  factory _GallerySection.fromJson(Map<String, dynamic> json) {
+    final items = <_GalleryImage>[];
+    final rawItems = json['items'];
+    if (rawItems is List) {
+      for (final row in rawItems) {
+        if (row is Map) {
+          items.add(_GalleryImage.fromJson(Map<String, dynamic>.from(row)));
+        }
+      }
+    }
+    final names = <String>[];
+    final rawNames = json['taskNames'] ?? json['task_names'];
+    if (rawNames is List) {
+      for (final name in rawNames) {
+        final text = name?.toString().trim() ?? '';
+        if (text.isNotEmpty) names.add(text);
+      }
+    }
+    return _GallerySection(
+      id: json['id']?.toString() ?? _generalSectionId,
+      label: json['label']?.toString() ?? 'General',
+      items: items,
+      taskNames: names,
+      iconName: json['iconName']?.toString(),
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'label': label,
+        'iconName': iconName,
+        'taskNames': taskNames,
+        'items': items.map((item) => item.toJson()).toList(),
+      };
 }
 
 class _MutableGallerySection {
@@ -1858,6 +2099,7 @@ class _MutableGallerySection {
 
 class _GalleryImage {
   final String imageUrl;
+  final String? thumbnailUrl;
   final String sectionId;
   final String sectionLabel;
   final String? title;
@@ -1870,6 +2112,7 @@ class _GalleryImage {
 
   const _GalleryImage({
     required this.imageUrl,
+    this.thumbnailUrl,
     required this.sectionId,
     required this.sectionLabel,
     this.title,
@@ -1880,21 +2123,163 @@ class _GalleryImage {
     this.taskStatus,
     this.isVideo = false,
   });
+
+  String get previewUrl {
+    final thumb = thumbnailUrl?.trim() ?? '';
+    return thumb.isEmpty ? imageUrl : thumb;
+  }
+
+  factory _GalleryImage.fromJson(Map<String, dynamic> json) {
+    return _GalleryImage(
+      imageUrl: json['imageUrl']?.toString() ?? '',
+      thumbnailUrl: json['thumbnailUrl']?.toString(),
+      sectionId: json['sectionId']?.toString() ?? _generalSectionId,
+      sectionLabel: json['sectionLabel']?.toString() ?? 'General',
+      title: json['title']?.toString(),
+      uploadedAt: json['uploadedAt']?.toString(),
+      taskName: json['taskName']?.toString(),
+      taskId: json['taskId']?.toString(),
+      uploadedBy: json['uploadedBy']?.toString(),
+      taskStatus: json['taskStatus']?.toString(),
+      isVideo: json['isVideo'] == true,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'imageUrl': imageUrl,
+        'thumbnailUrl': thumbnailUrl,
+        'sectionId': sectionId,
+        'sectionLabel': sectionLabel,
+        'title': title,
+        'uploadedAt': uploadedAt,
+        'taskName': taskName,
+        'taskId': taskId,
+        'uploadedBy': uploadedBy,
+        'taskStatus': taskStatus,
+        'isVideo': isVideo,
+      };
+
+  bool matchesQuery(String query) {
+    final q = query.trim().toLowerCase();
+    if (q.isEmpty) return true;
+    bool has(String? value) => (value ?? '').toLowerCase().contains(q);
+    return has(title) ||
+        has(taskName) ||
+        has(taskId) ||
+        has(uploadedBy) ||
+        has(uploadedAt) ||
+        has(sectionLabel) ||
+        has(taskStatus) ||
+        (isVideo ? 'video' : 'photo image').contains(q);
+  }
 }
 
-class _GallerySectionDetailScreen extends StatelessWidget {
+class _GallerySectionDetailScreen extends StatefulWidget {
   final _GallerySection section;
   final Color accentColor;
   final IconData icon;
+  final String initialQuery;
 
   const _GallerySectionDetailScreen({
     required this.section,
     required this.accentColor,
     required this.icon,
+    this.initialQuery = '',
   });
 
   @override
+  State<_GallerySectionDetailScreen> createState() =>
+      _GallerySectionDetailScreenState();
+}
+
+class _GallerySectionDetailScreenState
+    extends State<_GallerySectionDetailScreen> {
+  late final TextEditingController _searchController;
+  final ScrollController _scrollController = ScrollController();
+  String _query = '';
+  int _visibleCount = _galleryPageSize;
+  bool _loadingMore = false;
+
+  _GallerySection get section => widget.section;
+
+  @override
+  void initState() {
+    super.initState();
+    _query = widget.initialQuery.trim();
+    _searchController = TextEditingController(text: _query);
+    _scrollController.addListener(_onScroll);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final width = _galleryImageCacheWidth(context);
+      var count = 0;
+      for (final item in _visibleItems) {
+        if (item.isVideo) continue;
+        precacheImage(
+          CachedNetworkImageProvider(
+            item.previewUrl,
+            maxWidth: width,
+            cacheKey: _galleryThumbCacheKey(item.previewUrl),
+          ),
+          context,
+        );
+        count++;
+        if (count >= 12) break;
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  List<_GalleryImage> get _filteredItems {
+    if (_query.trim().isEmpty) return section.items;
+    return section.items
+        .where((item) => item.matchesQuery(_query))
+        .toList();
+  }
+
+  List<_GalleryImage> get _visibleItems {
+    final filtered = _filteredItems;
+    if (_visibleCount >= filtered.length) return filtered;
+    return filtered.take(_visibleCount).toList();
+  }
+
+  bool get _hasMore => _visibleCount < _filteredItems.length;
+
+  void _onQueryChanged(String value) {
+    setState(() {
+      _query = value;
+      _visibleCount = _galleryPageSize;
+    });
+  }
+
+  void _onScroll() {
+    if (_loadingMore || !_hasMore || !_scrollController.hasClients) return;
+    final position = _scrollController.position;
+    if (position.pixels < 120) return;
+    if (position.extentAfter > 500) return;
+    _loadingMore = true;
+    setState(() {
+      final next = _visibleCount + _galleryPageSize;
+      _visibleCount =
+          next > _filteredItems.length ? _filteredItems.length : next;
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadingMore = false;
+      if (!mounted) return;
+      _onScroll();
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final filtered = _filteredItems;
+    final visible = _visibleItems;
+
     return Scaffold(
       backgroundColor: AppTheme.getBackgroundPrimary(context),
       appBar: AppBar(
@@ -1918,32 +2303,163 @@ class _GallerySectionDetailScreen extends StatelessWidget {
         ),
       ),
       body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
-          children: [
-            _buildHeader(context),
-            const SizedBox(height: 18),
-            GridView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: section.items.length,
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 2,
-                crossAxisSpacing: 12,
-                mainAxisSpacing: 14,
-                childAspectRatio: 0.64,
+        child: CustomScrollView(
+          controller: _scrollController,
+          physics: const AlwaysScrollableScrollPhysics(),
+          slivers: [
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+              sliver: SliverToBoxAdapter(
+                child: Column(
+                  children: [
+                    _buildHeader(context, filtered.length),
+                    const SizedBox(height: 14),
+                    _buildSearchField(),
+                    const SizedBox(height: 10),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        filtered.isEmpty
+                            ? 'No matching uploads'
+                            : 'Showing ${visible.length} of ${filtered.length} uploads',
+                        style: const TextStyle(
+                          color: Color(0xFF6B7280),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                  ],
+                ),
               ),
-              itemBuilder: (context, index) {
-                return _buildPhotoCard(context, section.items[index]);
-              },
             ),
+            if (filtered.isEmpty)
+              SliverFillRemaining(
+                hasScrollBody: false,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 28),
+                  child: _buildEmptySearch(),
+                ),
+              )
+            else
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 28),
+                sliver: SliverGrid(
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 2,
+                    crossAxisSpacing: 12,
+                    mainAxisSpacing: 14,
+                    childAspectRatio: 0.64,
+                  ),
+                  delegate: SliverChildBuilderDelegate(
+                    (context, index) =>
+                        _buildPhotoCard(context, visible[index]),
+                    childCount: visible.length,
+                  ),
+                ),
+              ),
+            if (_loadingMore && _hasMore)
+              const SliverToBoxAdapter(
+                child: Padding(
+                  padding: EdgeInsets.only(bottom: 28),
+                  child: Center(
+                    child: SizedBox(
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(strokeWidth: 2.4),
+                    ),
+                  ),
+                ),
+              ),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildHeader(BuildContext context) {
+  Widget _buildSearchField() {
+    return TextField(
+      controller: _searchController,
+      onChanged: _onQueryChanged,
+      textInputAction: TextInputAction.search,
+      style: const TextStyle(
+        color: AppTheme.navy,
+        fontWeight: FontWeight.w600,
+      ),
+      decoration: InputDecoration(
+        hintText: 'Search photos in this section',
+        hintStyle: const TextStyle(
+          color: Color(0xFF9CA3AF),
+          fontWeight: FontWeight.w500,
+          fontSize: 13.5,
+        ),
+        prefixIcon: const Icon(Icons.search_rounded, color: Color(0xFF9CA3AF)),
+        suffixIcon: _query.trim().isEmpty
+            ? null
+            : IconButton(
+                tooltip: 'Clear',
+                icon: const Icon(Icons.close_rounded, color: Color(0xFF9CA3AF)),
+                onPressed: () {
+                  _searchController.clear();
+                  _onQueryChanged('');
+                },
+              ),
+        filled: true,
+        fillColor: Colors.white,
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: Color(0xFFE8EDF4)),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: AppTheme.navy, width: 1.5),
+        ),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: Color(0xFFE8EDF4)),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEmptySearch() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(28),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFE8EDF4)),
+      ),
+      child: const Column(
+        children: [
+          Icon(Icons.search_off_rounded, color: Color(0xFF9CA3AF), size: 32),
+          SizedBox(height: 10),
+          Text(
+            'No matching photos',
+            style: TextStyle(
+              fontWeight: FontWeight.w800,
+              color: Color(0xFF111827),
+            ),
+          ),
+          SizedBox(height: 4),
+          Text(
+            'Try a different task name, uploader, or date.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: Color(0xFF6B7280),
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHeader(BuildContext context, int filteredCount) {
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
@@ -1964,10 +2480,10 @@ class _GallerySectionDetailScreen extends StatelessWidget {
             height: 52,
             width: 52,
             decoration: BoxDecoration(
-              color: accentColor.withOpacity(0.12),
+              color: widget.accentColor.withOpacity(0.12),
               borderRadius: BorderRadius.circular(18),
             ),
-            child: Icon(icon, color: accentColor, size: 26),
+            child: Icon(widget.icon, color: widget.accentColor, size: 26),
           ),
           const SizedBox(width: 14),
           Expanded(
@@ -1987,7 +2503,7 @@ class _GallerySectionDetailScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 5),
                 Text(
-                  '${section.taskNames.length} tasks • ${section.items.length} uploads',
+                  '${section.taskNames.length} tasks • $filteredCount uploads',
                   style: const TextStyle(
                     color: Color(0xFF6B7280),
                     fontSize: 12,
@@ -2040,10 +2556,9 @@ class _GallerySectionDetailScreen extends StatelessWidget {
                               ),
                             ),
                           )
-                        : CachedNetworkImage(
-                            imageUrl: item.imageUrl,
-                            width: double.infinity,
-                            fit: BoxFit.cover,
+                        : _buildFastGalleryImage(
+                            context,
+                            url: item.previewUrl,
                             errorWidget: (context, url, error) => Container(
                               color: const Color(0xFFF3F6FA),
                               child: const Icon(Icons.broken_image_outlined,
@@ -2251,5 +2766,67 @@ class _AnimatedWidgetSlideState extends State<AnimatedWidgetSlide> with SingleTi
   void dispose() {
     _animationController.dispose();
     super.dispose();
+  }
+}
+
+class _TimelineGalleryStore {
+  static String? _projectId;
+  static List<_GallerySection>? _sections;
+
+  static List<_GallerySection>? memory(String projectId) {
+    if (_projectId == projectId) return _sections;
+    return null;
+  }
+
+  static void saveMemory(String projectId, List<_GallerySection> sections) {
+    _projectId = projectId;
+    _sections = sections;
+  }
+
+  static String _safeId(String projectId) {
+    return projectId.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
+  }
+
+  static Future<File> _file(String projectId) async {
+    final dir = await getApplicationSupportDirectory();
+    return File('${dir.path}/timeline_gallery_${_safeId(projectId)}.json');
+  }
+
+  static Future<List<_GallerySection>?> readDisk(String projectId) async {
+    try {
+      final file = await _file(projectId);
+      if (!await file.exists()) return null;
+      final decoded = jsonDecode(await file.readAsString());
+      if (decoded is! Map) return null;
+      final raw = decoded['sections'];
+      if (raw is! List) return null;
+      final sections = <_GallerySection>[];
+      for (final row in raw) {
+        if (row is Map) {
+          sections.add(
+            _GallerySection.fromJson(Map<String, dynamic>.from(row)),
+          );
+        }
+      }
+      if (sections.isEmpty) return null;
+      saveMemory(projectId, sections);
+      return sections;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static Future<void> writeDisk(
+    String projectId,
+    List<_GallerySection> sections,
+  ) async {
+    try {
+      final file = await _file(projectId);
+      await file.writeAsString(
+        jsonEncode({
+          'sections': sections.map((section) => section.toJson()).toList(),
+        }),
+      );
+    } catch (_) {}
   }
 }

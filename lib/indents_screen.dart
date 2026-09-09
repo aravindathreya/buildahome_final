@@ -18,6 +18,7 @@ import 'widgets/full_screen_progress.dart';
 import 'widgets/themed_scaffold.dart';
 import 'services/data_provider.dart';
 import 'indent_proof.dart';
+import 'indent_list_helpers.dart';
 
 const int kIndentsCreateTab = 0;
 const int kIndentsViewOpenTab = 1;
@@ -175,9 +176,20 @@ class IndentsScreenState extends State<IndentsScreen> {
                 initialProjectId: widget.initialProjectId,
                 initialProjectName: widget.initialProjectName,
               ),
-              ViewOpenIndentsTab(key: _viewOpenIndentsKey),
-              MyIndentsTab(),
-              IndentProofTab(initialIndentId: widget.initialIndentId),
+              ViewOpenIndentsTab(
+                key: _viewOpenIndentsKey,
+                initialProjectId: widget.initialProjectId,
+                initialProjectName: widget.initialProjectName,
+              ),
+              MyIndentsTab(
+                initialProjectId: widget.initialProjectId,
+                initialProjectName: widget.initialProjectName,
+              ),
+              IndentProofTab(
+                initialIndentId: widget.initialIndentId,
+                initialProjectId: widget.initialProjectId,
+                initialProjectName: widget.initialProjectName,
+              ),
             ],
           ),
         ),
@@ -2226,7 +2238,14 @@ class CreateIndentTabState extends State<CreateIndentTab> {
 
 // View Open Indents Tab
 class ViewOpenIndentsTab extends StatefulWidget {
-  const ViewOpenIndentsTab({Key? key}) : super(key: key);
+  final String? initialProjectId;
+  final String? initialProjectName;
+
+  const ViewOpenIndentsTab({
+    Key? key,
+    this.initialProjectId,
+    this.initialProjectName,
+  }) : super(key: key);
 
   @override
   ViewOpenIndentsTabState createState() {
@@ -2239,26 +2258,89 @@ class ViewOpenIndentsTabState extends State<ViewOpenIndentsTab> {
   var indents = [];
   var current_user_name;
   var role;
+  bool _loading = true;
+  final _pager = IndentPagedListController();
+  final _searchController = TextEditingController();
+  final _scrollController = ScrollController();
 
   @override
   void initState() {
     super.initState();
+    _pager.lockedProjectId = widget.initialProjectId;
+    _scrollController.addListener(_onScroll);
     call();
   }
 
-  call() async {
+  @override
+  void dispose() {
+    _searchController.dispose();
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _onScroll() {
+    if (!_scrollController.hasClients) return;
+    if (_scrollController.position.pixels >=
+        _scrollController.position.maxScrollExtent - 240) {
+      _loadMore();
+    }
+  }
+
+  Future<void> _loadMore() async {
+    if (_pager.loadingMore || !_pager.hasMore) return;
+    if (_pager.serverPaged) {
+      _pager.loadingMore = true;
+      await call(reset: false);
+      return;
+    }
+    setState(() {
+      _pager.showMoreClient();
+      indents = _pager.visible;
+    });
+  }
+
+  void _onProjectSearch(String value) {
+    _pager.search = value;
+    setState(() {
+      _pager.rebuildVisible(resetClientPage: true);
+      indents = _pager.visible;
+    });
+  }
+
+  call({bool reset = true}) async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     user_id = prefs.getString('user_id');
     current_user_name = prefs.get('username');
+    if (reset && mounted) {
+      setState(() => _loading = true);
+    }
 
-    var url =
-        'https://office.buildahome.in/API/get_unapproved_indents?user_id=${user_id}';
-    var response = await http.get(Uri.parse(url));
+    final query = <String, String>{
+      'user_id': user_id.toString(),
+      if (_pager.isLocked) 'project_id': widget.initialProjectId!.trim(),
+      if (!_pager.isLocked && _pager.search.trim().isNotEmpty)
+        'search': _pager.search.trim(),
+      'limit': kIndentListPageSize.toString(),
+      'offset': (reset ? 0 : _pager.offset).toString(),
+    };
+    final url = Uri.parse(
+      'https://office.buildahome.in/API/get_unapproved_indents',
+    ).replace(queryParameters: query);
+    var response = await http.get(url);
     print(response.body);
+    dynamic decoded = [];
+    try {
+      decoded = jsonDecode(response.body);
+    } catch (_) {
+      decoded = [];
+    }
     if (mounted) {
       setState(() {
-        indents = jsonDecode(response.body);
+        _pager.acceptPage(parseIndentListResponse(decoded), reset: reset);
+        indents = _pager.visible;
         role = prefs.get('role');
+        _loading = false;
+        _pager.loadingMore = false;
       });
     }
   }
@@ -2270,20 +2352,45 @@ class ViewOpenIndentsTabState extends State<ViewOpenIndentsTab> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Container(
-                margin: EdgeInsets.symmetric(horizontal: 10, vertical: 20),
-                child: Text('Open indents (${indents.length})',
-                    style: TextStyle(
-                      color: AppTheme.getTextPrimary(context),
-                      fontSize: 20,
-                      fontWeight: FontWeight.w600,
-                    ))),
+            IndentProjectListHeader(
+              title: 'Open indents',
+              count: _pager.filteredCount,
+              lockedProjectName: widget.initialProjectName,
+              searchController:
+                  _pager.isLocked ? null : _searchController,
+              onSearchChanged: _onProjectSearch,
+              onSearchCleared: () {
+                _searchController.clear();
+                _onProjectSearch('');
+              },
+            ),
             Expanded(
-              child: ListView.builder(
-                  shrinkWrap: true,
+              child: _loading
+                  ? const Center(child: CircularProgressIndicator())
+                  : indents.isEmpty
+                      ? Center(
+                          child: Padding(
+                            padding: const EdgeInsets.all(24),
+                            child: Text(
+                              _pager.search.trim().isEmpty
+                                  ? 'No open indents'
+                                  : 'No open indents for this project',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                color: AppTheme.getTextSecondary(context),
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        )
+                      : ListView.builder(
+                  controller: _scrollController,
                   padding: EdgeInsets.all(15),
-                  itemCount: indents.length,
+                  itemCount: indents.length + (_pager.hasMore ? 1 : 0),
                   itemBuilder: (BuildContext ctxt, int Index) {
+                    if (Index >= indents.length) {
+                      return const IndentListLoadMoreTile();
+                    }
                     return Container(
                         margin: EdgeInsets.only(bottom: 20),
                         decoration: BoxDecoration(
@@ -2392,6 +2499,15 @@ class ViewOpenIndentsTabState extends State<ViewOpenIndentsTab> {
                                     'Purpose',
                                     '${indents[Index]['purpose']}',
                                   ),
+                                  if (indentCreationComment(indents[Index])
+                                      .isNotEmpty) ...[
+                                    SizedBox(height: 16),
+                                    _buildInfoRow(
+                                      Icons.comment_outlined,
+                                      'Site Engineer comment',
+                                      indentCreationComment(indents[Index]),
+                                    ),
+                                  ],
                                   SizedBox(height: 20),
                                   
                                   // Timestamp
@@ -2501,7 +2617,9 @@ class ViewOpenIndentsTabState extends State<ViewOpenIndentsTab> {
                                                 user_id,
                                                 '${indents[Index]['quantity']} ${indents[Index]['unit']} ${indents[Index]['material']} Indent for project ${indents[Index]['project_name']} has been rejected by ${current_user_name}');
                                             setState(() {
-                                              indents.removeAt(Index);
+                                              _pager.removeById(
+                                                  indents[Index]['id']);
+                                              indents = _pager.visible;
                                             });
                                             Navigator.of(context,
                                                     rootNavigator: true)
@@ -2562,7 +2680,9 @@ class ViewOpenIndentsTabState extends State<ViewOpenIndentsTab> {
                                                 user_id,
                                                 '${indents[Index]['quantity']} ${indents[Index]['unit']} ${indents[Index]['material']} Indent for project ${indents[Index]['project_name']} has been approved by ${current_user_name}');
                                             setState(() {
-                                              indents.removeAt(Index);
+                                              _pager.removeById(
+                                                  indents[Index]['id']);
+                                              indents = _pager.visible;
                                             });
                                             Navigator.of(context,
                                                     rootNavigator: true)
@@ -2652,6 +2772,15 @@ class ViewOpenIndentsTabState extends State<ViewOpenIndentsTab> {
 
 // My Indents Tab
 class MyIndentsTab extends StatefulWidget {
+  final String? initialProjectId;
+  final String? initialProjectName;
+
+  const MyIndentsTab({
+    Key? key,
+    this.initialProjectId,
+    this.initialProjectName,
+  }) : super(key: key);
+
   @override
   MyIndentsTabState createState() {
     return MyIndentsTabState();
@@ -2663,25 +2792,89 @@ class MyIndentsTabState extends State<MyIndentsTab> {
   var indents = [];
   var current_user_name;
   var role;
+  bool _loading = true;
+  final _pager = IndentPagedListController();
+  final _searchController = TextEditingController();
+  final _scrollController = ScrollController();
 
   @override
   void initState() {
     super.initState();
+    _pager.lockedProjectId = widget.initialProjectId;
+    _scrollController.addListener(_onScroll);
     call();
   }
 
-  call() async {
+  @override
+  void dispose() {
+    _searchController.dispose();
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _onScroll() {
+    if (!_scrollController.hasClients) return;
+    if (_scrollController.position.pixels >=
+        _scrollController.position.maxScrollExtent - 240) {
+      _loadMore();
+    }
+  }
+
+  Future<void> _loadMore() async {
+    if (_pager.loadingMore || !_pager.hasMore) return;
+    if (_pager.serverPaged) {
+      _pager.loadingMore = true;
+      await call(reset: false);
+      return;
+    }
+    setState(() {
+      _pager.showMoreClient();
+      indents = _pager.visible;
+    });
+  }
+
+  void _onProjectSearch(String value) {
+    _pager.search = value;
+    setState(() {
+      _pager.rebuildVisible(resetClientPage: true);
+      indents = _pager.visible;
+    });
+  }
+
+  call({bool reset = true}) async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     user_id = prefs.getString('user_id');
     current_user_name = prefs.get('username');
+    if (reset && mounted) {
+      setState(() => _loading = true);
+    }
 
-    var url =
-        'https://office.buildahome.in/API/get_my_indents?user_id=${user_id}';
-    var response = await http.get(Uri.parse(url));
+    final query = <String, String>{
+      'user_id': user_id.toString(),
+      if (_pager.isLocked) 'project_id': widget.initialProjectId!.trim(),
+      if (!_pager.isLocked && _pager.search.trim().isNotEmpty)
+        'search': _pager.search.trim(),
+      'limit': kIndentListPageSize.toString(),
+      'offset': (reset ? 0 : _pager.offset).toString(),
+    };
+    final url = Uri.parse(
+      'https://office.buildahome.in/API/get_my_indents',
+    ).replace(queryParameters: query);
+    var response = await http.get(url);
     print(response.body);
+    dynamic decoded = [];
+    try {
+      decoded = jsonDecode(response.body);
+    } catch (_) {
+      decoded = [];
+    }
+    if (!mounted) return;
     setState(() {
-      indents = jsonDecode(response.body);
+      _pager.acceptPage(parseIndentListResponse(decoded), reset: reset);
+      indents = _pager.visible;
       role = prefs.get('role');
+      _loading = false;
+      _pager.loadingMore = false;
     });
   }
 
@@ -2702,20 +2895,45 @@ class MyIndentsTabState extends State<MyIndentsTab> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Container(
-                margin: EdgeInsets.symmetric(horizontal: 10, vertical: 20),
-                child: Text('My indents (${indents.length})',
-                    style: TextStyle(
-                      color: AppTheme.getTextPrimary(context),
-                      fontSize: 20,
-                      fontWeight: FontWeight.w600,
-                    ))),
+            IndentProjectListHeader(
+              title: 'My indents',
+              count: _pager.filteredCount,
+              lockedProjectName: widget.initialProjectName,
+              searchController:
+                  _pager.isLocked ? null : _searchController,
+              onSearchChanged: _onProjectSearch,
+              onSearchCleared: () {
+                _searchController.clear();
+                _onProjectSearch('');
+              },
+            ),
             Expanded(
-              child: ListView.builder(
-                  shrinkWrap: true,
+              child: _loading
+                  ? const Center(child: CircularProgressIndicator())
+                  : indents.isEmpty
+                      ? Center(
+                          child: Padding(
+                            padding: const EdgeInsets.all(24),
+                            child: Text(
+                              _pager.search.trim().isEmpty
+                                  ? 'No indents'
+                                  : 'No indents for this project',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                color: AppTheme.getTextSecondary(context),
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        )
+                      : ListView.builder(
+                  controller: _scrollController,
                   padding: EdgeInsets.all(15),
-                  itemCount: indents.length,
+                  itemCount: indents.length + (_pager.hasMore ? 1 : 0),
                   itemBuilder: (BuildContext ctxt, int Index) {
+                    if (Index >= indents.length) {
+                      return const IndentListLoadMoreTile();
+                    }
                     return Container(
                         margin: EdgeInsets.only(bottom: 20),
                         decoration: BoxDecoration(

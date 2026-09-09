@@ -15,6 +15,89 @@ import 'package:intl/intl.dart';
 import 'dart:async';
 import 'dart:convert';
 
+String indentCreationComment(dynamic indent) {
+  if (indent is! Map) return '';
+  for (final key in [
+    'reason_comment',
+    'reason_task_comment',
+    'comment',
+    'indent_comment',
+    'note',
+    'comments',
+    'reason',
+  ]) {
+    final value = _indentCommentText(indent[key]);
+    if (value.isNotEmpty) return value;
+  }
+  return '';
+}
+
+String indentPcApcComment(dynamic indent) {
+  if (indent is! Map) return '';
+  for (final key in [
+    'pc_apc_comment',
+    'pc_apc_ph_comment',
+    'reviewer_comment',
+    'approval_comment',
+  ]) {
+    final value = _indentCommentText(indent[key]);
+    if (value.isNotEmpty) return value;
+  }
+  return '';
+}
+
+bool indentCreatedBySiteEngineer(dynamic indent) {
+  if (indent is! Map) return false;
+  for (final key in [
+    'created_by_site_engineer',
+    'is_created_by_site_engineer',
+  ]) {
+    final value = indent[key];
+    if (value == true || value == 1 || value == '1' || value == 'true') {
+      return true;
+    }
+  }
+  for (final key in [
+    'created_by_role',
+    'created_by_user_role',
+    'creator_role',
+    'created_by_user_type',
+  ]) {
+    if (_isSiteEngineerRole(indent[key]?.toString())) return true;
+  }
+  return false;
+}
+
+bool _isSiteEngineerRole(String? role) {
+  final normalized = role?.trim().toLowerCase().replaceAll('-', ' ') ?? '';
+  return normalized == 'site engineer';
+}
+
+String _indentCommentText(dynamic raw) {
+  if (raw == null) return '';
+  if (raw is String) {
+    final text = raw.trim();
+    if (text.isEmpty || text == 'null' || text == '[]' || text == '{}') {
+      return '';
+    }
+    return text;
+  }
+  if (raw is Map) {
+    for (final key in ['reason_comment', 'comment', 'text', 'note', 'message']) {
+      final value = raw[key]?.toString().trim() ?? '';
+      if (value.isNotEmpty && value != 'null') return value;
+    }
+    return '';
+  }
+  if (raw is List) {
+    return raw
+        .map(_indentCommentText)
+        .where((value) => value.isNotEmpty)
+        .join('\n');
+  }
+  return raw.toString().trim();
+}
+
 class EditIndentLayout extends StatelessWidget {
   final indent;
   EditIndentLayout(this.indent);
@@ -71,11 +154,23 @@ class EditIndentState extends State<EditIndent> {
   var unit = 'Unit';
   var quantityTextController = new TextEditingController();
   var purposeTextController = new TextEditingController();
+  var commentTextController = new TextEditingController();
+  var pcApcCommentTextController = new TextEditingController();
+  bool _createdBySiteEngineer = false;
 
   @override
   void initState() {
     super.initState();
     call();
+  }
+
+  @override
+  void dispose() {
+    quantityTextController.dispose();
+    purposeTextController.dispose();
+    commentTextController.dispose();
+    pcApcCommentTextController.dispose();
+    super.dispose();
   }
 
   call() async {
@@ -86,10 +181,72 @@ class EditIndentState extends State<EditIndent> {
       projectId = this.indent['project_id'];
       projectName = this.indent['project_name'];
       material = this.indent['material'];
-      quantityTextController.text = this.indent['quantity'];
-      purposeTextController.text = this.indent['purpose'];
+      quantityTextController.text = this.indent['quantity']?.toString() ?? '';
+      purposeTextController.text = this.indent['purpose']?.toString() ?? '';
+      commentTextController.text = indentCreationComment(this.indent);
+      pcApcCommentTextController.text = indentPcApcComment(this.indent);
+      _createdBySiteEngineer = indentCreatedBySiteEngineer(this.indent);
       unit = this.indent['unit'];
     });
+  }
+
+  Widget _fieldHeading(String title) {
+    return Container(
+      alignment: Alignment.centerLeft,
+      margin: const EdgeInsets.fromLTRB(10, 14, 10, 6),
+      child: Text(
+        title,
+        style: const TextStyle(
+          fontSize: 16,
+          fontWeight: FontWeight.w800,
+          color: AppTheme.navy,
+        ),
+      ),
+    );
+  }
+
+  Widget _headedTextField({
+    required String heading,
+    required TextEditingController controller,
+    required String hintText,
+    bool readOnly = false,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _fieldHeading(heading),
+        Container(
+          alignment: Alignment.topLeft,
+          margin: const EdgeInsets.fromLTRB(10, 0, 10, 4),
+          child: TextFormField(
+            autocorrect: true,
+            controller: controller,
+            readOnly: readOnly,
+            keyboardType: TextInputType.multiline,
+            textCapitalization: TextCapitalization.sentences,
+            maxLines: 4,
+            style: const TextStyle(fontSize: 18),
+            decoration: InputDecoration(
+              focusColor: Colors.black,
+              floatingLabelBehavior: FloatingLabelBehavior.never,
+              errorBorder: OutlineInputBorder(
+                borderSide: BorderSide(color: Colors.grey[600]!, width: 1.0),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderSide: BorderSide(color: Colors.grey[600]!, width: 1.0),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderSide: BorderSide(color: Colors.grey[300]!, width: 1.0),
+              ),
+              filled: true,
+              hintText: hintText,
+              alignLabelWithHint: true,
+              fillColor: Colors.white,
+            ),
+          ),
+        ),
+      ],
+    );
   }
 
   @override
@@ -198,43 +355,23 @@ class EditIndentState extends State<EditIndent> {
             ),
           ],
         )),
-        Container(
-            alignment: Alignment.topLeft,
-            margin: EdgeInsets.all(10),
-            child: TextFormField(
-              autocorrect: true,
-              controller: purposeTextController,
-              keyboardType: TextInputType.multiline,
-              textCapitalization: TextCapitalization.sentences,
-              maxLines: 4,
-              style: TextStyle(fontSize: 18),
-              decoration: InputDecoration(
-                  focusColor: Colors.black,
-                  floatingLabelBehavior: FloatingLabelBehavior.never,
-                  errorBorder: OutlineInputBorder(
-                    borderSide: BorderSide(color: Colors.grey[600]!, width: 1.0),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderSide: BorderSide(color: Colors.grey[600]!, width: 1.0),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderSide: BorderSide(color: Colors.grey[300]!, width: 1.0),
-                  ),
-                  filled: true,
-                  hintText: "Purpose for indent",
-                  alignLabelWithHint: true,
-                  labelText: "Purpose for indent",
-                  labelStyle: TextStyle(
-                    fontSize: 18,
-                  ),
-                  fillColor: Colors.white),
-              validator: (value) {
-                if (value!.isEmpty) {
-                  return 'This field cannot be empty';
-                }
-                return null;
-              },
-            )),
+        _headedTextField(
+          heading: 'Purpose',
+          controller: purposeTextController,
+          hintText: 'Purpose for indent',
+        ),
+        _headedTextField(
+          heading: 'Site Engineer comment',
+          controller: commentTextController,
+          hintText: 'No Site Engineer comment added during creation',
+          readOnly: true,
+        ),
+        if (_createdBySiteEngineer)
+          _headedTextField(
+            heading: 'PC/APC comment',
+            controller: pcApcCommentTextController,
+            hintText: 'Add a PC/APC comment',
+          ),
         InkWell(
           child: Container(
             alignment: Alignment.center,
@@ -291,19 +428,25 @@ class EditIndentState extends State<EditIndent> {
 
             var url =
                 'https://office.buildahome.in/API/edit_and_approve_indent';
-            var response = await http.post(Uri.parse(url), body: {
+            final body = <String, String>{
               'indent_id': this.indent['id'].toString(),
               'project_id': projectId.toString(),
               'material': material,
               'quantity': quantityTextController.text,
               'unit': unit,
               'purpose': purposeTextController.text,
+              'reason_comment': commentTextController.text.trim(),
               'user_id': user_id.toString(),
               'acted_by_user': user_id.toString(),
               'notification_body':
                   '${quantityTextController.text} ${unit} ${material} Indent for project ${projectName} has been edited and approved by ${current_user_name}',
               'timestamp': formattedDate,
-            });
+            };
+            if (_createdBySiteEngineer) {
+              body['pc_apc_comment'] =
+                  pcApcCommentTextController.text.trim();
+            }
+            var response = await http.post(Uri.parse(url), body: body);
             var responseBody = jsonDecode(response.body);
             if (responseBody['message'] == 'failure') {
               Navigator.of(context, rootNavigator: true).pop();

@@ -55,6 +55,11 @@ class _AppState extends State<App> with WidgetsBindingObserver {
       navigatorKey: globalNavigatorKey,
       scaffoldMessengerKey: globalScaffoldMessengerKey,
       navigatorObservers: [globalNavigatorObserver],
+      builder: (context, child) {
+        return AppTapGuard(
+          child: child ?? const SizedBox.shrink(),
+        );
+      },
       home: LoginScreenNew(),
     );
   }

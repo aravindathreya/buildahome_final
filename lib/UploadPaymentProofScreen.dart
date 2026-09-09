@@ -34,7 +34,7 @@ class _UploadPaymentProofScreenState extends State<UploadPaymentProofScreen> {
   bool _uploading = false;
   bool _noProject = false;
   String? _error;
-  String _title = 'Upload payment proof';
+  String _title = 'Upload proof';
   String _projectId = '';
   String _clientName = '';
   bool _canUpload = true;
@@ -75,7 +75,7 @@ class _UploadPaymentProofScreenState extends State<UploadPaymentProofScreen> {
 
     _title = section['title']?.toString().trim().isNotEmpty == true
         ? section['title'].toString()
-        : 'Upload payment proof';
+        : 'Upload proof';
     _projectId = project['project_id']?.toString() ?? '';
     _clientName = project['client_name']?.toString() ?? '';
     _canUpload = section['can_upload'] != false;

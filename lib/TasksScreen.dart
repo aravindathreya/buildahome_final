@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'app_theme.dart';
 import 'user_picker.dart';
 import 'services/data_provider.dart';
+import 'task_display_title.dart';
 import 'widgets/modern_task_card.dart';
 
 class TasksLayout extends StatefulWidget {
@@ -1750,12 +1751,9 @@ class _ViewTasksPageState extends State<ViewTasksPage> {
     final projectName = task['project_name']?.toString() ?? '';
     final assignedToName = task['assigned_to_name']?.toString() ?? '';
     final status = task['status']?.toString() ?? 'pending';
-    final note = task['note']?.toString() ?? '';
     final createdAt = task['created_at']?.toString() ?? '';
     final isWorkflowTask = _isWorkflowTask(task);
-    final title = note.trim().isNotEmpty
-        ? note.trim()
-        : 'Task #$taskId';
+    final title = workflowTaskDisplayTitle(task);
     final isCreatedByMe =
         _currentUserId != null && taskUserId == _currentUserId;
     final isExpanded = _expandedTaskIds.contains(taskId);

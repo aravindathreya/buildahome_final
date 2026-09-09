@@ -24,8 +24,14 @@ import 'indents_screen.dart';
 import 'indent_proof.dart';
 import 'services/api_http.dart';
 import 'services/data_provider.dart';
+import 'services/mobile_live_test_auto_runner.dart';
+import 'services/mobile_live_test_autoplay.dart';
+import 'services/mobile_live_test_access.dart';
+import 'services/mobile_live_test_workflow.dart';
+import 'widgets/searchable_select.dart';
 import 'services/session_manager.dart';
 import 'widgets/dashboard_chrome.dart';
+import 'task_display_title.dart';
 import 'widgets/modern_task_card.dart';
 import 'widgets/themed_scaffold.dart';
 import 'widgets/skeleton_loader.dart';
@@ -43,6 +49,11 @@ const Set<String> kCompletedTaskStatuses = {
   'skipped',
   'approved',
 };
+
+void _popWorkflowSheet(NavigatorState navigator, [Object? result]) {
+  if (!navigator.canPop()) return;
+  navigator.pop(result);
+}
 
 String normalizeTaskStatusValue(Map task) {
   // Delayed tasks must never surface as ready/open for UI or filters.
@@ -299,6 +310,7 @@ bool _looksLikeDelayBlockedMessage(String? message) {
 /// Once available_at / seconds_remaining are past, treat as unlocked locally
 /// (timer disappears) and refresh will confirm with the API.
 bool isWorkflowDelayGated(Map task) {
+  if (MobileLiveTestWorkflow.skipProjectGates(task)) return false;
   final gate = workflowDelayGate(task);
   final delayTimer = findDelayTimerAction(workflowActionsFromTask(task));
   final gateData = resolveWorkflowDelayGateData(gate: gate, action: delayTimer);
@@ -338,6 +350,7 @@ bool _gateHasUnlockTime(Map<String, dynamic>? gate) {
 }
 
 bool canUpdateWorkflowTask(Map task) {
+  if (MobileLiveTestWorkflow.skipProjectGates(task)) return true;
   if (isWorkflowDelayGated(task)) return false;
   if (_falseyValue(task['can_update_workflow_task'])) return false;
   if (_falseyValue(task['can_update'])) return false;
@@ -346,6 +359,7 @@ bool canUpdateWorkflowTask(Map task) {
 
 /// True when linked indent reason blocks completing this workflow task.
 bool isIndentReasonBlockingComplete(Map task) {
+  if (MobileLiveTestWorkflow.skipProjectGates(task)) return false;
   if (_truthyValue(task['indent_reason_blocks_complete'])) return true;
   // Once linked indents reach Approved POs, API sets this true again.
   if (task.containsKey('can_complete_workflow_task') &&
@@ -356,6 +370,9 @@ bool isIndentReasonBlockingComplete(Map task) {
 }
 
 bool canCompleteWorkflowTask(Map task) {
+  if (MobileLiveTestWorkflow.skipProjectGates(task)) {
+    return !MobileLiveTestWorkflow.isMandatoryUploadBlock(task);
+  }
   return !isIndentReasonBlockingComplete(task);
 }
 
@@ -517,17 +534,18 @@ Future<Map<String, dynamic>> mergeWorkflowTaskDetail(
     final apiToken = prefs.getString('api_token') ?? '';
     if (userId.isEmpty || apiToken.isEmpty) return task;
 
-    final uri = Uri.parse(
-      '$_workflowApiBaseUrl/API/workflow/item-runs/$runId/actions',
-    ).replace(
-      queryParameters: {
+    final uri = _workflowRequestUri(
+      '/API/workflow/item-runs/$runId/actions',
+      task,
+      extraQuery: {
         'user_id': userId,
         'api_token': apiToken,
       },
     );
 
-    final response = await ApiHttp.get(
+    final response = await _workflowGet(
           uri,
+          task,
           headers: {'X-Api-Token': apiToken},
         )
         .timeout(const Duration(seconds: 20));
@@ -537,8 +555,11 @@ Future<Map<String, dynamic>> mergeWorkflowTaskDetail(
     dynamic decoded = jsonDecode(response.body);
     if (decoded is! Map || decoded['success'] == false) return task;
 
-    // Some payloads nest fields under `data`.
-    final Map<String, dynamic> payload = Map<String, dynamic>.from(decoded);
+    // Some payloads nest fields under `data`. Live-test /open nests under `task`.
+    Map<String, dynamic> payload = Map<String, dynamic>.from(decoded);
+    if (MobileLiveTestWorkflow.isTask(task)) {
+      payload = MobileLiveTestWorkflow.flattenOpenPayload(payload);
+    }
     final nested = payload['data'];
     if (nested is Map) {
       for (final entry in Map<String, dynamic>.from(nested).entries) {
@@ -567,6 +588,11 @@ Future<Map<String, dynamic>> mergeWorkflowTaskDetail(
       'workflow_task_actions',
       'workflow_action_responses',
       'workflow_prior_picture_choice_lists',
+      'skip_project_gates',
+      'test_mode',
+      'test_execution',
+      'mandatory_uploads_pending',
+      'workflow_mandatory_upload_block_msg',
     ]) {
       if (payload[key] != null) {
         merged[key] = payload[key];
@@ -674,7 +700,7 @@ Future<Map<String, dynamic>> mergeWorkflowTaskDetail(
       'computed_gated=${isWorkflowDelayGated(merged)}',
     );
 
-    return merged;
+    return MobileLiveTestWorkflow.applySkipProjectGates(merged);
   } catch (e) {
     if (e is SessionInvalidatedException) rethrow;
     print('[WorkflowTaskDetail] fetch failed: $e');
@@ -690,7 +716,13 @@ bool isTaskAssignedToUser(Map task, String userId) {
   final normalizedUserId = userId.trim();
   if (normalizedUserId.isEmpty) return false;
 
-  for (final key in ['assigned_to', 'assigned_to_id', 'assignee_id']) {
+  for (final key in [
+    'assigned_to',
+    'assigned_to_id',
+    'assignee_id',
+    'assigned_user_id',
+    'assigned_to_user_id',
+  ]) {
     final value = task[key]?.toString().trim();
     if (value != null && value.isNotEmpty && value == normalizedUserId) {
       return true;
@@ -699,22 +731,35 @@ bool isTaskAssignedToUser(Map task, String userId) {
   return false;
 }
 
-bool isTaskForProject(Map task, String projectId) {
-  final normalizedProjectId = projectId.trim();
-  if (normalizedProjectId.isEmpty) return true;
+bool isTaskForProject(
+  Map task,
+  String projectId, {
+  Iterable<String>? alsoMatchIds,
+}) {
+  final needles = <String>{
+    projectId.trim(),
+    ...?alsoMatchIds?.map((id) => id.trim()),
+  }..removeWhere((id) => id.isEmpty);
+  if (needles.isEmpty) return true;
 
+  var sawProjectField = false;
   for (final key in [
     'project_id',
     'projectId',
     'erp_project_id',
+    'sales_sop_id',
     'sales_sop_project_id',
     'sop_project_id',
+    'sop_id',
   ]) {
-    final value = task[key]?.toString().trim();
-    if (value != null && value.isNotEmpty && value == normalizedProjectId) {
-      return true;
-    }
+    final value = task[key]?.toString().trim() ?? '';
+    if (value.isEmpty) continue;
+    sawProjectField = true;
+    if (needles.contains(value)) return true;
   }
+
+  // Workflow rows often have no project_id. Do not hide them on the project page.
+  if (!sawProjectField) return true;
   return false;
 }
 
@@ -722,6 +767,7 @@ List<dynamic> filterTasksForProjectAndAssignee(
   List<dynamic> tasks, {
   required String userId,
   String? projectId,
+  Iterable<String>? alsoMatchProjectIds,
 }) {
   return tasks.where((task) {
     if (task is! Map) return false;
@@ -730,7 +776,11 @@ List<dynamic> filterTasksForProjectAndAssignee(
     if (!isAssignee && !isReviewer) return false;
     if (projectId != null &&
         projectId.isNotEmpty &&
-        !isTaskForProject(task, projectId)) {
+        !isTaskForProject(
+          task,
+          projectId,
+          alsoMatchIds: alsoMatchProjectIds,
+        )) {
       return false;
     }
     return true;
@@ -769,11 +819,13 @@ Future<Map<String, dynamic>?> findIndentSiteProofTask({
   required String indentId,
   String? projectId,
   bool fetchIfMissing = true,
+  bool includeCompleted = false,
 }) async {
   final needle = indentId.trim();
   if (needle.isEmpty) return null;
 
   Map<String, dynamic>? match;
+  Map<String, dynamic>? completedMatch;
   void scan(List<dynamic> tasks) {
     if (match != null) return;
     for (final raw in tasks) {
@@ -784,7 +836,10 @@ Future<Map<String, dynamic>?> findIndentSiteProofTask({
           '';
       if (taskIndent != needle) continue;
       if (!isIndentPoSiteProofTask(task)) continue;
-      if (isTaskCompletedStatus(task)) continue;
+      if (isTaskCompletedStatus(task)) {
+        completedMatch ??= task;
+        continue;
+      }
       match = task;
       return;
     }
@@ -794,11 +849,13 @@ Future<Map<String, dynamic>?> findIndentSiteProofTask({
   scan(dp.clientPendingTasks);
   scan(dp.clientTimelineTasks);
 
-  if (match != null || !fetchIfMissing) return match;
+  if (match != null || !fetchIfMissing) {
+    return match ?? (includeCompleted ? completedMatch : null);
+  }
 
   final fetched = await _fetchTasksForIndentSiteProof(projectId: projectId);
   scan(fetched);
-  return match;
+  return match ?? (includeCompleted ? completedMatch : null);
 }
 
 Future<List<dynamic>> _fetchTasksForIndentSiteProof({
@@ -913,6 +970,8 @@ class MyTasksScreen extends StatefulWidget {
   final Future<List<dynamic>> Function()? onRefresh;
   final int initialTabIndex;
   final String? focusTaskId;
+  final bool embedded;
+  final bool showCreateTask;
 
   const MyTasksScreen({
     Key? key,
@@ -920,6 +979,8 @@ class MyTasksScreen extends StatefulWidget {
     this.onRefresh,
     this.initialTabIndex = 0,
     this.focusTaskId,
+    this.embedded = false,
+    this.showCreateTask = true,
   }) : super(key: key);
 
   @override
@@ -1007,6 +1068,17 @@ class _MyTasksScreenState extends State<MyTasksScreen>
     _loadCurrentUserId();
   }
 
+  @override
+  void didUpdateWidget(covariant MyTasksScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final nextSignature = _tasksListSignature(widget.tasks);
+    if (nextSignature != _tasksSignature) {
+      _tasks = List<dynamic>.from(widget.tasks);
+      _tasksSignature = nextSignature;
+      _logDelayGatedTasks(_tasks);
+    }
+  }
+
   void _logDelayGatedTasks(List<dynamic> tasks) {
     var gatedCount = 0;
     for (final task in tasks.whereType<Map>()) {
@@ -1055,13 +1127,11 @@ class _MyTasksScreenState extends State<MyTasksScreen>
     return source
         .where((task) {
           if (_selectedProjectId != null) {
-            final taskProjectId = task['project_id']?.toString() ?? '';
-            if (taskProjectId != _selectedProjectId) return false;
+            if (!isTaskForProject(task, _selectedProjectId!)) return false;
           }
 
           if (_showAssignedToMeOnly && _currentUserId != null) {
-            final assignedTo = task['assigned_to']?.toString() ?? '';
-            if (assignedTo != _currentUserId) return false;
+            if (!isTaskAssignedToUser(task, _currentUserId!)) return false;
           }
 
           if (_showCreatedByMeOnly && _currentUserId != null) {
@@ -1388,21 +1458,41 @@ class _MyTasksScreenState extends State<MyTasksScreen>
       if (!mounted) return;
       final nextTasks = List<dynamic>.from(updatedTasks);
       final nextSignature = _tasksListSignature(nextTasks);
-      if (nextSignature != _tasksSignature) {
-        setState(() {
-          _tasks = nextTasks;
-          _tasksSignature = nextSignature;
-          _isRefreshing = false;
-        });
-        _logDelayGatedTasks(nextTasks);
-      } else {
+      setState(() {
+        _tasks = nextTasks;
+        _tasksSignature = nextSignature;
         _isRefreshing = false;
-      }
+      });
+      _logDelayGatedTasks(nextTasks);
     } catch (_) {
       if (mounted) {
         _isRefreshing = false;
       }
     }
+  }
+
+  void _markWorkflowTaskCompletedLocally(String? taskId) {
+    final id = taskId?.trim() ?? '';
+    if (id.isEmpty) return;
+    setState(() {
+      _tasks = _tasks.map((raw) {
+        if (raw is! Map) return raw;
+        if (raw['id']?.toString() != id) return raw;
+        final next = Map<String, dynamic>.from(raw);
+        next['status'] = 'completed';
+        next['workflow_status'] = 'completed';
+        next['workflow_status_label'] = 'Completed';
+        next['can_complete_workflow_task'] = false;
+        next['can_update_workflow_task'] = false;
+        next['can_update'] = false;
+        return next;
+      }).toList();
+      _tasksSignature = _tasksListSignature(_tasks);
+    });
+  }
+
+  Future<void> _onWorkflowTaskFinished(String taskId) async {
+    _markWorkflowTaskCompletedLocally(taskId);
   }
 
   Future<void> _openCreateTask() async {
@@ -1439,8 +1529,80 @@ class _MyTasksScreenState extends State<MyTasksScreen>
         ? 'No completed tasks match your search or filters.'
         : 'Completed tasks will appear here once they are finished.';
 
+    final pendingList = _TaskList(
+      tasks: pendingTasks,
+      emptyTitle: 'No pending tasks',
+      emptyMessage: emptyPendingMessage,
+      emptyIcon: Icons.pending_actions,
+      onWorkflowActionCompleted: _refreshTasks,
+      onWorkflowTaskFinished: _onWorkflowTaskFinished,
+      onCreateTask: _openCreateTask,
+      focusTaskId: widget.focusTaskId,
+    );
+    final completedList = _TaskList(
+      tasks: completedTasks,
+      emptyTitle: 'No completed tasks',
+      emptyMessage: emptyCompletedMessage,
+      emptyIcon: Icons.task_alt,
+      onWorkflowActionCompleted: _refreshTasks,
+      onWorkflowTaskFinished: _onWorkflowTaskFinished,
+      showWorkflowActions: false,
+      onCreateTask: _openCreateTask,
+      focusTaskId: widget.focusTaskId,
+    );
+
+    if (widget.embedded) {
+      return Scaffold(
+        backgroundColor: _premiumBackground,
+        body: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+              child: Container(
+                height: 40,
+                padding: const EdgeInsets.all(3),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF1F4F8),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: TabBar(
+                  controller: _tabController,
+                  indicatorSize: TabBarIndicatorSize.tab,
+                  dividerColor: Colors.transparent,
+                  splashFactory: NoSplash.splashFactory,
+                  overlayColor: WidgetStateProperty.all(Colors.transparent),
+                  labelPadding: EdgeInsets.zero,
+                  indicator: BoxDecoration(
+                    color: kTaskNavy,
+                    borderRadius: BorderRadius.circular(9),
+                  ),
+                  labelColor: Colors.white,
+                  unselectedLabelColor: _premiumMuted,
+                  labelStyle: const TextStyle(
+                      fontSize: 12, fontWeight: FontWeight.w700),
+                  unselectedLabelStyle: const TextStyle(
+                      fontSize: 12, fontWeight: FontWeight.w600),
+                  tabs: [
+                    Tab(text: 'Pending (${pendingTasks.length})'),
+                    Tab(text: 'Done (${completedTasks.length})'),
+                  ],
+                ),
+              ),
+            ),
+            Expanded(
+              child: TabBarView(
+                controller: _tabController,
+                children: [pendingList, completedList],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
     return ThemedScaffold(
       title: 'My tasks',
+      automaticallyImplyLeading: !widget.embedded,
       backgroundColor: _premiumBackground,
       actions: [
         IconButton(
@@ -1664,33 +1826,34 @@ class _MyTasksScreenState extends State<MyTasksScreen>
                         ),
                       ),
                     ),
-                    Material(
-                      color: kTaskNavy,
-                      borderRadius: BorderRadius.circular(10),
-                      child: InkWell(
-                        onTap: _openCreateTask,
+                    if (widget.showCreateTask)
+                      Material(
+                        color: kTaskNavy,
                         borderRadius: BorderRadius.circular(10),
-                        child: const Padding(
-                          padding:
-                              EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(Icons.add, color: Colors.white, size: 16),
-                              SizedBox(width: 4),
-                              Text(
-                                'New task',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 12.5,
-                                  fontWeight: FontWeight.w700,
+                        child: InkWell(
+                          onTap: _openCreateTask,
+                          borderRadius: BorderRadius.circular(10),
+                          child: const Padding(
+                            padding: EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 8),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.add, color: Colors.white, size: 16),
+                                SizedBox(width: 4),
+                                Text(
+                                  'New task',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 12.5,
+                                    fontWeight: FontWeight.w700,
+                                  ),
                                 ),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
                         ),
                       ),
-                    ),
                   ],
                 );
               },
@@ -1706,6 +1869,7 @@ class _MyTasksScreenState extends State<MyTasksScreen>
                   emptyMessage: emptyPendingMessage,
                   emptyIcon: Icons.pending_actions,
                   onWorkflowActionCompleted: _refreshTasks,
+                  onWorkflowTaskFinished: _onWorkflowTaskFinished,
                   onCreateTask: _openCreateTask,
                   focusTaskId: widget.focusTaskId,
                 ),
@@ -1715,6 +1879,7 @@ class _MyTasksScreenState extends State<MyTasksScreen>
                   emptyMessage: emptyCompletedMessage,
                   emptyIcon: Icons.task_alt,
                   onWorkflowActionCompleted: _refreshTasks,
+                  onWorkflowTaskFinished: _onWorkflowTaskFinished,
                   showWorkflowActions: false,
                   onCreateTask: _openCreateTask,
                   focusTaskId: widget.focusTaskId,
@@ -1786,6 +1951,7 @@ class _TaskList extends StatelessWidget {
   final String emptyMessage;
   final IconData emptyIcon;
   final Future<void> Function() onWorkflowActionCompleted;
+  final Future<void> Function(String taskId)? onWorkflowTaskFinished;
   final bool showWorkflowActions;
   final VoidCallback? onCreateTask;
   final String? focusTaskId;
@@ -1796,6 +1962,7 @@ class _TaskList extends StatelessWidget {
     required this.emptyMessage,
     required this.emptyIcon,
     required this.onWorkflowActionCompleted,
+    this.onWorkflowTaskFinished,
     this.showWorkflowActions = true,
     this.onCreateTask,
     this.focusTaskId,
@@ -1844,6 +2011,7 @@ class _TaskList extends StatelessWidget {
           task: task,
           accentIndex: index,
           onWorkflowActionCompleted: onWorkflowActionCompleted,
+          onWorkflowTaskFinished: onWorkflowTaskFinished,
           showWorkflowActions: showWorkflowActions,
           isSelected:
               focusId.isNotEmpty && task['id']?.toString() == focusId,
@@ -1856,6 +2024,7 @@ class _TaskList extends StatelessWidget {
 class _TaskCard extends StatefulWidget {
   final Map<String, dynamic> task;
   final Future<void> Function() onWorkflowActionCompleted;
+  final Future<void> Function(String taskId)? onWorkflowTaskFinished;
   final bool showWorkflowActions;
   final int accentIndex;
   final bool isSelected;
@@ -1863,6 +2032,7 @@ class _TaskCard extends StatefulWidget {
   const _TaskCard({
     required this.task,
     required this.onWorkflowActionCompleted,
+    this.onWorkflowTaskFinished,
     this.showWorkflowActions = true,
     this.accentIndex = 0,
     this.isSelected = false,
@@ -1926,12 +2096,16 @@ class _TaskCardState extends State<_TaskCard> {
     }
   }
 
-  Future<void> _loadWorkflowDetail() async {
+  Future<void> _loadWorkflowDetail({bool hideActions = true}) async {
     if (_task['is_workflow_task'] != true) return;
 
-    setState(() {
-      _isLoadingWorkflowDetail = true;
-    });
+    final alreadyComplete =
+        kCompletedTaskStatuses.contains(normalizeTaskStatusValue(_task));
+    if (hideActions && !alreadyComplete && mounted) {
+      setState(() {
+        _isLoadingWorkflowDetail = true;
+      });
+    }
 
     final merged = await mergeWorkflowTaskDetail(_task);
     if (!mounted) return;
@@ -1943,8 +2117,8 @@ class _TaskCardState extends State<_TaskCard> {
   }
 
   Future<void> _handleWorkflowActionCompleted() async {
-    await widget.onWorkflowActionCompleted();
-    await _loadWorkflowDetail();
+    unawaited(widget.onWorkflowActionCompleted());
+    await _loadWorkflowDetail(hideActions: false);
   }
 
   Future<void> _handleDelayExpired() async {
@@ -2001,7 +2175,6 @@ class _TaskCardState extends State<_TaskCard> {
   @override
   Widget build(BuildContext context) {
     final task = _task;
-    final note = (task['note'] ?? task['s_note'] ?? '').toString().trim();
     final taskId = task['id']?.toString() ?? '';
     final projectName = task['project_name']?.toString() ?? '';
     final assignedToName = task['assigned_to_name']?.toString() ?? '';
@@ -2016,7 +2189,7 @@ class _TaskCardState extends State<_TaskCard> {
     final statusLabel = workflowStatusDisplayLabel(task);
     final workflowActions =
         filterVisibleWorkflowActions(task, _workflowActions);
-    final title = _taskTitle(note, taskId, _workflowActions);
+    final title = workflowTaskDisplayTitle(task);
     final uploadedPhotos = _uploadedPhotos;
     final showApprovalButtons = shouldShowWorkflowApprovalButtons(task);
     final completeAction = _findSwipeCompleteAction(workflowActions);
@@ -2094,6 +2267,7 @@ class _TaskCardState extends State<_TaskCard> {
               task: task,
               actions: workflowActions,
               onActionCompleted: _handleWorkflowActionCompleted,
+              onTaskFinished: widget.onWorkflowTaskFinished,
               onDelayExpired: _handleDelayExpired,
             ),
         ],
@@ -2281,11 +2455,12 @@ class _TaskCardState extends State<_TaskCard> {
         throw Exception('Missing credentials. Please log in again.');
       }
 
-      final response = await http
-          .post(
-            Uri.parse(
-              '$_workflowApiBaseUrl/API/workflow/item-runs/$runId/complete',
+      final response = await _workflowPost(
+            _workflowRequestUri(
+              '/API/workflow/item-runs/$runId/complete',
+              _task,
             ),
+            _task,
             headers: {
               'Content-Type': 'application/json',
               'X-Api-Token': apiToken,
@@ -2320,6 +2495,11 @@ class _TaskCardState extends State<_TaskCard> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(message), backgroundColor: Colors.green),
       );
+      final taskId = _task['id']?.toString() ?? '';
+      final taskCompleted = decoded is Map && decoded['task_completed'] == true;
+      if (taskCompleted && taskId.isNotEmpty) {
+        await widget.onWorkflowTaskFinished?.call(taskId);
+      }
       await _handleWorkflowActionCompleted();
       return true;
     } catch (e) {
@@ -2495,47 +2675,6 @@ class _TaskCardState extends State<_TaskCard> {
     return <Map<String, dynamic>>[];
   }
 
-  String _taskTitle(
-    String note,
-    String taskId,
-    List<Map<String, dynamic>> workflowActions,
-  ) {
-    final baseTitle = note.isNotEmpty ? _toSentenceCase(note) : 'Task #$taskId';
-    final followupItem = _checklistFollowupItemLabel(workflowActions);
-
-    if (followupItem == null || followupItem.isEmpty) return baseTitle;
-    if (baseTitle.toLowerCase().contains(followupItem.toLowerCase())) {
-      return baseTitle;
-    }
-
-    return '$baseTitle — $followupItem';
-  }
-
-  String? _checklistFollowupItemLabel(
-    List<Map<String, dynamic>> workflowActions,
-  ) {
-    for (final action in workflowActions) {
-      if (action['type']?.toString() != 'user_checklist_followup') continue;
-
-      final directItems = _mapListFlexible(action['items']);
-      if (directItems.isNotEmpty) {
-        final label =
-            _firstString(directItems.first, ['label', 'name', 'title']);
-        if (label != null) return label;
-      }
-
-      final priorChecklist = _configMap(action['prior_checklist']);
-      final priorItems = _mapListFlexible(priorChecklist?['items']);
-      if (priorItems.isNotEmpty) {
-        final label =
-            _firstString(priorItems.first, ['label', 'name', 'title']);
-        if (label != null) return label;
-      }
-    }
-
-    return null;
-  }
-
   List<String> get _uploadedPhotos => _taskUploadedPhotoUrls(_task);
 
   String _formatDate(String value) {
@@ -2545,11 +2684,6 @@ class _TaskCardState extends State<_TaskCard> {
     } catch (_) {
       return value;
     }
-  }
-
-  String _toSentenceCase(String value) {
-    if (value.isEmpty) return value;
-    return value[0].toUpperCase() + value.substring(1);
   }
 }
 
@@ -2916,8 +3050,9 @@ class _WorkflowManagerApprovalSectionState
         payload['reason'] = note.trim();
       }
 
-      final response = await ApiHttp.post(
-            Uri.parse('$_workflowApiBaseUrl$endpoint'),
+      final response = await _workflowPost(
+            _workflowRequestUri(endpoint, widget.task),
+            widget.task,
             headers: {
               'Content-Type': 'application/json',
               'X-Api-Token': apiToken,
@@ -3125,12 +3260,14 @@ class _WorkflowActionsSection extends StatelessWidget {
   final Map<String, dynamic> task;
   final List<Map<String, dynamic>> actions;
   final Future<void> Function() onActionCompleted;
+  final Future<void> Function(String taskId)? onTaskFinished;
   final VoidCallback? onDelayExpired;
 
   const _WorkflowActionsSection({
     required this.task,
     required this.actions,
     required this.onActionCompleted,
+    this.onTaskFinished,
     this.onDelayExpired,
   });
 
@@ -3168,6 +3305,7 @@ class _WorkflowActionsSection extends StatelessWidget {
                   task: task,
                   action: action,
                   onActionCompleted: onActionCompleted,
+                  onTaskFinished: onTaskFinished,
                   onDelayExpired: onDelayExpired,
                 ),
               )
@@ -3315,6 +3453,7 @@ class _IndentProofReviewScreenState extends State<_IndentProofReviewScreen> {
         itemRunId: _itemRunId,
         action: action,
         comment: _reviewCommentController.text.trim(),
+        task: _task,
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -3378,11 +3517,12 @@ class _IndentProofReviewScreenState extends State<_IndentProofReviewScreen> {
     setState(() => _approving = true);
     try {
       final credentials = await _workflowCredentials();
-      final response = await http
-          .post(
-            Uri.parse(
-              '$_workflowApiBaseUrl/API/workflow/item-runs/$_itemRunId/complete',
+      final response = await _workflowPost(
+            _workflowRequestUri(
+              '/API/workflow/item-runs/$_itemRunId/complete',
+              _task,
             ),
+            _task,
             headers: {
               'Content-Type': 'application/json',
               'X-Api-Token': credentials.apiToken,
@@ -3841,6 +3981,20 @@ class _IndentSiteProofScreenState extends State<_IndentSiteProofScreen> {
         ) ??
         500;
 
+    if (MobileLiveTestWorkflow.isTask(_task)) {
+      if (!mounted) return;
+      setState(() {
+        _checkingLocation = false;
+        _siteConfigured = true;
+        _onSite = true;
+        _locationError = null;
+        _openSettingsHint = false;
+        _distanceMeters = 0;
+        _radiusMeters = radius;
+      });
+      return;
+    }
+
     if (!available || siteLocation == null) {
       if (!mounted) return;
       setState(() {
@@ -3876,8 +4030,10 @@ class _IndentSiteProofScreenState extends State<_IndentSiteProofScreen> {
 
   bool _stepLocked(Map<String, dynamic> action) {
     if (_stepDone(action)) return false;
-    if (!_siteConfigured) return true;
-    if (!_onSite) return true;
+    if (!MobileLiveTestWorkflow.isTask(_task)) {
+      if (!_siteConfigured) return true;
+      if (!_onSite) return true;
+    }
     if (isWorkflowDelayGated(_task) || !canUpdateWorkflowTask(_task)) {
       return true;
     }
@@ -3975,7 +4131,8 @@ class _IndentSiteProofScreenState extends State<_IndentSiteProofScreen> {
                         ),
                       ),
                     ),
-                  _IndentSiteProofGpsBanner(
+                  if (!MobileLiveTestWorkflow.isTask(_task))
+                    _IndentSiteProofGpsBanner(
                     isChecking: _checkingLocation,
                     onSite: _onSite,
                     siteConfigured: _siteConfigured,
@@ -4522,6 +4679,7 @@ class WorkflowActionButton extends StatefulWidget {
   final Map<String, dynamic> task;
   final Map<String, dynamic> action;
   final Future<void> Function() onActionCompleted;
+  final Future<void> Function(String taskId)? onTaskFinished;
   final VoidCallback? onDelayExpired;
   final bool expand;
 
@@ -4530,6 +4688,7 @@ class WorkflowActionButton extends StatefulWidget {
     required this.task,
     required this.action,
     required this.onActionCompleted,
+    this.onTaskFinished,
     this.onDelayExpired,
     this.expand = false,
   }) : super(key: key);
@@ -4543,9 +4702,70 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
   bool _loggedViewPriorResponseConfig = false;
   bool _loggedChecklistFollowupConfig = false;
   bool _loggedSlotConfirmationConfig = false;
+  bool _autoPlayScheduled = false;
 
   Map<String, dynamic> get action => widget.action;
   Map<String, dynamic> get task => widget.task;
+
+  @override
+  void initState() {
+    super.initState();
+    MobileLiveTestAutoPlay.instance.addListener(_onAutoPlayChanged);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _tryAutoPlay());
+  }
+
+  @override
+  void dispose() {
+    MobileLiveTestAutoPlay.instance.removeListener(_onAutoPlayChanged);
+    super.dispose();
+  }
+
+  void _onAutoPlayChanged() {
+    if (!mounted) return;
+    _tryAutoPlay();
+  }
+
+  Future<void> _tryAutoPlay() async {
+    if (!mounted || _autoPlayScheduled || _isSubmitting) return;
+    final play = MobileLiveTestAutoPlay.instance;
+    if (!play.running) return;
+    final type = _actionType;
+    if (type == 'delay_timer' || type.isEmpty) return;
+    if (isWorkflowDelayGated(task) ||
+        !canUpdateWorkflowTask(task) ||
+        _truthyValue(action['blocked'])) {
+      return;
+    }
+    final key =
+        '${_resolvedWorkflowItemRunId}|${action['id']}|$type';
+    if (!play.tryClaim(key)) return;
+    _autoPlayScheduled = true;
+    await Future<void>.delayed(play.openDelay);
+    if (!mounted || !play.running) {
+      play.finishAction();
+      return;
+    }
+    try {
+      await _handleTap(type);
+    } finally {
+      play.finishAction();
+    }
+  }
+
+  Future<void> _finishWorkflowAction({bool taskCompleted = false}) async {
+    if (taskCompleted) {
+      final taskId = task['id']?.toString().trim() ?? '';
+      if (taskId.isNotEmpty) {
+        await widget.onTaskFinished?.call(taskId);
+      }
+    }
+    await widget.onActionCompleted();
+  }
+
+  void _refreshAfterClosedSheet(bool? submitted) {
+    if (submitted != true || !mounted) return;
+    unawaited(widget.onActionCompleted());
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -4690,17 +4910,18 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
 
     try {
       final credentials = await _credentials();
-      final uri = Uri.parse(
-        '$_workflowApiBaseUrl/API/workflow/item-runs/$runId/actions',
-      ).replace(
-        queryParameters: {
+      final uri = _workflowRequestUri(
+        '/API/workflow/item-runs/$runId/actions',
+        task,
+        extraQuery: {
           'user_id': credentials.userId,
           'api_token': credentials.apiToken,
         },
       );
 
-      final response = await ApiHttp.get(
+      final response = await _workflowGet(
             uri,
+            task,
             headers: {'X-Api-Token': credentials.apiToken},
           )
           .timeout(const Duration(seconds: 20));
@@ -4713,10 +4934,15 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
         return _FreshWorkflowActionContext(action: action);
       }
 
-      final decoded = jsonDecode(response.body);
-      if (decoded is! Map || decoded['success'] == false) {
+      final decodedRaw = jsonDecode(response.body);
+      if (decodedRaw is! Map || decodedRaw['success'] == false) {
         return _FreshWorkflowActionContext(action: action);
       }
+      final decoded = MobileLiveTestWorkflow.isTask(task)
+          ? MobileLiveTestWorkflow.flattenOpenPayload(
+              Map<String, dynamic>.from(decodedRaw),
+            )
+          : Map<String, dynamic>.from(decodedRaw);
 
       bool? canUpdate;
       if (decoded.containsKey('can_update') ||
@@ -4969,6 +5195,7 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
     required Map<String, dynamic> payload,
     String successMessage = 'Action completed successfully',
     bool refreshOnSuccess = true,
+    bool showActionLoading = true,
   }) async {
     if (!_guardActionAllowed()) return false;
 
@@ -4979,14 +5206,17 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
       return false;
     }
 
-    setState(() {
-      _isSubmitting = true;
-    });
+    if (showActionLoading && mounted) {
+      setState(() {
+        _isSubmitting = true;
+      });
+    }
 
     try {
       final credentials = await _credentials();
-      final response = await ApiHttp.post(
-            Uri.parse('$_workflowApiBaseUrl$endpoint'),
+      final response = await _workflowPost(
+            _workflowRequestUri(endpoint, task),
+            task,
             headers: {
               'Content-Type': 'application/json',
               'X-Api-Token': credentials.apiToken,
@@ -4994,6 +5224,7 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
             body: jsonEncode({
               'user_id': credentials.userId,
               'api_token': credentials.apiToken,
+              ...MobileLiveTestWorkflow.submitPayloadFlags(task),
               ...payload,
             }),
           )
@@ -5006,9 +5237,17 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
       );
 
       final message = _successMessageOrThrow(response, successMessage);
+      dynamic decoded;
+      try {
+        decoded = jsonDecode(response.body);
+      } catch (_) {
+        decoded = null;
+      }
+      final taskCompleted =
+          decoded is Map && decoded['task_completed'] == true;
       _showSnackBar(message);
       if (refreshOnSuccess) {
-        await widget.onActionCompleted();
+        unawaited(_finishWorkflowAction(taskCompleted: taskCompleted));
       }
       return true;
     } catch (e) {
@@ -5018,12 +5257,11 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
           cleaned.toLowerCase().contains('cannot be worked on yet') ||
           _looksLikeIndentReasonBlockMessage(cleaned) ||
           cleaned.toLowerCase().contains('indent_reason')) {
-        // Server rejected complete / action — refresh lock state, keep task open.
-        await widget.onActionCompleted();
+        unawaited(widget.onActionCompleted());
       }
       return false;
     } finally {
-      if (mounted) {
+      if (showActionLoading && mounted) {
         setState(() {
           _isSubmitting = false;
         });
@@ -5035,6 +5273,7 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
     String? decision,
     String? note,
     bool refreshOnSuccess = true,
+    bool showActionLoading = true,
   }) async {
     if (!canCompleteWorkflowTask(task) || _truthyValue(action['blocked'])) {
       _showSnackBar(indentReasonBlockMessage(task), isError: true);
@@ -5053,6 +5292,7 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
       payload: payload,
       successMessage: 'Workflow task updated',
       refreshOnSuccess: refreshOnSuccess,
+      showActionLoading: showActionLoading,
     );
   }
 
@@ -5070,14 +5310,17 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
       },
       successMessage: 'Approved successfully',
       refreshOnSuccess: false,
+      showActionLoading: false,
     );
   }
 
   String _workflowActionSubmitEndpoint(String fallbackActionPath) {
-    final configured = action['submit_endpoint']?.toString().trim() ?? '';
-    if (configured.isNotEmpty) return configured;
-    return '/API/workflow/item-runs/$_resolvedWorkflowItemRunId/'
-        '$fallbackActionPath';
+    return _submitEndpointForAction(action, fallbackActionPath);
+  }
+
+  Future<bool> _completeLiveTestWithoutProject() async {
+    if (!MobileLiveTestWorkflow.skipProjectGates(task)) return false;
+    return _submitComplete(refreshOnSuccess: false);
   }
 
   void _logIndentsCreated(http.Response response, String tag) {
@@ -5104,6 +5347,7 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
         'user_id': credentials.userId,
         'api_token': credentials.apiToken,
         'action_id': actionId,
+        ...MobileLiveTestWorkflow.submitPayloadFlags(task),
       };
       if (customLines.isNotEmpty) {
         payload['custom_lines'] = customLines;
@@ -5112,8 +5356,9 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
         payload['line_quantities'] = lineQuantities;
       }
 
-      final response = await ApiHttp.post(
-            Uri.parse(_absoluteWorkflowUrl(endpoint)),
+      final response = await _workflowPost(
+            _workflowRequestUri(endpoint, task),
+            task,
             headers: {
               'Content-Type': 'application/json',
               'X-Api-Token': credentials.apiToken,
@@ -5136,7 +5381,15 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
       _showSnackBar(message);
       return true;
     } catch (e) {
-      _showSnackBar(e.toString().replaceAll('Exception: ', ''), isError: true);
+      final cleaned = e.toString().replaceAll('Exception: ', '');
+      if (MobileLiveTestWorkflow.skipProjectGates(task) &&
+          MobileLiveTestWorkflow.looksLikeSkippedProjectGate(
+            message: cleaned,
+            actionType: 'text_list',
+          )) {
+        if (await _completeLiveTestWithoutProject()) return true;
+      }
+      _showSnackBar(cleaned, isError: true);
       return false;
     }
   }
@@ -5212,6 +5465,7 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
     final uploadSources = _resolveWorkflowUploadSources(
       action,
       allowedFormats: _stringList(action['allowed_formats']),
+      task: task,
     );
     final allowedFormats = uploadSources.allAllowedFormats.isNotEmpty
         ? uploadSources.allAllowedFormats
@@ -5245,10 +5499,7 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
     );
 
     if (submitted == true && mounted) {
-      await Future<void>.delayed(Duration(milliseconds: 250));
-      if (mounted) {
-        await widget.onActionCompleted();
-      }
+      _refreshAfterClosedSheet(true);
     }
   }
 
@@ -5269,7 +5520,7 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
 
     _logSlotConfirmationConfig();
 
-    final confirmed = await showModalBottomSheet<bool>(
+    final confirmed = await showModalBottomSheet<Object>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
@@ -5293,10 +5544,56 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
     );
 
     if (confirmed == true && mounted) {
-      await Future<void>.delayed(Duration(milliseconds: 250));
-      if (mounted) {
-        await widget.onActionCompleted();
+      _refreshAfterClosedSheet(true);
+    } else if (confirmed is _PendingSlotConfirmationSubmit && mounted) {
+      await _finishSlotConfirmationSubmit(confirmed);
+    }
+  }
+
+  Future<void> _finishSlotConfirmationSubmit(
+    _PendingSlotConfirmationSubmit request,
+  ) async {
+    var saved = false;
+    String? error;
+    try {
+      saved = await _submitSlotConfirmation(
+        acceptedSlotIndex: request.acceptedSlotIndex,
+        comment: request.comment,
+      ).timeout(const Duration(seconds: 12));
+    } catch (e) {
+      error = e.toString().replaceAll('Exception: ', '');
+    }
+
+    if (!mounted) return;
+    try {
+      final fresh = await _loadFreshWorkflowActionContext();
+      if (_slotSelectionLooksSaved(fresh.action) ||
+          _truthyValue(fresh.action['submitted'])) {
+        saved = true;
       }
+    } catch (_) {}
+
+    if (!mounted) return;
+    if (saved) {
+      await _showSlotOutcomeSheet(
+        saved: true,
+        title: 'Slot confirmed',
+        message: 'Done. The selected slot was saved.',
+      );
+      if (mounted) _refreshAfterClosedSheet(true);
+      return;
+    }
+
+    final retry = await _showSlotOutcomeSheet(
+      saved: false,
+      title: 'Slot not saved',
+      message: (error == null || error.trim().isEmpty)
+          ? 'The slot was not saved. Please select again and submit.'
+          : '$error\n\nPlease select a slot again and submit.',
+      retryLabel: 'Select again',
+    );
+    if (retry == true && mounted) {
+      await _showSlotConfirmationSheet();
     }
   }
 
@@ -5349,6 +5646,7 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
       payload: payload,
       successMessage: 'Slot confirmed',
       refreshOnSuccess: false,
+      showActionLoading: false,
     );
   }
 
@@ -5366,12 +5664,15 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
         'user_id': int.tryParse(credentials.userId) ?? credentials.userId,
         'api_token': credentials.apiToken,
         'action_id': action['id']?.toString() ?? '',
-        'from_project_id':
-            int.tryParse(fromProjectId) ?? fromProjectId,
         'materials': materials,
         'difference_cost':
             double.tryParse(differenceCost?.trim() ?? '') ?? 0,
+        ...MobileLiveTestWorkflow.submitPayloadFlags(task),
       };
+      if (fromProjectId.trim().isNotEmpty) {
+        payload['from_project_id'] =
+            int.tryParse(fromProjectId) ?? fromProjectId;
+      }
       if (shiftingDate != null && shiftingDate.trim().isNotEmpty) {
         payload['shifting_date'] = shiftingDate.trim();
       }
@@ -5381,8 +5682,9 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
         payload['indent_purpose'] = indentPurpose;
       }
 
-      final response = await ApiHttp.post(
-            Uri.parse(_absoluteWorkflowUrl(submitEndpoint)),
+      final response = await _workflowPost(
+            _workflowRequestUri(submitEndpoint, task),
+            task,
             headers: {
               'Content-Type': 'application/json',
               'X-Api-Token': credentials.apiToken,
@@ -5423,7 +5725,20 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
         taskRouted: taskRouted,
       );
     } catch (e) {
-      _showSnackBar(e.toString().replaceAll('Exception: ', ''), isError: true);
+      final cleaned = e.toString().replaceAll('Exception: ', '');
+      if (MobileLiveTestWorkflow.skipProjectGates(task) &&
+          MobileLiveTestWorkflow.looksLikeSkippedProjectGate(
+            message: cleaned,
+            actionType: 'kyp_material_shift',
+          )) {
+        if (await _completeLiveTestWithoutProject()) {
+          return const _KypMaterialShiftSubmitResult(
+            finalList: [],
+            taskRouted: true,
+          );
+        }
+      }
+      _showSnackBar(cleaned, isError: true);
       return null;
     }
   }
@@ -5490,16 +5805,15 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
                 initialFinalList: initialFinalList,
                 draftFromProjectId:
                     action['from_project_id']?.toString().trim(),
+                skipProjectGates:
+                    MobileLiveTestWorkflow.skipProjectGates(task),
                 onSubmit: _submitKypMaterialShift,
               ),
       ),
     );
 
     if (submitted == true && mounted) {
-      await Future<void>.delayed(Duration(milliseconds: 250));
-      if (mounted) {
-        await widget.onActionCompleted();
-      }
+      _refreshAfterClosedSheet(true);
     }
   }
 
@@ -5557,13 +5871,15 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
 
     try {
       final credentials = await _credentials();
-      final uri = Uri.parse(
-        '$_workflowApiBaseUrl/API/workflow/item-runs/$_resolvedWorkflowItemRunId/user-checklist-followup',
+      final uri = _workflowRequestUri(
+        '/API/workflow/item-runs/$_resolvedWorkflowItemRunId/user-checklist-followup',
+        task,
       );
 
       if (!hasFiles) {
-        final response = await ApiHttp.post(
+        final response = await _workflowPost(
               uri,
+              task,
               headers: {'Content-Type': 'application/json'},
               body: jsonEncode({
                 'user_id': credentials.userId,
@@ -5582,6 +5898,7 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
       }
 
       final request = http.MultipartRequest('POST', uri);
+      MobileLiveTestWorkflow.applyToMultipart(request, task);
       request.fields['user_id'] = credentials.userId;
       request.fields['api_token'] = credentials.apiToken;
       request.fields['action_id'] = action['id']?.toString() ?? '';
@@ -5600,7 +5917,7 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
       }
 
       final streamedResponse =
-          await ApiHttp.send(request).timeout(Duration(seconds: 60));
+          await _workflowSend(request, task).timeout(Duration(seconds: 60));
       final response = await http.Response.fromStream(streamedResponse);
       final message = _successMessageOrThrow(
         response,
@@ -5614,14 +5931,10 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
     }
   }
 
-  Future<void> _closeSheetAndRefresh(BuildContext sheetContext) async {
+  void _closeSheetAndRefresh(NavigatorState navigator) {
+    _popWorkflowSheet(navigator);
     if (!mounted) return;
-    if (sheetContext.mounted) {
-      Navigator.pop(sheetContext);
-      await Future<void>.delayed(Duration(milliseconds: 350));
-    }
-    if (!mounted) return;
-    await widget.onActionCompleted();
+    unawaited(widget.onActionCompleted());
   }
 
   Future<void> _showUploadSheet() async {
@@ -5657,7 +5970,7 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
       return;
     }
     final commentController = TextEditingController();
-    final uploadSources = _resolveWorkflowUploadSources(uploadAction);
+    final uploadSources = _resolveWorkflowUploadSources(uploadAction, task: task);
     final allowedFormats = uploadSources.allAllowedFormats.isNotEmpty
         ? uploadSources.allAllowedFormats
         : _stringList(uploadAction['allowed_formats']);
@@ -5711,7 +6024,9 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
     List<_SelectedUploadFile> selectedFiles = <_SelectedUploadFile>[];
     bool isSubmitting = false;
     bool refreshAfterClose = false;
-    bool isCheckingLocation = needsGps;
+    bool taskFinishedAfterClose = false;
+    bool isCheckingLocation =
+        needsGps && !MobileLiveTestWorkflow.isTask(task);
     String? nearSiteError;
     bool openSettingsHint = false;
     double? distanceMeters;
@@ -5742,6 +6057,14 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
 
     Future<_NearSiteCheckResult> checkNearSite() async {
       Future<_NearSiteCheckResult> runCheck() async {
+        if (MobileLiveTestWorkflow.isTask(task)) {
+          return _NearSiteCheckResult(
+            ok: true,
+            distanceMeters: 0,
+            latitude: siteLocation?.latitude ?? 12.9716,
+            longitude: siteLocation?.longitude ?? 77.5946,
+          );
+        }
         if (!needsGps) {
           return const _NearSiteCheckResult(ok: true);
         }
@@ -5827,6 +6150,7 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
         context,
         result,
         siteLocation: siteLocation,
+        task: task,
       );
     }
 
@@ -6018,6 +6342,7 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
 
             Future<void> submit() async {
               FocusManager.instance.primaryFocus?.unfocus();
+              final navigator = Navigator.of(sheetContext);
               var closeSheet = false;
               if (allowFileUpload && selectedFiles.length < minFiles) {
                 _showSnackBar('Please select at least $minFiles file(s).',
@@ -6085,7 +6410,7 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
                 final request = http.MultipartRequest(
                   'POST',
                   Uri.parse(
-                    '$_workflowApiBaseUrl/API/workflow/item-runs/$_resolvedWorkflowItemRunId/upload',
+                    _workflowRequestUri('/API/workflow/item-runs/$_resolvedWorkflowItemRunId/upload', task).toString(),
                   ),
                 );
                 request.fields['user_id'] = credentials.userId;
@@ -6122,20 +6447,25 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
                 _appendWorkflowVideoDurationField(request, selectedFiles);
 
                 final streamedResponse =
-                    await ApiHttp.send(request).timeout(Duration(seconds: 60));
+                    await _workflowSend(request, task).timeout(Duration(seconds: 60));
                 final response =
                     await http.Response.fromStream(streamedResponse);
                 final message = _successMessageOrThrow(
                   response,
                   'Files uploaded successfully',
                 );
-                if (!mounted) return;
+                dynamic decoded;
+                try {
+                  decoded = jsonDecode(response.body);
+                } catch (_) {
+                  decoded = null;
+                }
                 _showSnackBar(message);
                 closeSheet = true;
                 refreshAfterClose = true;
-                if (sheetContext.mounted) {
-                  Navigator.pop(sheetContext);
-                }
+                taskFinishedAfterClose =
+                    decoded is Map && decoded['task_completed'] == true;
+                _popWorkflowSheet(navigator);
               } catch (e) {
                 final errorMessage =
                     e.toString().replaceAll('Exception: ', '').trim();
@@ -6155,7 +6485,25 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
               }
             }
 
-            return _BottomSheetFrame(
+            return LiveTestAutoPlayHook(
+              onPlay: () async {
+                if (!MobileLiveTestAutoPlay.instance.running) return;
+                if (allowFileUpload && selectedFiles.isEmpty) {
+                  final path = await writeMobileLiveTestSampleJpeg();
+                  selectedFiles = [
+                    _SelectedUploadFile(
+                      path: path,
+                      name: 'auto_run.jpg',
+                      capturedAt: DateTime.now(),
+                    ),
+                  ];
+                  setSheetState(() {});
+                  await Future<void>.delayed(const Duration(milliseconds: 500));
+                }
+                if (!MobileLiveTestAutoPlay.instance.running) return;
+                await submit();
+              },
+              child: _BottomSheetFrame(
               title: _label('Upload'),
               icon: Icons.upload_file,
               child: Column(
@@ -6191,7 +6539,7 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
                       ),
                     ),
                   ],
-                  if (needsGps) ...[
+                  if (needsGps && !MobileLiveTestWorkflow.isTask(task)) ...[
                     SizedBox(height: 12),
                     _NearSiteStatusBanner(
                       isChecking: isCheckingLocation,
@@ -6260,16 +6608,18 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
                   ),
                 ],
               ),
+            ),
             );
           },
         );
       },
     );
 
-    await Future<void>.delayed(Duration(milliseconds: 350));
-    commentController.dispose();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      commentController.dispose();
+    });
     if (refreshAfterClose && mounted) {
-      await widget.onActionCompleted();
+      unawaited(_finishWorkflowAction(taskCompleted: taskFinishedAfterClose));
     }
   }
 
@@ -6311,7 +6661,7 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
         ensureSaveDocumentVisible();
       }
     });
-    final uploadSources = _resolveWorkflowUploadSources(uploadAction);
+    final uploadSources = _resolveWorkflowUploadSources(uploadAction, task: task);
     final cameraOnly = uploadSources.cameraOnly;
     final allowComment = uploadAction['allow_comment'] == true;
     final requireComment = uploadAction['require_comment'] == true;
@@ -6350,7 +6700,9 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
     int? deletingIndex;
     int? confirmDeleteIndex;
     bool refreshAfterClose = false;
-    bool isCheckingLocation = needsGps;
+    bool taskFinishedAfterClose = false;
+    bool isCheckingLocation =
+        needsGps && !MobileLiveTestWorkflow.isTask(task);
     String? nearSiteError;
     bool openSettingsHint = false;
     String? percentError;
@@ -6383,6 +6735,14 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
 
     Future<_NearSiteCheckResult> checkNearSite() async {
       Future<_NearSiteCheckResult> runCheck() async {
+        if (MobileLiveTestWorkflow.isTask(task)) {
+          return _NearSiteCheckResult(
+            ok: true,
+            distanceMeters: 0,
+            latitude: siteLocation?.latitude ?? 12.9716,
+            longitude: siteLocation?.longitude ?? 77.5946,
+          );
+        }
         if (!needsGps) {
           return const _NearSiteCheckResult(ok: true);
         }
@@ -6455,6 +6815,7 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
         context,
         result,
         siteLocation: siteLocation,
+        task: task,
       );
     }
 
@@ -6721,7 +7082,7 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
                 final request = http.MultipartRequest(
                   'POST',
                   Uri.parse(
-                    '$_workflowApiBaseUrl/API/workflow/item-runs/$_resolvedWorkflowItemRunId/upload',
+                    _workflowRequestUri('/API/workflow/item-runs/$_resolvedWorkflowItemRunId/upload', task).toString(),
                   ),
                 );
                 request.fields['user_id'] = credentials.userId;
@@ -6730,8 +7091,7 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
                     uploadAction['id']?.toString() ?? '';
                 request.fields['delete_progress_index'] = index.toString();
 
-                final streamedResponse = await request
-                    .send()
+                final streamedResponse = await _workflowSend(request, task)
                     .timeout(const Duration(seconds: 60));
                 final response =
                     await http.Response.fromStream(streamedResponse);
@@ -6783,6 +7143,7 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
 
             Future<void> saveDocument() async {
               FocusManager.instance.primaryFocus?.unfocus();
+              final navigator = Navigator.of(sheetContext);
               if (pendingFile == null) {
                 setSheetState(() {
                   formError = 'Select a file to upload.';
@@ -6839,7 +7200,7 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
                 final request = http.MultipartRequest(
                   'POST',
                   Uri.parse(
-                    '$_workflowApiBaseUrl/API/workflow/item-runs/$_resolvedWorkflowItemRunId/upload',
+                    _workflowRequestUri('/API/workflow/item-runs/$_resolvedWorkflowItemRunId/upload', task).toString(),
                   ),
                 );
                 request.fields['user_id'] = credentials.userId;
@@ -6869,7 +7230,7 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
                 _appendWorkflowVideoDurationField(request, [pendingFile!]);
 
                 final streamedResponse =
-                    await ApiHttp.send(request).timeout(const Duration(seconds: 60));
+                    await _workflowSend(request, task).timeout(const Duration(seconds: 60));
                 final response =
                     await http.Response.fromStream(streamedResponse);
                 final message = _successMessageOrThrow(
@@ -6888,18 +7249,18 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
                 }
                 await refreshProgressFromServer();
 
-                if (!mounted) return;
                 _showSnackBar(message);
                 if (decoded is Map && decoded['task_completed'] == true) {
                   closeSheet = true;
                   refreshAfterClose = true;
+                  taskFinishedAfterClose = true;
                 }
                 setSheetState(() {
                   pendingFile = null;
                   percentController.clear();
                 });
-                if (closeSheet && sheetContext.mounted) {
-                  Navigator.pop(sheetContext);
+                if (closeSheet) {
+                  _popWorkflowSheet(navigator);
                 }
               } catch (e) {
                 if (!mounted) return;
@@ -6926,6 +7287,7 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
 
             Future<void> finalizeUpload() async {
               FocusManager.instance.primaryFocus?.unfocus();
+              final navigator = Navigator.of(sheetContext);
               if (requireComment && commentController.text.trim().isEmpty) {
                 setSheetState(() {
                   formError = 'Please add a comment.';
@@ -6969,7 +7331,7 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
                 final request = http.MultipartRequest(
                   'POST',
                   Uri.parse(
-                    '$_workflowApiBaseUrl/API/workflow/item-runs/$_resolvedWorkflowItemRunId/upload',
+                    _workflowRequestUri('/API/workflow/item-runs/$_resolvedWorkflowItemRunId/upload', task).toString(),
                   ),
                 );
                 request.fields['user_id'] = credentials.userId;
@@ -6987,7 +7349,7 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
                 }
 
                 final streamedResponse =
-                    await ApiHttp.send(request).timeout(const Duration(seconds: 60));
+                    await _workflowSend(request, task).timeout(const Duration(seconds: 60));
                 final response =
                     await http.Response.fromStream(streamedResponse);
                 final message = _successMessageOrThrow(
@@ -6995,13 +7357,11 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
                   'Upload complete',
                 );
 
-                if (!mounted) return;
                 _showSnackBar(message);
                 closeSheet = true;
                 refreshAfterClose = true;
-                if (sheetContext.mounted) {
-                  Navigator.pop(sheetContext);
-                }
+                taskFinishedAfterClose = true;
+                _popWorkflowSheet(navigator);
               } catch (e) {
                 if (!mounted) return;
                 final errorMessage =
@@ -7164,7 +7524,32 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
               );
             }
 
-            return _BottomSheetFrame(
+            return LiveTestAutoPlayHook(
+              onPlay: () async {
+                if (!MobileLiveTestAutoPlay.instance.running) return;
+                if (currentPercent < 100) {
+                  if (pendingFile == null) {
+                    final path = await writeMobileLiveTestSampleJpeg();
+                    pendingFile = _SelectedUploadFile(
+                      path: path,
+                      name: 'auto_run.jpg',
+                      capturedAt: DateTime.now(),
+                    );
+                    percentController.text = '100';
+                    setSheetState(() {});
+                    await Future<void>.delayed(
+                      const Duration(milliseconds: 500),
+                    );
+                  }
+                  if (!MobileLiveTestAutoPlay.instance.running) return;
+                  await saveDocument();
+                }
+                if (!MobileLiveTestAutoPlay.instance.running) return;
+                if (currentPercent >= 100) {
+                  await finalizeUpload();
+                }
+              },
+              child: _BottomSheetFrame(
               title: _label(submitLabel),
               icon: Icons.upload_file,
               scrollController: sheetScrollController,
@@ -7175,7 +7560,7 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
                     _WorkflowUploadProgressBar(percent: currentPercent),
                     SizedBox(height: 16),
                   ],
-                  if (needsGps) ...[
+                  if (needsGps && !MobileLiveTestWorkflow.isTask(task)) ...[
                     _NearSiteStatusBanner(
                       isChecking: isCheckingLocation,
                       error: nearSiteError,
@@ -7327,6 +7712,7 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
                   ],
                 ],
               ),
+            ),
             );
           },
         );
@@ -7339,7 +7725,7 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
     percentFocusNode.dispose();
     sheetScrollController.dispose();
     if (refreshAfterClose && mounted) {
-      await widget.onActionCompleted();
+      await _finishWorkflowAction(taskCompleted: taskFinishedAfterClose);
     }
   }
 
@@ -7382,6 +7768,7 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
               },
               successMessage: 'Status updated',
               refreshOnSuccess: false,
+              showActionLoading: false,
             );
           },
         ),
@@ -7389,10 +7776,7 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
     );
 
     if (updated == true && mounted) {
-      await Future<void>.delayed(Duration(milliseconds: 250));
-      if (mounted) {
-        await widget.onActionCompleted();
-      }
+      _refreshAfterClosedSheet(true);
     }
   }
 
@@ -7422,13 +7806,15 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
               setSheetState(() {
                 isSubmitting = true;
               });
+              final navigator = Navigator.of(sheetContext);
               final success = await _submitComplete(
                 decision: decision,
                 note: commentController.text.trim(),
                 refreshOnSuccess: false,
+                showActionLoading: false,
               );
               if (success) {
-                await _closeSheetAndRefresh(sheetContext);
+                _closeSheetAndRefresh(navigator);
               } else if (mounted) {
                 setSheetState(() {
                   isSubmitting = false;
@@ -7436,7 +7822,15 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
               }
             }
 
-            return _BottomSheetFrame(
+            return LiveTestAutoPlayHook(
+              onPlay: () async {
+                if (!MobileLiveTestAutoPlay.instance.running) return;
+                if (requireComment && commentController.text.trim().isEmpty) {
+                  commentController.text = 'Auto run';
+                }
+                await submit('yes');
+              },
+              child: _BottomSheetFrame(
               title: _label('Yes / no'),
               icon: Icons.rule,
               child: Column(
@@ -7472,14 +7866,16 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
                   ),
                 ],
               ),
+            ),
             );
           },
         );
       },
     );
 
-    await Future<void>.delayed(Duration(milliseconds: 350));
-    commentController.dispose();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      commentController.dispose();
+    });
   }
 
   Future<void> _showChecklistSheet() async {
@@ -7508,6 +7904,7 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
               setSheetState(() {
                 isSubmitting = true;
               });
+              final navigator = Navigator.of(sheetContext);
               final success = await _submitJson(
                 endpoint:
                     '/API/workflow/item-runs/$_workflowItemRunId/checklist',
@@ -7517,9 +7914,10 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
                 },
                 successMessage: 'Checklist submitted',
                 refreshOnSuccess: false,
+                showActionLoading: false,
               );
               if (success) {
-                await _closeSheetAndRefresh(sheetContext);
+                _closeSheetAndRefresh(navigator);
               } else if (mounted) {
                 setSheetState(() {
                   isSubmitting = false;
@@ -7527,7 +7925,20 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
               }
             }
 
-            return _BottomSheetFrame(
+            return LiveTestAutoPlayHook(
+              onPlay: () async {
+                if (!MobileLiveTestAutoPlay.instance.running) return;
+                for (final item in items) {
+                  final id = _itemId(item);
+                  final fieldType = item['field_type']?.toString() ?? 'checkbox';
+                  responses[id] = fieldType == 'checkbox' ? true : 'OK';
+                }
+                setSheetState(() {});
+                await Future<void>.delayed(const Duration(milliseconds: 400));
+                if (!MobileLiveTestAutoPlay.instance.running) return;
+                await submit();
+              },
+              child: _BottomSheetFrame(
               title: _label('Checklist'),
               icon: Icons.checklist,
               child: Column(
@@ -7558,6 +7969,7 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
                   ),
                 ],
               ),
+            ),
             );
           },
         );
@@ -7598,10 +8010,7 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
     );
 
     if (submitted == true && mounted) {
-      await Future<void>.delayed(Duration(milliseconds: 250));
-      if (mounted) {
-        await widget.onActionCompleted();
-      }
+      _refreshAfterClosedSheet(true);
     }
   }
 
@@ -7642,7 +8051,7 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
         final request = http.MultipartRequest(
           'POST',
           Uri.parse(
-            '$_workflowApiBaseUrl/API/workflow/item-runs/$_resolvedWorkflowItemRunId/user-checklist',
+            _workflowRequestUri('/API/workflow/item-runs/$_resolvedWorkflowItemRunId/user-checklist', task).toString(),
           ),
         );
         request.fields['user_id'] = credentials.userId;
@@ -7693,7 +8102,7 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
         }
 
         final streamed =
-            await ApiHttp.send(request).timeout(Duration(seconds: 60));
+            await _workflowSend(request, task).timeout(Duration(seconds: 60));
         final response = await http.Response.fromStream(streamed);
         final message = _successMessageOrThrow(
           response,
@@ -7703,10 +8112,12 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
         return true;
       }
 
-      final response = await ApiHttp.post(
-            Uri.parse(
-              '$_workflowApiBaseUrl/API/workflow/item-runs/$_resolvedWorkflowItemRunId/user-checklist',
+      final response = await _workflowPost(
+            _workflowRequestUri(
+              '/API/workflow/item-runs/$_resolvedWorkflowItemRunId/user-checklist',
+              task,
             ),
+            task,
             headers: {'Content-Type': 'application/json'},
             body: jsonEncode({
               'user_id': credentials.userId,
@@ -7807,7 +8218,7 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
       return errors;
     }
 
-    final submittedResult = await showModalBottomSheet<bool>(
+    final submittedResult = await showModalBottomSheet<Object>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
@@ -7827,6 +8238,7 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
                 initialDate: row.date ?? now,
                 firstDate: DateTime(now.year, now.month, now.day),
                 lastDate: DateTime(now.year + 5),
+                initialEntryMode: DatePickerEntryMode.calendarOnly,
               );
               if (selected == null) return;
               setSheetState(() {
@@ -7835,22 +8247,44 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
               });
             }
 
+            void applyQuickDate(_SlotSelectionRow row, DateTime date) {
+              setSheetState(() {
+                clearValidationForEdit();
+                row.date = date;
+                if (!usePredefinedTimes) {
+                  final previous = row.dateTime;
+                  row.dateTime = DateTime(
+                    date.year,
+                    date.month,
+                    date.day,
+                    previous?.hour ?? 10,
+                    previous?.minute ?? 0,
+                  );
+                }
+              });
+            }
+
             Future<void> pickDateTime(_SlotSelectionRow row) async {
               final now = DateTime.now();
-              final current = row.dateTime ?? now.add(Duration(hours: 1));
+              final current = row.dateTime ?? now.add(const Duration(hours: 1));
               final selectedDate = await showDatePicker(
                 context: context,
                 initialDate: current,
                 firstDate: DateTime(now.year, now.month, now.day),
                 lastDate: DateTime(now.year + 5),
+                initialEntryMode: DatePickerEntryMode.calendarOnly,
               );
               if (selectedDate == null) return;
 
               final selectedTime = await showTimePicker(
                 context: context,
                 initialTime: TimeOfDay.fromDateTime(current),
+                initialEntryMode: TimePickerEntryMode.dial,
               );
-              if (selectedTime == null) return;
+              if (selectedTime == null) {
+                applyQuickDate(row, selectedDate);
+                return;
+              }
 
               setSheetState(() {
                 clearValidationForEdit();
@@ -7861,6 +8295,7 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
                   selectedTime.hour,
                   selectedTime.minute,
                 );
+                row.date = selectedDate;
               });
             }
 
@@ -7903,70 +8338,28 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
                 serverError = null;
               });
 
-              try {
-                final credentials = await _credentials();
-                final slotPayload = <Map<String, dynamic>>[];
-
-                for (var index = 0; index < rows.length; index++) {
-                  final row = rows[index];
-                  if (usePredefinedTimes) {
-                    slotPayload.add({
-                      'date': _formatSlotDate(row.date!),
-                      'time_label': row.timeOption!.label,
-                    });
-                  } else {
-                    slotPayload.add({
-                      'value': row.dateTime!.toIso8601String(),
-                    });
-                  }
+              final navigator = Navigator.of(sheetContext);
+              final slotPayload = <Map<String, dynamic>>[];
+              for (var index = 0; index < rows.length; index++) {
+                final row = rows[index];
+                if (usePredefinedTimes) {
+                  slotPayload.add({
+                    'date': _formatSlotDate(row.date!),
+                    'time_label': row.timeOption!.label,
+                  });
+                } else {
+                  slotPayload.add({
+                    'value': row.dateTime!.toIso8601String(),
+                  });
                 }
-
-                final endpoint =
-                    '$_workflowApiBaseUrl/API/workflow/item-runs/$_resolvedWorkflowItemRunId/slot-selection';
-                final payload = <String, dynamic>{
-                  'user_id': credentials.userId,
-                  'api_token': credentials.apiToken,
-                  'action_id': action['id']?.toString() ?? '',
-                  'slots': slotPayload,
-                };
-                if (allowNote) {
-                  payload['note'] = noteController.text.trim();
-                }
-
-                final response = await ApiHttp.post(
-                      Uri.parse(endpoint),
-                      headers: {
-                        'Content-Type': 'application/json',
-                        'X-Api-Token': credentials.apiToken,
-                      },
-                      body: jsonEncode(payload),
-                    )
-                    .timeout(Duration(seconds: 30));
-                print(
-                  '[WorkflowSlotSelection] endpoint=$endpoint '
-                  'item_run_id=$_resolvedWorkflowItemRunId '
-                  'action_id=${action['id']} '
-                  'use_predefined_times=$usePredefinedTimes '
-                  'slots=$slotPayload '
-                  'payload=$payload '
-                  'status=${response.statusCode} '
-                  'body=${response.body}',
-                );
-                final message =
-                    _successMessageOrThrow(response, 'Slots submitted');
-                if (!mounted) return;
-                _showSnackBar(message);
-                if (sheetContext.mounted) {
-                  Navigator.pop(sheetContext, true);
-                }
-              } catch (e) {
-                final message = e.toString().replaceAll('Exception: ', '');
-                setSheetState(() {
-                  serverError = message;
-                  isSubmitting = false;
-                });
-                _showSnackBar(message, isError: true);
               }
+              _popWorkflowSheet(
+                navigator,
+                _PendingSlotSelectionSubmit(
+                  slots: slotPayload,
+                  note: allowNote ? noteController.text.trim() : null,
+                ),
+              );
             }
 
             final helperText = _slotHelperText(
@@ -7975,7 +8368,33 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
             );
             final canSubmit = basicFieldsComplete();
 
-            return _SlotSelectionSheetFrame(
+            return LiveTestAutoPlayHook(
+              onPlay: () async {
+                if (!MobileLiveTestAutoPlay.instance.running) return;
+                final today = DateTime.now();
+                for (var index = 0; index < rows.length; index++) {
+                  final day = DateTime(today.year, today.month, today.day)
+                      .add(Duration(days: index + 1));
+                  rows[index].date = day;
+                  if (usePredefinedTimes) {
+                    if (timeOptions.isNotEmpty) {
+                      rows[index].timeOption = timeOptions.first;
+                    }
+                  } else {
+                    rows[index].dateTime = DateTime(
+                      day.year,
+                      day.month,
+                      day.day,
+                      10,
+                    );
+                  }
+                }
+                setSheetState(clearValidationForEdit);
+                await Future<void>.delayed(const Duration(milliseconds: 250));
+                if (!MobileLiveTestAutoPlay.instance.running) return;
+                await submit();
+              },
+              child: _SlotSelectionSheetFrame(
               title: title,
               subtitle: helperText,
               slotCount: slotCount,
@@ -7995,18 +8414,11 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
                           number: entry.key + 1,
                           row: entry.value,
                           usePredefinedTimes: usePredefinedTimes,
-                          timeOptions: timeOptions,
                           error: rowErrors[entry.key],
                           onPickDate: () => pickDate(entry.value),
                           onPickDateTime: () => pickDateTime(entry.value),
                           onPickPredefinedTime: () =>
                               pickPredefinedTime(entry.value),
-                          onSelectTime: (option) {
-                            setSheetState(() {
-                              clearValidationForEdit();
-                              entry.value.timeOption = option;
-                            });
-                          },
                         ),
                       ),
                   if (allowNote) ...[
@@ -8028,20 +8440,125 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
                   ],
                 ],
               ),
+            ),
             );
           },
         );
       },
     );
 
-    // The modal can rebuild briefly during route teardown; disposing here can
-    // race with TextField cleanup and trigger "controller used after dispose".
     if (submittedResult == true && mounted) {
-      await Future<void>.delayed(Duration(milliseconds: 250));
-      if (mounted) {
-        await widget.onActionCompleted();
-      }
+      _refreshAfterClosedSheet(true);
+    } else if (submittedResult is _PendingSlotSelectionSubmit && mounted) {
+      await _finishSlotSelectionSubmit(submittedResult);
     }
+  }
+
+  bool _slotSelectionLooksSaved(Map<String, dynamic> source) {
+    if (_truthyValue(source['submitted'])) return true;
+    final response = _actionResponsePayloadFor(source);
+    if (response is Map) {
+      if (_truthyValue(response['submitted'])) return true;
+      if (_truthyValue(response['success'])) return true;
+      if (_mapListFlexible(response['slots']).isNotEmpty) return true;
+    }
+    return false;
+  }
+
+  Future<void> _finishSlotSelectionSubmit(
+    _PendingSlotSelectionSubmit request,
+  ) async {
+    var saved = false;
+    String? error;
+    try {
+      final credentials = await _credentials();
+      final endpoint = _workflowRequestUri(
+        '/API/workflow/item-runs/$_resolvedWorkflowItemRunId/slot-selection',
+        task,
+      );
+      final payload = <String, dynamic>{
+        'user_id': credentials.userId,
+        'api_token': credentials.apiToken,
+        'action_id': action['id']?.toString() ?? '',
+        'slots': request.slots,
+        ...MobileLiveTestWorkflow.submitPayloadFlags(task),
+      };
+      if (request.note != null && request.note!.trim().isNotEmpty) {
+        payload['note'] = request.note!.trim();
+      }
+      final response = await _workflowPost(
+            endpoint,
+            task,
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Api-Token': credentials.apiToken,
+            },
+            body: jsonEncode(payload),
+          )
+          .timeout(const Duration(seconds: 12));
+      print(
+        '[WorkflowSlotSelection] endpoint=$endpoint '
+        'payload=$payload '
+        'status=${response.statusCode} '
+        'body=${response.body}',
+      );
+      _successMessageOrThrow(response, 'Slots submitted');
+      saved = true;
+    } catch (e) {
+      error = e.toString().replaceAll('Exception: ', '');
+    }
+
+    if (!mounted) return;
+    try {
+      final fresh = await _loadFreshWorkflowActionContext();
+      if (_slotSelectionLooksSaved(fresh.action)) saved = true;
+    } catch (_) {}
+
+    if (!mounted) return;
+    if (saved) {
+      await _showSlotOutcomeSheet(
+        saved: true,
+        title: 'Slots selected',
+        message: 'Done. Your slot selection was saved.',
+      );
+      if (mounted) _refreshAfterClosedSheet(true);
+      return;
+    }
+
+    final retry = await _showSlotOutcomeSheet(
+      saved: false,
+      title: 'Slots not saved',
+      message: (error == null || error.trim().isEmpty)
+          ? 'Slots were not saved. Please select again and submit.'
+          : '$error\n\nPlease select the slots again and submit.',
+      retryLabel: 'Select again',
+    );
+    if (retry == true && mounted) {
+      await _showSlotSelectionSheet();
+    }
+  }
+
+  Future<bool?> _showSlotOutcomeSheet({
+    required bool saved,
+    required String title,
+    required String message,
+    String retryLabel = 'Try again',
+  }) {
+    return showModalBottomSheet<bool>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) => _BottomSheetFrame(
+        title: title,
+        icon: saved ? Icons.check_circle_outline : Icons.error_outline,
+        child: _SlotOutcomeBody(
+          saved: saved,
+          message: message,
+          retryLabel: retryLabel,
+          onClose: () => Navigator.pop(sheetContext, false),
+          onRetry: saved ? null : () => Navigator.pop(sheetContext, true),
+        ),
+      ),
+    );
   }
 
   Future<void> _openRedirect() async {
@@ -8054,6 +8571,18 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
     // Native Indent Creation for workflow redirect_button → create_indent.
     // Opening this screen must NOT complete the workflow task.
     if (isCreateIndentRedirectAction(action)) {
+      if (MobileLiveTestWorkflow.skipProjectGates(task)) {
+        final completed = await _completeLiveTestWithoutProject();
+        if (completed && mounted) {
+          await widget.onActionCompleted();
+        } else if (!completed) {
+          _showSnackBar(
+            'Test Mode has no live project, so Indent cannot be created. Complete this task from the list if it is still open.',
+            isError: true,
+          );
+        }
+        return;
+      }
       await _openNativeCreateIndent();
       return;
     }
@@ -8072,6 +8601,18 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
 
     // Map /create_indent?project_id=... deep links to native screen.
     if (isCreateIndentUri(uri)) {
+      if (MobileLiveTestWorkflow.skipProjectGates(task)) {
+        final completed = await _completeLiveTestWithoutProject();
+        if (completed && mounted) {
+          await widget.onActionCompleted();
+        } else if (!completed) {
+          _showSnackBar(
+            'Test Mode has no live project, so Indent cannot be created. Complete this task from the list if it is still open.',
+            isError: true,
+          );
+        }
+        return;
+      }
       await _openNativeCreateIndent(
         projectIdOverride: uri.queryParameters['project_id']?.trim(),
       );
@@ -8220,10 +8761,7 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
     );
 
     if (approved == true && mounted) {
-      await Future<void>.delayed(Duration(milliseconds: 250));
-      if (mounted) {
-        await widget.onActionCompleted();
-      }
+      _refreshAfterClosedSheet(true);
     }
   }
 
@@ -8254,7 +8792,21 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
     Map<String, dynamic> source,
     String fallbackSlug,
   ) {
-    final configured = source['submit_endpoint']?.toString().trim() ?? '';
+    if (MobileLiveTestWorkflow.isTask(task)) {
+      final runId = int.tryParse(_resolvedWorkflowItemRunId) ?? 0;
+      if (runId > 0) {
+        final livePath = MobileLiveTestAccess.resolveActionSubmitPath(
+          runId,
+          source,
+        );
+        if (livePath.isNotEmpty) return livePath;
+      }
+    }
+    final configured = (source['submit_url'] ??
+            source['submit_endpoint'] ??
+            '')
+        .toString()
+        .trim();
     if (configured.isNotEmpty) return configured;
     return '/API/workflow/item-runs/$_resolvedWorkflowItemRunId/$fallbackSlug';
   }
@@ -8426,10 +8978,7 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
     );
 
     if (submitted == true && mounted) {
-      await Future<void>.delayed(Duration(milliseconds: 250));
-      if (mounted) {
-        await widget.onActionCompleted();
-      }
+      _refreshAfterClosedSheet(true);
     }
   }
 
@@ -8538,10 +9087,7 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
     );
 
     if (submitted == true && mounted) {
-      await Future<void>.delayed(Duration(milliseconds: 250));
-      if (mounted) {
-        await widget.onActionCompleted();
-      }
+      _refreshAfterClosedSheet(true);
     }
   }
 
@@ -8577,7 +9123,7 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
       }
 
       final response = await _postWorkflowMultipart(
-        uri: Uri.parse(_absoluteWorkflowUrl(endpoint)),
+        uri: _workflowRequestUri(endpoint, task),
         fields: {
           'user_id': credentials.userId,
           'api_token': credentials.apiToken,
@@ -8586,6 +9132,7 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
         repeatedFields: repeatedFields,
         fileFields: fileFields,
         headers: {'X-Api-Token': credentials.apiToken},
+        task: task,
       );
       print(
         '[PictureChoiceList] endpoint=$endpoint '
@@ -8674,10 +9221,7 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
     );
 
     if (submitted == true && mounted) {
-      await Future<void>.delayed(Duration(milliseconds: 250));
-      if (mounted) {
-        await widget.onActionCompleted();
-      }
+      _refreshAfterClosedSheet(true);
     }
   }
 
@@ -8706,8 +9250,9 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
         body['note'] = note.trim();
       }
 
-      final response = await ApiHttp.post(
-            Uri.parse(_absoluteWorkflowUrl(endpoint)),
+      final response = await _workflowPost(
+            _workflowRequestUri(endpoint, task),
+            task,
             headers: {
               'Content-Type': 'application/x-www-form-urlencoded',
               'X-Api-Token': credentials.apiToken,
@@ -8988,6 +9533,7 @@ class _WorkflowTextListSheetState extends State<_WorkflowTextListSheet> {
   final List<_WorkflowTextListCustomRow> _customRows = [];
   bool _isSubmitting = false;
   String? _formError;
+  List<dynamic> _materialCatalog = const [];
 
   @override
   void initState() {
@@ -9003,6 +9549,74 @@ class _WorkflowTextListSheetState extends State<_WorkflowTextListSheet> {
           _firstString(line, ['id'])!:
               _firstString(line, ['unit']) ?? widget.quantityUnits.first,
     };
+    _loadMaterialCatalog();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _autoPlayIfNeeded());
+  }
+
+  Future<void> _loadMaterialCatalog() async {
+    final fromAction = [
+      ..._mapListFlexible(widget.standardLines),
+    ];
+    try {
+      final response = await ApiHttp.client.get(
+        Uri.parse('https://office.buildahome.in/API/get_materials'),
+      );
+      if (response.statusCode == 200) {
+        final decoded = jsonDecode(response.body);
+        if (decoded is Map && decoded['materials'] is List) {
+          if (!mounted) return;
+          setState(() {
+            _materialCatalog = (decoded['materials'] as List).map((item) {
+              if (item is Map) {
+                return item['name'] ??
+                    item['material'] ??
+                    item['text'] ??
+                    item.toString();
+              }
+              return item.toString();
+            }).toList();
+          });
+          return;
+        }
+      }
+    } catch (_) {}
+    if (!mounted || fromAction.isEmpty) return;
+    setState(() {
+      _materialCatalog = fromAction
+          .map((line) => _textListLineLabel(line))
+          .where((name) => name.isNotEmpty)
+          .toList();
+    });
+  }
+
+  Future<void> _autoPlayIfNeeded() async {
+    final play = MobileLiveTestAutoPlay.instance;
+    if (!play.running) return;
+    await Future<void>.delayed(play.previewDelay);
+    if (!mounted || !play.running) return;
+    for (final entry in _quantityControllers.entries) {
+      if (entry.value.text.trim().isEmpty) {
+        entry.value.text = '1';
+      }
+    }
+    if (widget.allowUserAddedLines &&
+        widget.standardLines.isEmpty &&
+        _customRows.isEmpty) {
+      _addCustomRow();
+      if (_customRows.isNotEmpty) {
+        _customRows.first.nameController.text =
+            _materialCatalog.isNotEmpty
+                ? _materialCatalog.first.toString()
+                : 'Cement';
+        if (widget.indentEnabled) {
+          _customRows.first.quantityController.text = '1';
+        }
+      }
+    }
+    setState(() {});
+    await Future<void>.delayed(const Duration(milliseconds: 400));
+    if (!mounted || !play.running) return;
+    await _submit();
   }
 
   @override
@@ -9119,17 +9733,16 @@ class _WorkflowTextListSheetState extends State<_WorkflowTextListSheet> {
         .map((line) => Map<String, dynamic>.from(line))
         .toList();
 
+    final navigator = Navigator.of(context);
     final submitted = await widget.onSubmit(
       customLines: customLines,
       lineQuantities: lineQuantities,
     );
-    if (!mounted) return;
-
     if (submitted) {
-      Navigator.of(context).pop(true);
+      _popWorkflowSheet(navigator, true);
       return;
     }
-
+    if (!mounted) return;
     setState(() {
       _isSubmitting = false;
     });
@@ -9160,6 +9773,24 @@ class _WorkflowTextListSheetState extends State<_WorkflowTextListSheet> {
         ],
         if (_formError != null) ...[
           _SlotServerErrorBanner(message: _formError!),
+          SizedBox(height: 14),
+        ],
+        if (widget.standardLines.isNotEmpty) ...[
+          Text(
+            'Materials',
+            style: TextStyle(
+              color: AppTheme.getTextPrimary(context),
+              fontSize: 14,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          SizedBox(height: 8),
+          ...widget.standardLines.map(
+            (line) => _WorkflowTextListStandardLineCard(
+              line: line,
+              indentEnabled: widget.indentEnabled,
+            ),
+          ),
           SizedBox(height: 14),
         ],
         if (widget.linesNeedingQuantity.isNotEmpty) ...[
@@ -9216,6 +9847,7 @@ class _WorkflowTextListSheetState extends State<_WorkflowTextListSheet> {
                   row: entry.value,
                   indentEnabled: widget.indentEnabled,
                   quantityUnits: widget.quantityUnits,
+                  materialCatalog: _materialCatalog,
                   onRemove: () => _removeCustomRow(entry.key),
                   onUnitChanged: (value) {
                     setState(() {
@@ -9367,6 +9999,7 @@ class _WorkflowTextListCustomLineCard extends StatelessWidget {
   final _WorkflowTextListCustomRow row;
   final bool indentEnabled;
   final List<String> quantityUnits;
+  final List<dynamic> materialCatalog;
   final VoidCallback onRemove;
   final ValueChanged<String> onUnitChanged;
 
@@ -9375,6 +10008,7 @@ class _WorkflowTextListCustomLineCard extends StatelessWidget {
     required this.row,
     required this.indentEnabled,
     required this.quantityUnits,
+    required this.materialCatalog,
     required this.onRemove,
     required this.onUnitChanged,
   });
@@ -9412,8 +10046,25 @@ class _WorkflowTextListCustomLineCard extends StatelessWidget {
           ),
           TextField(
             controller: row.nameController,
+            readOnly: materialCatalog.isNotEmpty,
+            onTap: materialCatalog.isEmpty
+                ? null
+                : () async {
+                    final result = await SearchableSelect.show(
+                      context: context,
+                      title: 'Select Material',
+                      items: materialCatalog,
+                      selectedItem: row.nameController.text,
+                    );
+                    if (result != null) {
+                      row.nameController.text = result.toString();
+                    }
+                  },
             style: TextStyle(color: AppTheme.getTextPrimary(context)),
-            decoration: _sheetInputDecoration(context, 'Item name *'),
+            decoration: _sheetInputDecoration(
+              context,
+              materialCatalog.isEmpty ? 'Item name *' : 'Select material *',
+            ),
           ),
           if (indentEnabled) ...[
             SizedBox(height: 10),
@@ -9762,6 +10413,7 @@ class _KypMaterialShiftSheet extends StatefulWidget {
   final String finalListHelp;
   final List<Map<String, dynamic>> initialFinalList;
   final String? draftFromProjectId;
+  final bool skipProjectGates;
   final Future<_KypMaterialShiftSubmitResult?> Function({
     required String fromProjectId,
     required List<Map<String, dynamic>> materials,
@@ -9778,6 +10430,7 @@ class _KypMaterialShiftSheet extends StatefulWidget {
     required this.finalListHelp,
     required this.initialFinalList,
     this.draftFromProjectId,
+    this.skipProjectGates = false,
     required this.onSubmit,
   });
 
@@ -9806,7 +10459,34 @@ class _KypMaterialShiftSheetState extends State<_KypMaterialShiftSheet> {
         .map((item) => _KypMaterialShiftRow(item: item))
         .toList();
     _finalListRows = _initialFinalListRows();
-    _loadProjects();
+    if (widget.skipProjectGates) {
+      _isLoadingProjects = false;
+      _autoPlayIfNeeded();
+    } else {
+      _loadProjects().then((_) => _autoPlayIfNeeded());
+    }
+  }
+
+  Future<void> _autoPlayIfNeeded() async {
+    final play = MobileLiveTestAutoPlay.instance;
+    if (!play.running || !mounted) return;
+    await Future<void>.delayed(play.previewDelay);
+    if (!mounted || !play.running) return;
+    if (_selectedProject == null && _projects.isNotEmpty) {
+      _selectedProject = _projects.first;
+    }
+    for (final row in _rows) {
+      if (row.quantityController.text.trim().isEmpty &&
+          row.item.standardQty > 0) {
+        row.quantityController.text = _formatKypQty(row.item.standardQty);
+      }
+    }
+    setState(() {
+      _finalListRows = _computeFinalListRows();
+    });
+    await Future<void>.delayed(const Duration(milliseconds: 400));
+    if (!mounted || !play.running) return;
+    await _submit();
   }
 
   List<_KypFinalListRow> _initialFinalListRows() {
@@ -9973,10 +10653,13 @@ class _KypMaterialShiftSheetState extends State<_KypMaterialShiftSheet> {
       });
     }
 
-    if (fromProjectId.isEmpty || hasRowError || materials.isEmpty) {
+    if ((fromProjectId.isEmpty && !widget.skipProjectGates) ||
+        hasRowError ||
+        materials.isEmpty) {
       setState(() {
-        _projectError =
-            fromProjectId.isEmpty ? 'Select source project.' : null;
+        _projectError = fromProjectId.isEmpty && !widget.skipProjectGates
+            ? 'Select source project.'
+            : null;
         _rowQuantityErrors
           ..clear()
           ..addAll(rowErrors);
@@ -10004,6 +10687,7 @@ class _KypMaterialShiftSheetState extends State<_KypMaterialShiftSheet> {
       _rowQuantityErrors.clear();
     });
 
+    final navigator = Navigator.of(context);
     final result = await widget.onSubmit(
       fromProjectId: fromProjectId,
       materials: materials,
@@ -10012,32 +10696,12 @@ class _KypMaterialShiftSheetState extends State<_KypMaterialShiftSheet> {
           : DateFormat('yyyy-MM-dd').format(_shiftingDate!),
       differenceCost: differenceCost.isEmpty ? '0' : differenceCost,
     );
-    if (!mounted) return;
 
     if (result != null) {
-      if (result.finalList.isNotEmpty) {
-        setState(() {
-          _finalListRows = result.finalList
-              .map(
-                (row) => _KypFinalListRow(
-                  material: _firstString(row, ['material', 'name']) ?? '',
-                  remaining: _parseKypQty(
-                        row['remaining'] ??
-                            row['remaining_qty'] ??
-                            row['quantity'],
-                      ) ??
-                      0,
-                  unit: _firstString(row, ['unit']) ?? '',
-                ),
-              )
-              .where((row) => row.material.isNotEmpty)
-              .toList();
-        });
-      }
-      Navigator.of(context).pop(true);
+      _popWorkflowSheet(navigator, true);
       return;
     }
-
+    if (!mounted) return;
     setState(() {
       _isSubmitting = false;
     });
@@ -10055,11 +10719,17 @@ class _KypMaterialShiftSheetState extends State<_KypMaterialShiftSheet> {
       children: [
         _KypShiftProjectCard(
           label: 'Shift from project',
-          value: _isLoadingProjects
-              ? 'Loading projects...'
-              : selectedProjectName ?? 'Select source project',
+          value: widget.skipProjectGates
+              ? 'Test Mode (no source project)'
+              : _isLoadingProjects
+                  ? 'Loading projects...'
+                  : selectedProjectName ?? 'Select source project',
           icon: Icons.outbox_outlined,
-          onTap: _isSubmitting || _isLoadingProjects ? null : _pickSourceProject,
+          onTap: widget.skipProjectGates ||
+                  _isSubmitting ||
+                  _isLoadingProjects
+              ? null
+              : _pickSourceProject,
           isError: _projectError != null,
         ),
         if (_projectError != null) ...[
@@ -10076,7 +10746,9 @@ class _KypMaterialShiftSheetState extends State<_KypMaterialShiftSheet> {
         SizedBox(height: 12),
         _KypShiftProjectCard(
           label: 'Shift to project',
-          value: destinationName,
+          value: widget.skipProjectGates
+              ? 'Test Mode (no destination project)'
+              : destinationName,
           icon: Icons.inbox_outlined,
           onTap: null,
         ),
@@ -12413,6 +13085,7 @@ List<String> _workflowFormatsFromAction(
 _WorkflowUploadSourceConfig _resolveWorkflowUploadSources(
   Map<String, dynamic> action, {
   List<String>? allowedFormats,
+  Map? task,
 }) {
   final actionId = action['id']?.toString().trim() ?? '';
   if (actionId == 'indent_po_quantity' ||
@@ -12505,7 +13178,8 @@ _WorkflowUploadSourceConfig _resolveWorkflowUploadSources(
 
   final requireNearSite = _truthyValue(action['require_near_site']);
   final liveImageOnly = action['live_image_only'] == true;
-  final hideGallery = requireNearSite || liveImageOnly;
+  final hideGallery = liveImageOnly ||
+      (requireNearSite && !MobileLiveTestWorkflow.isTask(task));
 
   final uploadSources = _stringList(action['upload_sources'])
       .map((source) => source.toLowerCase())
@@ -13425,13 +14099,15 @@ Future<String> _submitIndentPoWorkflowTextUpload({
   required String itemRunId,
   required Map<String, dynamic> action,
   required String comment,
+  Map<String, dynamic>? task,
 }) async {
   final credentials = await _workflowCredentials();
-  final response = await http
-      .post(
-        Uri.parse(
-          '$_workflowApiBaseUrl/API/workflow/item-runs/$itemRunId/upload',
+  final response = await _workflowPost(
+        _workflowRequestUri(
+          '/API/workflow/item-runs/$itemRunId/upload',
+          task,
         ),
+        task,
         headers: {
           'Content-Type': 'application/json',
           'X-Api-Token': credentials.apiToken,
@@ -13497,6 +14173,14 @@ Future<_NearSiteCheckResult> _checkIndentPoNearSite({
     parsedSiteLocation: siteLocation,
   );
 
+  if (MobileLiveTestWorkflow.isTask(task)) {
+    return _NearSiteCheckResult(
+      ok: true,
+      distanceMeters: 0,
+      latitude: siteLocation?.latitude ?? 12.9716,
+      longitude: siteLocation?.longitude ?? 77.5946,
+    );
+  }
   if (!requireGps) {
     return const _NearSiteCheckResult(ok: true);
   }
@@ -13572,6 +14256,7 @@ Future<_NearSiteCheckResult> _checkIndentPoNearSite({
     context,
     result,
     siteLocation: siteLocation,
+    task: task,
   );
 }
 
@@ -13615,7 +14300,7 @@ Future<_IndentPoSiteProofSubmitResult> _presentIndentPoSiteProofAction({
   final savedText = _indentPoSavedText(task, action);
   final existingFiles = _indentPoSavedFiles(task, action);
   final commentController = TextEditingController(text: savedText);
-  final uploadSources = _resolveWorkflowUploadSources(action);
+  final uploadSources = _resolveWorkflowUploadSources(action, task: task);
   final videoFormats = uploadSources.videoFormats.isNotEmpty
       ? uploadSources.videoFormats
       : List<String>.from(_indentPoVideoFormats);
@@ -13769,6 +14454,7 @@ Future<_IndentPoSiteProofSubmitResult> _presentIndentPoSiteProofAction({
                   itemRunId: itemRunId,
                   action: action,
                   comment: commentController.text.trim(),
+                  task: task,
                 );
                 submitResult = _IndentPoSiteProofSubmitResult(
                   success: true,
@@ -13782,10 +14468,12 @@ Future<_IndentPoSiteProofSubmitResult> _presentIndentPoSiteProofAction({
               final credentials = await _workflowCredentials();
               final request = http.MultipartRequest(
                 'POST',
-                Uri.parse(
-                  '$_workflowApiBaseUrl/API/workflow/item-runs/$itemRunId/upload',
+                _workflowRequestUri(
+                  '/API/workflow/item-runs/$itemRunId/upload',
+                  task,
                 ),
               );
+              MobileLiveTestWorkflow.applyToMultipart(request, task);
               request.fields['user_id'] = credentials.userId;
               request.fields['api_token'] = credentials.apiToken;
               request.fields['action_id'] = action['id']?.toString() ?? '';
@@ -13813,7 +14501,7 @@ Future<_IndentPoSiteProofSubmitResult> _presentIndentPoSiteProofAction({
               }
 
               final streamedResponse =
-                  await ApiHttp.send(request).timeout(const Duration(seconds: 90));
+                  await _workflowSend(request, task).timeout(const Duration(seconds: 90));
               final response = await http.Response.fromStream(streamedResponse);
               final message = _workflowResponseMessageOrThrow(
                 response,
@@ -13880,7 +14568,7 @@ Future<_IndentPoSiteProofSubmitResult> _presentIndentPoSiteProofAction({
                   ),
                 ],
                 const SizedBox(height: 12),
-                if (requireNearSite)
+                if (requireNearSite && !MobileLiveTestWorkflow.isTask(task))
                   _NearSiteStatusBanner(
                   isChecking: isCheckingLocation,
                   error: nearSiteError,
@@ -13994,8 +14682,20 @@ Future<_NearSiteCheckResult> _applyDebugNearSiteOverrideIfNeeded(
   BuildContext context,
   _NearSiteCheckResult result, {
   _SiteCoordinates? siteLocation,
+  Map? task,
 }) async {
-  if (result.ok || !kDebugMode || !context.mounted) {
+  if (result.ok) return result;
+
+  if (MobileLiveTestWorkflow.isTask(task)) {
+    return _NearSiteCheckResult(
+      ok: true,
+      distanceMeters: 0,
+      latitude: result.latitude ?? siteLocation?.latitude ?? 12.9716,
+      longitude: result.longitude ?? siteLocation?.longitude ?? 77.5946,
+    );
+  }
+
+  if (!kDebugMode || !context.mounted) {
     return result;
   }
 
@@ -14928,14 +15628,13 @@ class _UserChecklistFollowupSheetState
       _isSubmitting = true;
     });
 
+    final navigator = Navigator.of(context);
     final submitted = await widget.onSubmit(responses);
-    if (!mounted) return;
-
     if (submitted) {
-      Navigator.of(context).pop(true);
+      _popWorkflowSheet(navigator, true);
       return;
     }
-
+    if (!mounted) return;
     setState(() {
       _isSubmitting = false;
     });
@@ -15040,9 +15739,13 @@ class _ChecklistFollowupItemCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final title =
+    final titleRaw =
         _firstString(item, ['label', 'name', 'title']) ?? 'Checklist follow-up';
     final originalComment = _firstString(item, ['comment', 'note', 'remarks']);
+    final title = originalComment != null &&
+            titleRaw.trim().toLowerCase() == originalComment.trim().toLowerCase()
+        ? 'Checklist follow-up'
+        : titleRaw;
     final originalFiles = _followupItemFiles(item);
 
     return Container(
@@ -15296,6 +15999,26 @@ class _SlotSelectionRow {
   _SlotTimeOption? timeOption;
 }
 
+class _PendingSlotSelectionSubmit {
+  final List<Map<String, dynamic>> slots;
+  final String? note;
+
+  const _PendingSlotSelectionSubmit({
+    required this.slots,
+    this.note,
+  });
+}
+
+class _PendingSlotConfirmationSubmit {
+  final int acceptedSlotIndex;
+  final String comment;
+
+  const _PendingSlotConfirmationSubmit({
+    required this.acceptedSlotIndex,
+    required this.comment,
+  });
+}
+
 class _SlotTimeOption {
   final String label;
   final String time;
@@ -15489,23 +16212,19 @@ class _SlotSelectionRowCard extends StatelessWidget {
   final int number;
   final _SlotSelectionRow row;
   final bool usePredefinedTimes;
-  final List<_SlotTimeOption> timeOptions;
   final String? error;
   final VoidCallback onPickDate;
   final VoidCallback onPickDateTime;
   final VoidCallback onPickPredefinedTime;
-  final ValueChanged<_SlotTimeOption> onSelectTime;
 
   const _SlotSelectionRowCard({
     required this.number,
     required this.row,
     required this.usePredefinedTimes,
-    required this.timeOptions,
     required this.error,
     required this.onPickDate,
     required this.onPickDateTime,
     required this.onPickPredefinedTime,
-    required this.onSelectTime,
   });
 
   @override
@@ -15565,28 +16284,13 @@ class _SlotSelectionRowCard extends StatelessWidget {
                     onTap: onPickDate,
                   ),
                   SizedBox(height: 10),
-                  if (timeOptions.length <= 5)
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: timeOptions
-                          .map(
-                            (option) => _SlotTimeChip(
-                              option: option,
-                              selected: row.timeOption?.label == option.label,
-                              onTap: () => onSelectTime(option),
-                            ),
-                          )
-                          .toList(),
-                    )
-                  else
-                    _SlotPickerTile(
-                      icon: Icons.access_time_outlined,
-                      label: row.timeOption == null
-                          ? 'Select predefined time'
-                          : _slotOptionDisplay(row.timeOption!),
-                      onTap: onPickPredefinedTime,
-                    ),
+                  _SlotPickerTile(
+                    icon: Icons.access_time_outlined,
+                    label: row.timeOption == null
+                        ? 'Select time'
+                        : _slotOptionDisplay(row.timeOption!),
+                    onTap: onPickPredefinedTime,
+                  ),
                 ] else
                   _SlotPickerTile(
                     icon: Icons.schedule_outlined,
@@ -15663,59 +16367,6 @@ class _SlotPickerTile extends StatelessWidget {
               ),
             ],
           ),
-        ),
-      ),
-    );
-  }
-}
-
-class _SlotTimeChip extends StatelessWidget {
-  final _SlotTimeOption option;
-  final bool selected;
-  final VoidCallback onTap;
-
-  const _SlotTimeChip({
-    required this.option,
-    required this.selected,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return ChoiceChip(
-      selected: selected,
-      label: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(option.label),
-          SizedBox(height: 2),
-          Text(
-            _formatSlotTime(option.time),
-            style: TextStyle(
-              fontSize: 10.5,
-              fontWeight: FontWeight.w700,
-              color: selected
-                  ? Colors.white.withValues(alpha: 0.88)
-                  : AppTheme.getTextSecondary(context),
-            ),
-          ),
-        ],
-      ),
-      onSelected: (_) => onTap(),
-      selectedColor: AppTheme.getPrimaryColor(context),
-      backgroundColor: AppTheme.getBackgroundSecondary(context),
-      labelStyle: TextStyle(
-        color: selected ? Colors.white : AppTheme.getTextPrimary(context),
-        fontSize: 12,
-        fontWeight: FontWeight.w800,
-      ),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(999),
-        side: BorderSide(
-          color: selected
-              ? AppTheme.getPrimaryColor(context)
-              : AppTheme.getPrimaryColor(context).withValues(alpha: 0.12),
         ),
       ),
     );
@@ -15843,6 +16494,85 @@ class _SlotTimeOptionPickerSheet extends StatelessWidget {
   }
 }
 
+class _SlotOutcomeBody extends StatelessWidget {
+  final bool saved;
+  final String message;
+  final String retryLabel;
+  final VoidCallback onClose;
+  final VoidCallback? onRetry;
+
+  const _SlotOutcomeBody({
+    required this.saved,
+    required this.message,
+    required this.retryLabel,
+    required this.onClose,
+    this.onRetry,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: saved ? const Color(0xFFECFDF5) : const Color(0xFFFEF2F2),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: saved ? const Color(0xFF86EFAC) : const Color(0xFFFECACA),
+            ),
+          ),
+          child: Text(
+            saved ? 'Done' : message,
+            style: TextStyle(
+              color: saved ? const Color(0xFF065F46) : const Color(0xFF991B1B),
+              fontSize: 14,
+              fontWeight: FontWeight.w800,
+              height: 1.35,
+            ),
+          ),
+        ),
+        if (!saved) ...[
+          const SizedBox(height: 10),
+          Text(
+            message,
+            style: TextStyle(
+              color: AppTheme.getTextSecondary(context),
+              fontSize: 13,
+              height: 1.4,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+        const SizedBox(height: 18),
+        if (saved)
+          _SheetSubmitButton(
+            label: 'Done',
+            isSubmitting: false,
+            onPressed: onClose,
+          )
+        else ...[
+          _SheetSubmitButton(
+            label: retryLabel,
+            isSubmitting: false,
+            onPressed: onRetry,
+          ),
+          const SizedBox(height: 10),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton(
+              onPressed: onClose,
+              child: const Text('Close'),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
 class _SlotServerErrorBanner extends StatelessWidget {
   final String message;
 
@@ -15914,6 +16644,26 @@ class _SlotConfirmationSheetState extends State<_SlotConfirmationSheet> {
   String? _noteError;
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _autoPlayIfNeeded());
+  }
+
+  Future<void> _autoPlayIfNeeded() async {
+    final play = MobileLiveTestAutoPlay.instance;
+    if (!play.running || widget.slots.isEmpty) return;
+    await Future<void>.delayed(play.previewDelay);
+    if (!mounted || !play.running) return;
+    setState(() {
+      _selectedSlotIndex = _slotIndex(widget.slots.first, 0);
+    });
+    if (widget.requireNote && _noteController.text.trim().isEmpty) {
+      _noteController.text = 'Auto run';
+    }
+    await _submit();
+  }
+
+  @override
   void dispose() {
     _noteController.dispose();
     super.dispose();
@@ -15940,20 +16690,14 @@ class _SlotConfirmationSheetState extends State<_SlotConfirmationSheet> {
       _noteError = null;
     });
 
-    final submitted = await widget.onSubmit(
-      acceptedSlotIndex: _selectedSlotIndex!,
-      comment: note,
+    final navigator = Navigator.of(context);
+    _popWorkflowSheet(
+      navigator,
+      _PendingSlotConfirmationSubmit(
+        acceptedSlotIndex: _selectedSlotIndex!,
+        comment: note,
+      ),
     );
-    if (!mounted) return;
-
-    if (submitted) {
-      Navigator.of(context).pop(true);
-      return;
-    }
-
-    setState(() {
-      _isSubmitting = false;
-    });
   }
 
   @override
@@ -16298,14 +17042,13 @@ class _PictureChoiceListSheetState extends State<_PictureChoiceListSheet> {
       _formError = null;
     });
 
+    final navigator = Navigator.of(context);
     final submitted = await widget.onSubmit(_rows);
-    if (!mounted) return;
-
     if (submitted) {
-      Navigator.of(context).pop(true);
+      _popWorkflowSheet(navigator, true);
       return;
     }
-
+    if (!mounted) return;
     setState(() {
       _isSubmitting = false;
     });
@@ -16583,17 +17326,16 @@ class _PictureChoicePickSheetState extends State<_PictureChoicePickSheet> {
       _noteError = null;
     });
 
+    final navigator = Navigator.of(context);
     final submitted = await widget.onSubmit(
       selectedOptionId: _selectedOptionId!,
       note: note,
     );
-    if (!mounted) return;
-
     if (submitted) {
-      Navigator.of(context).pop(true);
+      _popWorkflowSheet(navigator, true);
       return;
     }
-
+    if (!mounted) return;
     setState(() {
       _isSubmitting = false;
     });
@@ -17184,6 +17926,18 @@ class _UpdateStatusSheetState extends State<_UpdateStatusSheet> {
   void initState() {
     super.initState();
     _selectedStatus = widget.statuses.isNotEmpty ? widget.statuses.first : null;
+    WidgetsBinding.instance.addPostFrameCallback((_) => _autoPlayIfNeeded());
+  }
+
+  Future<void> _autoPlayIfNeeded() async {
+    final play = MobileLiveTestAutoPlay.instance;
+    if (!play.running) return;
+    await Future<void>.delayed(play.previewDelay);
+    if (!mounted || !play.running) return;
+    if (widget.requireComment && _commentController.text.trim().isEmpty) {
+      _commentController.text = 'Auto run';
+    }
+    await _submit();
   }
 
   @override
@@ -17218,18 +17972,17 @@ class _UpdateStatusSheetState extends State<_UpdateStatusSheet> {
       _commentError = null;
     });
 
+    final navigator = Navigator.of(context);
     final success = await widget.onSubmit(
       status: _selectedStatus!,
       comment: _commentController.text.trim(),
       note: _noteController.text.trim(),
     );
-    if (!mounted) return;
-
     if (success) {
-      Navigator.of(context).pop(true);
+      _popWorkflowSheet(navigator, true);
       return;
     }
-
+    if (!mounted) return;
     setState(() {
       _isSubmitting = false;
     });
@@ -17433,13 +18186,13 @@ class _ViewPriorResponseApprovalPanelState
       _commentError = null;
     });
 
+    final navigator = Navigator.of(context);
     final approved = await widget.onApprove(comment);
-    if (!mounted) return;
-
     if (approved) {
-      Navigator.of(context).pop(true);
+      _popWorkflowSheet(navigator, true);
       return;
     }
+    if (!mounted) return;
 
     setState(() {
       _isApproving = false;
@@ -17774,14 +18527,13 @@ class _UserChecklistSheetState extends State<_UserChecklistSheet> {
       _isSubmitting = true;
     });
 
+    final navigator = Navigator.of(context);
     final submitted = await widget.onSubmit(validRows);
-    if (!mounted) return;
-
     if (submitted) {
-      Navigator.of(context).pop(true);
+      _popWorkflowSheet(navigator, true);
       return;
     }
-
+    if (!mounted) return;
     setState(() {
       _isSubmitting = false;
     });
@@ -18247,16 +18999,29 @@ String _formatUploadProgressDate(String value) {
 List<Map<String, dynamic>> _workflowTextListStandardLines(
   Map<String, dynamic> action,
 ) {
-  final lines = _mapListFlexible(action['lines'])
+  var lines = _mapListFlexible(action['lines']);
+  if (lines.isEmpty) {
+    lines = _mapListFlexible(action['standard_lines']);
+  }
+  if (lines.isEmpty) {
+    lines = _mapListFlexible(action['items']);
+  }
+  if (lines.isEmpty) {
+    lines = _mapListFlexible(action['standard_materials']);
+  }
+  if (lines.isEmpty) {
+    lines = _mapListFlexible(action['materials']);
+  }
+  final mapped = lines
       .map((line) => Map<String, dynamic>.from(line))
       .where((line) => line['user_added'] != true)
       .toList();
-  lines.sort((a, b) {
+  mapped.sort((a, b) {
     final aOrder = _intValue(a['sort_order']) ?? 0;
     final bOrder = _intValue(b['sort_order']) ?? 0;
     return aOrder.compareTo(bOrder);
   });
-  return lines;
+  return mapped;
 }
 
 /// Detect workflow redirect_button aimed at native Indent Creation.
@@ -18357,6 +19122,12 @@ List<_KypMaterialShiftItem> _kypMaterialShiftItems(
   var materials = _mapListFlexible(action['standard_materials']);
   if (materials.isEmpty) {
     materials = _mapListFlexible(action['materials']);
+  }
+  if (materials.isEmpty) {
+    materials = _mapListFlexible(action['items']);
+  }
+  if (materials.isEmpty) {
+    materials = _mapListFlexible(action['lines']);
   }
 
   return materials.map((line) {
@@ -19038,6 +19809,56 @@ String _absoluteWorkflowUrl(String value) {
   return '$_workflowApiBaseUrl/$trimmed';
 }
 
+Uri _workflowRequestUri(
+  String pathOrUrl,
+  Map? task, {
+  Map<String, String>? extraQuery,
+}) {
+  var uri = Uri.parse(_absoluteWorkflowUrl(pathOrUrl));
+  if (extraQuery != null && extraQuery.isNotEmpty) {
+    uri = uri.replace(
+      queryParameters: {
+        ...uri.queryParameters,
+        ...extraQuery,
+      },
+    );
+  }
+  return MobileLiveTestWorkflow.rewriteUri(uri, task);
+}
+
+Future<http.Response> _workflowGet(
+  Uri uri,
+  Map? task, {
+  Map<String, String>? headers,
+}) {
+  return MobileLiveTestWorkflow.clientFor(task).get(
+    uri,
+    headers: MobileLiveTestWorkflow.headers(headers ?? const {}, task),
+  );
+}
+
+Future<http.Response> _workflowPost(
+  Uri uri,
+  Map? task, {
+  Map<String, String>? headers,
+  Object? body,
+  Encoding? encoding,
+}) {
+  return MobileLiveTestWorkflow.clientFor(task).post(
+    uri,
+    headers: MobileLiveTestWorkflow.headers(headers ?? const {}, task),
+    body: body,
+    encoding: encoding,
+  );
+}
+
+Future<http.StreamedResponse> _workflowSend(
+  http.BaseRequest request,
+  Map? task,
+) {
+  return MobileLiveTestWorkflow.clientFor(task).send(request);
+}
+
 String? _workflowAttachmentUrl(Map<String, dynamic> file) {
   return _firstString(file, [
     'url',
@@ -19391,6 +20212,7 @@ Future<http.Response> _postWorkflowMultipart({
   required List<MapEntry<String, String>> repeatedFields,
   required List<_PictureChoiceFileField> fileFields,
   Map<String, String>? headers,
+  Map? task,
 }) async {
   final boundary =
       '----buildahome-${DateTime.now().microsecondsSinceEpoch}';
@@ -19427,8 +20249,9 @@ Future<http.Response> _postWorkflowMultipart({
 
   writeLine('--$boundary--');
 
-  return ApiHttp.post(
+  return _workflowPost(
         uri,
+        task,
         headers: {
           'Content-Type': 'multipart/form-data; boundary=$boundary',
           ...?headers,

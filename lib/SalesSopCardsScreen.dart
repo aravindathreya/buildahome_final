@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'app_theme.dart';
+import 'SlotsScreen.dart';
 import 'services/data_provider.dart';
 import 'widgets/skeleton_loader.dart';
 
@@ -12,6 +13,11 @@ const Map<String, _CardMeta> _knownCards = {
   'client_information': _CardMeta(
     label: 'Client Info',
     icon: Icons.person_outline_rounded,
+  ),
+  'slots': _CardMeta(
+    label: 'Slots',
+    icon: Icons.event_available_outlined,
+    nonClientOnly: true,
   ),
   'pending_tasks': _CardMeta(
     label: 'Pending Tasks',
@@ -129,6 +135,7 @@ class _SalesSopCardsScreenState extends State<SalesSopCardsScreen>
   TabController? _tabController;
   List<String> _cardKeys = const ['client_information'];
   late bool _isClient = widget.isClient;
+  int _slotsEpoch = 0;
 
   final Map<String, Map<String, dynamic>?> _cardPayloads = {};
   final Map<String, String?> _cardErrors = {};
@@ -225,6 +232,7 @@ class _SalesSopCardsScreenState extends State<SalesSopCardsScreen>
   void _onTabChanged() {
     if (_tabController == null || _tabController!.indexIsChanging) return;
     final key = _cardKeys[_tabController!.index];
+    if (key == 'slots') return;
     if (!_cardPayloads.containsKey(key) && !_loadingKeys.contains(key)) {
       _loadCard(key);
     }
@@ -245,6 +253,7 @@ class _SalesSopCardsScreenState extends State<SalesSopCardsScreen>
   }
 
   Future<void> _loadCard(String cardKey, {bool force = false}) async {
+    if (cardKey == 'slots') return;
     if (!force &&
         (_loadingKeys.contains(cardKey) ||
             (_cardPayloads.containsKey(cardKey) &&
@@ -305,6 +314,10 @@ class _SalesSopCardsScreenState extends State<SalesSopCardsScreen>
   Future<void> _refreshCurrent() async {
     if (_tabController == null) return;
     final key = _cardKeys[_tabController!.index];
+    if (key == 'slots') {
+      setState(() => _slotsEpoch++);
+      return;
+    }
     await _loadCard(key, force: true);
   }
 
@@ -412,6 +425,9 @@ class _SalesSopCardsScreenState extends State<SalesSopCardsScreen>
   }
 
   Widget _buildCardTab(String cardKey) {
+    if (cardKey == 'slots') {
+      return SlotsView(key: ValueKey('slots-$_slotsEpoch'));
+    }
     final loading = _loadingKeys.contains(cardKey);
     final error = _cardErrors[cardKey];
     final payload = _cardPayloads[cardKey];

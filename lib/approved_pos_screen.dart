@@ -5,6 +5,7 @@ import 'app_theme.dart';
 import 'client_portal/client_portal_document_ui.dart';
 import 'indent_proof.dart';
 import 'models/approved_po.dart';
+import 'models/workflow_document.dart';
 import 'MyTasksScreen.dart';
 import 'services/approved_po_service.dart';
 import 'services/session_manager.dart';
@@ -593,6 +594,7 @@ class _ApprovedPoDetailScreenState extends State<ApprovedPoDetailScreen> {
       indentId: item.indentId.toString(),
       projectId: item.projectId > 0 ? item.projectId.toString() : null,
       fetchIfMissing: true,
+      includeCompleted: true,
     );
     if (!mounted) return;
     setState(() {
@@ -655,6 +657,44 @@ class _ApprovedPoDetailScreenState extends State<ApprovedPoDetailScreen> {
     );
     if (!mounted) return;
     await _loadDetail();
+  }
+
+  bool _indentIsApproved(ApprovedPo item) {
+    final text = '${item.status} ${item.statusLabel}'.toLowerCase();
+    if (text.contains('unapprov') || text.contains('reject')) return false;
+    if (text.contains('approv')) return true;
+    return true;
+  }
+
+  bool _siteProofSubmitted(Map<String, dynamic>? task) {
+    if (task == null) return false;
+    if (isTaskCompletedStatus(task)) return true;
+    final steps = indentPoSiteProofActions(workflowActionsFromTask(task));
+    final requiredSteps = steps.where((action) {
+      final id = action['id']?.toString() ?? '';
+      return id != 'indent_po_site_comment' &&
+          id != 'indent_po_review_comment';
+    }).toList();
+    if (requiredSteps.isEmpty) return false;
+    return requiredSteps
+        .every((action) => indentPoSiteProofStepDone(task, action));
+  }
+
+  bool _shouldShowSiteProofUpload(ApprovedPo item) {
+    if (_siteProofTaskLoading) return false;
+    if (!_indentIsApproved(item)) return false;
+    final task = _siteProofTask;
+    if (task == null) return false;
+    if (_siteProofSubmitted(task)) return false;
+    return indentPoSiteProofActions(workflowActionsFromTask(task)).isNotEmpty;
+  }
+
+  bool _shouldShowSiteProofSection(ApprovedPo item) {
+    if (_siteProofTaskLoading) return false;
+    if (!_indentIsApproved(item)) return false;
+    if (_siteProofTask == null) return false;
+    if (_shouldShowSiteProofUpload(item)) return true;
+    return isIndentProofReviewerRole(_userRole);
   }
 
   @override
@@ -732,9 +772,9 @@ class _ApprovedPoDetailScreenState extends State<ApprovedPoDetailScreen> {
           const SizedBox(height: 20),
           const ClientPortalSectionHeading(label: 'PO document'),
           if (workflowDoc != null)
-            ClientPortalDocumentRow(
+            _ApprovedPoDocumentCard(
               document: workflowDoc,
-              onTap: () => _openMaskedDocument(item),
+              onOpen: () => _openMaskedDocument(item),
             )
           else if (item.awaitingMaskedDocument)
             const _ApprovedPoPendingDocumentCard()
@@ -775,23 +815,20 @@ class _ApprovedPoDetailScreenState extends State<ApprovedPoDetailScreen> {
                 ],
               ),
             ),
-          if (workflowDoc != null) ...[
-            const SizedBox(height: 12),
-            const ClientPortalInfoBanner(
-              message:
-                  'Tap the document above to open the masked PO PDF. Amounts and rates are hidden.',
+          if (_shouldShowSiteProofSection(item)) ...[
+            const SizedBox(height: 20),
+            const ClientPortalSectionHeading(label: 'Site proof'),
+            _ApprovedPoSiteProofCard(
+              item: item,
+              siteProofTask: _siteProofTask,
+              loadingTask: _siteProofTaskLoading,
+              showUpload: _shouldShowSiteProofUpload(item),
+              showReviewOption: isIndentProofReviewerRole(_userRole) &&
+                  _siteProofTask != null,
+              onUpload: () => _openSiteProofUpload(item),
+              onReview: () => _openSiteProofReview(item),
             ),
           ],
-          const SizedBox(height: 20),
-          const ClientPortalSectionHeading(label: 'Site proof'),
-          _ApprovedPoSiteProofCard(
-            item: item,
-            siteProofTask: _siteProofTask,
-            loadingTask: _siteProofTaskLoading,
-            showReviewOption: showIndentProofTabForRole(_userRole),
-            onUpload: () => _openSiteProofUpload(item),
-            onReview: () => _openSiteProofReview(item),
-          ),
         ],
       ),
     );
@@ -1062,6 +1099,7 @@ class _ApprovedPoSiteProofCard extends StatelessWidget {
   final ApprovedPo item;
   final Map<String, dynamic>? siteProofTask;
   final bool loadingTask;
+  final bool showUpload;
   final bool showReviewOption;
   final VoidCallback onUpload;
   final VoidCallback onReview;
@@ -1070,6 +1108,7 @@ class _ApprovedPoSiteProofCard extends StatelessWidget {
     required this.item,
     required this.siteProofTask,
     required this.loadingTask,
+    required this.showUpload,
     required this.showReviewOption,
     required this.onUpload,
     required this.onReview,
@@ -1084,7 +1123,6 @@ class _ApprovedPoSiteProofCard extends StatelessWidget {
         ? indentPoSiteProofDoneCount(siteProofTask!)
         : 0;
     final started = doneCount > 0;
-    final hasUploadTask = siteProofTask != null && steps.isNotEmpty;
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -1113,9 +1151,11 @@ class _ApprovedPoSiteProofCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      'Upload site proof for approved PO',
-                      style: TextStyle(
+                    Text(
+                      showUpload
+                          ? 'Upload site proof for approved PO'
+                          : 'Site proof',
+                      style: const TextStyle(
                         fontWeight: FontWeight.w800,
                         fontSize: 14,
                         color: AppTheme.navy,
@@ -1125,12 +1165,12 @@ class _ApprovedPoSiteProofCard extends StatelessWidget {
                     Text(
                       loadingTask
                           ? 'Checking site-proof task…'
-                          : hasUploadTask
+                          : showUpload
                               ? (steps.isEmpty
                                   ? 'Complete the on-site steps in order.'
                                   : '$doneCount of ${steps.length} steps complete. '
                                       'Go to the project site, then finish each step.')
-                              : 'Open the on-site proof flow for Indent #${item.indentId}.',
+                              : 'Site proof has been submitted for this indent.',
                       style: TextStyle(
                         color: AppTheme.getTextSecondary(context),
                         fontSize: 12.5,
@@ -1143,27 +1183,25 @@ class _ApprovedPoSiteProofCard extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 14),
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton.icon(
-              onPressed: loadingTask ? null : onUpload,
-              icon: const Icon(Icons.pin_drop_outlined, size: 18),
-              label: Text(
-                hasUploadTask
-                    ? (started ? 'Continue site proof' : 'Start site proof')
-                    : 'Open site proof upload',
-              ),
-              style: FilledButton.styleFrom(
-                backgroundColor: AppTheme.primaryColorConst,
-                foregroundColor: Colors.white,
-                minimumSize: const Size.fromHeight(46),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+          if (showUpload) ...[
+            const SizedBox(height: 14),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: loadingTask ? null : onUpload,
+                icon: const Icon(Icons.pin_drop_outlined, size: 18),
+                label: Text(started ? 'Continue site proof' : 'Start site proof'),
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppTheme.primaryColorConst,
+                  foregroundColor: Colors.white,
+                  minimumSize: const Size.fromHeight(46),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                 ),
               ),
             ),
-          ),
+          ],
           if (showReviewOption) ...[
             const SizedBox(height: 10),
             SizedBox(
@@ -1183,6 +1221,90 @@ class _ApprovedPoSiteProofCard extends StatelessWidget {
               ),
             ),
           ],
+        ],
+      ),
+    );
+  }
+}
+
+class _ApprovedPoDocumentCard extends StatelessWidget {
+  final WorkflowDocumentUpload document;
+  final VoidCallback onOpen;
+
+  const _ApprovedPoDocumentCard({
+    required this.document,
+    required this.onOpen,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: ClientPortalDocTheme.cardDecoration(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFEE2E2),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(
+                  Icons.picture_as_pdf_rounded,
+                  color: Color(0xFFDC2626),
+                  size: 24,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      document.displayTitle,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 14,
+                        color: AppTheme.navy,
+                        height: 1.25,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Masked PO PDF. Amounts and rates are hidden.',
+                      style: TextStyle(
+                        color: AppTheme.getTextSecondary(context),
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w600,
+                        height: 1.35,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: onOpen,
+              icon: const Icon(Icons.open_in_new_rounded, size: 18),
+              label: const Text('Open'),
+              style: FilledButton.styleFrom(
+                backgroundColor: AppTheme.primaryColorConst,
+                foregroundColor: Colors.white,
+                minimumSize: const Size.fromHeight(46),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+          ),
         ],
       ),
     );

@@ -22,8 +22,12 @@ import 'ProjectTimelineScreen.dart';
 import 'RequestDrawing.dart';
 import 'Scheduler.dart';
 import 'SiteVisitReports.dart';
+import 'SlotsScreen.dart';
 import 'Skin2/loginPage.dart';
 import 'TestReportsScreen.dart';
+import 'mobile_live_test_screen.dart';
+import 'services/mobile_live_test_access.dart';
+import 'services/mobile_live_test_storage.dart';
 import 'UserHome.dart';
 import 'VirtualTour.dart';
 import 'ClientPortalScreen.dart';
@@ -110,18 +114,32 @@ Future<List<dynamic>> _fetchTasksForCurrentUser() async {
     fetched = decoded;
   }
 
-  final taskMap = <int, dynamic>{};
+  final taskMap = <String, dynamic>{};
   for (final task in fetched) {
     if (task is Map && task['id'] != null) {
-      final id = int.tryParse(task['id'].toString()) ?? 0;
-      if (id != 0) taskMap[id] = task;
+      final id = task['id'].toString().trim();
+      if (id.isNotEmpty && id != '0') taskMap[id] = task;
     }
   }
 
+  final allTasks = taskMap.values.toList();
+  String? salesSopId;
+  if (role == 'Client' && projectId != null && projectId.isNotEmpty) {
+    await DataProvider().cacheSalesSopIdsFromTasks(allTasks);
+    salesSopId = await DataProvider().resolveSalesSopId(
+      projectId: projectId,
+      apiToken: apiToken,
+      tasksHint: allTasks,
+    );
+  }
+
   return filterTasksForProjectAndAssignee(
-    taskMap.values.toList(),
+    allTasks,
     userId: userId,
     projectId: role == 'Client' ? projectId : null,
+    alsoMatchProjectIds: [
+      if (salesSopId != null && salesSopId.isNotEmpty) salesSopId,
+    ],
   );
 }
 
@@ -167,6 +185,7 @@ class NavMenuItem extends StatelessWidget {
     } catch (e) {
       print('Error clearing SharedPreferences: $e');
     }
+    await MobileLiveTestCredentials.clearLocal();
   }
 
   Future<void> _handleTap(BuildContext context) async {
@@ -496,12 +515,13 @@ class NavMenuWidgetState extends State<NavMenuWidget> {
     }
 
     if (rbac.canViewSync(currentRole, RBACService.gallery)) {
-      projectEntries.add(_NavEntry(
-        title: 'Gallery',
-        icon: Icons.photo_library_rounded,
-        route: isClient ? () => Gallery() : null,
-        action: isClient ? null : _openAfterProjectPick(() => Gallery()),
-      ));
+      if (!isClient) {
+        projectEntries.add(_NavEntry(
+          title: 'Gallery',
+          icon: Icons.photo_library_rounded,
+          action: _openAfterProjectPick(() => Gallery()),
+        ));
+      }
       projectEntries.add(_NavEntry(
         title: 'Timeline Gallery',
         icon: Icons.auto_awesome_motion_rounded,
@@ -520,6 +540,12 @@ class NavMenuWidgetState extends State<NavMenuWidget> {
           ? null
           : _openAfterProjectPick(() => const VirtualTourScreen()),
     ));
+    projectEntries.add(_NavEntry(
+      title: 'Slots',
+      icon: Icons.event_available_outlined,
+      route: isClient ? () => const SlotsScreen() : null,
+      action: isClient ? null : _openAfterProjectPick(() => const SlotsScreen()),
+    ));
 
     if (rbac.canViewSync(currentRole, RBACService.payments)) {
       projectEntries.add(_NavEntry(
@@ -533,7 +559,7 @@ class NavMenuWidgetState extends State<NavMenuWidget> {
 
     if (isClient) {
       projectEntries.add(_NavEntry(
-        title: 'Upload payment proofs',
+        title: 'Upload proof',
         icon: Icons.cloud_upload_outlined,
         route: () => const UploadPaymentProofScreen(),
       ));
@@ -649,14 +675,31 @@ class NavMenuWidgetState extends State<NavMenuWidget> {
         icon: Icons.forum_rounded,
         route: () => ChatV1App.openQuick(),
       ));
-      collabEntries.add(_NavEntry(
-        title: 'Project Status',
-        icon: Icons.flag_rounded,
-        route: () => ProjectFocusScreen.openQuick(),
-      ));
+      if (!isClient) {
+        collabEntries.add(_NavEntry(
+          title: 'Project Status',
+          icon: Icons.flag_rounded,
+          route: () => ProjectFocusScreen.openQuick(),
+        ));
+      }
     }
     if (collabEntries.isNotEmpty) {
       sections.add(_NavSection('Collaboration', collabEntries));
+    }
+
+    if (MobileLiveTestAccess.canEnable(currentRole)) {
+      sections.add(
+        _NavSection(
+          'Testing',
+          [
+            _NavEntry(
+              title: MobileLiveTestAccess.menuTitle,
+              icon: Icons.phonelink_setup_outlined,
+              route: () => const MobileLiveTestScreen(),
+            ),
+          ],
+        ),
+      );
     }
 
     sections.add(

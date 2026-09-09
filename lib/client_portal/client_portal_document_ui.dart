@@ -293,18 +293,21 @@ class ClientPortalSearchBar extends StatelessWidget {
   final TextEditingController controller;
   final String hint;
   final VoidCallback? onClear;
+  final ValueChanged<String>? onChanged;
 
   const ClientPortalSearchBar({
     super.key,
     required this.controller,
     this.hint = 'Search documents…',
     this.onClear,
+    this.onChanged,
   });
 
   @override
   Widget build(BuildContext context) {
     return TextField(
       controller: controller,
+      onChanged: onChanged,
       decoration: InputDecoration(
         hintText: hint,
         hintStyle: TextStyle(
