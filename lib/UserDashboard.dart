@@ -45,8 +45,11 @@ import 'VirtualTour.dart';
 import 'NavMenu.dart';
 import 'notifcations.dart';
 import 'Dpr.dart';
+import 'services/client_generation_service.dart';
+import 'services/legacy_client_features.dart';
 import 'services/profile_picture_service.dart';
 import 'utilities/role_app_bar_color.dart';
+import 'widgets/client_home_tour.dart';
 import 'widgets/dashboard_chrome.dart';
 import 'widgets/modern_task_card.dart';
 import 'widgets/profile_picture_dialog.dart';
@@ -246,9 +249,16 @@ class UserDashboardLayoutState extends State<UserDashboardLayout> {
   final GlobalKey<UserDashboardScreenState> _userDashboardKey =
       GlobalKey<UserDashboardScreenState>();
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
+  final GlobalKey _tourHeaderKey = GlobalKey();
+  final GlobalKey _tourProgressKey = GlobalKey();
+  final GlobalKey _tourChatKey = GlobalKey();
+  final GlobalKey _tourActionsKey = GlobalKey();
+  final GlobalKey _tourBottomNavKey = GlobalKey();
   String displayName = 'there';
   String? _userRole;
   int _bottomNavIndex = 0;
+  bool _tourActive = false;
+  bool _tourStartInFlight = false;
   static const Color _navy = Color(0xFF1B254B);
   static const Color _mutedGrey = Color(0xFF8A94A6);
   // Removed local navigatorKey and observer - using global ones from main.dart
@@ -263,11 +273,78 @@ class UserDashboardLayoutState extends State<UserDashboardLayout> {
   @override
   void initState() {
     super.initState();
+    ClientGenerationService.instance.generation
+        .addListener(_onClientGenerationChanged);
     _loadDisplayName();
     _loadUnreadNotifications();
+    ClientGenerationService.instance.ensureLoaded();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) maybePromptForProfilePicture(context);
+      if (mounted) _tryStartFirstRun();
     });
+  }
+
+  @override
+  void dispose() {
+    ClientGenerationService.instance.generation
+        .removeListener(_onClientGenerationChanged);
+    super.dispose();
+  }
+
+  void _onClientGenerationChanged() {
+    if (mounted) {
+      setState(() {});
+      _tryStartFirstRun();
+    }
+  }
+
+  bool get _restrictLegacyClientFeatures =>
+      ClientGenerationService.instance.restrictsClientFeatures(_userRole);
+
+  Future<void> _tryStartFirstRun() async {
+    if (!mounted || _tourActive || _tourStartInFlight) return;
+    if (widget.fromAdminDashboard) return;
+
+    _tourStartInFlight = true;
+    try {
+      await ClientGenerationService.instance.ensureLoaded();
+      if (!mounted) return;
+
+      final role = _userRole ??
+          (await SharedPreferences.getInstance()).getString('role');
+      final isClient = (role ?? '').trim().toLowerCase() == 'client';
+      if (!isClient || ClientGenerationService.instance.isLegacy) {
+        maybePromptForProfilePicture(context);
+        return;
+      }
+      if (await ClientHomeTour.hasCompleted()) {
+        if (mounted) maybePromptForProfilePicture(context);
+        return;
+      }
+
+      for (var i = 0; i < 16; i++) {
+        if (_userDashboardKey.currentState?.isReadyForTour == true) break;
+        await Future<void>.delayed(const Duration(milliseconds: 160));
+        if (!mounted) return;
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 180));
+      if (!mounted || _tourActive) return;
+      if (await ClientHomeTour.hasCompleted()) {
+        maybePromptForProfilePicture(context);
+        return;
+      }
+      setState(() => _tourActive = true);
+    } finally {
+      _tourStartInFlight = false;
+    }
+  }
+
+  Future<void> _finishTour() async {
+    if (mounted) setState(() => _tourActive = false);
+    if (mounted) maybePromptForProfilePicture(context);
+  }
+
+  Future<void> _revealTourTarget(GlobalKey key) async {
+    await _userDashboardKey.currentState?.revealTourTarget(key);
   }
 
   _loadDisplayName() async {
@@ -287,6 +364,7 @@ class UserDashboardLayoutState extends State<UserDashboardLayout> {
         displayName = name;
         _userRole = role;
       });
+      _tryStartFirstRun();
     }
   }
 
@@ -346,6 +424,15 @@ class UserDashboardLayoutState extends State<UserDashboardLayout> {
     }
     if (index == 4) {
       _scaffoldKey.currentState?.openDrawer();
+      return;
+    }
+
+    if (_restrictLegacyClientFeatures &&
+        (index == 1 || index == 3)) {
+      await showFeatureComingSoon(
+        context,
+        featureName: index == 1 ? 'My tasks' : 'Site Visit Reports',
+      );
       return;
     }
 
@@ -464,76 +551,87 @@ class UserDashboardLayoutState extends State<UserDashboardLayout> {
                   ],
                 ),
               ),
-          InkWell(
-            onTap: _openNotifications,
-            borderRadius: BorderRadius.circular(999),
-            child: Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: Colors.white,
-                border: Border.all(color: const Color(0xFFE6EAF0)),
-              ),
-              child: ValueListenableBuilder<int>(
-                valueListenable:
-                    NotificationService.instance.unreadCountNotifier,
-                builder: (context, unreadCount, _) {
-                  return Stack(
-                    clipBehavior: Clip.none,
-                    children: [
-                      const Center(
-                        child: Icon(
-                          Icons.notifications_none_rounded,
-                          color: _navy,
-                          size: 22,
-                        ),
-                      ),
-                      if (unreadCount > 0)
-                        Positioned(
-                          right: 6,
-                          top: 6,
-                          child: Container(
-                            constraints: const BoxConstraints(minWidth: 16),
-                            height: 16,
-                            padding:
-                                const EdgeInsets.symmetric(horizontal: 4),
-                            decoration: const BoxDecoration(
-                              color: Color(0xFFE53935),
-                              shape: BoxShape.circle,
-                            ),
-                            alignment: Alignment.center,
-                            child: Text(
-                              unreadCount > 9 ? '9+' : '$unreadCount',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 9,
-                                fontWeight: FontWeight.w700,
+          KeyedSubtree(
+            key: _tourHeaderKey,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                InkWell(
+                  onTap: _openNotifications,
+                  borderRadius: BorderRadius.circular(999),
+                  child: Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Colors.white,
+                      border: Border.all(color: const Color(0xFFE6EAF0)),
+                    ),
+                    child: ValueListenableBuilder<int>(
+                      valueListenable:
+                          NotificationService.instance.unreadCountNotifier,
+                      builder: (context, unreadCount, _) {
+                        return Stack(
+                          clipBehavior: Clip.none,
+                          children: [
+                            const Center(
+                              child: Icon(
+                                Icons.notifications_none_rounded,
+                                color: _navy,
+                                size: 22,
                               ),
                             ),
-                          ),
-                        ),
-                    ],
-                  );
-                },
-              ),
+                            if (unreadCount > 0)
+                              Positioned(
+                                right: 6,
+                                top: 6,
+                                child: Container(
+                                  constraints:
+                                      const BoxConstraints(minWidth: 16),
+                                  height: 16,
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 4),
+                                  decoration: const BoxDecoration(
+                                    color: Color(0xFFE53935),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  alignment: Alignment.center,
+                                  child: Text(
+                                    unreadCount > 9
+                                        ? '9+'
+                                        : '$unreadCount',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 9,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                          ],
+                        );
+                      },
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                ValueListenableBuilder<String?>(
+                  valueListenable: ProfilePictureService.picturePathNotifier,
+                  builder: (context, picturePath, _) {
+                    return ProfileAvatar(
+                      displayName: displayName,
+                      picturePath: picturePath,
+                      size: 40,
+                      backgroundColor: _navy,
+                      foregroundColor: Colors.white,
+                      borderColor: const Color(0xFFE6EAF0),
+                      onTap: () => _scaffoldKey.currentState?.openDrawer(),
+                    );
+                  },
+                ),
+              ],
             ),
           ),
-          const SizedBox(width: 10),
-              ValueListenableBuilder<String?>(
-                valueListenable: ProfilePictureService.picturePathNotifier,
-                builder: (context, picturePath, _) {
-                  return ProfileAvatar(
-                    displayName: displayName,
-                    picturePath: picturePath,
-                    size: 40,
-                    backgroundColor: _navy,
-                    foregroundColor: Colors.white,
-                    borderColor: const Color(0xFFE6EAF0),
-                    onTap: () => _scaffoldKey.currentState?.openDrawer(),
-                  );
-                },
-              ),
             ],
           ),
         ],
@@ -554,6 +652,7 @@ class UserDashboardLayoutState extends State<UserDashboardLayout> {
     ];
 
     return Container(
+      key: _tourBottomNavKey,
       decoration: const BoxDecoration(
         color: Colors.white,
         border: Border(top: BorderSide(color: Color(0xFFEEF1F5))),
@@ -566,7 +665,11 @@ class UserDashboardLayoutState extends State<UserDashboardLayout> {
             children: List.generate(items.length, (index) {
               final item = items[index];
               final selected = _bottomNavIndex == index;
-              final color = selected ? _navy : _mutedGrey;
+              final comingSoon = _restrictLegacyClientFeatures &&
+                  (index == 1 || index == 3);
+              final color = comingSoon
+                  ? const Color(0xFFB0B7C3)
+                  : (selected ? _navy : _mutedGrey);
               return Expanded(
                 child: InkWell(
                   onTap: () => _onBottomNavTap(index),
@@ -583,7 +686,7 @@ class UserDashboardLayoutState extends State<UserDashboardLayout> {
                         ),
                         const SizedBox(height: 3),
                         Text(
-                          item.label,
+                          comingSoon ? 'Soon' : item.label,
                           style: TextStyle(
                             color: color,
                             fontSize: 10.5,
@@ -648,39 +751,100 @@ class UserDashboardLayoutState extends State<UserDashboardLayout> {
           );
         });
       },
-      child: Scaffold(
-        key: _scaffoldKey,
-        backgroundColor: Colors.white,
-        drawer: NavMenuWidget(),
-        appBar: (!widget.fromAdminDashboard && Navigator.of(context).canPop())
-            ? AppBar(
-                backgroundColor: Colors.white,
-                elevation: 0,
-                leading: IconButton(
-                  icon: const Icon(Icons.arrow_back),
-                  color: _navy,
-                  onPressed: () => Navigator.of(context).pop(),
-                ),
-                title: const Text(
-                  'Project',
-                  style: TextStyle(
-                    color: _navy,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
+      child: Stack(
+        children: [
+          Scaffold(
+            key: _scaffoldKey,
+            backgroundColor: Colors.white,
+            drawer: NavMenuWidget(),
+            appBar: (!widget.fromAdminDashboard && Navigator.of(context).canPop())
+                ? AppBar(
+                    backgroundColor: Colors.white,
+                    elevation: 0,
+                    leading: IconButton(
+                      icon: const Icon(Icons.arrow_back),
+                      color: _navy,
+                      onPressed: () => Navigator.of(context).pop(),
+                    ),
+                    title: const Text(
+                      'Project',
+                      style: TextStyle(
+                        color: _navy,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    iconTheme: const IconThemeData(color: _navy),
+                  )
+                : null,
+            body: Column(
+              children: [
+                _buildUserHeader(),
+                Expanded(
+                  child: UserDashboardScreen(
+                    key: _userDashboardKey,
+                    tourProgressKey: _tourProgressKey,
+                    tourChatKey: _tourChatKey,
+                    tourActionsKey: _tourActionsKey,
                   ),
                 ),
-                iconTheme: const IconThemeData(color: _navy),
-              )
-            : null,
-        body: Column(
-          children: [
-            _buildUserHeader(),
-            Expanded(
-              child: UserDashboardScreen(key: _userDashboardKey),
+              ],
             ),
-          ],
-        ),
-        bottomNavigationBar: _buildBottomNav(),
+            bottomNavigationBar: _buildBottomNav(),
+          ),
+          if (_tourActive)
+            Positioned.fill(
+              child: ClientHomeTourOverlay(
+                steps: [
+                  const ClientTourStep(
+                    title: 'Welcome to your home',
+                    body:
+                        'A quick look at where everything lives. This only shows the first time you sign in.',
+                  ),
+                  ClientTourStep(
+                    title: 'Project progress',
+                    body:
+                        'This banner shows how far construction has come, and opens the site on the map.',
+                    targetKey: _tourProgressKey,
+                    holeRadius: 18,
+                  ),
+                  ClientTourStep(
+                    title: 'Chat and latest tasks',
+                    body:
+                        'Start a conversation with the team, or see the work that needs you next.',
+                    targetKey: _tourChatKey,
+                    holeRadius: 18,
+                  ),
+                  ClientTourStep(
+                    title: 'Quick actions',
+                    body:
+                        'Payments, gallery, documents and more. “For me” opens your Client Portal.',
+                    targetKey: _tourActionsKey,
+                    holeRadius: 16,
+                    holePadding: const EdgeInsets.fromLTRB(6, 4, 6, 8),
+                  ),
+                  ClientTourStep(
+                    title: 'Tasks, updates, visits',
+                    body:
+                        'Use the bar below for your tasks, site updates, upcoming visits, and the full menu.',
+                    targetKey: _tourBottomNavKey,
+                    holeRadius: 16,
+                    holePadding: const EdgeInsets.fromLTRB(4, 4, 4, 2),
+                  ),
+                  ClientTourStep(
+                    title: 'Alerts and your menu',
+                    body:
+                        'Notifications land on the bell. Tap your photo for the menu, profile, and more screens.',
+                    targetKey: _tourHeaderKey,
+                    holeRadius: 22,
+                    holePadding: const EdgeInsets.all(6),
+                  ),
+                ],
+                ensureVisible: _revealTourTarget,
+                onFinished: _finishTour,
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -694,7 +858,16 @@ class _DashNavItem {
 }
 
 class UserDashboardScreen extends StatefulWidget {
-  const UserDashboardScreen({Key? key}) : super(key: key);
+  final GlobalKey? tourProgressKey;
+  final GlobalKey? tourChatKey;
+  final GlobalKey? tourActionsKey;
+
+  const UserDashboardScreen({
+    Key? key,
+    this.tourProgressKey,
+    this.tourChatKey,
+    this.tourActionsKey,
+  }) : super(key: key);
 
   @override
   UserDashboardScreenState createState() {
@@ -742,6 +915,8 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
 
   @override
   void dispose() {
+    ClientGenerationService.instance.generation
+        .removeListener(_onClientGenerationChanged);
     _quickSearchController.dispose();
     _quickSearchFocusNode.dispose();
     _scrollController.dispose();
@@ -752,6 +927,8 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
   @override
   void initState() {
     super.initState();
+    ClientGenerationService.instance.generation
+        .addListener(_onClientGenerationChanged);
     // Load role
     _loadRole();
     // Load cached data (if available) without blocking the transition
@@ -760,6 +937,7 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
     _initializeData();
     // Load tasks for the current user
     loadTasks();
+    ClientGenerationService.instance.ensureLoaded();
 
     // Add listener to scroll to top when search field is focused
     _quickSearchFocusNode.addListener(() {
@@ -1203,6 +1381,131 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
   bool get _isClientUser =>
       (_currentRole ?? '').trim().toLowerCase() == 'client';
 
+  bool get isReadyForTour => !_shouldShowInitialPageSkeleton;
+
+  Future<void> revealTourTarget(GlobalKey key) async {
+    final target = key.currentContext;
+    if (target == null) return;
+    await Scrollable.ensureVisible(
+      target,
+      duration: const Duration(milliseconds: 280),
+      curve: Curves.easeOutCubic,
+      alignment: 0.18,
+    );
+  }
+
+  bool get _restrictLegacyClientFeatures =>
+      ClientGenerationService.instance.restrictsClientFeatures(_currentRole);
+
+  void _onClientGenerationChanged() {
+    if (mounted) setState(() {});
+  }
+
+  bool _isLegacyFeatureAllowed(String? title) {
+    return LegacyClientFeatures.isAllowed(title);
+  }
+
+  Widget _buildLegacyUpdatesSection() {
+    final updates = dailyUpdateList
+        .map((item) => item.toString().trim())
+        .where((item) => item.isNotEmpty)
+        .take(4)
+        .toList();
+    final dateLabel = updatePostedOnDate.toString().trim();
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () => _navigateToWidget(const DprScreen(title: 'Updates')),
+        borderRadius: BorderRadius.circular(18),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+          decoration: _dashboardSurfaceDecoration,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Expanded(
+                    child: Text(
+                      'Latest Updates',
+                      style: TextStyle(
+                        color: _navy,
+                        fontSize: 15.5,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                  Text(
+                    'View all',
+                    style: TextStyle(
+                      color: AppTheme.accentBlue,
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+              if (dateLabel.isNotEmpty && dateLabel != ' ') ...[
+                const SizedBox(height: 4),
+                Text(
+                  dateLabel,
+                  style: const TextStyle(
+                    color: _mutedGrey,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+              const SizedBox(height: 10),
+              if (updates.isEmpty)
+                const Text(
+                  'Stay tuned for updates about your home',
+                  style: TextStyle(
+                    color: _mutedGrey,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                    height: 1.4,
+                  ),
+                )
+              else
+                for (var i = 0; i < updates.length; i++) ...[
+                  if (i > 0) const SizedBox(height: 8),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        width: 6,
+                        height: 6,
+                        margin: const EdgeInsets.only(top: 6),
+                        decoration: const BoxDecoration(
+                          color: Color(0xFF2563EB),
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          updates[i],
+                          style: const TextStyle(
+                            color: _navy,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            height: 1.35,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   BoxDecoration get _dashboardSurfaceDecoration => BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(18),
@@ -1217,6 +1520,10 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
       );
 
   void _openChat() {
+    if (_restrictLegacyClientFeatures) {
+      showFeatureComingSoon(context, featureName: 'Chat V1');
+      return;
+    }
     _navigateToWidget(
       ChatV1App.openQuick(
         tasksHint: _tasks,
@@ -2828,6 +3135,23 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
         'icon': Icons.payment,
         'route': () => PaymentTaskWidget(),
       });
+      if (_isClientUser) {
+        menuItems.add({
+          'title': 'NT Payments',
+          'icon': Icons.receipt_long,
+          'route': () => const PaymentTaskWidget(
+                initialCategory: PaymentCategory.nonTender,
+              ),
+        });
+      }
+    }
+
+    if (_isClientUser) {
+      menuItems.add({
+        'title': 'Updates',
+        'icon': Icons.description_outlined,
+        'route': () => const DprScreen(title: 'Updates'),
+      });
     }
 
     // Client-only: upload UPI / bank / cheque screenshots for Finance review.
@@ -2987,6 +3311,29 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
     'Upload proof',
   ];
 
+  /// Working tiles from commit 440e62a, then newer tiles marked coming soon.
+  static const List<String> _legacyClientPinnedQuickActionTitles = [
+    'Payments',
+    'NT Payments',
+    'Documents',
+    'Gallery',
+    'Updates',
+    'Scheduler',
+    'ChatBox',
+    'Checklist',
+    'Request Drawings',
+    'Client Portal',
+    'My tasks',
+    'Project Timeline',
+    'Client Information',
+    'Upload payment proofs',
+    'Timeline Gallery',
+    'Virtual Tour',
+    'Chat V1',
+    'Project Status',
+    'Site Visit Reports',
+  ];
+
   /// Pinned quick actions for staff / other roles on the project dashboard.
   static const List<String> _staffPinnedQuickActionTitles = [
     'My tasks',
@@ -3009,7 +3356,9 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
     }
 
     final titles = _isClientUser
-        ? _clientPinnedQuickActionTitles
+        ? (_restrictLegacyClientFeatures
+            ? _legacyClientPinnedQuickActionTitles
+            : _clientPinnedQuickActionTitles)
         : _staffPinnedQuickActionTitles;
 
     final pinned = <Map<String, dynamic>>[];
@@ -3067,106 +3416,179 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
                 ),
               ),
             ],
+            KeyedSubtree(
+              key: widget.tourProgressKey,
+              child: _buildHeroBanner(),
+            ),
+            if (_restrictLegacyClientFeatures) ...[
+              const SizedBox(height: 16),
+              _buildLegacyUpdatesSection(),
+            ],
+            if (!_restrictLegacyClientFeatures &&
+                workflowDashboardSlots.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              _buildWorkflowSlotsSection(),
+            ],
+            if (!_restrictLegacyClientFeatures &&
+                _shouldShowMyPendingTasksSection) ...[
             _buildHeroBanner(),
             if (_shouldShowMyPendingTasksSection) ...[
               const SizedBox(height: 16),
               _buildTasksSection(),
             ],
-            const SizedBox(height: 12),
-            _buildChatAndLatestTasksRow(),
+            if (!_restrictLegacyClientFeatures) ...[
+              const SizedBox(height: 12),
+              KeyedSubtree(
+                key: widget.tourChatKey,
+                child: _buildChatAndLatestTasksRow(),
+              ),
+            ],
             const SizedBox(height: 22),
-            Row(
-              children: const [
-                Text(
-                  'Quick Actions',
-                  style: TextStyle(
-                    fontSize: 15.5,
-                    fontWeight: FontWeight.w800,
-                    color: _navy,
+            KeyedSubtree(
+              key: widget.tourActionsKey,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Row(
+                    children: [
+                      Text(
+                        'Quick Actions',
+                        style: TextStyle(
+                          fontSize: 15.5,
+                          fontWeight: FontWeight.w800,
+                          color: _navy,
+                        ),
+                      ),
+                    ],
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 14),
-            GridView.builder(
+                  const SizedBox(height: 14),
+                  GridView.builder(
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 4,
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: _restrictLegacyClientFeatures ? 3 : 4,
                 crossAxisSpacing: 10,
                 mainAxisSpacing: 14,
-                childAspectRatio: 0.78,
+                childAspectRatio: _restrictLegacyClientFeatures ? 0.72 : 0.78,
               ),
               itemCount: pinnedActions.length,
               itemBuilder: (BuildContext context, int index) {
                 final item = pinnedActions[index];
                 final title = item['title'].toString();
                 final colors = _quickActionColors(title);
+                final comingSoon = _restrictLegacyClientFeatures &&
+                    !_isLegacyFeatureAllowed(title);
                 return InkWell(
                   onTap: () => _handleMenuTap(item),
                   borderRadius: BorderRadius.circular(16),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.start,
-                    children: [
-                      Stack(
-                        clipBehavior: Clip.none,
-                        children: [
-                          Container(
-                            width: 56,
-                            height: 56,
-                            decoration: BoxDecoration(
-                              color: colors['bg'],
-                              borderRadius: BorderRadius.circular(16),
+                  child: Opacity(
+                    opacity: comingSoon ? 0.62 : 1,
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.start,
+                      children: [
+                        Stack(
+                          clipBehavior: Clip.none,
+                          children: [
+                            Container(
+                              width: 56,
+                              height: 56,
+                              decoration: BoxDecoration(
+                                color: colors['bg'],
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                              child: Icon(
+                                _quickActionIcon(
+                                    title, item['icon'] as IconData),
+                                size: 24,
+                                color: colors['fg'],
+                              ),
                             ),
-                            child: Icon(
-                              _quickActionIcon(title, item['icon'] as IconData),
-                              size: 24,
-                              color: colors['fg'],
-                            ),
-                          ),
-                          if (_quickActionBadgeCount(title) != null)
-                            Positioned(
-                              right: -4,
-                              top: -4,
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 6, vertical: 2),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFFEF4444),
-                                  borderRadius: BorderRadius.circular(999),
-                                  border: Border.all(
-                                      color: Colors.white, width: 1.2),
-                                ),
-                                child: Text(
-                                  _quickActionBadgeCount(title).toString(),
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 9.5,
-                                    fontWeight: FontWeight.w800,
-                                    height: 1,
+                            if (!comingSoon &&
+                                _quickActionBadgeCount(title) != null)
+                              Positioned(
+                                right: -4,
+                                top: -4,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 6, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFEF4444),
+                                    borderRadius: BorderRadius.circular(999),
+                                    border: Border.all(
+                                        color: Colors.white, width: 1.2),
+                                  ),
+                                  child: Text(
+                                    _quickActionBadgeCount(title).toString(),
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 9.5,
+                                      fontWeight: FontWeight.w800,
+                                      height: 1,
+                                    ),
                                   ),
                                 ),
                               ),
-                            ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        _quickActionLabel(title),
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                          color: _navy,
-                          fontSize: 11.5,
-                          fontWeight: FontWeight.w600,
-                          height: 1.15,
+                            if (comingSoon)
+                              Positioned(
+                                right: -8,
+                                top: -6,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 5, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF1B254B),
+                                    borderRadius: BorderRadius.circular(999),
+                                  ),
+                                  child: const Text(
+                                    'Soon',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 8.5,
+                                      fontWeight: FontWeight.w800,
+                                      height: 1,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                          ],
                         ),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
+                        const SizedBox(height: 8),
+                        Text(
+                          _restrictLegacyClientFeatures && title == 'ChatBox'
+                              ? 'Notes & Comments'
+                              : _quickActionLabel(title),
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            color: _navy,
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w600,
+                            height: 1.15,
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        if (comingSoon) ...[
+                          const SizedBox(height: 2),
+                          const Text(
+                            'Coming soon',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: Color(0xFF8A94A6),
+                              fontSize: 9.5,
+                              fontWeight: FontWeight.w600,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ],
+                    ),
                   ),
                 );
               },
+            ),
+                ],
+              ),
             ),
           ],
         ),
@@ -3587,6 +4009,14 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
   }
 
   Future<void> _handleMenuTap(Map<String, dynamic> item) async {
+    final title = item['title']?.toString() ?? '';
+    if (_restrictLegacyClientFeatures && !_isLegacyFeatureAllowed(title)) {
+      await showFeatureComingSoon(context, featureName: title);
+      return;
+    }
+    final routeResult = item['route']();
+    final widget = routeResult is Future ? await routeResult : routeResult;
+    await _navigateToWidget(widget);
     if (_openingMenu) return;
     _openingMenu = true;
     try {
@@ -3599,6 +4029,10 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
   }
 
   Future<void> openSiteVisitReports() async {
+    if (_restrictLegacyClientFeatures) {
+      await showFeatureComingSoon(context, featureName: 'Site Visit Reports');
+      return;
+    }
     SharedPreferences prefs = await SharedPreferences.getInstance();
     final projectId = prefs.getString('project_id');
     await _navigateToWidget(SiteVisitReportsScreen(
@@ -3638,6 +4072,8 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
           'fg': const Color(0xFFEAB308),
         };
       case 'payments':
+      case 'nt payments':
+      case 'non tender payments':
         return {
           'bg': const Color(0xFFFFE4E6),
           'fg': const Color(0xFFE11D48),
@@ -3654,6 +4090,7 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
           'fg': const Color(0xFF2563EB),
         };
       case 'documents':
+      case 'updates':
         return {
           'bg': const Color(0xFFCCFBF1),
           'fg': const Color(0xFF0D9488),
@@ -3749,6 +4186,10 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
         return '3D Tour';
       case 'Client Portal':
         return 'For me';
+      case 'NT Payments':
+        return 'NT Payments';
+      case 'Updates':
+        return 'Updates';
       default:
         return title;
     }
@@ -3783,6 +4224,12 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
         return Icons.folder_copy_outlined;
       case 'Payments':
         return Icons.account_balance_wallet_outlined;
+      case 'NT Payments':
+      case 'Non Tender Payments':
+        return Icons.receipt_long_outlined;
+      case 'Updates':
+        return Icons.campaign_outlined;
+      case 'Upload payment proofs':
       case 'Upload proof':
         return Icons.cloud_upload_outlined;
       case 'Scheduler':
@@ -3847,7 +4294,11 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
       'Inspection Requests',
       'Site Visit Reports',
     ];
-    final preferred = _isClientUser ? clientPreferred : staffPreferred;
+    final preferred = _isClientUser
+        ? (_restrictLegacyClientFeatures
+            ? _legacyClientPinnedQuickActionTitles
+            : clientPreferred)
+        : staffPreferred;
     final byTitle = <String, Map<String, dynamic>>{};
     for (final item in items) {
       byTitle[item['title'].toString()] = item;
