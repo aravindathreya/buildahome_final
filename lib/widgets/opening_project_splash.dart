@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_spinkit/flutter_spinkit.dart';
 
+import '../app_navigator.dart';
+import '../services/project_open_timing.dart';
+
 /// Full-screen gate shown while a project workspace is being opened.
 /// Matches the app splash: solid navy, white logo, ring spinner.
 class OpeningProjectGate extends StatefulWidget {
@@ -9,40 +12,52 @@ class OpeningProjectGate extends StatefulWidget {
   final Widget child;
   final Duration splashDuration;
   final Future<void> Function()? prepare;
+  final ProjectOpenTiming? timing;
 
   const OpeningProjectGate({
     super.key,
     required this.projectName,
     required this.child,
-    this.splashDuration = const Duration(milliseconds: 900),
+    this.splashDuration = const Duration(milliseconds: 350),
     this.prepare,
+    this.timing,
   });
 
   /// Push the splash immediately, optionally running [prepare] while it shows.
   /// Destination appears after both the minimum splash duration and [prepare]
   /// have finished.
+  ///
+  /// Rapid re-taps are ignored until this route is popped.
   static Future<T?> push<T extends Object?>(
     BuildContext context, {
     required String projectName,
     required Widget destination,
-    Future<void> Function()? prepare,
-    Duration splashDuration = const Duration(milliseconds: 900),
-  }) {
-    return Navigator.of(context).push<T>(
-      PageRouteBuilder<T>(
-        transitionDuration: Duration.zero,
-        reverseTransitionDuration: const Duration(milliseconds: 240),
-        opaque: true,
-        pageBuilder: (context, animation, secondaryAnimation) {
-          return OpeningProjectGate(
-            projectName: projectName,
-            prepare: prepare,
-            splashDuration: splashDuration,
-            child: destination,
-          );
-        },
-      ),
-    );
+    Future<void> Function(ProjectOpenTiming timing)? prepare,
+    Duration splashDuration = const Duration(milliseconds: 350),
+  }) async {
+    if (!NavigationDebounce.tryAcquire()) return null;
+    NavigationDebounce.beginPush();
+    final timing = ProjectOpenTiming(projectName);
+    try {
+      return await Navigator.of(context).push<T>(
+        PageRouteBuilder<T>(
+          transitionDuration: Duration.zero,
+          reverseTransitionDuration: const Duration(milliseconds: 200),
+          opaque: true,
+          pageBuilder: (context, animation, secondaryAnimation) {
+            return OpeningProjectGate(
+              projectName: projectName,
+              prepare: prepare == null ? null : () => prepare(timing),
+              splashDuration: splashDuration,
+              timing: timing,
+              child: destination,
+            );
+          },
+        ),
+      );
+    } finally {
+      NavigationDebounce.endPush();
+    }
   }
 
   @override
@@ -62,7 +77,7 @@ class _OpeningProjectGateState extends State<OpeningProjectGate>
     super.initState();
     _fadeController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 320),
+      duration: const Duration(milliseconds: 220),
     );
     _fade = CurvedAnimation(
       parent: _fadeController,
@@ -73,24 +88,42 @@ class _OpeningProjectGateState extends State<OpeningProjectGate>
   }
 
   Future<void> _runGate() async {
-    // Show splash right away; wait for both the visual beat and prepare work.
-    await Future.wait<void>([
-      Future<void>.delayed(widget.splashDuration),
-      () async {
-        final prepare = widget.prepare;
-        if (prepare == null) return;
-        try {
+    final timing = widget.timing;
+
+    final splashWatch = Stopwatch()..start();
+    final splashFuture = Future<void>.delayed(widget.splashDuration).then((_) {
+      splashWatch.stop();
+      timing?.recordMs('min_splash_wait', splashWatch.elapsedMilliseconds);
+    });
+
+    final prepareFuture = () async {
+      final prepare = widget.prepare;
+      if (prepare == null) return;
+      try {
+        if (timing != null) {
+          await timing.measure('prepare_total', prepare);
+        } else {
           await prepare();
-        } catch (e) {
-          debugPrint('[OpeningProjectGate] prepare failed: $e');
         }
-      }(),
-    ]);
+      } catch (e) {
+        debugPrint('[OpeningProjectGate] prepare failed: $e');
+      }
+    }();
+
+    await Future.wait<void>([splashFuture, prepareFuture]);
 
     if (!mounted) return;
-    await _fadeController.reverse();
+    if (timing != null) {
+      await timing.measure('fade_to_destination', () async {
+        await _fadeController.reverse();
+      });
+    } else {
+      await _fadeController.reverse();
+    }
     if (!mounted) return;
     setState(() => _showDestination = true);
+
+    timing?.logReport();
   }
 
   @override

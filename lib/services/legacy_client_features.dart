@@ -33,7 +33,6 @@ class LegacyClientFeatures {
     'Virtual Tour',
     'Chat V1',
     'Project Status',
-    'Site Visit Reports',
   ];
 
   static const String comingSoonMessage = 'Feature coming soon';

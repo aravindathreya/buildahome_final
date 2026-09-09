@@ -7,7 +7,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'FullScreenImage.dart';
-import 'Skin2/loginPage.dart';
+import 'services/app_logout.dart';
 import 'services/client_portal_service.dart';
 import 'widgets/skeleton_loader.dart';
 
@@ -134,10 +134,8 @@ class _UploadPaymentProofScreenState extends State<UploadPaymentProofScreen> {
         : _messageOf(e).toLowerCase().contains('unauthorized') ||
             _messageOf(e).toLowerCase().contains('not authenticated');
     if (isUnauthorized) {
-      Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => LoginScreenNew()),
-        (route) => false,
-      );
+      // ignore: unawaited_futures
+      AppLogout.logoutAndGoToLogin(context: context);
       return true;
     }
 

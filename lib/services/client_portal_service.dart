@@ -299,10 +299,13 @@ class ClientPortalService {
     Map<String, String> fields, {
     required String fileField,
     required List<File> files,
+    String emptyFilesMessage =
+        'Select at least one payment image or PDF to upload',
+    Duration timeout = const Duration(seconds: 90),
   }) async {
     if (files.isEmpty) {
       throw ClientPortalApiException(
-        'Select at least one payment image or PDF to upload',
+        emptyFilesMessage,
         statusCode: 400,
       );
     }
@@ -335,8 +338,7 @@ class ClientPortalService {
             ),
           );
         }
-        final streamed =
-            await request.send().timeout(const Duration(seconds: 90));
+        final streamed = await request.send().timeout(timeout);
         final response = await http.Response.fromStream(streamed);
         await _persistCookieFrom(response);
         final json = _decodeOrThrow(response);
@@ -449,33 +451,42 @@ class ClientPortalService {
   }
 
   /// POST /api/client_portal/documents/upload
-  /// multipart: `doc_key=aadhar` + field named after doc_key, or
-  /// `custom_doc_name` + `custom_doc_files`.
+  /// multipart: `doc_key=aadhar` + field named after doc_key.
   Future<Map<String, dynamic>> uploadDocument({
     required String docKey,
     required File file,
-    String? customDocName,
   }) async {
-    final isCustom = docKey == 'custom' ||
-        (customDocName != null && customDocName.trim().isNotEmpty);
-    if (isCustom) {
-      return _postMultipart(
-        '/api/client_portal/documents/upload',
-        {
-          'doc_key': 'custom',
-          'custom_doc_name': customDocName?.trim().isNotEmpty == true
-              ? customDocName!.trim()
-              : 'custom',
-        },
-        fileField: 'custom_doc_files',
-        file: file,
-      );
-    }
     return _postMultipart(
       '/api/client_portal/documents/upload',
       {'doc_key': docKey},
       fileField: docKey,
       file: file,
+    );
+  }
+
+  /// POST /api/client_portal/documents/upload
+  /// multipart: `doc_key=custom` + `custom_doc_name` + `custom_doc_files`.
+  Future<Map<String, dynamic>> uploadCustomDocuments({
+    required String customDocName,
+    required List<File> files,
+  }) async {
+    final name = customDocName.trim();
+    if (name.isEmpty) {
+      throw ClientPortalApiException(
+        'Please enter a document name before uploading.',
+        statusCode: 400,
+      );
+    }
+    return _postMultipartMany(
+      '/api/client_portal/documents/upload',
+      {
+        'doc_key': 'custom',
+        'custom_doc_name': name,
+      },
+      fileField: 'custom_doc_files',
+      files: files,
+      emptyFilesMessage: 'Select at least one file to upload',
+      timeout: const Duration(minutes: 10),
     );
   }
 

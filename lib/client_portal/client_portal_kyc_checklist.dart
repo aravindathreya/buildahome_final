@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../app_theme.dart';
+import '../widgets/workflow_document_viewer.dart';
 import 'client_portal_document_ui.dart';
 import 'client_portal_kyc_ui.dart';
 import 'kyc_document_record.dart';
@@ -13,6 +14,7 @@ class ClientPortalKycChecklist extends StatelessWidget {
   final bool saving;
   final TextEditingController commentCtrl;
   final Future<void> Function(String docKey) onUpload;
+  final Future<bool> Function(String name) onUploadCustom;
   final void Function(String label, KycDocumentRecord record) onOpenUploaded;
   final VoidCallback onSaveComment;
 
@@ -24,6 +26,7 @@ class ClientPortalKycChecklist extends StatelessWidget {
     required this.saving,
     required this.commentCtrl,
     required this.onUpload,
+    required this.onUploadCustom,
     required this.onOpenUploaded,
     required this.onSaveComment,
   });
@@ -80,6 +83,13 @@ class ClientPortalKycChecklist extends StatelessWidget {
             ),
           ),
         ),
+        const SizedBox(height: 8),
+        _CustomDocumentsSection(
+          data: data,
+          kycDocs: kycDocs,
+          saving: saving,
+          onUploadCustom: onUploadCustom,
+        ),
         if (allMandatoryDone) ...[
           const SizedBox(height: 8),
           const KycSuccessBanner(),
@@ -107,11 +117,11 @@ class ClientPortalKycChecklist extends StatelessWidget {
           ? Map<String, dynamic>.from(raw)
           : <String, dynamic>{'key': raw.toString(), 'label': raw.toString()};
       final key = map['key']?.toString() ?? map['doc_key']?.toString() ?? '';
-      if (key.isEmpty) continue;
+      if (key.isEmpty || key.toLowerCase() == 'custom') continue;
       final label = map['label']?.toString() ??
           map['name']?.toString() ??
           _labelForDocKey(key);
-      final optional = _isOptionalDoc(map, key);
+      final optional = _isOptionalDoc(map);
 
       final uploadedDoc = KycDocumentRecord.findForKey(key, kycDocs);
       final done = uploadedTypes.contains(key) || uploadedDoc != null;
@@ -133,11 +143,10 @@ class ClientPortalKycChecklist extends StatelessWidget {
     return items;
   }
 
-  /// Mandatory unless API marks optional or it is a custom upload slot.
-  bool _isOptionalDoc(Map<String, dynamic> map, String key) {
+  /// Mandatory unless the API marks the type as optional.
+  bool _isOptionalDoc(Map<String, dynamic> map) {
     if (map['optional'] == true) return true;
     if (map['optional'] == false) return false;
-    if (key == 'custom') return true;
     // document_types drives the checklist; don't demote items missing from
     // mandatory_docs (that list can be incomplete vs displayed types).
     return false;
@@ -157,14 +166,319 @@ class ClientPortalKycChecklist extends StatelessWidget {
         return 'Khata';
       case 'photograph':
         return 'Photograph';
-      case 'custom':
-        return 'Other document';
+      case 'tax_receipt':
+        return 'Tax Receipt';
+      case 'layout_plan':
+        return 'Layout Plan';
       default:
         return key
             .split('_')
             .map((p) => p.isEmpty ? p : '${p[0].toUpperCase()}${p.substring(1)}')
             .join(' ');
     }
+  }
+}
+
+class _CustomDocumentsSection extends StatefulWidget {
+  final Map<String, dynamic> data;
+  final List kycDocs;
+  final bool saving;
+  final Future<bool> Function(String name) onUploadCustom;
+
+  const _CustomDocumentsSection({
+    required this.data,
+    required this.kycDocs,
+    required this.saving,
+    required this.onUploadCustom,
+  });
+
+  @override
+  State<_CustomDocumentsSection> createState() =>
+      _CustomDocumentsSectionState();
+}
+
+class _CustomDocumentsSectionState extends State<_CustomDocumentsSection> {
+  final _nameCtrl = TextEditingController();
+  String? _nameError;
+
+  @override
+  void dispose() {
+    _nameCtrl.dispose();
+    super.dispose();
+  }
+
+  Map<String, dynamic> get _config {
+    final raw = widget.data['custom_documents'];
+    if (raw is Map) return Map<String, dynamic>.from(raw);
+    return const {};
+  }
+
+  String get _title {
+    final value = _config['title']?.toString().trim();
+    if (value != null && value.isNotEmpty) return value;
+    return 'Custom Documents';
+  }
+
+  String get _placeholder {
+    final value = _config['name_placeholder']?.toString().trim();
+    if (value != null && value.isNotEmpty) return value;
+    return 'e.g. NOC, Agreement';
+  }
+
+  Future<void> _submit() async {
+    final name = _nameCtrl.text.trim();
+    if (name.isEmpty) {
+      setState(() {
+        _nameError = 'Please enter a document name before uploading.';
+      });
+      return;
+    }
+    setState(() => _nameError = null);
+    final uploaded = await widget.onUploadCustom(name);
+    if (!mounted) return;
+    if (uploaded) {
+      _nameCtrl.clear();
+      setState(() => _nameError = null);
+    }
+  }
+
+  void _view(KycDocumentRecord record) {
+    if (!record.hasUrl) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Document is no longer available.')),
+      );
+      return;
+    }
+    openWorkflowDocument(
+      context,
+      record.toWorkflowUpload(record.displayLabel),
+      clientMode: true,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final uploads = KycDocumentRecord.customUploadsFrom(
+      data: widget.data,
+      kycDocs: widget.kycDocs,
+    );
+
+    return Container(
+      decoration: ClientPortalDocTheme.cardDecoration(),
+      padding: const EdgeInsets.fromLTRB(14, 16, 14, 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(
+                Icons.note_add_outlined,
+                size: 20,
+                color: AppTheme.navy,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  _title,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 16,
+                    color: AppTheme.navy,
+                  ),
+                ),
+              ),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF1F5F9),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: const Text(
+                  'Optional',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: AppTheme.mutedGrey,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Type a name, then upload one or more files.',
+            style: TextStyle(
+              fontSize: 12.5,
+              fontWeight: FontWeight.w600,
+              color: AppTheme.getTextSecondary(context),
+            ),
+          ),
+          const SizedBox(height: 14),
+          const Text(
+            'Document name',
+            style: TextStyle(
+              fontWeight: FontWeight.w700,
+              fontSize: 13,
+              color: AppTheme.navy,
+            ),
+          ),
+          const SizedBox(height: 6),
+          TextField(
+            controller: _nameCtrl,
+            enabled: !widget.saving,
+            textCapitalization: TextCapitalization.sentences,
+            onChanged: (_) {
+              if (_nameError != null) setState(() => _nameError = null);
+            },
+            decoration: InputDecoration(
+              hintText: _placeholder,
+              filled: true,
+              fillColor: const Color(0xFFF7F8FB),
+              errorText: _nameError,
+              errorMaxLines: 2,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: const BorderSide(color: AppTheme.border),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(
+                  color: _nameError == null
+                      ? AppTheme.border
+                      : const Color(0xFFDC2626),
+                ),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: const BorderSide(
+                  color: ClientPortalDocTheme.accentBlue,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: widget.saving ? null : _submit,
+              icon: widget.saving
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Icon(Icons.upload_file_outlined),
+              label: Text(widget.saving ? 'Uploading…' : 'Upload'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.navy,
+                foregroundColor: Colors.white,
+                minimumSize: const Size.fromHeight(46),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+          ),
+          if (uploads.isNotEmpty) ...[
+            const SizedBox(height: 14),
+            const Divider(height: 1, color: AppTheme.border),
+            const SizedBox(height: 10),
+            ...uploads.map(
+              (record) => Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: _CustomUploadRow(
+                  record: record,
+                  onView: () => _view(record),
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _CustomUploadRow extends StatelessWidget {
+  final KycDocumentRecord record;
+  final VoidCallback onView;
+
+  const _CustomUploadRow({
+    required this.record,
+    required this.onView,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: const Color(0xFFF7F8FB),
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        onTap: record.hasUrl ? onView : null,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(10, 8, 4, 8),
+          child: Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFEEF2FF),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(
+                  Icons.insert_drive_file_outlined,
+                  size: 18,
+                  color: AppTheme.navy,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      record.displayLabel,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13.5,
+                        color: AppTheme.navy,
+                      ),
+                    ),
+                    if (record.filename != null &&
+                        record.filename != record.displayLabel) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        record.filename!,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w600,
+                          color: AppTheme.getTextSecondary(context),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              TextButton(
+                onPressed: record.hasUrl ? onView : null,
+                child: const Text(
+                  'View',
+                  style: TextStyle(fontWeight: FontWeight.w800),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 

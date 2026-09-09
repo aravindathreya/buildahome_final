@@ -4,27 +4,70 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../app_theme.dart';
 
 /// First-login home tour for newer (Sales SOP) clients.
+///
+/// Completion is stored per user and must survive logout (see [AppLogout]).
 class ClientHomeTour {
   ClientHomeTour._();
 
-  static const String _prefPrefix = 'client_home_tour_done_';
+  static const String prefPrefix = 'client_home_tour_done_';
 
-  static Future<String> _userKey() async {
+  /// In-process guard so the tour cannot reopen during the same app run.
+  static final Set<String> _completedThisProcess = <String>{};
+
+  static Future<String> _scopeId() async {
     final prefs = await SharedPreferences.getInstance();
     final userId =
         (prefs.getString('userId') ?? prefs.getString('user_id') ?? '')
             .trim();
-    return '$_prefPrefix${userId.isEmpty ? 'default' : userId}';
+    if (userId.isNotEmpty && userId.toLowerCase() != 'null') {
+      return userId;
+    }
+    final phone = (prefs.getString('phone') ?? '').trim();
+    if (phone.isNotEmpty) return 'phone_$phone';
+    final username = (prefs.getString('username') ?? '').trim();
+    if (username.isNotEmpty) return 'user_$username';
+    return 'default';
   }
 
+  static Future<String> _prefKey([String? scopeId]) async {
+    return '$prefPrefix${scopeId ?? await _scopeId()}';
+  }
+
+  static bool isTourPrefKey(String key) => key.startsWith(prefPrefix);
+
   static Future<bool> hasCompleted() async {
+    final scope = await _scopeId();
+    if (_completedThisProcess.contains(scope)) return true;
+
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getBool(await _userKey()) ?? false;
+    final key = await _prefKey(scope);
+    final done = prefs.getBool(key) ?? false;
+    if (done) {
+      _completedThisProcess.add(scope);
+      return true;
+    }
+    return false;
   }
 
   static Future<void> markCompleted() async {
+    final scope = await _scopeId();
+    _completedThisProcess.add(scope);
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(await _userKey(), true);
+    await prefs.setBool(await _prefKey(scope), true);
+  }
+
+  /// Restore tour completion flags after a full prefs wipe on logout.
+  static Future<void> restorePreservedFlags(
+    Map<String, bool> preserved,
+  ) async {
+    if (preserved.isEmpty) return;
+    final prefs = await SharedPreferences.getInstance();
+    for (final entry in preserved.entries) {
+      if (!isTourPrefKey(entry.key)) continue;
+      await prefs.setBool(entry.key, entry.value);
+      final scope = entry.key.substring(prefPrefix.length);
+      if (entry.value) _completedThisProcess.add(scope);
+    }
   }
 }
 

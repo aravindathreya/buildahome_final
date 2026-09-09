@@ -13,14 +13,17 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'SiteVisitReports.dart';
 import 'TestReportsScreen.dart';
 import 'app_theme.dart';
+import 'app_navigator.dart';
 import 'checklist_categories.dart';
 import 'indents_screen.dart';
 import 'notifcations.dart';
 import 'project_picker.dart';
 import 'user_picker.dart';
+import 'services/app_logout.dart';
 import 'services/data_provider.dart';
 import 'services/notification_service.dart';
 import 'services/profile_picture_service.dart';
+import 'services/project_open_timing.dart';
 import 'services/rbac_service.dart';
 import 'services/api_http.dart';
 import 'services/session_manager.dart';
@@ -30,11 +33,7 @@ import 'MyTasksScreen.dart';
 import 'task_display_title.dart';
 import 'mobile_live_test_screen.dart';
 import 'services/mobile_live_test_access.dart';
-import 'services/mobile_live_test_storage.dart';
-import 'Skin2/loginPage.dart';
 import 'NavMenu.dart';
-import 'NotesAndComments.dart';
-import 'chat_v1/chat_v1_app.dart';
 import 'ProjectFocusScreen.dart';
 import 'utilities/role_app_bar_color.dart';
 import 'widgets/dashboard_chrome.dart';
@@ -76,11 +75,8 @@ class _AdminDashboardState extends State<AdminDashboard> {
         setState(() {});
       }
     });
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      if (!mounted) return;
-      await maybePromptForAttendance(context);
-      if (!mounted) return;
-      await maybePromptForProfilePicture(context);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _promptStaffOnStartup();
     });
   }
 
@@ -88,6 +84,30 @@ class _AdminDashboardState extends State<AdminDashboard> {
   void dispose() {
     _searchQueryNotifier.dispose();
     super.dispose();
+  }
+
+  /// Wait for the login transition, then:
+  /// 1) Attendance (if needed) — wait until that dialog is closed
+  /// 2) Profile picture (if missing)
+  Future<void> _promptStaffOnStartup() async {
+    await Future<void>.delayed(const Duration(milliseconds: 800));
+    if (!mounted) return;
+
+    BuildContext dialogContext() =>
+        globalNavigatorKey.currentContext ?? context;
+
+    try {
+      // Do NOT put a short timeout around the dialog — that used to cut off
+      // attendance mid-show and then the profile popup never appeared cleanly.
+      await maybePromptForAttendance(dialogContext());
+    } catch (e) {
+      debugPrint('[Startup] attendance prompt error: $e');
+    }
+
+    // Let the attendance route fully dismiss before opening the next dialog.
+    await Future<void>.delayed(const Duration(milliseconds: 350));
+    if (!mounted) return;
+    await maybePromptForProfilePicture(dialogContext());
   }
 
   Future<void> _onBottomNavTap(int index) async {
@@ -304,27 +324,7 @@ class _LogoutButton extends StatelessWidget {
     );
 
     if (shouldLogout == true) {
-      // Clear data immediately (synchronous)
-      DataProvider().clearData();
-      NotificationService.instance.clear();
-      ProfilePictureService.promptShownThisSession = false;
-
-      // Navigate immediately without waiting for SharedPreferences.clear()
-      if (context.mounted) {
-        Navigator.pushAndRemoveUntil(
-          context,
-          MaterialPageRoute(builder: (context) => LoginScreenNew()),
-          (route) => false,
-        );
-      }
-
-      // Clear SharedPreferences in background (don't wait for it)
-      SharedPreferences.getInstance().then((preferences) {
-        preferences.clear();
-      }).catchError((e) {
-        print('Error clearing SharedPreferences: $e');
-      });
-      MobileLiveTestCredentials.clearLocal();
+      await AppLogout.logoutAndGoToLogin(context: context);
     }
   }
 
@@ -562,39 +562,57 @@ class AdminHomeState extends State<AdminHome> {
 
   Future<void> openTasksScreen() async {
     if (_isNavigating) return;
-    setState(() => _isNavigating = true);
+    _isNavigating = true;
+    if (mounted) setState(() {});
     try {
-      await _navigateWithAnimation(
-        context,
-        MyTasksScreen(
-          tasks: _tasks,
-          onRefresh: _refreshTasksForMyTasks,
-        ),
-      );
+      if (!NavigationDebounce.tryAcquire()) return;
+      NavigationDebounce.beginPush();
+      try {
+        await _navigateWithAnimation(
+          context,
+          MyTasksScreen(
+            tasks: _tasks,
+            onRefresh: _refreshTasksForMyTasks,
+          ),
+        );
+      } finally {
+        NavigationDebounce.endPush();
+      }
     } finally {
-      if (mounted) setState(() => _isNavigating = false);
+      _isNavigating = false;
+      if (mounted) setState(() {});
     }
   }
 
   Future<void> openProjectsPicker() async {
     if (_isNavigating) return;
-    setState(() => _isNavigating = true);
+    _isNavigating = true;
+    if (mounted) setState(() {});
     try {
       await ProjectPickerScreen.show(context);
       if (mounted) loadProjects();
       await Future.delayed(const Duration(milliseconds: 300));
     } finally {
-      if (mounted) setState(() => _isNavigating = false);
+      _isNavigating = false;
+      if (mounted) setState(() {});
     }
   }
 
   Future<void> openSiteVisits() async {
     if (_isNavigating) return;
-    setState(() => _isNavigating = true);
+    _isNavigating = true;
+    if (mounted) setState(() {});
     try {
-      await _navigateWithAnimation(context, SiteVisitReportsScreen());
+      if (!NavigationDebounce.tryAcquire()) return;
+      NavigationDebounce.beginPush();
+      try {
+        await _navigateWithAnimation(context, SiteVisitReportsScreen());
+      } finally {
+        NavigationDebounce.endPush();
+      }
     } finally {
-      if (mounted) setState(() => _isNavigating = false);
+      _isNavigating = false;
+      if (mounted) setState(() {});
     }
   }
 
@@ -950,15 +968,16 @@ class AdminHomeState extends State<AdminHome> {
   }
 
   void _showCreateTaskDialog() {
-    // Prevent double-tap navigation
-    if (_isNavigating) {
+    if (_isNavigating) return;
+    _isNavigating = true;
+    if (mounted) setState(() {});
+
+    if (!NavigationDebounce.tryAcquire()) {
+      _isNavigating = false;
+      if (mounted) setState(() {});
       return;
     }
-
-    setState(() {
-      _isNavigating = true;
-    });
-
+    NavigationDebounce.beginPush();
     _navigateWithAnimation(
       context,
       TasksLayout(
@@ -971,12 +990,10 @@ class AdminHomeState extends State<AdminHome> {
           return _tasks;
         },
       ),
-    ).then((_) {
-      if (mounted) {
-        setState(() {
-          _isNavigating = false;
-        });
-      }
+    ).whenComplete(() {
+      NavigationDebounce.endPush();
+      _isNavigating = false;
+      if (mounted) setState(() {});
     });
   }
 
@@ -1068,25 +1085,7 @@ class AdminHomeState extends State<AdminHome> {
       });
     }
 
-    // ChatBox - check RBAC but exclude site engineer
-    if (rbac.canViewSync(currentUserRole, RBACService.tasksAndNotes) &&
-        currentUserRole != 'Site Engineer') {
-      menuItems.add({
-        'title': 'ChatBox',
-        'icon': Icons.note_add,
-        'route': () => NotesAndComments(),
-      });
-    }
-    // Chat V1 — Client always allowed (General + DOC approval).
-    if (currentUserRole == 'Client' ||
-        (rbac.canViewSync(currentUserRole, RBACService.tasksAndNotes) &&
-            currentUserRole != 'Site Engineer')) {
-      menuItems.add({
-        'title': 'Chat V1',
-        'icon': Icons.forum_outlined,
-        'route': () => ChatV1App.openQuick(tasksHint: _tasks),
-      });
-    }
+    // Chat / Chat V1 live on the individual project page (and nav), not here.
 
     // Project Status — opens Project Focus (current situation dashboard).
     if (currentUserRole == 'Client' ||
@@ -1132,25 +1131,20 @@ class AdminHomeState extends State<AdminHome> {
     return menuItems;
   }
 
-  /// Keep Chat V1 + Project Status immediately after Chat in Quick Actions.
   List<Map<String, dynamic>> _visibleQuickActions(
       List<Map<String, dynamic>> items,
       {int max = 8}) {
     final visible = items.take(max).toList();
-    final chatPos = visible.indexWhere((e) => e['title'] == 'ChatBox');
-    final v1InVisible = visible.any((e) => e['title'] == 'Chat V1');
-    final v1Index = items.indexWhere((e) => e['title'] == 'Chat V1');
-    if (chatPos >= 0 && !v1InVisible && v1Index >= 0) {
-      visible.insert(chatPos + 1, items[v1Index]);
-    }
     final statusInVisible = visible.any((e) => e['title'] == 'Project Status');
     final statusIndex = items.indexWhere((e) => e['title'] == 'Project Status');
-    final v1Pos = visible.indexWhere((e) => e['title'] == 'Chat V1');
     if (!statusInVisible && statusIndex >= 0) {
-      final insertAt = v1Pos >= 0
-          ? v1Pos + 1
-          : (chatPos >= 0 ? chatPos + 1 : visible.length);
-      visible.insert(insertAt.clamp(0, visible.length), items[statusIndex]);
+      visible.insert(
+        visible.length.clamp(0, max > 0 ? max - 1 : 0),
+        items[statusIndex],
+      );
+      if (visible.length > max) {
+        visible.removeLast();
+      }
     }
     return visible;
   }
@@ -2116,16 +2110,17 @@ class AdminHomeState extends State<AdminHome> {
                       color: Colors.transparent,
                       child: InkWell(
                         onTap: () async {
-                          // Prevent double-tap navigation
-                          if (_isNavigating) {
-                            return;
-                          }
+                          // Sync lock first — setState alone is too late for triple-taps.
+                          if (_isNavigating) return;
+                          _isNavigating = true;
 
                           final projectIdStr = project['id']?.toString();
                           final projectNameStr =
                               project['name']?.toString() ?? 'Project';
 
                           if (projectIdStr == null) {
+                            _isNavigating = false;
+                            if (mounted) setState(() {});
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(
                                   content:
@@ -2134,38 +2129,57 @@ class AdminHomeState extends State<AdminHome> {
                             return;
                           }
 
-                          setState(() {
-                            _isNavigating = true;
-                          });
+                          if (mounted) setState(() {});
                           _clearQuickSearch();
 
                           try {
                             // Show splash immediately; do prefs/API work while it displays.
+                            // OpeningProjectGate.push also debounces rapid re-opens.
                             await OpeningProjectGate.push(
                               context,
                               projectName: projectNameStr,
                               destination: Home(fromAdminDashboard: true),
-                              prepare: () async {
-                                final prefs =
-                                    await SharedPreferences.getInstance();
-                                await prefs.setString(
-                                    "project_id", projectIdStr);
-                                await prefs.setString(
-                                    "client_name", projectNameStr);
+                              prepare: (timing) async {
+                                await timing.measure('prefs_write', () async {
+                                  final prefs =
+                                      await SharedPreferences.getInstance();
+                                  await prefs.setString(
+                                      "project_id", projectIdStr);
+                                  await prefs.setString(
+                                      "client_name", projectNameStr);
+                                });
 
-                                await DataProvider().onProjectSelected(
-                                  erpProjectId: projectIdStr,
-                                  project:
-                                      Map<String, dynamic>.from(project),
+                                await timing.measure(
+                                  'onProjectSelected (sales_sop resolve)',
+                                  () => DataProvider().onProjectSelected(
+                                    erpProjectId: projectIdStr,
+                                    project:
+                                        Map<String, dynamic>.from(project),
+                                  ),
                                 );
 
+                                final prefs =
+                                    await SharedPreferences.getInstance();
                                 final role = prefs.getString('role');
                                 if (role != null && role != 'Client') {
                                   DataProvider().resetProjectData();
+                                  // Fire-and-forget preload — do not block open.
+                                  final preloadWatch = Stopwatch()..start();
                                   DataProvider()
                                       .loadProjectDataForNonClient(
                                           projectIdStr)
-                                      .catchError((e) {
+                                      .then((_) {
+                                    preloadWatch.stop();
+                                    timing.recordMs(
+                                      'preload_project_data (background)',
+                                      preloadWatch.elapsedMilliseconds,
+                                    );
+                                  }).catchError((e) {
+                                    preloadWatch.stop();
+                                    timing.recordMs(
+                                      'preload_project_data (background)',
+                                      preloadWatch.elapsedMilliseconds,
+                                    );
                                     print(
                                         '[AdminDashboard] Error preloading project data: $e');
                                   });
@@ -2176,11 +2190,8 @@ class AdminHomeState extends State<AdminHome> {
                               loadProjects();
                             }
                           } finally {
-                            if (mounted) {
-                              setState(() {
-                                _isNavigating = false;
-                              });
-                            }
+                            _isNavigating = false;
+                            if (mounted) setState(() {});
                           }
                         },
                         borderRadius: BorderRadius.circular(8),
@@ -2316,23 +2327,25 @@ class AdminHomeState extends State<AdminHome> {
 
   Future<void> _handleMenuTap(
       BuildContext context, Map<String, dynamic> item) async {
-    // Prevent double-tap navigation
-    if (_isNavigating) {
-      return;
-    }
+    // Sync lock — setState alone loses to rapid taps.
+    if (_isNavigating) return;
+    _isNavigating = true;
+    if (mounted) setState(() {});
 
     if (item['title'] == 'Log out') {
-      DataProvider().clearData();
-      await NotificationService.instance.clear();
-      await item['route']();
+      try {
+        DataProvider().clearData();
+        await NotificationService.instance.clear();
+        await item['route']();
+      } finally {
+        _isNavigating = false;
+      }
       return;
     }
 
-    setState(() {
-      _isNavigating = true;
-    });
-
     try {
+      if (!NavigationDebounce.tryAcquire()) return;
+
       final routeResult = item['route']();
       final widget = routeResult is Future ? await routeResult : routeResult;
 
@@ -2348,17 +2361,16 @@ class AdminHomeState extends State<AdminHome> {
         return;
       }
 
-      await _navigateWithAnimation(context, widget).then((_) {
-        if (mounted) {
-          loadProjects();
-        }
-      });
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isNavigating = false;
-        });
+      NavigationDebounce.beginPush();
+      try {
+        await _navigateWithAnimation(context, widget);
+        if (mounted) loadProjects();
+      } finally {
+        NavigationDebounce.endPush();
       }
+    } finally {
+      _isNavigating = false;
+      if (mounted) setState(() {});
     }
   }
 
@@ -4168,15 +4180,35 @@ class DashboardState extends State<Dashboard> {
                                           projectName: projectName,
                                           destination:
                                               Home(fromAdminDashboard: true),
-                                          prepare: () async {
+                                          prepare: (timing) async {
+                                            await timing.measure(
+                                                'prefs_write', () async {
+                                              final prefs =
+                                                  await SharedPreferences
+                                                      .getInstance();
+                                              await prefs.setString(
+                                                  "project_id",
+                                                  projectId ?? '');
+                                              await prefs.setString(
+                                                  "client_name", projectName);
+                                            });
+
+                                            if (projectId != null &&
+                                                projectId.isNotEmpty) {
+                                              await timing.measure(
+                                                'onProjectSelected (sales_sop resolve)',
+                                                () => DataProvider()
+                                                    .onProjectSelected(
+                                                  erpProjectId: projectId,
+                                                  project: Map<String,
+                                                      dynamic>.from(project),
+                                                ),
+                                              );
+                                            }
+
                                             final prefs =
                                                 await SharedPreferences
                                                     .getInstance();
-                                            await prefs.setString(
-                                                "project_id", projectId ?? '');
-                                            await prefs.setString(
-                                                "client_name", projectName);
-
                                             final role =
                                                 prefs.getString('role');
                                             if (role != null &&
@@ -4188,16 +4220,6 @@ class DashboardState extends State<Dashboard> {
                                                 print(
                                                     '[Dashboard] Error preloading project data: $e');
                                               });
-                                            }
-
-                                            if (projectId != null &&
-                                                projectId.isNotEmpty) {
-                                              await DataProvider()
-                                                  .onProjectSelected(
-                                                erpProjectId: projectId,
-                                                project: Map<String,
-                                                    dynamic>.from(project),
-                                              );
                                             }
                                           },
                                         );

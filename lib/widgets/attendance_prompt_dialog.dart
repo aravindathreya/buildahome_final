@@ -10,18 +10,26 @@ import '../widgets/dashboard_chrome.dart';
 /// Once per IST day, prompts staff who still need to check in.
 Future<void> maybePromptForAttendance(BuildContext context) async {
   try {
-    if (await AttendanceService.wasPromptedToday()) return;
+    if (await AttendanceService.wasPromptedToday()) {
+      debugPrint('[Attendance] skip — already prompted today');
+      return;
+    }
 
-    final status = await AttendanceService.getStatus();
+    // Keep network wait bounded; do not timeout the dialog itself.
+    final status = await AttendanceService.getStatus()
+        .timeout(const Duration(seconds: 12));
     if (!status.canCheckIn) {
+      debugPrint('[Attendance] skip — cannot check in / already done');
       await AttendanceService.markPromptedToday();
       return;
     }
     if (!context.mounted) return;
 
+    debugPrint('[Attendance] showing check-in prompt');
     await AttendanceService.markPromptedToday();
     await showAttendancePromptDialog(context, initialStatus: status);
-  } catch (_) {
+  } catch (e) {
+    debugPrint('[Attendance] prompt failed: $e');
     // Silent on startup — user can still open Attendance from the menu.
   }
 }
@@ -32,6 +40,7 @@ Future<void> showAttendancePromptDialog(
 }) {
   return showDialog<void>(
     context: context,
+    useRootNavigator: true,
     barrierDismissible: true,
     builder: (dialogContext) => _AttendancePromptDialog(
       initialStatus: initialStatus,

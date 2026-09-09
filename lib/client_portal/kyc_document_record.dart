@@ -12,6 +12,8 @@ class KycDocumentRecord {
   final String? contentType;
   final String? uploadedBy;
   final String? fileSizeDisplay;
+  final String? customLabel;
+  final String? documentLabel;
   final Map<String, dynamic> raw;
 
   const KycDocumentRecord({
@@ -24,6 +26,8 @@ class KycDocumentRecord {
     this.contentType,
     this.uploadedBy,
     this.fileSizeDisplay,
+    this.customLabel,
+    this.documentLabel,
     this.raw = const {},
   });
 
@@ -53,6 +57,16 @@ class KycDocumentRecord {
     return null;
   }
 
+  /// Label for custom uploads — never the word "Custom".
+  String get displayLabel {
+    for (final value in [customLabel, documentLabel, filename]) {
+      if (_usableLabel(value)) return value!.trim();
+    }
+    return 'Document';
+  }
+
+  bool get isCustom => docKey.toLowerCase() == 'custom';
+
   String? get fileTypeDisplay {
     if (isPdf) return 'PDF';
     if (isImage) {
@@ -70,11 +84,20 @@ class KycDocumentRecord {
   }
 
   static KycDocumentRecord? fromMap(Map<String, dynamic> map) {
-    final docKey = _string(map['doc_key']) ??
+    var docKey = _string(map['doc_key']) ??
         _string(map['doc_type']) ??
         _string(map['document_type']) ??
         '';
-    if (docKey.isEmpty) return null;
+    final customLabel = _string(map['custom_label']) ??
+        _string(map['custom_doc_name']);
+    final documentLabel = _string(map['document_label']);
+    if (docKey.isEmpty) {
+      if (customLabel != null) {
+        docKey = 'custom';
+      } else {
+        return null;
+      }
+    }
 
     final rawUrl = _string(map['view_url']) ??
         _string(map['download_url']) ??
@@ -99,8 +122,27 @@ class KycDocumentRecord {
           _string(map['uploaded_by_name']) ??
           _string(map['user_name']),
       fileSizeDisplay: _formatFileSize(map['file_size'] ?? map['size']),
+      customLabel: customLabel,
+      documentLabel: documentLabel,
       raw: map,
     );
+  }
+
+  /// Prefer `section.custom_documents.uploads`, then existing KYC rows.
+  static List<KycDocumentRecord> customUploadsFrom({
+    required Map<String, dynamic> data,
+    required List kycDocs,
+  }) {
+    final fromSection = _recordsFromList(
+      data['custom_documents'] is Map
+          ? (data['custom_documents'] as Map)['uploads']
+          : null,
+    );
+    if (fromSection.isNotEmpty) return fromSection;
+
+    return _recordsFromList(kycDocs)
+        .where((record) => record.isCustom)
+        .toList();
   }
 
   static KycDocumentRecord? findForKey(String key, List<dynamic> kycDocs) {
@@ -109,14 +151,10 @@ class KycDocumentRecord {
       if (raw is! Map) continue;
       final record = fromMap(Map<String, dynamic>.from(raw));
       if (record == null) continue;
+      if (record.isCustom && key.toLowerCase() != 'custom') continue;
       if (record.docKey == key) return record;
-      // Custom uploads may use doc_key=custom with a separate name field.
-      if (key == 'custom') {
-        final customName = _string(raw['custom_doc_name']) ??
-            _string(raw['document_label']);
-        if (customName != null) {
-          fallback ??= record;
-        }
+      if (key.toLowerCase() == 'custom' && record.isCustom) {
+        fallback ??= record;
       }
     }
     return fallback;
@@ -137,6 +175,24 @@ class KycDocumentRecord {
       categoryLabel: 'KYC & Documents',
       raw: raw,
     );
+  }
+
+  static List<KycDocumentRecord> _recordsFromList(dynamic rawList) {
+    if (rawList is! List) return const [];
+    final items = <KycDocumentRecord>[];
+    for (final raw in rawList) {
+      if (raw is! Map) continue;
+      final record = fromMap(Map<String, dynamic>.from(raw));
+      if (record != null) items.add(record);
+    }
+    return items;
+  }
+
+  static bool _usableLabel(String? value) {
+    if (value == null) return false;
+    final text = value.trim();
+    if (text.isEmpty) return false;
+    return text.toLowerCase() != 'custom';
   }
 
   static String? _string(dynamic value) {

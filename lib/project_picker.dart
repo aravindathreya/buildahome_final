@@ -2,6 +2,7 @@ import 'package:buildAhome/UserHome.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'services/data_provider.dart';
+import 'services/project_open_timing.dart';
 import 'widgets/opening_project_splash.dart';
 import 'widgets/skeleton_loader.dart';
 
@@ -317,35 +318,47 @@ class ProjectPickerScreen {
                                                 return;
                                               }
 
-                                              Future<void> persistProject() async {
-                                                final prefs =
-                                                    await SharedPreferences
-                                                        .getInstance();
-                                                await prefs.setString(
-                                                    "project_id", projectId);
-                                                await prefs.setString(
-                                                    "client_name", projectName);
+                                              Future<void> persistProject(
+                                                  [ProjectOpenTiming?
+                                                      timing]) async {
+                                                Future<void> run() async {
+                                                  final prefs =
+                                                      await SharedPreferences
+                                                          .getInstance();
+                                                  await prefs.setString(
+                                                      "project_id", projectId);
+                                                  await prefs.setString(
+                                                      "client_name",
+                                                      projectName);
 
-                                                await DataProvider()
-                                                    .onProjectSelected(
-                                                  erpProjectId: projectId,
-                                                  project: Map<String,
-                                                      dynamic>.from(project),
-                                                );
+                                                  await DataProvider()
+                                                      .onProjectSelected(
+                                                    erpProjectId: projectId,
+                                                    project: Map<String,
+                                                        dynamic>.from(project),
+                                                  );
 
-                                                final role =
-                                                    prefs.getString('role');
-                                                if (role != null &&
-                                                    role != 'Client') {
-                                                  DataProvider()
-                                                      .resetProjectData();
-                                                  DataProvider()
-                                                      .loadProjectDataForNonClient(
-                                                          projectId)
-                                                      .catchError((e) {
-                                                    print(
-                                                        '[ProjectPicker] Error preloading project data: $e');
-                                                  });
+                                                  final role =
+                                                      prefs.getString('role');
+                                                  if (role != null &&
+                                                      role != 'Client') {
+                                                    DataProvider()
+                                                        .resetProjectData();
+                                                    DataProvider()
+                                                        .loadProjectDataForNonClient(
+                                                            projectId)
+                                                        .catchError((e) {
+                                                      print(
+                                                          '[ProjectPicker] Error preloading project data: $e');
+                                                    });
+                                                  }
+                                                }
+
+                                                if (timing != null) {
+                                                  await timing.measure(
+                                                      'prepare_persist', run);
+                                                } else {
+                                                  await run();
                                                 }
                                               }
 
@@ -361,7 +374,8 @@ class ProjectPickerScreen {
                                                 destination: Home(
                                                   fromAdminDashboard: true,
                                                 ),
-                                                prepare: persistProject,
+                                                prepare: (timing) =>
+                                                    persistProject(timing),
                                               );
                                             },
                                             borderRadius:

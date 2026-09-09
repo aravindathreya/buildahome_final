@@ -15,7 +15,6 @@ import 'InspectionRequest.dart';
 import 'MyTasksScreen.dart';
 import 'NotesAndComments.dart';
 import 'chat_v1/chat_v1_app.dart';
-import 'chat_v1/chat_v1_socket.dart';
 import 'ProjectFocusScreen.dart';
 import 'Payments.dart';
 import 'ProjectTimelineScreen.dart';
@@ -23,22 +22,21 @@ import 'RequestDrawing.dart';
 import 'Scheduler.dart';
 import 'SiteVisitReports.dart';
 import 'SlotsScreen.dart';
-import 'Skin2/loginPage.dart';
 import 'TestReportsScreen.dart';
 import 'mobile_live_test_screen.dart';
 import 'services/mobile_live_test_access.dart';
-import 'services/mobile_live_test_storage.dart';
 import 'UserHome.dart';
 import 'VirtualTour.dart';
 import 'ClientPortalScreen.dart';
 import 'UploadPaymentProofScreen.dart';
 import 'app_theme.dart';
+import 'app_navigator.dart';
 import 'checklist_categories.dart';
 import 'indents_screen.dart';
 import 'notifcations.dart';
 import 'project_picker.dart';
+import 'services/app_logout.dart';
 import 'services/client_generation_service.dart';
-import 'services/client_portal_service.dart';
 import 'services/data_provider.dart';
 import 'services/legacy_client_features.dart';
 import 'services/notification_service.dart';
@@ -178,32 +176,11 @@ class NavMenuItem extends StatelessWidget {
 
   const NavMenuItem(this.entry, {Key? key}) : super(key: key);
 
-  Future<void> _logout() async {
-    ChatV1Socket.instance.disconnect();
-    DataProvider().clearData();
-    await ClientGenerationService.instance.clear();
-    await ClientPortalService().clearSession();
-    await NotificationService.instance.clear();
-    ProfilePictureService.promptShownThisSession = false;
-    try {
-      final preferences = await SharedPreferences.getInstance();
-      await preferences.clear();
-    } catch (e) {
-      print('Error clearing SharedPreferences: $e');
-    }
-    await MobileLiveTestCredentials.clearLocal();
-  }
-
   Future<void> _handleTap(BuildContext context) async {
     if (entry.isLogout) {
-      await _logout();
-      if (!context.mounted) return;
-      Navigator.pop(context);
-      Navigator.pushAndRemoveUntil(
-        context,
-        MaterialPageRoute(builder: (_) => LoginScreenNew()),
-        (route) => false,
-      );
+      // Use root navigator via AppLogout — drawer context is disposed after pop
+      // and must not drive navigation (that caused a second/wrong login screen).
+      await AppLogout.logoutAndGoToLogin(context: context);
       return;
     }
 
@@ -228,20 +205,29 @@ class NavMenuItem extends StatelessWidget {
 
     if (entry.route == null) return;
 
+    // Lock before closing the drawer so triple-taps cannot queue pushes.
+    final goHome = entry.isHome;
+    if (!goHome && !NavigationDebounce.tryAcquire()) return;
+
     final built = await entry.route!();
     if (!hostContext.mounted || built == null) return;
 
     navigator.pop();
     if (!hostContext.mounted) return;
 
-    if (entry.isHome) {
+    if (goHome) {
       Navigator.pushAndRemoveUntil(
         hostContext,
         _navFadeRoute(built),
         (route) => false,
       );
     } else {
-      Navigator.push(hostContext, _navFadeRoute(built));
+      NavigationDebounce.beginPush();
+      try {
+        await Navigator.push(hostContext, _navFadeRoute(built));
+      } finally {
+        NavigationDebounce.endPush();
+      }
     }
   }
 
@@ -585,13 +571,12 @@ class NavMenuWidgetState extends State<NavMenuWidget> {
     }
 
     if (rbac.canViewSync(currentRole, RBACService.documents)) {
-      projectEntries.add(_NavEntry(
-        title: 'Documents',
-        icon: Icons.description_rounded,
-        route: isClient ? () => Documents() : null,
-        action: isClient ? null : _openAfterProjectPick(() => Documents()),
-      ));
       if (!isClient) {
+        projectEntries.add(_NavEntry(
+          title: 'Documents',
+          icon: Icons.description_rounded,
+          action: _openAfterProjectPick(() => Documents()),
+        ));
         projectEntries.add(_NavEntry(
           title: 'Documents V1',
           icon: Icons.folder_copy_outlined,
@@ -685,18 +670,6 @@ class NavMenuWidgetState extends State<NavMenuWidget> {
         title: 'Site Visits',
         icon: Icons.location_on_rounded,
         route: () => SiteVisitReportsScreen(),
-      ));
-    } else {
-      opsEntries.add(_NavEntry(
-        title: 'Site Visit Reports',
-        icon: Icons.assignment_rounded,
-        route: () async {
-          final projectId = await _projectId();
-          return SiteVisitReportsScreen(
-            fixedProjectId: projectId,
-            projectFixed: true,
-          );
-        },
       ));
     }
 

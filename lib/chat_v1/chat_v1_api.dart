@@ -73,6 +73,15 @@ class ChatV1Api {
   Future<void> captureLoginCookies(http.BaseResponse response) =>
       persistCookieFrom(response);
 
+  /// Drop in-memory + persisted ERP cookies on logout.
+  Future<void> clearSession() async {
+    _sessionCookie = null;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_cookiePrefsKey);
+    } catch (_) {}
+  }
+
   Future<Map<String, String>> _headers({bool jsonBody = false}) async {
     await ensureCookieLoaded();
     final token = await getApiToken();

@@ -8,9 +8,14 @@ import '../widgets/skeleton_loader.dart';
 import '../widgets/workflow_document_viewer.dart';
 import 'documents_v1_detail_screen.dart';
 
-/// Centralized document library for non-client users (Documents V1).
+/// Centralized document library (Documents V1).
 class DocumentsV1HomeScreen extends StatefulWidget {
-  const DocumentsV1HomeScreen({super.key});
+  final bool clientMode;
+
+  const DocumentsV1HomeScreen({
+    super.key,
+    this.clientMode = false,
+  });
 
   @override
   State<DocumentsV1HomeScreen> createState() => _DocumentsV1HomeScreenState();
@@ -142,6 +147,7 @@ class _DocumentsV1HomeScreenState extends State<DocumentsV1HomeScreen> {
                                         builder: (_) =>
                                             DocumentsV1CategoryScreen(
                                           category: category,
+                                          clientMode: widget.clientMode,
                                         ),
                                       ),
                                     ),
@@ -159,10 +165,12 @@ class _DocumentsV1HomeScreenState extends State<DocumentsV1HomeScreen> {
 
 class DocumentsV1CategoryScreen extends StatefulWidget {
   final WorkflowDocumentCategory category;
+  final bool clientMode;
 
   const DocumentsV1CategoryScreen({
     super.key,
     required this.category,
+    this.clientMode = false,
   });
 
   @override
@@ -256,7 +264,7 @@ class _DocumentsV1CategoryScreenState extends State<DocumentsV1CategoryScreen> {
                               builder: (_) => DocumentsV1ListScreen(
                                 categoryLabel: widget.category.label,
                                 section: section,
-                                clientMode: false,
+                                clientMode: widget.clientMode,
                               ),
                             ),
                           ),

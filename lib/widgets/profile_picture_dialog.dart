@@ -3,21 +3,62 @@ import 'dart:io';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../app_theme.dart';
 import '../services/profile_picture_service.dart';
 
 /// Shows a startup prompt if the user has no profile picture yet.
+///
+/// Staff / non-client users may skip with "Maybe later" only
+/// [ProfilePictureService.maxStartupSkips] times; after that the dialog is
+/// required until a photo is uploaded.
 Future<void> maybePromptForProfilePicture(BuildContext context) async {
-  if (ProfilePictureService.promptShownThisSession) return;
-  if (await ProfilePictureService.hasProfilePicture()) return;
+  if (ProfilePictureService.promptShownThisSession) {
+    debugPrint('[ProfilePic] skip — already shown this session');
+    return;
+  }
+  final existing = await ProfilePictureService.getStoredPath();
+  if (existing != null) {
+    debugPrint('[ProfilePic] skip — picture already set ($existing)');
+    return;
+  }
+  if (!context.mounted) {
+    debugPrint('[ProfilePic] skip — context not mounted');
+    return;
+  }
+
+  final prefs = await SharedPreferences.getInstance();
+  final role = (prefs.getString('role') ?? '').trim().toLowerCase();
+  final userId =
+      (prefs.getString('userId') ?? prefs.getString('user_id') ?? '').trim();
+  final isClient = role == 'client';
+
+  // Clients keep a soft optional prompt; other roles get the skip limit.
+  final enforceSkipLimit = !isClient;
+  final remaining = enforceSkipLimit
+      ? await ProfilePictureService.remainingSkips()
+      : ProfilePictureService.maxStartupSkips;
+  final requirePhoto = enforceSkipLimit && remaining <= 0;
+
   if (!context.mounted) return;
 
-  ProfilePictureService.promptShownThisSession = true;
-  await showProfilePictureDialog(
-    context,
-    isStartupPrompt: true,
+  debugPrint(
+    '[ProfilePic] showing prompt userId=$userId role=$role '
+    'remaining=$remaining require=$requirePhoto',
   );
+  try {
+    ProfilePictureService.promptShownThisSession = true;
+    await showProfilePictureDialog(
+      context,
+      isStartupPrompt: true,
+      remainingSkips: remaining,
+      requirePhoto: requirePhoto,
+    );
+  } catch (e) {
+    ProfilePictureService.promptShownThisSession = false;
+    debugPrint('[ProfilePic] dialog failed: $e');
+  }
 }
 
 /// Profile picture picker + upload dialog.
@@ -27,13 +68,21 @@ Future<String?> showProfilePictureDialog(
   BuildContext context, {
   bool isStartupPrompt = false,
   String? currentPicturePath,
+  int? remainingSkips,
+  bool requirePhoto = false,
 }) {
   return showDialog<String>(
     context: context,
-    barrierDismissible: true,
-    builder: (dialogContext) => _ProfilePictureDialog(
-      isStartupPrompt: isStartupPrompt,
-      currentPicturePath: currentPicturePath,
+    useRootNavigator: true,
+    barrierDismissible: !requirePhoto,
+    builder: (dialogContext) => PopScope(
+      canPop: !requirePhoto,
+      child: _ProfilePictureDialog(
+        isStartupPrompt: isStartupPrompt,
+        currentPicturePath: currentPicturePath,
+        remainingSkips: remainingSkips,
+        requirePhoto: requirePhoto,
+      ),
     ),
   );
 }
@@ -41,10 +90,14 @@ Future<String?> showProfilePictureDialog(
 class _ProfilePictureDialog extends StatefulWidget {
   final bool isStartupPrompt;
   final String? currentPicturePath;
+  final int? remainingSkips;
+  final bool requirePhoto;
 
   const _ProfilePictureDialog({
     required this.isStartupPrompt,
     this.currentPicturePath,
+    this.remainingSkips,
+    this.requirePhoto = false,
   });
 
   @override
@@ -91,10 +144,31 @@ class _ProfilePictureDialogState extends State<_ProfilePictureDialog> {
     }
   }
 
+  Future<void> _onMaybeLater() async {
+    if (_uploading || widget.requirePhoto) return;
+    if (widget.isStartupPrompt && widget.remainingSkips != null) {
+      await ProfilePictureService.recordStartupSkip();
+    }
+    if (!mounted) return;
+    Navigator.of(context).pop();
+  }
+
+  String get _skipLabel {
+    final left = widget.remainingSkips;
+    if (left == null) {
+      return widget.isStartupPrompt ? 'Maybe later' : 'Cancel';
+    }
+    if (left <= 1) return 'Skip (1)';
+    return 'Maybe later ($left left)';
+  }
+
   @override
   Widget build(BuildContext context) {
     final currentUrl =
         ProfilePictureService.resolveUrl(widget.currentPicturePath);
+    final showSkip = widget.isStartupPrompt
+        ? !widget.requirePhoto
+        : true;
 
     return AlertDialog(
       backgroundColor: Colors.white,
@@ -116,9 +190,11 @@ class _ProfilePictureDialogState extends State<_ProfilePictureDialog> {
         mainAxisSize: MainAxisSize.min,
         children: [
           Text(
-            widget.isStartupPrompt
-                ? 'Set a photo so your team can recognise you easily.'
-                : 'Choose a photo from your gallery or take a new one.',
+            widget.requirePhoto
+                ? 'You’ve used all skips. Please add a photo so your team can recognise you.'
+                : widget.isStartupPrompt
+                    ? 'Set a photo so your team can recognise you easily.'
+                    : 'Choose a photo from your gallery or take a new one.',
             style: const TextStyle(
               color: AppTheme.mutedGrey,
               fontSize: 14,
@@ -126,6 +202,21 @@ class _ProfilePictureDialogState extends State<_ProfilePictureDialog> {
               fontWeight: FontWeight.w500,
             ),
           ),
+          if (widget.isStartupPrompt &&
+              !widget.requirePhoto &&
+              widget.remainingSkips != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              widget.remainingSkips! <= 1
+                  ? 'Last skip available — after this you’ll need to add a photo.'
+                  : 'You can skip ${widget.remainingSkips} more time${widget.remainingSkips == 1 ? '' : 's'}.',
+              style: const TextStyle(
+                color: Color(0xFFB45309),
+                fontSize: 12.5,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
           const SizedBox(height: 20),
           _buildPreview(currentUrl),
           if (_uploading) ...[
@@ -166,21 +257,25 @@ class _ProfilePictureDialogState extends State<_ProfilePictureDialog> {
           _sourceTile(
             icon: Icons.photo_library_rounded,
             label: 'Choose from gallery',
-            onTap: _uploading ? null : () => _pickAndUpload(ImageSource.gallery),
+            onTap:
+                _uploading ? null : () => _pickAndUpload(ImageSource.gallery),
           ),
         ],
       ),
       actions: [
-        TextButton(
-          onPressed: _uploading ? null : () => Navigator.of(context).pop(),
-          child: Text(
-            widget.isStartupPrompt ? 'Maybe later' : 'Cancel',
-            style: const TextStyle(
-              color: AppTheme.mutedGrey,
-              fontWeight: FontWeight.w700,
+        if (showSkip)
+          TextButton(
+            onPressed: _uploading ? null : _onMaybeLater,
+            child: Text(
+              widget.isStartupPrompt ? _skipLabel : 'Cancel',
+              style: const TextStyle(
+                color: AppTheme.mutedGrey,
+                fontWeight: FontWeight.w700,
+              ),
             ),
-          ),
-        ),
+          )
+        else
+          const SizedBox.shrink(),
       ],
     );
   }
@@ -203,14 +298,17 @@ class _ProfilePictureDialogState extends State<_ProfilePictureDialog> {
                   imageUrl: currentUrl,
                   fit: BoxFit.cover,
                   placeholder: (_, __) => const Center(
-                    child: Icon(Icons.person_rounded, color: AppTheme.mutedGrey, size: 36),
+                    child: Icon(Icons.person_rounded,
+                        color: AppTheme.mutedGrey, size: 36),
                   ),
                   errorWidget: (_, __, ___) => const Center(
-                    child: Icon(Icons.person_rounded, color: AppTheme.mutedGrey, size: 36),
+                    child: Icon(Icons.person_rounded,
+                        color: AppTheme.mutedGrey, size: 36),
                   ),
                 )
               : const Center(
-                  child: Icon(Icons.person_rounded, color: AppTheme.mutedGrey, size: 36),
+                  child: Icon(Icons.person_rounded,
+                      color: AppTheme.mutedGrey, size: 36),
                 ),
     );
   }
@@ -274,8 +372,9 @@ class ProfileAvatar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final url = ProfilePictureService.resolveUrl(picturePath);
-    final initial =
-        displayName.trim().isNotEmpty ? displayName.trim()[0].toUpperCase() : 'U';
+    final initial = displayName.trim().isNotEmpty
+        ? displayName.trim()[0].toUpperCase()
+        : 'U';
 
     final avatar = Container(
       width: size,

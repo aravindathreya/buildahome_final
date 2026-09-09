@@ -140,10 +140,9 @@ class SlotsViewState extends State<SlotsView> {
       final acceptedIndex = _acceptedIndex(slot);
       if (acceptedIndex != null) {
         _picks[id] = acceptedIndex;
-        _collapsed.add(id);
-      } else if (!_picks.containsKey(id)) {
-        _collapsed.remove(id);
       }
+      // Keep every visit accordion open by default.
+      _collapsed.remove(id);
     }
     _picks.removeWhere((key, _) => !valid.contains(key));
     _notes.removeWhere((key, _) => !valid.contains(key));

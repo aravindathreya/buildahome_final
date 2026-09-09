@@ -41,7 +41,10 @@ KycDocVisual kycDocVisualFor({required String docKey, required String label}) {
       iconFg: Color(0xFF9333EA),
     );
   }
-  if (key.contains('ec') || name.contains('ec')) {
+  if (key == 'ec' ||
+      key.startsWith('ec_') ||
+      name.contains('encumbrance') ||
+      name.contains('ec (')) {
     return const KycDocVisual(
       icon: Icons.receipt_long_outlined,
       iconBg: Color(0xFFFFF7ED),
@@ -53,6 +56,20 @@ KycDocVisual kycDocVisualFor({required String docKey, required String label}) {
       icon: Icons.article_outlined,
       iconBg: Color(0xFFECFEFF),
       iconFg: Color(0xFF0891B2),
+    );
+  }
+  if (key.contains('tax') || name.contains('tax')) {
+    return const KycDocVisual(
+      icon: Icons.receipt_outlined,
+      iconBg: Color(0xFFFEF3C7),
+      iconFg: Color(0xFFD97706),
+    );
+  }
+  if (key.contains('layout') || name.contains('layout')) {
+    return const KycDocVisual(
+      icon: Icons.map_outlined,
+      iconBg: Color(0xFFEEF2FF),
+      iconFg: Color(0xFF4F46E5),
     );
   }
   if (key.contains('photo') || name.contains('photograph')) {

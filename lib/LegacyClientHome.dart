@@ -9,21 +9,15 @@ import 'package:shimmer/shimmer.dart';
 
 import 'AnimationHelper.dart';
 import 'AdminDashboard.dart';
-import 'Drawings.dart';
 import 'Gallery.dart' hide AnimatedWidgetSlide, SlideDirection;
 import 'NotesAndComments.dart';
 import 'Payments.dart' hide AnimatedWidgetSlide, SlideDirection;
 import 'RequestDrawing.dart';
 import 'Scheduler.dart' hide AnimatedWidgetSlide, SlideDirection;
-import 'Skin2/loginPage.dart';
 import 'app_theme.dart';
 import 'checklist_categories.dart';
-import 'services/client_generation_service.dart';
-import 'services/client_portal_service.dart';
+import 'services/app_logout.dart';
 import 'services/data_provider.dart';
-import 'services/notification_service.dart';
-import 'services/profile_picture_service.dart';
-import 'chat_v1/chat_v1_socket.dart';
 
 class LegacyClientHome extends StatefulWidget {
   final bool fromAdminDashboard;
@@ -77,11 +71,10 @@ class LegacyClientHomeState extends State<LegacyClientHome> {
     return PopScope(
       canPop: !widget.fromAdminDashboard,
       onPopInvokedWithResult: (didPop, _) {
-        if (widget.fromAdminDashboard && !didPop) {
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (context) => AdminDashboard()),
-          );
+        if (didPop || !widget.fromAdminDashboard) return;
+        final nav = Navigator.of(context);
+        if (nav.canPop()) {
+          nav.pop();
         }
       },
       child: Scaffold(
@@ -113,10 +106,16 @@ class LegacyClientHomeState extends State<LegacyClientHome> {
                     if (widget.fromAdminDashboard)
                       InkWell(
                         onTap: () {
-                          Navigator.pushReplacement(
-                            context,
-                            MaterialPageRoute(builder: (context) => AdminDashboard()),
-                          );
+                          final nav = Navigator.of(context);
+                          if (nav.canPop()) {
+                            nav.pop();
+                          } else {
+                            Navigator.pushReplacement(
+                              context,
+                              MaterialPageRoute(
+                                  builder: (context) => AdminDashboard()),
+                            );
+                          }
                         },
                         borderRadius: BorderRadius.circular(12),
                         child: Container(
@@ -434,12 +433,6 @@ class LegacyClientDashboardScreenState extends State<LegacyClientDashboardScreen
       'route': () => const PaymentTaskWidget(
             initialCategory: PaymentCategory.nonTender,
           ),
-    });
-
-    menuItems.add({
-      'title': 'Documents',
-      'icon': Icons.description,
-      'route': () => Documents(),
     });
 
     menuItems.add({
@@ -1419,21 +1412,7 @@ class _LegacyLogoutButton extends StatelessWidget {
     );
 
     if (shouldLogout == true) {
-      ChatV1Socket.instance.disconnect();
-      DataProvider().clearData();
-      await ClientGenerationService.instance.clear();
-      await ClientPortalService().clearSession();
-      await NotificationService.instance.clear();
-      ProfilePictureService.promptShownThisSession = false;
-      final preferences = await SharedPreferences.getInstance();
-      await preferences.clear();
-      if (context.mounted) {
-        Navigator.pushAndRemoveUntil(
-          context,
-          MaterialPageRoute(builder: (context) => LoginScreenNew()),
-          (route) => false,
-        );
-      }
+      await AppLogout.logoutAndGoToLogin(context: context);
     }
   }
 

@@ -332,6 +332,9 @@ class UserDashboardLayoutState extends State<UserDashboardLayout> {
         maybePromptForProfilePicture(context);
         return;
       }
+      // Mark done as soon as it opens so login/rebuild/logout cannot replay it.
+      await ClientHomeTour.markCompleted();
+      if (!mounted || _tourActive) return;
       setState(() => _tourActive = true);
     } finally {
       _tourStartInFlight = false;
@@ -369,8 +372,9 @@ class UserDashboardLayoutState extends State<UserDashboardLayout> {
   }
 
   void _goBackToDashboard() {
-    if (Navigator.of(context).canPop()) {
-      Navigator.of(context).pop();
+    final nav = Navigator.of(context);
+    if (nav.canPop()) {
+      nav.pop();
       return;
     }
     Navigator.pushReplacement(
@@ -427,11 +431,10 @@ class UserDashboardLayoutState extends State<UserDashboardLayout> {
       return;
     }
 
-    if (_restrictLegacyClientFeatures &&
-        (index == 1 || index == 3)) {
+    if (_restrictLegacyClientFeatures && index == 1) {
       await showFeatureComingSoon(
         context,
-        featureName: index == 1 ? 'My tasks' : 'Site Visit Reports',
+        featureName: 'My tasks',
       );
       return;
     }
@@ -454,7 +457,7 @@ class UserDashboardLayoutState extends State<UserDashboardLayout> {
         break;
       case 3:
         if (screen != null) {
-          await screen.openSiteVisitReports();
+          await screen.openChat();
         }
         if (mounted) setState(() => _bottomNavIndex = 0);
         return;
@@ -647,7 +650,7 @@ class UserDashboardLayoutState extends State<UserDashboardLayout> {
       _DashNavItem(
           Icons.description_rounded, Icons.description_outlined, 'Updates'),
       _DashNavItem(
-          Icons.location_on_rounded, Icons.location_on_outlined, 'Site Visits'),
+          Icons.chat_bubble_rounded, Icons.chat_bubble_outline_rounded, 'Chat'),
       _DashNavItem(Icons.menu_rounded, Icons.menu_rounded, 'More'),
     ];
 
@@ -665,8 +668,7 @@ class UserDashboardLayoutState extends State<UserDashboardLayout> {
             children: List.generate(items.length, (index) {
               final item = items[index];
               final selected = _bottomNavIndex == index;
-              final comingSoon = _restrictLegacyClientFeatures &&
-                  (index == 1 || index == 3);
+              final comingSoon = _restrictLegacyClientFeatures && index == 1;
               final color = comingSoon
                   ? const Color(0xFFB0B7C3)
                   : (selected ? _navy : _mutedGrey);
@@ -710,46 +712,23 @@ class UserDashboardLayoutState extends State<UserDashboardLayout> {
 
   @override
   Widget build(BuildContext context) {
+    // When opened from AdminDashboard, one system/back press should simply
+    // pop this project route and reveal the existing dashboard underneath.
+    // Do NOT pushReplacement AdminDashboard — that stacked extra routes and
+    // forced users to press back multiple times.
     return PopScope(
-      canPop: true, // Always allow popping so child routes can pop normally
-      onPopInvoked: (didPop) {
-        if (!widget.fromAdminDashboard) return;
-
-        if (!didPop) {
-          // Pop was prevented - we're on the root route
+      canPop: !widget.fromAdminDashboard,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop || !widget.fromAdminDashboard) return;
+        final nav = Navigator.of(context);
+        if (nav.canPop()) {
+          nav.pop();
+        } else {
           Navigator.pushReplacement(
             context,
             MaterialPageRoute(builder: (context) => AdminDashboard()),
           );
-          return;
         }
-
-        // Use global navigator observer from main.dart
-        // A pop occurred - check the route count BEFORE it was decremented
-        // The observer's didPop may be called before or after onPopInvoked
-        // So we check synchronously to get the accurate count
-        final routeCountBeforePop = globalNavigatorObserver.currentRouteCount;
-
-        // Now perform the decrement that didPop requested
-        globalNavigatorObserver.performDecrement();
-
-        // Use a microtask to check AFTER the pop completes
-        Future.microtask(() {
-          if (!mounted) return;
-
-          // If routeCount was > 1 before the pop, we just popped a child route
-          // So stay on UserDashboard (do nothing)
-          if (routeCountBeforePop > 1) {
-            return;
-          }
-
-          // Route count was 1, meaning we pressed back on UserDashboard itself
-          // Navigate to AdminDashboard
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (context) => AdminDashboard()),
-          );
-        });
       },
       child: Stack(
         children: [
@@ -818,15 +797,15 @@ class UserDashboardLayoutState extends State<UserDashboardLayout> {
                   ClientTourStep(
                     title: 'Quick actions',
                     body:
-                        'Payments, gallery, documents and more. “For me” opens your Client Portal.',
+                        'Payments, gallery, and more. “For me” opens your Client Portal.',
                     targetKey: _tourActionsKey,
                     holeRadius: 16,
                     holePadding: const EdgeInsets.fromLTRB(6, 4, 6, 8),
                   ),
                   ClientTourStep(
-                    title: 'Tasks, updates, visits',
+                    title: 'Tasks, updates, and chat',
                     body:
-                        'Use the bar below for your tasks, site updates, upcoming visits, and the full menu.',
+                        'Use the bar below for your tasks, site updates, chat, and the full menu.',
                     targetKey: _tourBottomNavKey,
                     holeRadius: 16,
                     holePadding: const EdgeInsets.fromLTRB(4, 4, 4, 2),
@@ -1520,15 +1499,7 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
       );
 
   void _openChat() {
-    if (_restrictLegacyClientFeatures) {
-      showFeatureComingSoon(context, featureName: 'Chat V1');
-      return;
-    }
-    _navigateToWidget(
-      ChatV1App.openQuick(
-        tasksHint: _tasks,
-      ),
-    );
+    openChat();
   }
 
   void _openAllProjectTasks() {
@@ -3163,20 +3134,19 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
       });
     }
 
-    // Documents - check RBAC
-    if (rbac.canViewSync(_currentRole, RBACService.documents)) {
+    // Documents — staff only. Clients no longer get Docs V1 on home.
+    if (!_isClientUser &&
+        rbac.canViewSync(_currentRole, RBACService.documents)) {
       menuItems.add({
         'title': 'Documents',
         'icon': Icons.description,
         'route': () => Documents(),
       });
-      if (_currentRole != null && _currentRole!.toLowerCase() != 'client') {
-        menuItems.add({
-          'title': 'Documents V1',
-          'icon': Icons.folder_copy_outlined,
-          'route': () => const DocumentsV1HomeScreen(),
-        });
-      }
+      menuItems.add({
+        'title': 'Documents V1',
+        'icon': Icons.folder_copy_outlined,
+        'route': () => const DocumentsV1HomeScreen(),
+      });
     }
 
     // Scheduler - check RBAC
@@ -3274,21 +3244,21 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
       });
     }
 
-    // Site Visit Reports (not in RBAC table, but keep for now)
-    menuItems.add({
-      'title': 'Site Visit Reports',
-      'icon': Icons.assignment,
-      'route': () async {
-        // Get current project ID from SharedPreferences
-        SharedPreferences prefs = await SharedPreferences.getInstance();
-        final projectId = prefs.getString('project_id');
-        // Open SiteVisitReports with fixed project ID
-        return SiteVisitReportsScreen(
-          fixedProjectId: projectId,
-          projectFixed: true,
-        );
-      },
-    });
+    // Site Visit Reports — staff only (hidden for clients)
+    if (!_isClientUser) {
+      menuItems.add({
+        'title': 'Site Visit Reports',
+        'icon': Icons.assignment,
+        'route': () async {
+          SharedPreferences prefs = await SharedPreferences.getInstance();
+          final projectId = prefs.getString('project_id');
+          return SiteVisitReportsScreen(
+            fixedProjectId: projectId,
+            projectFixed: true,
+          );
+        },
+      });
+    }
 
     if (MobileLiveTestAccess.canEnable(_currentRole)) {
       menuItems.add({
@@ -3315,7 +3285,6 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
   static const List<String> _legacyClientPinnedQuickActionTitles = [
     'Payments',
     'NT Payments',
-    'Documents',
     'Gallery',
     'Updates',
     'Scheduler',
@@ -3331,7 +3300,6 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
     'Virtual Tour',
     'Chat V1',
     'Project Status',
-    'Site Visit Reports',
   ];
 
   /// Pinned quick actions for staff / other roles on the project dashboard.
@@ -3425,14 +3393,7 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
               _buildLegacyUpdatesSection(),
             ],
             if (!_restrictLegacyClientFeatures &&
-                workflowDashboardSlots.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              _buildWorkflowSlotsSection(),
-            ],
-            if (!_restrictLegacyClientFeatures &&
                 _shouldShowMyPendingTasksSection) ...[
-            _buildHeroBanner(),
-            if (_shouldShowMyPendingTasksSection) ...[
               const SizedBox(height: 16),
               _buildTasksSection(),
             ],
@@ -4014,9 +3975,6 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
       await showFeatureComingSoon(context, featureName: title);
       return;
     }
-    final routeResult = item['route']();
-    final widget = routeResult is Future ? await routeResult : routeResult;
-    await _navigateToWidget(widget);
     if (_openingMenu) return;
     _openingMenu = true;
     try {
@@ -4028,21 +3986,22 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
     }
   }
 
-  Future<void> openSiteVisitReports() async {
+  Future<void> openChat() async {
     if (_restrictLegacyClientFeatures) {
-      await showFeatureComingSoon(context, featureName: 'Site Visit Reports');
+      await showFeatureComingSoon(context, featureName: 'Chat');
       return;
     }
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    final projectId = prefs.getString('project_id');
-    await _navigateToWidget(SiteVisitReportsScreen(
-      fixedProjectId: projectId,
-      projectFixed: true,
-    ));
+    await _navigateToWidget(
+      ChatV1App.openQuick(tasksHint: _tasks),
+    );
   }
 
   Future<void> openDocuments() async {
-    await _navigateToWidget(Documents());
+    await _navigateToWidget(
+      _isClientUser
+          ? const DocumentsV1HomeScreen(clientMode: true)
+          : Documents(),
+    );
   }
 
   Map<String, Color> _quickActionColors(String title) {
@@ -4262,11 +4221,9 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
       'Timeline Gallery',
       'Payments',
       'Upload proof',
-      'Site Visit Reports',
       'Virtual Tour',
       'My tasks',
       'Scheduler',
-      'Documents',
       'ChatBox',
       'Chat V1',
       'Checklist',

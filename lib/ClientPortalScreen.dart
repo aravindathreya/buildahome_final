@@ -775,8 +775,16 @@ class _DocumentsKycScreenState extends State<_DocumentsKycScreen> {
         return 'Aadhaar';
       case 'pan_card':
         return 'PAN card';
-      case 'custom':
-        return 'Other document';
+      case 'sale_deed':
+        return 'Sale Deed';
+      case 'ec':
+        return 'EC';
+      case 'khata':
+        return 'Khata';
+      case 'tax_receipt':
+        return 'Tax Receipt';
+      case 'layout_plan':
+        return 'Layout Plan';
       default:
         return key
             .split('_')
@@ -785,58 +793,116 @@ class _DocumentsKycScreenState extends State<_DocumentsKycScreen> {
     }
   }
 
-  Future<void> _load() async {
+  bool _isCustomDocKey(String key) => key.trim().toLowerCase() == 'custom';
+
+  String _docKeyOf(dynamic raw) {
+    if (raw is Map) {
+      return (raw['key'] ?? raw['doc_key'] ?? '').toString();
+    }
+    return raw?.toString() ?? '';
+  }
+
+  List _withoutCustomTypes(List docTypes) {
+    return docTypes
+        .where((raw) => !_isCustomDocKey(_docKeyOf(raw)))
+        .toList();
+  }
+
+  Map<String, dynamic> _customConfig() {
+    final raw = _data['custom_documents'];
+    if (raw is Map) return Map<String, dynamic>.from(raw);
+    return const {};
+  }
+
+  List<String> _customAcceptedExtensions() {
+    final raw = _customConfig()['accepted_types'];
+    if (raw is List && raw.isNotEmpty) {
+      return raw
+          .map((e) => e.toString().trim().toLowerCase().replaceFirst('.', ''))
+          .where((e) => e.isNotEmpty)
+          .toList();
+    }
+    return const ['pdf', 'png', 'jpg', 'jpeg', 'doc', 'docx'];
+  }
+
+  int _customMaxSizeMb() {
+    final raw = _customConfig()['max_size_mb'];
+    if (raw is num && raw > 0) return raw.round();
+    final parsed = int.tryParse(raw?.toString() ?? '');
+    if (parsed != null && parsed > 0) return parsed;
+    return 225;
+  }
+
+  void _applyDocumentsData(
+    Map<String, dynamic> data, {
+    bool stopLoading = true,
+    bool merge = false,
+  }) {
+    final resolved =
+        merge ? <String, dynamic>{..._data, ...data} : Map<String, dynamic>.from(data);
+
+    final existing = resolved['existing'] is List
+        ? List.from(resolved['existing'] as List)
+        : (resolved['client_kyc_documents'] is List
+            ? List.from(resolved['client_kyc_documents'] as List)
+            : _kycDocs);
+
+    final uploaded = resolved['uploaded_types'] is List
+        ? List.from(resolved['uploaded_types'] as List)
+        : (_data['uploaded_types'] is List
+            ? List.from(_data['uploaded_types'] as List)
+            : <dynamic>[]);
+
+    final mandatory = resolved['mandatory_docs'] is List
+        ? List.from(resolved['mandatory_docs'] as List)
+        : <dynamic>[];
+
+    List docTypes;
+    if (resolved['document_types'] is List &&
+        (resolved['document_types'] as List).isNotEmpty) {
+      docTypes = List.from(resolved['document_types'] as List);
+    } else if (_docTypes.isNotEmpty) {
+      docTypes = _docTypes;
+    } else {
+      docTypes = mandatory
+          .map((e) => e.toString())
+          .where((k) => k.isNotEmpty && !_isCustomDocKey(k))
+          .map((k) => {'key': k, 'label': _labelForDocKey(k)})
+          .toList();
+    }
+
+    if (resolved['client_kyc_comment'] != null) {
+      _commentCtrl.text = resolved['client_kyc_comment'].toString();
+    }
+
     setState(() {
-      _loading = true;
+      if (stopLoading) _loading = false;
       _error = null;
+      _data = resolved;
+      _kycDocs = existing;
+      _docTypes = _withoutCustomTypes(docTypes);
+      _data['uploaded_types'] = uploaded;
     });
+  }
+
+  Future<void> _load({bool showLoader = true}) async {
+    if (showLoader) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
     try {
       final result = await _portal.getDocuments();
-      final data = _portal.sectionOf(result);
-      _commentCtrl.text = data['client_kyc_comment']?.toString() ?? '';
-
-      final existing = data['existing'] is List
-          ? List.from(data['existing'] as List)
-          : (data['client_kyc_documents'] is List
-              ? List.from(data['client_kyc_documents'] as List)
-              : []);
-
-      final mandatory = data['mandatory_docs'] is List
-          ? List.from(data['mandatory_docs'] as List)
-          : <dynamic>[];
-      final uploaded = data['uploaded_types'] is List
-          ? List.from(data['uploaded_types'] as List)
-          : <dynamic>[];
-
-      // Prefer API document_types; else build from mandatory + custom.
-      List docTypes;
-      if (data['document_types'] is List &&
-          (data['document_types'] as List).isNotEmpty) {
-        docTypes = List.from(data['document_types'] as List);
-      } else {
-        final keys = <String>{
-          ...mandatory.map((e) => e.toString()),
-          'custom',
-        };
-        docTypes = keys
-            .map((k) => {'key': k, 'label': _labelForDocKey(k)})
-            .toList();
-      }
-
       if (!mounted) return;
-      setState(() {
-        _loading = false;
-        _data = data;
-        _kycDocs = existing;
-        _docTypes = docTypes;
-        // Keep uploaded types on data for UI badges.
-        _data['uploaded_types'] = uploaded;
-      });
+      _applyDocumentsData(_portal.sectionOf(result));
     } catch (e) {
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _error = e.toString().replaceFirst('Exception: ', '');
+        if (showLoader || _data.isEmpty) {
+          _error = e.toString().replaceFirst('Exception: ', '');
+        }
       });
     }
   }
@@ -856,7 +922,6 @@ class _DocumentsKycScreenState extends State<_DocumentsKycScreen> {
       final result = await _portal.uploadDocument(
         docKey: docKey,
         file: File(path),
-        customDocName: docKey == 'custom' ? 'custom' : null,
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -868,20 +933,13 @@ class _DocumentsKycScreenState extends State<_DocumentsKycScreen> {
       );
       // Prefer updated section from response when present.
       if (result['section'] is Map) {
-        final data = Map<String, dynamic>.from(result['section'] as Map);
-        _commentCtrl.text = data['client_kyc_comment']?.toString() ??
-            _commentCtrl.text;
-        setState(() {
-          _data = data;
-          _kycDocs = data['existing'] is List
-              ? List.from(data['existing'] as List)
-              : _kycDocs;
-          if (data['uploaded_types'] is List) {
-            _data['uploaded_types'] = data['uploaded_types'];
-          }
-        });
+        _applyDocumentsData(
+          Map<String, dynamic>.from(result['section'] as Map),
+          stopLoading: false,
+          merge: true,
+        );
       } else {
-        await _load();
+        await _load(showLoader: false);
       }
     } catch (e) {
       if (!mounted) return;
@@ -907,8 +965,84 @@ class _DocumentsKycScreenState extends State<_DocumentsKycScreen> {
         ),
       ),
     ).then((_) {
-      if (mounted) _load();
+      if (mounted) _load(showLoader: false);
     });
+  }
+
+  Future<bool> _uploadCustom(String name) async {
+    final trimmed = name.trim();
+    if (trimmed.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please enter a document name before uploading.'),
+        ),
+      );
+      return false;
+    }
+
+    final maxMb = _customMaxSizeMb();
+    final maxBytes = maxMb * 1024 * 1024;
+    final picked = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: _customAcceptedExtensions(),
+      allowMultiple: true,
+      withData: false,
+    );
+    if (picked == null || picked.files.isEmpty) return false;
+
+    final files = <File>[];
+    for (final file in picked.files) {
+      if (file.size > maxBytes) {
+        if (!mounted) return false;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('"${file.name}" exceeds the ${maxMb}MB limit.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return false;
+      }
+      final path = file.path;
+      if (path == null || path.isEmpty) continue;
+      files.add(File(path));
+    }
+    if (files.isEmpty) return false;
+
+    setState(() => _saving = true);
+    try {
+      final result = await _portal.uploadCustomDocuments(
+        customDocName: trimmed,
+        files: files,
+      );
+      if (!mounted) return false;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            result['message']?.toString() ?? 'Uploaded successfully',
+          ),
+        ),
+      );
+      if (result['section'] is Map) {
+        _applyDocumentsData(
+          Map<String, dynamic>.from(result['section'] as Map),
+          stopLoading: false,
+          merge: true,
+        );
+      }
+      await _load(showLoader: false);
+      return true;
+    } catch (e) {
+      if (!mounted) return false;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e.toString().replaceFirst('Exception: ', '')),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return false;
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
   }
 
   Future<void> _saveComment() async {
@@ -937,7 +1071,7 @@ class _DocumentsKycScreenState extends State<_DocumentsKycScreen> {
     final body = _loading
         ? const SkeletonListLoader(cardCount: 4)
         : _error != null
-            ? _ErrorState(message: _error!, onRetry: _load)
+            ? _ErrorState(message: _error!, onRetry: () => _load())
             : ClientPortalKycChecklist(
                 data: _data,
                 docTypes: _docTypes,
@@ -945,6 +1079,7 @@ class _DocumentsKycScreenState extends State<_DocumentsKycScreen> {
                 saving: _saving,
                 commentCtrl: _commentCtrl,
                 onUpload: _upload,
+                onUploadCustom: _uploadCustom,
                 onOpenUploaded: _openUploaded,
                 onSaveComment: _saveComment,
               );

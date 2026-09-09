@@ -17,6 +17,10 @@ import '../services/data_provider.dart';
 import '../services/profile_picture_service.dart';
 
 class LoginScreenNew extends StatefulWidget {
+  /// Set by [AppLogout] so a freshly logged-out session never auto-opens
+  /// the previous user's home while prefs are still settling.
+  static bool preferFreshLogin = false;
+
   @override
   LoginScreenNewState createState() => LoginScreenNewState();
 }
@@ -112,6 +116,17 @@ class LoginScreenNewState extends State<LoginScreenNew>
   }
 
   checkIfAlreadyLoggedIn() async {
+    if (LoginScreenNew.preferFreshLogin) {
+      LoginScreenNew.preferFreshLogin = false;
+      // Don't wait on prefs here — AppLogout clears them after navigation.
+      ProfilePictureService.picturePathNotifier.value = null;
+      ProfilePictureService.promptShownThisSession = false;
+      // Tiny beat so the splash paints once, then show the phone form.
+      await Future.delayed(const Duration(milliseconds: 120));
+      await _revealLoginForm();
+      return;
+    }
+
     SharedPreferences prefs = await SharedPreferences.getInstance();
     var username = prefs.getString('username');
     var role = prefs.getString('role');
@@ -128,6 +143,7 @@ class LoginScreenNewState extends State<LoginScreenNew>
         });
       }
       await ProfilePictureService.getStoredPath();
+      ProfilePictureService.promptShownThisSession = false;
       if ((role ?? '').trim().toLowerCase() == 'client') {
         await DataProvider().ensureClientProjectSelected();
       }
@@ -247,12 +263,18 @@ class LoginScreenNewState extends State<LoginScreenNew>
     }
     // Login verify `user.profile_picture` is the source of truth for whether
     // a picture is set (prompt on app start when missing/empty).
-    final picture = profilePicture?.trim() ?? '';
-    if (picture.isNotEmpty) {
-      await ProfilePictureService.savePath(picture);
+    // Treat API placeholders like "null" as missing so the prompt still shows.
+    if (ProfilePictureService.isValidPath(profilePicture)) {
+      debugPrint('[Login] profile_picture from API: $profilePicture');
+      await ProfilePictureService.savePath(profilePicture!.trim());
     } else {
+      debugPrint(
+        '[Login] no valid profile_picture from API '
+        '(raw=${profilePicture ?? 'null'}) — will prompt after home',
+      );
       await ProfilePictureService.clearStored();
     }
+    ProfilePictureService.promptShownThisSession = false;
   }
 
   void _startResendCooldown() {
