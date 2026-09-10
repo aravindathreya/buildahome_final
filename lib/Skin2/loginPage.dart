@@ -12,6 +12,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../AdminDashboard.dart';
 import '../UserHome.dart';
 import '../chat_v1/chat_v1_api.dart';
+import '../services/app_deep_link_service.dart';
 import '../services/client_generation_service.dart';
 import '../services/data_provider.dart';
 import '../services/profile_picture_service.dart';
@@ -203,6 +204,7 @@ class LoginScreenNewState extends State<LoginScreenNew>
       ),
       (route) => false,
     );
+    await AppDeepLinkService.instance.onAppReady();
   }
 
   /// Normalize to E.164-style +91XXXXXXXXXX for Indian numbers.

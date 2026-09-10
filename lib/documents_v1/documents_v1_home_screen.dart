@@ -392,7 +392,7 @@ class _DocumentsV1ListScreenState extends State<DocumentsV1ListScreen> {
                     const SizedBox(height: 20),
                     Center(
                       child: Text(
-                        'No documents in this section yet.',
+                        'No documents yet.',
                         style: TextStyle(
                           color: AppTheme.getTextSecondary(context),
                         ),
@@ -485,7 +485,7 @@ class _DocumentsV1ListScreenState extends State<DocumentsV1ListScreen> {
               child: docs.isEmpty
                   ? Center(
                       child: Text(
-                        'No documents in this view yet.',
+                        'No documents yet.',
                         style: TextStyle(
                           color: AppTheme.getTextSecondary(context),
                         ),
@@ -653,9 +653,9 @@ class _ClientJourneyDocumentsScreenState
                     ? 'Search reports…'
                     : 'Search ${widget.title.toLowerCase()}…',
                 categoryLabel: widget.title,
-                emptyMessage: hasLegacy && _sections.isEmpty
-                    ? 'No workflow reports yet. Legacy links may be available above.'
-                    : 'No documents available in this section yet.',
+                    emptyMessage: hasLegacy && _sections.isEmpty
+                        ? 'No workflow reports yet. Legacy links may be available above.'
+                        : 'No documents yet.',
                 leadingChildren: [
                   if (widget.embedded) ...[
                     ClientPortalScreenHeader(

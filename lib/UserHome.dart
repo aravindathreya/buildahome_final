@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'LegacyClientHome.dart';
 import 'UserDashboard.dart';
 import 'app_theme.dart';
+import 'services/app_deep_link_service.dart';
 import 'services/client_generation_service.dart';
 import 'services/data_provider.dart';
 
@@ -63,6 +64,7 @@ class _HomeState extends State<Home> {
           ClientGenerationService.instance.shouldUseLegacyProjectUi;
       _resolving = false;
     });
+    await AppDeepLinkService.instance.onAppReady();
   }
 
   @override

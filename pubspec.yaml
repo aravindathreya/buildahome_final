@@ -36,6 +36,7 @@ dependencies:
   intl: ^0.20.2
   path_provider: ^2.0.11
   url_launcher: 
+  app_links: ^6.4.0
   carousel_slider: ^5.1.2
   grouped_buttons_ns:
   shared_preferences: ^2.0.16

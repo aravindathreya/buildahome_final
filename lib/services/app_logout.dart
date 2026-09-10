@@ -5,6 +5,7 @@ import '../Skin2/loginPage.dart';
 import '../app_navigator.dart';
 import '../chat_v1/chat_v1_api.dart';
 import '../chat_v1/chat_v1_socket.dart';
+import 'app_deep_link_service.dart';
 import 'client_generation_service.dart';
 import 'client_portal_service.dart';
 import 'data_provider.dart';
@@ -24,6 +25,7 @@ class AppLogout {
       ChatV1Socket.instance.disconnect();
     } catch (_) {}
     DataProvider().clearData();
+    AppDeepLinkService.instance.onLoggedOut();
     ProfilePictureService.picturePathNotifier.value = null;
     ProfilePictureService.promptShownThisSession = false;
     LoginScreenNew.preferFreshLogin = true;

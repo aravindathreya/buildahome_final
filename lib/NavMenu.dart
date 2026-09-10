@@ -13,12 +13,10 @@ import 'Gallery.dart';
 import 'documents_v1/documents_v1_home_screen.dart';
 import 'InspectionRequest.dart';
 import 'MyTasksScreen.dart';
-import 'NotesAndComments.dart';
 import 'chat_v1/chat_v1_app.dart';
 import 'ProjectFocusScreen.dart';
 import 'Payments.dart';
 import 'ProjectTimelineScreen.dart';
-import 'RequestDrawing.dart';
 import 'Scheduler.dart';
 import 'SiteVisitReports.dart';
 import 'SlotsScreen.dart';
@@ -31,7 +29,6 @@ import 'ClientPortalScreen.dart';
 import 'UploadPaymentProofScreen.dart';
 import 'app_theme.dart';
 import 'app_navigator.dart';
-import 'checklist_categories.dart';
 import 'indents_screen.dart';
 import 'notifcations.dart';
 import 'project_picker.dart';
@@ -673,16 +670,7 @@ class NavMenuWidgetState extends State<NavMenuWidget> {
       ));
     }
 
-    if (rbac.canViewSync(currentRole, RBACService.checklist)) {
-      opsEntries.add(_NavEntry(
-        title: 'Checklist',
-        icon: Icons.checklist_rounded,
-        route: isClient ? () => ChecklistCategoriesLayout() : null,
-        action: isClient
-            ? null
-            : _openAfterProjectPick(() => ChecklistCategoriesLayout()),
-      ));
-    }
+    // Checklist and Request Drawings hidden from side drawer.
 
     if (currentRole == 'Admin' ||
         currentRole == 'QC' ||
@@ -691,17 +679,6 @@ class NavMenuWidgetState extends State<NavMenuWidget> {
         title: 'Test Reports',
         icon: Icons.science_rounded,
         route: () => TestReportsScreen(),
-      ));
-    }
-
-    if (rbac.canViewSync(currentRole, RBACService.requestDrawing)) {
-      opsEntries.add(_NavEntry(
-        title: 'Request Drawings',
-        icon: Icons.architecture_rounded,
-        route: isClient ? () => RequestDrawingLayout() : null,
-        action: isClient
-            ? null
-            : _openAfterProjectPick(() => RequestDrawingLayout()),
       ));
     }
 
@@ -724,19 +701,11 @@ class NavMenuWidgetState extends State<NavMenuWidget> {
     }
 
     // Collaboration — Chat V1 must allow Client (General + DOC approve).
+    // ChatBox hidden from side drawer.
     final collabEntries = <_NavEntry>[];
-    final canChatBox = rbac.canViewSync(currentRole, RBACService.tasksAndNotes) &&
-        currentRole != 'Site Engineer';
     final canChatV1 = currentRole == 'Client' ||
         (rbac.canViewSync(currentRole, RBACService.tasksAndNotes) &&
             currentRole != 'Site Engineer');
-    if (canChatBox) {
-      collabEntries.add(_NavEntry(
-        title: 'ChatBox',
-        icon: Icons.chat_rounded,
-        route: () => NotesAndComments(),
-      ));
-    }
     if (canChatV1) {
       collabEntries.add(_NavEntry(
         title: 'Chat V1',

@@ -6,9 +6,12 @@ import 'package:url_launcher/url_launcher.dart';
 import 'MyTasksScreen.dart';
 import 'SlotsScreen.dart';
 import 'SiteVisitReports.dart';
+import 'UploadPaymentProofScreen.dart';
 import 'app_theme.dart';
 import 'approved_pos_screen.dart';
+import 'indent_proof.dart';
 import 'indents_screen.dart';
+import 'services/app_deep_link_service.dart';
 import 'services/data_provider.dart';
 import 'services/notification_service.dart';
 import 'widgets/themed_scaffold.dart';
@@ -312,11 +315,22 @@ class NotificationPageBodyState extends State<NotificationPageBody> {
     ]);
     if (link != null) {
       final uri = Uri.tryParse(link);
-      if (uri != null &&
-          (uri.scheme == 'http' || uri.scheme == 'https') &&
-          await canLaunchUrl(uri)) {
-        await launchUrl(uri, mode: LaunchMode.externalApplication);
-        return true;
+      if (uri != null) {
+        final deepScreen = AppDeepLinkService.resolveScreen(uri);
+        if (deepScreen == 'payment_proof') {
+          await Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => const UploadPaymentProofScreen(),
+            ),
+          );
+          return true;
+        }
+        if (uri.scheme == 'http' || uri.scheme == 'https') {
+          if (await canLaunchUrl(uri)) {
+            await launchUrl(uri, mode: LaunchMode.externalApplication);
+            return true;
+          }
+        }
       }
     }
 
@@ -367,6 +381,18 @@ class NotificationPageBodyState extends State<NotificationPageBody> {
             blob.contains('indent proof') ||
             blob.contains('site proof'))) {
       await openIndentProofScreen(context, indentId: indentId);
+      return true;
+    }
+
+    if (screen.contains('payment_proof') ||
+        screen.contains('upload_proof') ||
+        blob.contains('upload proof') ||
+        blob.contains('payment proof')) {
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => const UploadPaymentProofScreen(),
+        ),
+      );
       return true;
     }
 

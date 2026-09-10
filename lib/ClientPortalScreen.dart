@@ -201,7 +201,7 @@ class _ClientPortalScreenState extends State<ClientPortalScreen> {
             ),
           ),
           const SizedBox(height: 12),
-          ..._portalSections.asMap().entries.map((entry) {
+          ..._visiblePortalSections.asMap().entries.map((entry) {
             final index = entry.key;
             final section = entry.value;
             final visual = categoryVisualFor(
@@ -269,6 +269,13 @@ class _ClientPortalScreenState extends State<ClientPortalScreen> {
           journeyKey: section.journeyKey!,
         );
         break;
+      case 'office_documents':
+      case 'receipts_and_agreements':
+        page = ClientJourneyDocumentsScreen(
+          title: section.title,
+          journeyKey: section.journeyKey!,
+        );
+        break;
       case 'site_prep':
         page = const _SitePreparationScreen();
         break;
@@ -285,6 +292,49 @@ class _ClientPortalScreenState extends State<ClientPortalScreen> {
       context,
       MaterialPageRoute(builder: (_) => page),
     ).then((_) => _bootstrap());
+  }
+
+  List<_PortalSectionMeta> get _visiblePortalSections {
+    final out = <_PortalSectionMeta>[];
+    for (final section in _portalSections) {
+      out.add(section);
+      if (section.id != 'documents') continue;
+      if (_hasDocumentJourney(ClientJourneyKeys.officeDocuments)) {
+        out.add(
+          const _PortalSectionMeta(
+            id: 'office_documents',
+            title: 'Documents',
+            subtitle: 'Office project library',
+            icon: Icons.folder_shared_outlined,
+            journeyKey: ClientJourneyKeys.officeDocuments,
+          ),
+        );
+      }
+      if (_hasDocumentJourney(ClientJourneyKeys.receiptsAndAgreements)) {
+        out.add(
+          const _PortalSectionMeta(
+            id: 'receipts_and_agreements',
+            title: 'Receipts and Agreements',
+            subtitle: 'Receipts, agreements & tax invoices',
+            icon: Icons.receipt_long_outlined,
+            journeyKey: ClientJourneyKeys.receiptsAndAgreements,
+          ),
+        );
+      }
+    }
+    return out;
+  }
+
+  bool _hasDocumentJourney(String journeyKey) {
+    final library = _docLibrary;
+    if (library == null) return false;
+    if (library.categoriesForJourney(journeyKey).isNotEmpty) return true;
+    if (library.sectionsForJourney(journeyKey).isNotEmpty) return true;
+    final normalized = journeyKey.trim().toLowerCase();
+    return library.libraryCategories.any((category) {
+      final key = (category.clientJourneyKey ?? category.id).toLowerCase();
+      return key == normalized;
+    });
   }
 }
 

@@ -209,6 +209,41 @@ class ClientPortalService {
     _throwLastError(lastError, 'Unable to load client portal data');
   }
 
+  Future<Map<String, dynamic>> _delete(
+    String path, {
+    Map<String, String>? query,
+  }) async {
+    final token = await _apiToken();
+    if (token == null) {
+      throw ClientPortalApiException(
+        'Not authenticated. Please log in again.',
+        statusCode: 401,
+      );
+    }
+
+    Object? lastError;
+    for (final alias in _pathAliases(path)) {
+      try {
+        final response = await http
+            .delete(
+              _uri(alias, query: query, apiToken: token),
+              headers: await _headers(apiToken: token),
+            )
+            .timeout(const Duration(seconds: 25));
+        await _persistCookieFrom(response);
+        if (response.statusCode == 204) {
+          return {'success': true};
+        }
+        final json = _decodeOrThrow(response);
+        await _cacheIdsFromPayload(json);
+        return json;
+      } catch (e) {
+        lastError = e;
+      }
+    }
+    _throwLastError(lastError, 'Could not remove payment proof');
+  }
+
   Future<Map<String, dynamic>> _postJson(
     String path,
     Map<String, dynamic> body,
@@ -410,13 +445,16 @@ class ClientPortalService {
   /// POST /api/client_portal/payment-proof/upload
   /// multipart: repeat `payment_screenshot` for each file (fallback: `files`).
   /// Do not send `stage_task_id` — client upload has no stage selection.
+  /// The server waits for OpenAI, then returns `files` / `payment_proof_items`.
   Future<Map<String, dynamic>> uploadPaymentProofs(List<File> files) async {
+    const openaiWait = Duration(seconds: 120);
     try {
       return await _postMultipartMany(
         '/api/client_portal/payment-proof/upload',
         const {},
         fileField: 'payment_screenshot',
         files: files,
+        timeout: openaiWait,
       );
     } on ClientPortalApiException catch (e) {
       if (e.statusCode != 400) rethrow;
@@ -429,8 +467,67 @@ class ClientPortalService {
         const {},
         fileField: 'files',
         files: files,
+        timeout: openaiWait,
       );
     }
+  }
+
+  /// POST /api/client_portal/payment-proof/delete (fallback: /remove, then DELETE).
+  /// Identifies the file by `index` (serve URL `?index=`), filename, or url.
+  Future<Map<String, dynamic>> deletePaymentProof({
+    int? index,
+    String? filename,
+    String? url,
+  }) async {
+    final body = <String, dynamic>{
+      if (index != null) 'index': index,
+      if (filename != null && filename.trim().isNotEmpty)
+        'filename': filename.trim(),
+      if (url != null && url.trim().isNotEmpty) 'url': url.trim(),
+    };
+    if (body.isEmpty) {
+      throw ClientPortalApiException(
+        'Could not identify the payment proof to remove',
+        statusCode: 400,
+      );
+    }
+
+    Object? lastError;
+    for (final path in const [
+      '/api/client_portal/payment-proof/delete',
+      '/api/client_portal/payment-proof/remove',
+    ]) {
+      try {
+        return await _postJson(path, body);
+      } catch (e) {
+        lastError = e;
+        if (e is ClientPortalApiException && e.isUnauthorized) rethrow;
+        if (!_shouldTryDeleteFallback(e)) rethrow;
+      }
+    }
+
+    final query = <String, String>{
+      if (index != null) 'index': '$index',
+      if (filename != null && filename.trim().isNotEmpty)
+        'filename': filename.trim(),
+    };
+    try {
+      return await _delete(
+        '/api/client_portal/payment-proof',
+        query: query.isEmpty ? null : query,
+      );
+    } catch (e) {
+      lastError = e;
+      if (e is ClientPortalApiException && e.isUnauthorized) rethrow;
+    }
+    _throwLastError(lastError, 'Could not remove payment proof');
+  }
+
+  static bool _shouldTryDeleteFallback(Object error) {
+    if (error is! ClientPortalApiException) return true;
+    return error.statusCode == 404 ||
+        error.statusCode == 405 ||
+        error.statusCode == 400;
   }
 
   static bool isStalePaymentProofStageError(Object error) {
@@ -607,10 +704,39 @@ class ClientPortalService {
     await prefs.setBool('client_portal_tutorial_done', true);
   }
 
-  String serveUrl(String path) {
-    if (path.startsWith('http://') || path.startsWith('https://')) return path;
-    if (path.startsWith('/')) return '$baseUrl$path';
-    return '$baseUrl/$path';
+  Future<String?> currentApiToken() => _apiToken();
+
+  /// Headers so `/serve_sales_sop_payment/...` loads for Client + `api_token`.
+  Future<Map<String, String>> authenticatedImageHeaders() async {
+    final token = await _apiToken();
+    await _ensureCookieLoaded();
+    return {
+      'Accept': '*/*',
+      if (token != null) 'X-Api-Token': token,
+      if (token != null) 'Authorization': 'Bearer $token',
+      if (_sessionCookie != null && _sessionCookie!.isNotEmpty)
+        'Cookie': _sessionCookie!,
+    };
+  }
+
+  String serveUrl(String path, {String? apiToken}) {
+    String resolved;
+    if (path.startsWith('http://') || path.startsWith('https://')) {
+      resolved = path;
+    } else if (path.startsWith('/')) {
+      resolved = '$baseUrl$path';
+    } else {
+      resolved = '$baseUrl/$path';
+    }
+    final token = apiToken?.trim() ?? '';
+    if (token.isEmpty) return resolved;
+    final uri = Uri.tryParse(resolved);
+    if (uri == null || uri.queryParameters.containsKey('api_token')) {
+      return resolved;
+    }
+    return uri.replace(
+      queryParameters: {...uri.queryParameters, 'api_token': token},
+    ).toString();
   }
 
   /// Session cookie for authenticated document URLs (e.g. `/serve_sales_sop_*`).

@@ -4,6 +4,7 @@ import 'Skin2/loginPage.dart';
 import 'UserDashboard.dart';
 import 'app_navigator.dart';
 import 'app_theme.dart';
+import 'services/app_deep_link_service.dart';
 import 'services/session_manager.dart';
 
 export 'app_navigator.dart';
@@ -27,11 +28,13 @@ class _AppState extends State<App> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       SessionManager.instance.validateSessionIfLoggedIn(force: true);
+      AppDeepLinkService.instance.start();
     });
   }
 
   @override
   void dispose() {
+    AppDeepLinkService.instance.dispose();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }

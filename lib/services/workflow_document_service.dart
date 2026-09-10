@@ -159,7 +159,18 @@ class WorkflowDocumentService {
     }) {
       final id = sectionId.trim().isEmpty ? _slug(sectionLabel) : sectionId;
       if (id.isEmpty) return;
-      final existing = sectionBlueprint[id];
+      final resolvedLibraryKey = _officeLibraryGroupKey(
+        libraryGroupKey: libraryGroupKey,
+        categoryId: categoryId,
+        clientJourneyKey: clientJourneyKey,
+      );
+      final key = _isolatedSectionBlueprintKey(
+        sectionId: id,
+        categoryId: categoryId,
+        libraryGroupKey: resolvedLibraryKey ?? libraryGroupKey,
+        clientJourneyKey: clientJourneyKey,
+      );
+      final existing = sectionBlueprint[key];
       if (existing != null) {
         if (existing.label.isEmpty && sectionLabel.isNotEmpty) {
           existing.label = sectionLabel;
@@ -173,8 +184,8 @@ class WorkflowDocumentService {
         if (existing.clientJourneyKey == null && clientJourneyKey != null) {
           existing.clientJourneyKey = clientJourneyKey;
         }
-        if (existing.libraryGroupKey == null && libraryGroupKey != null) {
-          existing.libraryGroupKey = libraryGroupKey;
+        if (existing.libraryGroupKey == null) {
+          existing.libraryGroupKey = resolvedLibraryKey ?? libraryGroupKey;
         }
         if (existing.iconName == null && iconName != null) {
           existing.iconName = iconName;
@@ -183,18 +194,18 @@ class WorkflowDocumentService {
         return;
       }
 
-      sectionBlueprint[id] = _MutableSection(
+      sectionBlueprint[key] = _MutableSection(
         id: id,
         label: sectionLabel.trim().isEmpty ? _titleFromKey(id) : sectionLabel,
         iconName: iconName,
         categoryId: categoryId,
         categoryLabel: categoryLabel,
         clientJourneyKey: clientJourneyKey,
-        libraryGroupKey: libraryGroupKey,
+        libraryGroupKey: resolvedLibraryKey ?? libraryGroupKey,
         presentation: presentation,
       );
-      if (libraryGroupKey != null && libraryGroupKey.isNotEmpty) {
-        registerCategoryOrder(libraryGroupKey);
+      if ((resolvedLibraryKey ?? libraryGroupKey)?.isNotEmpty == true) {
+        registerCategoryOrder(resolvedLibraryKey ?? libraryGroupKey!);
       } else if (categoryId.isNotEmpty) {
         registerCategoryOrder(categoryId);
       }
@@ -209,7 +220,11 @@ class WorkflowDocumentService {
         categoryId: upload.categoryId,
         categoryLabel: upload.categoryLabel,
         clientJourneyKey: upload.clientJourneyKey,
-        libraryGroupKey: upload.libraryGroupKey,
+        libraryGroupKey: upload.libraryGroupKey ??
+            _officeLibraryGroupKey(
+              categoryId: upload.categoryId,
+              clientJourneyKey: upload.clientJourneyKey,
+            ),
       );
     }
 
@@ -315,8 +330,19 @@ class WorkflowDocumentService {
     final dedupedUploads = _dedupeUploads(uploads);
     for (final upload in dedupedUploads) {
       final sectionId = upload.sectionId.isEmpty ? 'general' : upload.sectionId;
+      final groupKey = upload.libraryGroupKey ??
+          _officeLibraryGroupKey(
+            categoryId: upload.categoryId,
+            clientJourneyKey: upload.clientJourneyKey,
+          );
+      final key = _isolatedSectionBlueprintKey(
+        sectionId: sectionId,
+        categoryId: upload.categoryId,
+        libraryGroupKey: groupKey,
+        clientJourneyKey: upload.clientJourneyKey,
+      );
       sectionBlueprint.putIfAbsent(
-        sectionId,
+        key,
         () => _MutableSection(
           id: sectionId,
           label: upload.sectionLabel.isEmpty
@@ -325,10 +351,10 @@ class WorkflowDocumentService {
           categoryId: upload.categoryId,
           categoryLabel: upload.categoryLabel,
           clientJourneyKey: upload.clientJourneyKey,
-          libraryGroupKey: upload.libraryGroupKey,
+          libraryGroupKey: groupKey,
         ),
       );
-      sectionBlueprint[sectionId]!.documents.add(upload);
+      sectionBlueprint[key]!.documents.add(upload);
     }
 
     final cardFileCounts = _extractCardFileCounts(salesSopDetails);
@@ -974,7 +1000,13 @@ class WorkflowDocumentService {
           _stringValue(merged['client_portal_key']),
       libraryGroupKey: _stringValue(merged['library_group_key']) ??
           _stringValue(merged['library_category_key']) ??
-          _stringValue(merged['group_id']),
+          _stringValue(merged['group_id']) ??
+          _officeLibraryGroupKey(
+            categoryId: _stringValue(merged['category_id']) ?? '',
+            clientJourneyKey: _stringValue(merged['client_journey_key']) ??
+                _stringValue(merged['journey_key']) ??
+                _stringValue(merged['client_portal_key']),
+          ),
       activity: activity,
       raw: merged,
     );
@@ -1118,6 +1150,43 @@ bool _truthy(dynamic value) {
   return false;
 }
 
+/// Office `/documents` and `/View_receipt_and_agreement` lists.
+/// Do not invent these on the client — only fill missing library keys.
+String? _officeLibraryGroupKey({
+  String? libraryGroupKey,
+  String categoryId = '',
+  String? clientJourneyKey,
+}) {
+  final explicit = libraryGroupKey?.trim();
+  if (explicit != null && explicit.isNotEmpty) return explicit;
+  final fallback = categoryId.trim().isNotEmpty
+      ? categoryId.trim()
+      : (clientJourneyKey ?? '').trim();
+  if (fallback == ClientJourneyKeys.officeDocuments ||
+      fallback == ClientJourneyKeys.receiptsAndAgreements) {
+    return fallback;
+  }
+  return null;
+}
+
+/// Keep office library lists out of workflow sections that share short ids
+/// (e.g. receipts `agreements` vs workflow `dsec_agreements`).
+String _isolatedSectionBlueprintKey({
+  required String sectionId,
+  String categoryId = '',
+  String? libraryGroupKey,
+  String? clientJourneyKey,
+}) {
+  final group = _officeLibraryGroupKey(
+        libraryGroupKey: libraryGroupKey,
+        categoryId: categoryId,
+        clientJourneyKey: clientJourneyKey,
+      ) ??
+      '';
+  if (group.isEmpty) return sectionId;
+  return '$group::$sectionId';
+}
+
 String _slug(String value) {
   return value
       .toLowerCase()
@@ -1169,4 +1238,6 @@ class ClientJourneyKeys {
   static const demolition = 'demolition_details';
   static const inspection = 'site_inspection';
   static const preConversion = 'pre_conversion_documents';
+  static const officeDocuments = 'office_documents';
+  static const receiptsAndAgreements = 'receipts_and_agreements';
 }

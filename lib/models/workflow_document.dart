@@ -58,6 +58,17 @@ class WorkflowDocumentUpload {
 
   bool get hasUrl => url != null && url!.trim().isNotEmpty;
 
+  /// Office library lists from `/documents` and `/View_receipt_and_agreement`.
+  /// Distinct from `project_documents` / workflow `dsec_agreements`.
+  bool get isOfficeLibraryDocument {
+    bool hit(String? value) {
+      final key = (value ?? '').trim().toLowerCase();
+      return key == 'office_documents' || key == 'receipts_and_agreements';
+    }
+
+    return hit(clientJourneyKey) || hit(categoryId) || hit(libraryGroupKey);
+  }
+
   bool get isImage {
     final mime = (contentType ?? '').toLowerCase();
     if (mime.startsWith('image/')) return true;
@@ -81,7 +92,9 @@ class WorkflowDocumentUpload {
       (revision != null ? 'Rev ${revision.toString().padLeft(2, '0')}' : '');
 
   /// Primary list title — prefer task name when the backend provides it.
+  /// Office library files use `document_name` (fallback `filename`) as-is.
   String get displayTitle {
+    if (isOfficeLibraryDocument) return name;
     final task = taskName?.trim();
     if (task != null && task.isNotEmpty) return task;
     return name;

@@ -63,6 +63,22 @@ ClientPortalCategoryVisual categoryVisualFor({
 }) {
   final key = (journeyKey ?? categoryId ?? label ?? '').toLowerCase();
 
+  if (key.contains('office_documents')) {
+    return const ClientPortalCategoryVisual(
+      icon: Icons.folder_shared_outlined,
+      subtitle: 'Office project library',
+      iconBg: Color(0xFFEEF2FF),
+      iconFg: Color(0xFF4338CA),
+    );
+  }
+  if (key.contains('receipts_and_agreements')) {
+    return const ClientPortalCategoryVisual(
+      icon: Icons.receipt_long_outlined,
+      subtitle: 'Receipts, agreements & tax invoices',
+      iconBg: Color(0xFFECFDF5),
+      iconFg: Color(0xFF059669),
+    );
+  }
   if (key.contains('kyc') || key.contains('pre_conversion')) {
     return const ClientPortalCategoryVisual(
       icon: Icons.badge_outlined,
@@ -164,6 +180,43 @@ ClientPortalCategoryVisual categoryVisualForCategory(
 ClientPortalCategoryVisual sectionVisualFor(WorkflowDocumentSection section) {
   final label = section.label.toLowerCase();
   final id = section.id.toLowerCase();
+  final categoryKey =
+      (section.clientJourneyKey ?? section.categoryId).toLowerCase();
+
+  if (categoryKey == 'receipts_and_agreements') {
+    if (id == 'receipts' || label == 'receipts') {
+      return const ClientPortalCategoryVisual(
+        icon: Icons.receipt_long_outlined,
+        subtitle: 'Payment receipts',
+        iconBg: Color(0xFFECFDF5),
+        iconFg: Color(0xFF059669),
+      );
+    }
+    if (id == 'agreements' || label == 'agreements') {
+      return const ClientPortalCategoryVisual(
+        icon: Icons.handshake_outlined,
+        subtitle: 'Signed agreements',
+        iconBg: Color(0xFFEEF2FF),
+        iconFg: Color(0xFF2563EB),
+      );
+    }
+    if (id.contains('tax_invoice') || label.contains('tax invoice')) {
+      return const ClientPortalCategoryVisual(
+        icon: Icons.request_quote_outlined,
+        subtitle: 'Tax invoices',
+        iconBg: Color(0xFFFEF3C7),
+        iconFg: Color(0xFFD97706),
+      );
+    }
+  }
+  if (categoryKey == 'office_documents') {
+    return const ClientPortalCategoryVisual(
+      icon: Icons.folder_shared_outlined,
+      subtitle: 'Office project library',
+      iconBg: Color(0xFFEEF2FF),
+      iconFg: Color(0xFF4338CA),
+    );
+  }
 
   if (label.contains('architectural') || id.contains('architectural')) {
     return const ClientPortalCategoryVisual(

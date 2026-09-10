@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:cached_network_image/cached_network_image.dart';
@@ -7,6 +8,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'FullScreenImage.dart';
+import 'models/payment_proof_item.dart';
 import 'services/app_logout.dart';
 import 'services/client_portal_service.dart';
 import 'widgets/skeleton_loader.dart';
@@ -19,13 +21,19 @@ class UploadPaymentProofScreen extends StatefulWidget {
       _UploadPaymentProofScreenState();
 }
 
-class _UploadPaymentProofScreenState extends State<UploadPaymentProofScreen> {
+class _UploadPaymentProofScreenState extends State<UploadPaymentProofScreen>
+    with WidgetsBindingObserver {
   static const Color _navyStart = Color(0xFF224A7A);
   static const Color _navyEnd = Color(0xFF2B66AC);
   static const Color _pageBg = Color(0xFFEEF2F6);
   static const Color _cardBorder = Color(0xFFE2E8F0);
   static const Color _textPrimary = Color(0xFF334155);
   static const Color _textSecondary = Color(0xFF475569);
+  static const Color _rejectBorder = Color(0xFFDC2626);
+  static const Color _rejectOverlay = Color(0x4DDC2626);
+  static const Color _rejectText = Color(0xFFB91C1C);
+  static const Color _rejectMuted = Color(0xFF991B1B);
+  static const Duration _snapshotPollInterval = Duration(seconds: 30);
 
   final _portal = ClientPortalService();
   final _picker = ImagePicker();
@@ -33,96 +41,102 @@ class _UploadPaymentProofScreenState extends State<UploadPaymentProofScreen> {
   bool _loading = true;
   bool _uploading = false;
   bool _noProject = false;
+  bool _refreshInFlight = false;
   String? _error;
   String _title = 'Upload proof';
   String _projectId = '';
   String _clientName = '';
   bool _canUpload = true;
-  List<_PaymentProofItem> _items = [];
+  List<PaymentProofItem> _items = [];
+  Timer? _pollTimer;
+  String? _removingUrl;
+  String? _apiToken;
+  Map<String, String> _imageHeaders = const {};
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _load();
+    _pollTimer = Timer.periodic(_snapshotPollInterval, (_) {
+      _refreshQuietly();
+    });
   }
 
-  Future<void> _load() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-      _noProject = false;
-    });
+  @override
+  void dispose() {
+    _pollTimer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _refreshQuietly();
+    }
+  }
+
+  Future<void> _load({bool showSpinner = true}) async {
+    if (_refreshInFlight && !showSpinner) return;
+    _refreshInFlight = true;
+    if (showSpinner) {
+      setState(() {
+        _loading = true;
+        _error = null;
+        _noProject = false;
+      });
+    }
     try {
+      final token = await _portal.currentApiToken();
+      final headers = await _portal.authenticatedImageHeaders();
       final payload = await _portal.getPaymentProof();
       if (!mounted) return;
-      _applySection(payload);
-      setState(() => _loading = false);
+      setState(() {
+        _apiToken = token;
+        _imageHeaders = headers;
+        _applyPayload(payload);
+        _loading = false;
+      });
     } catch (e) {
       if (!mounted) return;
       if (_handleAuthOrNoProject(e)) return;
+      if (!showSpinner) return;
       setState(() {
         _loading = false;
         _error = _messageOf(e);
       });
+    } finally {
+      _refreshInFlight = false;
     }
   }
 
-  void _applySection(Map<String, dynamic> payload) {
+  Future<void> _refreshQuietly() async {
+    if (!mounted || _uploading || _loading || _noProject || _removingUrl != null) {
+      return;
+    }
+    await _load(showSpinner: false);
+  }
+
+  void _applyPayload(Map<String, dynamic> payload) {
     final section = _portal.sectionOf(payload);
-    final project = section['project'] is Map
-        ? Map<String, dynamic>.from(section['project'] as Map)
+    final source = section.isNotEmpty ? section : payload;
+    final project = source['project'] is Map
+        ? Map<String, dynamic>.from(source['project'] as Map)
         : <String, dynamic>{};
 
-    _title = section['title']?.toString().trim().isNotEmpty == true
-        ? section['title'].toString()
+    _title = source['title']?.toString().trim().isNotEmpty == true
+        ? source['title'].toString()
         : 'Upload proof';
     _projectId = project['project_id']?.toString() ?? '';
     _clientName = project['client_name']?.toString() ?? '';
-    _canUpload = section['can_upload'] != false;
-    _items = _parseItems(section);
+    _canUpload = source['can_upload'] != false;
+    _items = PaymentProofItem.listFromPayload(
+      payload,
+      resolveUrl: (url) => _portal.serveUrl(url, apiToken: _apiToken),
+    );
     _error = null;
     _noProject = false;
-  }
-
-  List<_PaymentProofItem> _parseItems(Map<String, dynamic> section) {
-    final rawItems = section['payment_proof_items'];
-    if (rawItems is List && rawItems.isNotEmpty) {
-      return rawItems.whereType<Map>().map((raw) {
-        final map = Map<String, dynamic>.from(raw);
-        final url = _portal.serveUrl(map['url']?.toString() ?? '');
-        final isPdf = map['is_pdf'] == true || _looksLikePdf(url);
-        return _PaymentProofItem(
-          url: url,
-          label: map['label']?.toString().trim().isNotEmpty == true
-              ? map['label'].toString()
-              : (isPdf ? 'Payment proof' : 'Payment proof'),
-          isPdf: isPdf,
-        );
-      }).where((item) => item.url.isNotEmpty).toList();
-    }
-
-    final urls = section['payment_screenshot_urls'];
-    if (urls is! List) return [];
-    final parsed = urls
-        .map((e) => e?.toString() ?? '')
-        .where((e) => e.trim().isNotEmpty)
-        .map(_portal.serveUrl)
-        .toList();
-    return [
-      for (var i = 0; i < parsed.length; i++)
-        _PaymentProofItem(
-          url: parsed[i],
-          label: parsed.length == 1
-              ? 'Payment proof'
-              : 'Payment proof ${i + 1}',
-          isPdf: _looksLikePdf(parsed[i]),
-        ),
-    ];
-  }
-
-  bool _looksLikePdf(String url) {
-    final lower = url.toLowerCase();
-    return lower.contains('.pdf') || lower.contains('application/pdf');
   }
 
   String _messageOf(Object e) =>
@@ -278,10 +292,9 @@ class _UploadPaymentProofScreenState extends State<UploadPaymentProofScreen> {
     try {
       final result = await _portal.uploadPaymentProofs(files);
       if (!mounted) return;
-      if (result['section'] is Map) {
-        _applySection(result);
-      } else {
-        await _load();
+      setState(() => _applyPayload(result));
+      if (!PaymentProofItem.payloadHasFileRecords(result)) {
+        await _load(showSpinner: false);
       }
       final count = result['saved_count'] is num
           ? (result['saved_count'] as num).toInt()
@@ -296,7 +309,7 @@ class _UploadPaymentProofScreenState extends State<UploadPaymentProofScreen> {
       if (!mounted) return;
       if (_handleAuthOrNoProject(e)) return;
       if (ClientPortalService.isStalePaymentProofStageError(e)) {
-        await _load();
+        await _load(showSpinner: false);
         if (!mounted) return;
         if (_items.isNotEmpty) {
           _showSuccess('Payment proof uploaded successfully.');
@@ -330,7 +343,7 @@ class _UploadPaymentProofScreenState extends State<UploadPaymentProofScreen> {
     );
   }
 
-  Future<void> _openItem(_PaymentProofItem item) async {
+  Future<void> _openItem(PaymentProofItem item) async {
     if (item.isPdf) {
       final uri = Uri.tryParse(item.url);
       if (uri == null) return;
@@ -339,6 +352,7 @@ class _UploadPaymentProofScreenState extends State<UploadPaymentProofScreen> {
       } catch (_) {
         _showError('Could not open PDF');
       }
+      if (mounted) await _refreshQuietly();
       return;
     }
 
@@ -349,7 +363,7 @@ class _UploadPaymentProofScreenState extends State<UploadPaymentProofScreen> {
         .toList();
     final initial = imageUrls.indexOf(item.url);
     if (!mounted) return;
-    Navigator.push(
+    await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => FullScreenImage(
@@ -359,6 +373,62 @@ class _UploadPaymentProofScreenState extends State<UploadPaymentProofScreen> {
         ),
       ),
     );
+    if (mounted) await _refreshQuietly();
+  }
+
+  Future<void> _removeItem(PaymentProofItem item) async {
+    if (!item.canRemove || _uploading || _removingUrl != null) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Remove this proof?'),
+          content: Text(
+            item.isRejected
+                ? 'This rejected file will be removed. You can upload a correct bill afterwards.'
+                : 'This file will be removed from your payment proofs.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              style: TextButton.styleFrom(foregroundColor: _rejectText),
+              child: const Text('Remove'),
+            ),
+          ],
+        );
+      },
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _removingUrl = item.url);
+    try {
+      final result = await _portal.deletePaymentProof(
+        index: item.index,
+        filename: item.filename.isEmpty ? null : item.filename,
+        url: item.url,
+      );
+      if (!mounted) return;
+      if (result['section'] is Map ||
+          PaymentProofItem.payloadHasFileRecords(result)) {
+        setState(() => _applyPayload(result));
+      } else {
+        setState(() {
+          _items = _items.where((e) => e.url != item.url).toList();
+        });
+        await _load(showSpinner: false);
+      }
+    } catch (e) {
+      if (!mounted) return;
+      if (_handleAuthOrNoProject(e)) return;
+      _showError(_messageOf(e));
+      await _load(showSpinner: false);
+    } finally {
+      if (mounted) setState(() => _removingUrl = null);
+    }
   }
 
   String get _subtitle {
@@ -447,7 +517,7 @@ class _UploadPaymentProofScreenState extends State<UploadPaymentProofScreen> {
 
     return RefreshIndicator(
       color: _navyStart,
-      onRefresh: _uploading ? () async {} : _load,
+      onRefresh: _uploading ? () async {} : _refreshQuietly,
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
@@ -484,21 +554,28 @@ class _UploadPaymentProofScreenState extends State<UploadPaymentProofScreen> {
           if (_items.isEmpty)
             const _EmptyProofsState()
           else
-            GridView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: _items.length,
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 2,
-                crossAxisSpacing: 12,
-                mainAxisSpacing: 12,
-                childAspectRatio: 0.92,
-              ),
-              itemBuilder: (context, index) {
-                final item = _items[index];
-                return _ProofCard(
-                  item: item,
-                  onTap: () => _openItem(item),
+            LayoutBuilder(
+              builder: (context, constraints) {
+                const gap = 12.0;
+                final width = (constraints.maxWidth - gap) / 2;
+                return Wrap(
+                  spacing: gap,
+                  runSpacing: gap,
+                  children: [
+                    for (final item in _items)
+                      SizedBox(
+                        width: width,
+                        child: _ProofCard(
+                          item: item,
+                          imageHeaders: _imageHeaders,
+                          removing: _removingUrl == item.url,
+                          onTap: () => _openItem(item),
+                          onRemove: item.canRemove
+                              ? () => _removeItem(item)
+                              : null,
+                        ),
+                      ),
+                  ],
                 );
               },
             ),
@@ -506,18 +583,6 @@ class _UploadPaymentProofScreenState extends State<UploadPaymentProofScreen> {
       ),
     );
   }
-}
-
-class _PaymentProofItem {
-  final String url;
-  final String label;
-  final bool isPdf;
-
-  const _PaymentProofItem({
-    required this.url,
-    required this.label,
-    required this.isPdf,
-  });
 }
 
 class _UploadZone extends StatelessWidget {
@@ -681,74 +746,191 @@ class _PrimaryActionButton extends StatelessWidget {
 }
 
 class _ProofCard extends StatelessWidget {
-  final _PaymentProofItem item;
+  final PaymentProofItem item;
   final VoidCallback onTap;
+  final VoidCallback? onRemove;
+  final bool removing;
+  final Map<String, String> imageHeaders;
 
-  const _ProofCard({required this.item, required this.onTap});
+  const _ProofCard({
+    required this.item,
+    required this.onTap,
+    this.onRemove,
+    this.removing = false,
+    this.imageHeaders = const {},
+  });
 
   @override
   Widget build(BuildContext context) {
+    final rejected = item.isRejected;
+    final rejectText = item.rejectionDisplayText;
     return Material(
-      color: Colors.white,
+      color: rejected ? const Color(0xFFFFF1F1) : Colors.white,
       borderRadius: BorderRadius.circular(16),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Ink(
-          decoration: BoxDecoration(
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          InkWell(
+            onTap: onTap,
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: _UploadPaymentProofScreenState._cardBorder,
-            ),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Expanded(
-                child: ClipRRect(
-                  borderRadius:
-                      const BorderRadius.vertical(top: Radius.circular(16)),
-                  child: item.isPdf
-                      ? Container(
-                          color: const Color(0xFFF8FAFC),
-                          child: const Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(Icons.picture_as_pdf_rounded,
-                                  size: 42, color: Color(0xFFDC2626)),
-                              SizedBox(height: 8),
-                              _PdfTag(),
-                            ],
-                          ),
-                        )
-                      : CachedNetworkImage(
-                          imageUrl: item.url,
-                          fit: BoxFit.cover,
-                          placeholder: (context, url) =>
-                              const SkeletonImage(radius: 0),
-                          errorWidget: (context, url, error) => const Center(
-                            child: Icon(Icons.broken_image_outlined,
-                                color: Color(0xFF94A3B8)),
-                          ),
-                        ),
+            child: Ink(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: rejected
+                      ? _UploadPaymentProofScreenState._rejectBorder
+                      : _UploadPaymentProofScreenState._cardBorder,
+                  width: rejected ? 1.8 : 1,
                 ),
               ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(10, 10, 10, 12),
-                child: Text(
-                  item.label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: _UploadPaymentProofScreenState._textPrimary,
-                    fontWeight: FontWeight.w700,
-                    fontSize: 13,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  AspectRatio(
+                    aspectRatio: 1,
+                    child: ClipRRect(
+                      borderRadius: const BorderRadius.vertical(
+                        top: Radius.circular(14.5),
+                      ),
+                      child: Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          item.isPdf
+                              ? Container(
+                                  color: const Color(0xFFF8FAFC),
+                                  child: const Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(Icons.picture_as_pdf_rounded,
+                                          size: 42, color: Color(0xFFDC2626)),
+                                      SizedBox(height: 8),
+                                      _PdfTag(),
+                                    ],
+                                  ),
+                                )
+                              : CachedNetworkImage(
+                                  imageUrl: item.url,
+                                  httpHeaders: imageHeaders,
+                                  fit: BoxFit.cover,
+                                  placeholder: (context, url) =>
+                                      const SkeletonImage(radius: 0),
+                                  errorWidget: (context, url, error) =>
+                                      const Center(
+                                    child: Icon(Icons.broken_image_outlined,
+                                        color: Color(0xFF94A3B8)),
+                                  ),
+                                ),
+                          if (rejected)
+                            const ColoredBox(
+                              color:
+                                  _UploadPaymentProofScreenState._rejectOverlay,
+                            ),
+                          if (item.showNotABillBadge)
+                            Positioned(
+                              left: 8,
+                              top: 8,
+                              right: 44,
+                              child: Align(
+                                alignment: Alignment.topLeft,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 4,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFDC2626),
+                                    borderRadius: BorderRadius.circular(99),
+                                  ),
+                                  child: Text(
+                                    item.notABillBadgeText,
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w800,
+                                      height: 1.2,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  Padding(
+                    padding: EdgeInsets.fromLTRB(
+                      10,
+                      10,
+                      10,
+                      rejectText.isNotEmpty ? 6 : 12,
+                    ),
+                    child: Text(
+                      item.displayAmount,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: rejected
+                            ? _UploadPaymentProofScreenState._rejectMuted
+                            : _UploadPaymentProofScreenState._navyStart,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 15,
+                      ),
+                    ),
+                  ),
+                  if (rejectText.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(10, 0, 10, 12),
+                      child: Text(
+                        rejectText,
+                        textAlign: TextAlign.left,
+                        maxLines: 3,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: _UploadPaymentProofScreenState._rejectText,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 12,
+                          height: 1.35,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+          if (onRemove != null)
+            Positioned(
+              top: 4,
+              right: 4,
+              child: Material(
+                color: Colors.white,
+                elevation: 3,
+                shape: const CircleBorder(),
+                child: InkWell(
+                  customBorder: const CircleBorder(),
+                  onTap: removing ? null : onRemove,
+                  child: SizedBox(
+                    width: 32,
+                    height: 32,
+                    child: Center(
+                      child: removing
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(
+                              Icons.close_rounded,
+                              size: 20,
+                              color: Color(0xFFDC2626),
+                            ),
+                    ),
                   ),
                 ),
               ),
-            ],
-          ),
-        ),
+            ),
+        ],
       ),
     );
   }
