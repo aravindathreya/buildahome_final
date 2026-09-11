@@ -18,6 +18,8 @@ import 'app_theme.dart';
 import 'checklist_categories.dart';
 import 'services/app_logout.dart';
 import 'services/data_provider.dart';
+import 'services/mobile_quick_actions.dart';
+import 'services/mobile_quick_actions_service.dart';
 
 class LegacyClientHome extends StatefulWidget {
   final bool fromAdminDashboard;
@@ -221,12 +223,18 @@ class LegacyClientDashboardScreenState extends State<LegacyClientDashboardScreen
     _quickSearchController.dispose();
     _quickSearchFocusNode.dispose();
     _scrollController.dispose();
+    MobileQuickActionsService.instance.revision
+        .removeListener(_onQuickActionsChanged);
     super.dispose();
   }
 
   @override
   void initState() {
     super.initState();
+    MobileQuickActionsService.instance.revision
+        .addListener(_onQuickActionsChanged);
+    MobileQuickActionsService.instance
+        .ensureSurface(MobileQuickActionSurface.projectHomeOld);
     // Load cached data (if available) without blocking the transition
     loadDataFromProvider();
     // Fetch fresh data asynchronously and preload project data for non-Client users
@@ -247,6 +255,10 @@ class LegacyClientDashboardScreenState extends State<LegacyClientDashboardScreen
         });
       }
     });
+  }
+
+  void _onQuickActionsChanged() {
+    if (mounted) setState(() {});
   }
 
   Future<void> _initializeData() async {
@@ -364,6 +376,12 @@ class LegacyClientDashboardScreenState extends State<LegacyClientDashboardScreen
       await DataProvider().reloadData(force: force);
     }
     await loadDataFromProvider();
+    if (force) {
+      await MobileQuickActionsService.instance.ensureSurface(
+        MobileQuickActionSurface.projectHomeOld,
+        force: true,
+      );
+    }
   }
 
   Future<void> _navigateToWidget(Widget page) async {
@@ -469,7 +487,14 @@ class LegacyClientDashboardScreenState extends State<LegacyClientDashboardScreen
   }
 
   Widget build(BuildContext context) {
-    List<Map<String, dynamic>> menuItems = getMenuItems();
+    final catalogItems = getMenuItems();
+    final menuItems = resolveMobileQuickActions(
+      surface: MobileQuickActionSurface.projectHomeOld,
+      catalog: catalogItems,
+      fallback: catalogItems,
+      snapshot: MobileQuickActionsService.instance
+          .snapshot(MobileQuickActionSurface.projectHomeOld),
+    );
     final quickSearchSection = Padding(
       padding: EdgeInsets.symmetric(horizontal: 0, vertical: 8),
       child: _buildQuickSearchSection(menuItems),

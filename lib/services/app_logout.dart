@@ -10,6 +10,8 @@ import 'client_generation_service.dart';
 import 'client_portal_service.dart';
 import 'data_provider.dart';
 import 'mobile_live_test_storage.dart';
+import 'mobile_more_menu_service.dart';
+import 'mobile_quick_actions_service.dart';
 import 'notification_service.dart';
 import 'profile_picture_service.dart';
 import '../widgets/client_home_tour.dart';
@@ -25,6 +27,8 @@ class AppLogout {
       ChatV1Socket.instance.disconnect();
     } catch (_) {}
     DataProvider().clearData();
+    MobileQuickActionsService.instance.clearMemory();
+    MobileMoreMenuService.instance.clearMemory();
     AppDeepLinkService.instance.onLoggedOut();
     ProfilePictureService.picturePathNotifier.value = null;
     ProfilePictureService.promptShownThisSession = false;

@@ -36,6 +36,8 @@ import 'services/app_logout.dart';
 import 'services/client_generation_service.dart';
 import 'services/data_provider.dart';
 import 'services/legacy_client_features.dart';
+import 'services/mobile_more_menu.dart';
+import 'services/mobile_more_menu_service.dart';
 import 'services/notification_service.dart';
 import 'services/profile_picture_service.dart';
 import 'services/rbac_service.dart';
@@ -149,6 +151,7 @@ class _NavSection {
 }
 
 class _NavEntry {
+  final String actionKey;
   final String title;
   final IconData icon;
   final NavRouteBuilder? route;
@@ -158,6 +161,7 @@ class _NavEntry {
   final bool comingSoon;
 
   const _NavEntry({
+    required this.actionKey,
     required this.title,
     required this.icon,
     this.route,
@@ -166,6 +170,54 @@ class _NavEntry {
     this.isLogout = false,
     this.comingSoon = false,
   });
+}
+
+/// Apply backend visibility/order while keeping each row in its original
+/// section so the drawer chrome (headers, cards, profile) does not change.
+List<_NavSection> _applyBackendMoreMenu(
+  List<_NavSection> catalog,
+  MobileMoreMenuSurface surface,
+  MobileMoreMenuSnapshot? snapshot,
+) {
+  if (snapshot == null || !snapshot.configured) return catalog;
+
+  final catalogKeys = <String>{};
+  final fallbackKeys = <String>[];
+  final byKey = <String, _NavEntry>{};
+  final sectionByKey = <String, String>{};
+  for (final section in catalog) {
+    for (final entry in section.entries) {
+      catalogKeys.add(entry.actionKey);
+      fallbackKeys.add(entry.actionKey);
+      byKey.putIfAbsent(entry.actionKey, () => entry);
+      sectionByKey.putIfAbsent(entry.actionKey, () => section.title);
+    }
+  }
+
+  final orderedKeys = resolveMobileMoreMenuActionKeys(
+    surface: surface,
+    catalogKeys: catalogKeys,
+    fallbackKeys: fallbackKeys,
+    snapshot: snapshot,
+  );
+
+  final bySection = <String, List<_NavEntry>>{};
+  for (final key in orderedKeys) {
+    final entry = byKey[key];
+    if (entry == null) continue;
+    final sectionTitle = sectionByKey[key];
+    if (sectionTitle == null) continue;
+    bySection.putIfAbsent(sectionTitle, () => []).add(entry);
+  }
+
+  final rebuilt = <_NavSection>[];
+  for (final section in catalog) {
+    final entries = bySection[section.title];
+    if (entries != null && entries.isNotEmpty) {
+      rebuilt.add(_NavSection(section.title, entries));
+    }
+  }
+  return rebuilt;
 }
 
 class NavMenuItem extends StatelessWidget {
@@ -360,18 +412,44 @@ class NavMenuWidgetState extends State<NavMenuWidget> {
     super.initState();
     ClientGenerationService.instance.generation
         .addListener(_onClientGenerationChanged);
+    MobileMoreMenuService.instance.revision.addListener(_onMoreMenuChanged);
     _loadProfile();
+    unawaited(_primeMoreMenu());
   }
 
   @override
   void dispose() {
     ClientGenerationService.instance.generation
         .removeListener(_onClientGenerationChanged);
+    MobileMoreMenuService.instance.revision.removeListener(_onMoreMenuChanged);
     super.dispose();
   }
 
   void _onClientGenerationChanged() {
     if (mounted) setState(() {});
+    unawaited(_primeMoreMenu());
+  }
+
+  void _onMoreMenuChanged() {
+    if (mounted) setState(() {});
+  }
+
+  MobileMoreMenuSurface get _moreMenuSurface => moreMenuSurfaceFor(
+        role: role,
+        useLegacyProjectUi:
+            ClientGenerationService.instance.shouldUseLegacyProjectUi,
+      );
+
+  /// Cache-first, then background refresh. Never called from build().
+  Future<void> _primeMoreMenu() async {
+    final prefs = await SharedPreferences.getInstance();
+    final storedRole = prefs.getString('role') ?? role;
+    final surface = moreMenuSurfaceFor(
+      role: storedRole,
+      useLegacyProjectUi:
+          ClientGenerationService.instance.shouldUseLegacyProjectUi,
+    );
+    await MobileMoreMenuService.instance.ensureSurface(surface);
   }
 
   bool get _restrictLegacyClientFeatures =>
@@ -391,6 +469,7 @@ class NavMenuWidgetState extends State<NavMenuWidget> {
                 }
                 if (LegacyClientFeatures.isAllowed(entry.title)) return entry;
                 return _NavEntry(
+                  actionKey: entry.actionKey,
                   title: entry.title,
                   icon: entry.icon,
                   route: entry.route,
@@ -461,6 +540,7 @@ class NavMenuWidgetState extends State<NavMenuWidget> {
     // Home / workspace
     final homeEntries = <_NavEntry>[
       _NavEntry(
+        actionKey: 'home',
         title: 'Home',
         icon: Icons.home_rounded,
         isHome: true,
@@ -479,6 +559,7 @@ class NavMenuWidgetState extends State<NavMenuWidget> {
         },
       ),
       _NavEntry(
+        actionKey: 'my_tasks',
         title: 'My Tasks',
         icon: Icons.pending_actions_rounded,
         route: () async {
@@ -490,6 +571,7 @@ class NavMenuWidgetState extends State<NavMenuWidget> {
         },
       ),
       _NavEntry(
+        actionKey: 'notifications',
         title: 'Notifications',
         icon: Icons.notifications_rounded,
         route: () => const Notifications(),
@@ -500,6 +582,7 @@ class NavMenuWidgetState extends State<NavMenuWidget> {
       homeEntries.insert(
         1,
         _NavEntry(
+          actionKey: 'projects',
           title: 'Projects',
           icon: Icons.folder_special_rounded,
           action: (context) => ProjectPickerScreen.show(context),
@@ -508,6 +591,7 @@ class NavMenuWidgetState extends State<NavMenuWidget> {
       homeEntries.insert(
         3,
         _NavEntry(
+          actionKey: 'attendance',
           title: 'Attendance',
           icon: Icons.fingerprint_rounded,
           route: () => const AttendanceScreen(),
@@ -517,6 +601,7 @@ class NavMenuWidgetState extends State<NavMenuWidget> {
       homeEntries.insert(
         1,
         _NavEntry(
+          actionKey: 'client_portal',
           title: 'Client Portal',
           icon: Icons.dashboard_customize_outlined,
           route: () => const ClientPortalScreen(),
@@ -525,6 +610,7 @@ class NavMenuWidgetState extends State<NavMenuWidget> {
       homeEntries.insert(
         2,
         _NavEntry(
+          actionKey: 'project_timeline',
           title: 'Project Timeline',
           icon: Icons.timeline_rounded,
           route: () => const ProjectTimelineScreen(),
@@ -541,6 +627,7 @@ class NavMenuWidgetState extends State<NavMenuWidget> {
       if (!isClient &&
           rbac.canViewSync(currentRole, RBACService.dailyUpdate)) {
         projectEntries.add(_NavEntry(
+          actionKey: 'updates',
           title: 'Daily Update',
           icon: Icons.update_rounded,
           route: () => AddDailyUpdate(returnToAdminDashboard: true),
@@ -548,6 +635,7 @@ class NavMenuWidgetState extends State<NavMenuWidget> {
       }
       if (isClient) {
         projectEntries.add(_NavEntry(
+          actionKey: 'updates',
           title: 'Updates',
           icon: Icons.description_rounded,
           route: () => const DprScreen(title: 'Updates'),
@@ -557,6 +645,7 @@ class NavMenuWidgetState extends State<NavMenuWidget> {
 
     if (rbac.canViewSync(currentRole, RBACService.scheduler)) {
       projectEntries.add(_NavEntry(
+        actionKey: 'scheduler',
         title: 'Scheduler',
         icon: Icons.calendar_today_rounded,
         // Project-scoped: pick a project from nav before opening.
@@ -570,11 +659,13 @@ class NavMenuWidgetState extends State<NavMenuWidget> {
     if (rbac.canViewSync(currentRole, RBACService.documents)) {
       if (!isClient) {
         projectEntries.add(_NavEntry(
+          actionKey: 'documents',
           title: 'Documents',
           icon: Icons.description_rounded,
           action: _openAfterProjectPick(() => Documents()),
         ));
         projectEntries.add(_NavEntry(
+          actionKey: 'documents_v1',
           title: 'Documents V1',
           icon: Icons.folder_copy_outlined,
           action: _openAfterProjectPick(() => const DocumentsV1HomeScreen()),
@@ -585,12 +676,14 @@ class NavMenuWidgetState extends State<NavMenuWidget> {
     if (rbac.canViewSync(currentRole, RBACService.gallery)) {
       if (!isClient) {
         projectEntries.add(_NavEntry(
+          actionKey: 'gallery',
           title: 'Gallery',
           icon: Icons.photo_library_rounded,
           action: _openAfterProjectPick(() => Gallery()),
         ));
       }
       projectEntries.add(_NavEntry(
+        actionKey: 'timeline_gallery',
         title: 'Timeline Gallery',
         icon: Icons.auto_awesome_motion_rounded,
         route: isClient ? () => TimelineGallery() : null,
@@ -601,6 +694,7 @@ class NavMenuWidgetState extends State<NavMenuWidget> {
 
     // Virtual Tour is available to clients (and staff after project pick)
     projectEntries.add(_NavEntry(
+      actionKey: 'virtual_tour',
       title: 'Virtual Tour',
       icon: Icons.view_in_ar_rounded,
       route: isClient ? () => const VirtualTourScreen() : null,
@@ -609,6 +703,7 @@ class NavMenuWidgetState extends State<NavMenuWidget> {
           : _openAfterProjectPick(() => const VirtualTourScreen()),
     ));
     projectEntries.add(_NavEntry(
+      actionKey: 'slots',
       title: 'Slots',
       icon: Icons.event_available_outlined,
       route: isClient ? () => const SlotsScreen() : null,
@@ -617,6 +712,7 @@ class NavMenuWidgetState extends State<NavMenuWidget> {
 
     if (rbac.canViewSync(currentRole, RBACService.payments)) {
       projectEntries.add(_NavEntry(
+        actionKey: 'payments',
         title: 'Payments',
         icon: Icons.payment_rounded,
         route: isClient ? () => PaymentTaskWidget() : null,
@@ -625,6 +721,7 @@ class NavMenuWidgetState extends State<NavMenuWidget> {
       ));
       if (isClient) {
         projectEntries.add(_NavEntry(
+          actionKey: 'nt_payments',
           title: 'NT Payments',
           icon: Icons.receipt_long_rounded,
           route: () => const PaymentTaskWidget(
@@ -636,6 +733,7 @@ class NavMenuWidgetState extends State<NavMenuWidget> {
 
     if (isClient) {
       projectEntries.add(_NavEntry(
+        actionKey: 'upload_payment_proof',
         title: 'Upload proof',
         icon: Icons.cloud_upload_outlined,
         route: () => const UploadPaymentProofScreen(),
@@ -651,6 +749,7 @@ class NavMenuWidgetState extends State<NavMenuWidget> {
 
     if (rbac.canViewSync(currentRole, RBACService.indent)) {
       opsEntries.add(_NavEntry(
+        actionKey: 'indents',
         title: 'Indents',
         icon: Icons.request_quote_rounded,
         route: () => IndentsScreenLayout(),
@@ -659,11 +758,13 @@ class NavMenuWidgetState extends State<NavMenuWidget> {
 
     if (!isClient) {
       opsEntries.add(_NavEntry(
+        actionKey: 'stock_report',
         title: 'Stock Report',
         icon: Icons.inventory_2_rounded,
         route: () => StockReportLayout(),
       ));
       opsEntries.add(_NavEntry(
+        actionKey: 'site_visit_reports',
         title: 'Site Visits',
         icon: Icons.location_on_rounded,
         route: () => SiteVisitReportsScreen(),
@@ -676,6 +777,7 @@ class NavMenuWidgetState extends State<NavMenuWidget> {
         currentRole == 'QC' ||
         currentRole == 'Quality Engineer') {
       opsEntries.add(_NavEntry(
+        actionKey: 'test_reports',
         title: 'Test Reports',
         icon: Icons.science_rounded,
         route: () => TestReportsScreen(),
@@ -684,6 +786,7 @@ class NavMenuWidgetState extends State<NavMenuWidget> {
 
     if (!isClient) {
       opsEntries.add(_NavEntry(
+        actionKey: 'inspection_requests',
         title: 'Inspection Requests',
         icon: Icons.fact_check_outlined,
         action: _openAfterProjectPick(() async {
@@ -708,12 +811,14 @@ class NavMenuWidgetState extends State<NavMenuWidget> {
             currentRole != 'Site Engineer');
     if (canChatV1) {
       collabEntries.add(_NavEntry(
+        actionKey: 'chatbox',
         title: 'Chat V1',
         icon: Icons.forum_rounded,
         route: () => ChatV1App.openQuick(),
       ));
       if (!isClient) {
         collabEntries.add(_NavEntry(
+          actionKey: 'project_status',
           title: 'Project Status',
           icon: Icons.flag_rounded,
           route: () => ProjectFocusScreen.openQuick(),
@@ -730,6 +835,7 @@ class NavMenuWidgetState extends State<NavMenuWidget> {
           'Testing',
           [
             _NavEntry(
+              actionKey: 'mobile_live_test',
               title: MobileLiveTestAccess.menuTitle,
               icon: Icons.phonelink_setup_outlined,
               route: () => const MobileLiveTestScreen(),
@@ -744,6 +850,7 @@ class NavMenuWidgetState extends State<NavMenuWidget> {
         'Account',
         [
           const _NavEntry(
+            actionKey: 'logout',
             title: 'Log out',
             icon: Icons.logout_rounded,
             isLogout: true,
@@ -761,7 +868,16 @@ class NavMenuWidgetState extends State<NavMenuWidget> {
         ((role == 'Client' ? clientName : username) ?? 'User').toString();
     final subtitle =
         role == 'Client' ? (email ?? '').toString() : (role ?? '').toString();
-    final sections = _applyLegacyComingSoon(_sectionsForRole(role));
+    final catalog = _sectionsForRole(role);
+    final surface = _moreMenuSurface;
+    // Until the stored role is loaded, keep the existing hardcoded catalog.
+    // Applying another surface's cache here would flash the wrong drawer.
+    final snapshot = role == null
+        ? null
+        : MobileMoreMenuService.instance.snapshot(surface);
+    final sections = _applyLegacyComingSoon(
+      _applyBackendMoreMenu(catalog, surface, snapshot),
+    );
 
     return Drawer(
       backgroundColor: Colors.white,

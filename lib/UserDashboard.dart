@@ -47,6 +47,8 @@ import 'notifcations.dart';
 import 'Dpr.dart';
 import 'services/client_generation_service.dart';
 import 'services/legacy_client_features.dart';
+import 'services/mobile_quick_actions.dart';
+import 'services/mobile_quick_actions_service.dart';
 import 'services/profile_picture_service.dart';
 import 'utilities/role_app_bar_color.dart';
 import 'widgets/client_home_tour.dart';
@@ -896,6 +898,8 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
   void dispose() {
     ClientGenerationService.instance.generation
         .removeListener(_onClientGenerationChanged);
+    MobileQuickActionsService.instance.revision
+        .removeListener(_onQuickActionsChanged);
     _quickSearchController.dispose();
     _quickSearchFocusNode.dispose();
     _scrollController.dispose();
@@ -908,6 +912,8 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
     super.initState();
     ClientGenerationService.instance.generation
         .addListener(_onClientGenerationChanged);
+    MobileQuickActionsService.instance.revision
+        .addListener(_onQuickActionsChanged);
     // Load role
     _loadRole();
     // Load cached data (if available) without blocking the transition
@@ -917,6 +923,8 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
     // Load tasks for the current user
     loadTasks();
     ClientGenerationService.instance.ensureLoaded();
+    MobileQuickActionsService.instance
+        .ensureSurface(MobileQuickActionSurface.projectHomeNew);
 
     // Add listener to scroll to top when search field is focused
     _quickSearchFocusNode.addListener(() {
@@ -1088,6 +1096,12 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
     });
     await DataProvider().reloadData(force: force);
     await loadDataFromProvider();
+    if (force) {
+      await MobileQuickActionsService.instance.ensureSurface(
+        MobileQuickActionSurface.projectHomeNew,
+        force: true,
+      );
+    }
     // Section flags are reset inside loadDataFromProvider once data is applied.
     // Note: loadTasks() is only called once at initState to avoid multiple API calls
   }
@@ -1377,6 +1391,10 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
       ClientGenerationService.instance.restrictsClientFeatures(_currentRole);
 
   void _onClientGenerationChanged() {
+    if (mounted) setState(() {});
+  }
+
+  void _onQuickActionsChanged() {
     if (mounted) setState(() {});
   }
 
@@ -3316,7 +3334,7 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
     'Slots',
   ];
 
-  List<Map<String, dynamic>> _pinnedQuickActions(
+  List<Map<String, dynamic>> _hardcodedPinnedQuickActions(
       List<Map<String, dynamic>> items) {
     final byTitle = <String, Map<String, dynamic>>{};
     for (final item in items) {
@@ -3335,6 +3353,17 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
       if (item != null) pinned.add(item);
     }
     return pinned;
+  }
+
+  List<Map<String, dynamic>> _pinnedQuickActions(
+      List<Map<String, dynamic>> items) {
+    return resolveMobileQuickActions(
+      surface: MobileQuickActionSurface.projectHomeNew,
+      catalog: items,
+      fallback: _hardcodedPinnedQuickActions(items),
+      snapshot: MobileQuickActionsService.instance
+          .snapshot(MobileQuickActionSurface.projectHomeNew),
+    );
   }
 
   Widget build(BuildContext context) {

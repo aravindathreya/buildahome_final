@@ -67,29 +67,62 @@ class _DocumentsV1DetailScreenState extends State<DocumentsV1DetailScreen>
             fontWeight: FontWeight.w800,
           ),
         ),
-        bottom: TabBar(
-          controller: _tabController,
-          labelColor: AppTheme.navy,
-          unselectedLabelColor: AppTheme.mutedGrey,
-          indicatorColor: ClientPortalDocTheme.accentBlue,
-          indicatorSize: TabBarIndicatorSize.label,
-          labelStyle: const TextStyle(
-            fontWeight: FontWeight.w800,
-            fontSize: 14,
-          ),
-          unselectedLabelStyle: const TextStyle(
-            fontWeight: FontWeight.w600,
-            fontSize: 14,
-          ),
-          tabs: [
-            const Tab(text: 'Details'),
-            Tab(
-              text: _revisions.length > 1
-                  ? 'Revisions (${_revisions.length})'
-                  : 'Revisions',
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(66),
+          child: Container(
+            color: AppTheme.getBackgroundSecondary(context),
+            padding: const EdgeInsets.fromLTRB(18, 0, 18, 14),
+            child: Container(
+              height: 48,
+              padding: const EdgeInsets.all(4),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF1F4F8),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: TabBar(
+                controller: _tabController,
+                indicatorSize: TabBarIndicatorSize.tab,
+                dividerColor: Colors.transparent,
+                splashFactory: NoSplash.splashFactory,
+                overlayColor: WidgetStateProperty.all(Colors.transparent),
+                labelPadding: EdgeInsets.zero,
+                indicator: BoxDecoration(
+                  color: AppTheme.navy,
+                  borderRadius: BorderRadius.circular(11),
+                ),
+                labelColor: Colors.white,
+                unselectedLabelColor: AppTheme.mutedGrey,
+                labelStyle: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                ),
+                unselectedLabelStyle: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+                tabs: [
+                  const SizedBox(
+                    height: 40,
+                    child: Center(child: Text('Details')),
+                  ),
+                  SizedBox(
+                    height: 40,
+                    child: Center(
+                      child: Text(
+                        _revisions.length > 1
+                            ? 'Revisions (${_revisions.length})'
+                            : 'Revisions',
+                      ),
+                    ),
+                  ),
+                  const SizedBox(
+                    height: 40,
+                    child: Center(child: Text('Activity')),
+                  ),
+                ],
+              ),
             ),
-            const Tab(text: 'Activity'),
-          ],
+          ),
         ),
       ),
       body: TabBarView(

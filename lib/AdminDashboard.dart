@@ -26,6 +26,8 @@ import 'services/profile_picture_service.dart';
 import 'services/project_open_timing.dart';
 import 'services/rbac_service.dart';
 import 'services/api_http.dart';
+import 'services/mobile_quick_actions.dart';
+import 'services/mobile_quick_actions_service.dart';
 import 'services/session_manager.dart';
 import 'stock_report.dart';
 import 'TasksScreen.dart';
@@ -42,6 +44,21 @@ import 'widgets/opening_project_splash.dart';
 import 'widgets/attendance_prompt_dialog.dart';
 import 'widgets/profile_picture_dialog.dart';
 import 'AttendanceScreen.dart';
+import 'Payments.dart';
+import 'Scheduler.dart';
+import 'Gallery.dart' hide TimelineGallery;
+import 'chat_v1/chat_v1_app.dart';
+import 'RequestDrawing.dart';
+import 'InspectionRequest.dart';
+import 'approved_pos_screen.dart';
+import 'work_orders_screen.dart';
+import 'ProjectTimelineScreen.dart';
+import 'SlotsScreen.dart';
+import 'ClientPortalScreen.dart';
+import 'UploadPaymentProofScreen.dart';
+import 'documents_v1/documents_v1_home_screen.dart';
+import 'VirtualTour.dart';
+import 'Dpr.dart';
 
 class AdminDashboard extends StatefulWidget {
   @override
@@ -417,6 +434,8 @@ class AdminHomeState extends State<AdminHome> {
     _scrollController.dispose();
     _projectsRefreshTimer?.cancel();
     _searchDebounceTimer?.cancel();
+    MobileQuickActionsService.instance.revision
+        .removeListener(_onQuickActionsChanged);
     super.dispose();
   }
 
@@ -537,7 +556,15 @@ class AdminHomeState extends State<AdminHome> {
       showLoader: initialProjects.isEmpty,
     );
     _startProjectsAutoRefresh();
+    MobileQuickActionsService.instance.revision
+        .addListener(_onQuickActionsChanged);
+    MobileQuickActionsService.instance
+        .ensureSurface(MobileQuickActionSurface.staffHome);
     // Note: loadTasks() will be called by loadProjects() after projects are loaded
+  }
+
+  void _onQuickActionsChanged() {
+    if (mounted) setState(() {});
   }
 
   Future<void> _loadUnreadNotifications({bool force = false}) async {
@@ -1131,6 +1158,224 @@ class AdminHomeState extends State<AdminHome> {
     return menuItems;
   }
 
+  bool get _isClientRole => currentUserRole == 'Client';
+
+  /// Project-scoped screens from Staff Main Home pick a project first
+  /// (clients already have a fixed project in prefs).
+  Future<Widget?> _routeForCurrentProject(
+    FutureOr<Widget> Function() builder,
+  ) async {
+    if (!_isClientRole) {
+      final picked = await ProjectPickerScreen.pick(context);
+      if (!picked || !mounted) return null;
+    }
+    return await builder();
+  }
+
+  Map<String, dynamic> _quickActionTile({
+    required String title,
+    required IconData icon,
+    required dynamic route,
+  }) {
+    return {
+      'title': title,
+      'icon': icon,
+      'route': route,
+    };
+  }
+
+  /// Full Staff Main Home catalog. Backend `staff_home` actions can only
+  /// show keys that exist here; labels, icons, and navigation stay in Flutter.
+  List<Map<String, dynamic>> getQuickActionCatalog() {
+    final items = <Map<String, dynamic>>[
+      _quickActionTile(
+        title: 'Projects',
+        icon: Icons.list,
+        route: () {},
+      ),
+      _quickActionTile(
+        title: 'My tasks',
+        icon: Icons.pending_actions,
+        route: () => MyTasksScreen(
+              tasks: _tasks,
+              onRefresh: _refreshTasksForMyTasks,
+            ),
+      ),
+      _quickActionTile(
+        title: 'Attendance',
+        icon: Icons.fingerprint_rounded,
+        route: () => const AttendanceScreen(),
+      ),
+      _quickActionTile(
+        title: 'Daily Update',
+        icon: Icons.update,
+        route: () => _isClientRole
+            ? const DprScreen(title: 'Updates')
+            : AddDailyUpdate(returnToAdminDashboard: true),
+      ),
+      _quickActionTile(
+        title: 'Indents',
+        icon: Icons.request_quote,
+        route: () => IndentsScreenLayout(),
+      ),
+      _quickActionTile(
+        title: 'Create Indent',
+        icon: Icons.add_box_outlined,
+        route: () => _routeForCurrentProject(() async {
+          final prefs = await SharedPreferences.getInstance();
+          return IndentsScreenLayout(
+            initialTab: kIndentsCreateTab,
+            initialProjectId: prefs.getString('project_id'),
+            initialProjectName: prefs.getString('client_name'),
+          );
+        }),
+      ),
+      _quickActionTile(
+        title: 'Stock Report',
+        icon: Icons.inventory,
+        route: () => StockReportLayout(),
+      ),
+      _quickActionTile(
+        title: 'Site Visits',
+        icon: Icons.assignment_outlined,
+        route: () => SiteVisitReportsScreen(),
+      ),
+      _quickActionTile(
+        title: 'Test Reports',
+        icon: Icons.science,
+        route: () => TestReportsScreen(),
+      ),
+      _quickActionTile(
+        title: 'Checklist',
+        icon: Icons.list,
+        route: () => ChecklistCategoriesLayout(),
+      ),
+      _quickActionTile(
+        title: 'Project Status',
+        icon: Icons.flag_outlined,
+        route: () => ProjectFocusScreen.openQuick(tasksHint: _tasks),
+      ),
+      _quickActionTile(
+        title: 'My Notifications',
+        icon: Icons.notifications_on,
+        route: () => Notifications(),
+      ),
+      _quickActionTile(
+        title: 'Payments',
+        icon: Icons.payment,
+        route: () => _routeForCurrentProject(() => PaymentTaskWidget()),
+      ),
+      _quickActionTile(
+        title: 'NT Payments',
+        icon: Icons.receipt_long,
+        route: () => _routeForCurrentProject(
+          () => const PaymentTaskWidget(
+            initialCategory: PaymentCategory.nonTender,
+          ),
+        ),
+      ),
+      _quickActionTile(
+        title: 'Upload proof',
+        icon: Icons.cloud_upload_outlined,
+        route: () => _routeForCurrentProject(
+          () => const UploadPaymentProofScreen(),
+        ),
+      ),
+      _quickActionTile(
+        title: 'Approved POs',
+        icon: Icons.receipt_long_outlined,
+        route: () => _routeForCurrentProject(() async {
+          final prefs = await SharedPreferences.getInstance();
+          return ApprovedPosScreenLayout(
+            initialProjectId: prefs.getString('project_id'),
+            initialProjectName: prefs.getString('client_name'),
+          );
+        }),
+      ),
+      _quickActionTile(
+        title: 'Work orders',
+        icon: Icons.engineering_outlined,
+        route: () => _routeForCurrentProject(() async {
+          final prefs = await SharedPreferences.getInstance();
+          return WorkOrdersScreenLayout(
+            salesSopId: prefs.getString('sales_sop_id'),
+            projectId: prefs.getString('project_id'),
+            initialProjectName: prefs.getString('client_name'),
+          );
+        }),
+      ),
+      _quickActionTile(
+        title: 'Documents',
+        icon: Icons.folder_copy_outlined,
+        route: () => _routeForCurrentProject(
+          () => DocumentsV1HomeScreen(clientMode: _isClientRole),
+        ),
+      ),
+      _quickActionTile(
+        title: 'Scheduler',
+        icon: Icons.calendar_today,
+        route: () => _routeForCurrentProject(() => const TaskWidget()),
+      ),
+      _quickActionTile(
+        title: 'Gallery',
+        icon: Icons.photo_library,
+        route: () => _routeForCurrentProject(() => Gallery()),
+      ),
+      _quickActionTile(
+        title: 'Request Drawings',
+        icon: Icons.architecture,
+        route: () => _routeForCurrentProject(() => RequestDrawingLayout()),
+      ),
+      _quickActionTile(
+        title: 'Client Portal',
+        icon: Icons.dashboard_customize_outlined,
+        route: () => _routeForCurrentProject(() => const ClientPortalScreen()),
+      ),
+      _quickActionTile(
+        title: 'Slots',
+        icon: Icons.event_available_outlined,
+        route: () => _routeForCurrentProject(() => const SlotsScreen()),
+      ),
+      _quickActionTile(
+        title: 'Project Timeline',
+        icon: Icons.timeline_rounded,
+        route: () => _routeForCurrentProject(() => const ProjectTimelineScreen()),
+      ),
+      _quickActionTile(
+        title: 'Chat V1',
+        icon: Icons.forum_outlined,
+        route: () => ChatV1App.openQuick(tasksHint: _tasks),
+      ),
+      _quickActionTile(
+        title: 'Virtual Tour',
+        icon: Icons.view_in_ar_rounded,
+        route: () => _routeForCurrentProject(() => const VirtualTourScreen()),
+      ),
+      _quickActionTile(
+        title: 'Inspection Requests',
+        icon: Icons.fact_check_outlined,
+        route: () => _routeForCurrentProject(() async {
+          final prefs = await SharedPreferences.getInstance();
+          final projectId = prefs.getString('project_id');
+          return InspectionRequestLayout(
+            fixedProjectId: projectId,
+            projectFixed: projectId != null,
+          );
+        }),
+      ),
+    ];
+
+    if (MobileLiveTestAccess.canEnable(currentUserRole)) {
+      items.add(_quickActionTile(
+        title: MobileLiveTestAccess.menuTitle,
+        icon: Icons.phonelink_setup_outlined,
+        route: () => const MobileLiveTestScreen(),
+      ));
+    }
+
+    return items;
+  }
+
   List<Map<String, dynamic>> _visibleQuickActions(
       List<Map<String, dynamic>> items,
       {int max = 8}) {
@@ -1151,8 +1396,22 @@ class AdminHomeState extends State<AdminHome> {
 
   Widget build(BuildContext context) {
     currentWidgetContext = context;
-    final menuItems = getMenuItems();
-    final visibleActions = _visibleQuickActions(menuItems);
+    final fallbackItems = getMenuItems();
+    final catalogItems = getQuickActionCatalog();
+    final snapshot = MobileQuickActionsService.instance
+        .snapshot(MobileQuickActionSurface.staffHome);
+    final resolvedActions = resolveMobileQuickActions(
+      surface: MobileQuickActionSurface.staffHome,
+      catalog: catalogItems,
+      fallback: fallbackItems,
+      snapshot: snapshot,
+    );
+    final usingBackend = snapshot?.configured == true;
+    final allQuickActions =
+        usingBackend ? resolvedActions : fallbackItems;
+    final visibleActions = usingBackend
+        ? resolvedActions.take(8).toList()
+        : _visibleQuickActions(fallbackItems);
     final totalProjects = projects.length;
     final pendingCount = _tasks.where((task) {
       if (task is Map) {
@@ -1167,6 +1426,10 @@ class AdminHomeState extends State<AdminHome> {
         await loadProjects(force: true);
         await loadTasks();
         await _loadUnreadNotifications(force: true);
+        await MobileQuickActionsService.instance.ensureSurface(
+          MobileQuickActionSurface.staffHome,
+          force: true,
+        );
       },
       color: _navy,
       child: Container(
@@ -1220,6 +1483,7 @@ class AdminHomeState extends State<AdminHome> {
                     _buildOverviewCard(totalProjects, pendingCount),
                   const SizedBox(height: 18),
                   if (currentUserRole != 'Billing') _buildTasksSection(),
+                  if (allQuickActions.isNotEmpty) ...[
                   const SizedBox(height: 22),
                   Row(
                     children: [
@@ -1232,17 +1496,18 @@ class AdminHomeState extends State<AdminHome> {
                         ),
                       ),
                       const Spacer(),
-                      GestureDetector(
-                        onTap: () => _showAllQuickActions(menuItems),
-                        child: const Text(
-                          'View all',
-                          style: TextStyle(
-                            fontSize: 13.5,
-                            fontWeight: FontWeight.w700,
-                            color: Color(0xFF2563EB),
+                      if (allQuickActions.length > visibleActions.length)
+                        GestureDetector(
+                          onTap: () => _showAllQuickActions(allQuickActions),
+                          child: const Text(
+                            'View all',
+                            style: TextStyle(
+                              fontSize: 13.5,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF2563EB),
+                            ),
                           ),
                         ),
-                      ),
                     ],
                   ),
                   const SizedBox(height: 14),
@@ -1302,6 +1567,7 @@ class AdminHomeState extends State<AdminHome> {
                       );
                     },
                   ),
+                  ],
                 ],
               ),
             ),
@@ -1832,6 +2098,37 @@ class AdminHomeState extends State<AdminHome> {
           'bg': const Color(0xFFECFDF5),
           'fg': const Color(0xFF047857),
         };
+      case 'payments':
+      case 'nt payments':
+        return {
+          'bg': const Color(0xFFFFE4E6),
+          'fg': const Color(0xFFE11D48),
+        };
+      case 'gallery':
+        return {
+          'bg': const Color(0xFFF3E8FF),
+          'fg': const Color(0xFF7C3AED),
+        };
+      case 'project timeline':
+        return {
+          'bg': const Color(0xFFDCFCE7),
+          'fg': const Color(0xFF16A34A),
+        };
+      case 'documents':
+        return {
+          'bg': const Color(0xFFE0F2FE),
+          'fg': const Color(0xFF0284C7),
+        };
+      case 'scheduler':
+        return {
+          'bg': const Color(0xFFDBEAFE),
+          'fg': const Color(0xFF2563EB),
+        };
+      case 'client portal':
+        return {
+          'bg': const Color(0xFFEEF2FF),
+          'fg': const Color(0xFF4F46E5),
+        };
       default:
         return {
           'bg': const Color(0xFFEEF2FF),
@@ -1864,6 +2161,30 @@ class AdminHomeState extends State<AdminHome> {
         return 'Alerts';
       case 'Mobile Live Test':
         return 'Live Test';
+      case 'Client Portal':
+        return 'Portal';
+      case 'Project Timeline':
+        return 'Timeline';
+      case 'Request Drawings':
+        return 'Drawings';
+      case 'Inspection Requests':
+        return 'Inspect';
+      case 'Approved POs':
+        return 'POs';
+      case 'Create Indent':
+        return 'New Indent';
+      case 'Upload proof':
+        return 'Proof';
+      case 'NT Payments':
+        return 'NT Pay';
+      case 'Virtual Tour':
+        return 'Tour';
+      case 'Work orders':
+        return 'WOs';
+      case 'Documents':
+        return 'Docs';
+      case 'Scheduler':
+        return 'Schedule';
       default:
         return title;
     }
@@ -1881,6 +2202,8 @@ class AdminHomeState extends State<AdminHome> {
         return Icons.campaign_rounded;
       case 'Indents':
         return Icons.request_quote_outlined;
+      case 'Create Indent':
+        return Icons.add_box_outlined;
       case 'Stock Report':
         return Icons.inventory_2_outlined;
       case 'Site Visits':
@@ -1899,6 +2222,34 @@ class AdminHomeState extends State<AdminHome> {
         return Icons.notifications_none_rounded;
       case 'Mobile Live Test':
         return Icons.phonelink_setup_outlined;
+      case 'Payments':
+        return Icons.payment;
+      case 'NT Payments':
+        return Icons.receipt_long;
+      case 'Upload proof':
+        return Icons.cloud_upload_outlined;
+      case 'Approved POs':
+        return Icons.receipt_long_outlined;
+      case 'Work orders':
+        return Icons.engineering_outlined;
+      case 'Documents':
+        return Icons.folder_copy_outlined;
+      case 'Scheduler':
+        return Icons.calendar_today;
+      case 'Gallery':
+        return Icons.photo_library;
+      case 'Request Drawings':
+        return Icons.architecture;
+      case 'Client Portal':
+        return Icons.dashboard_customize_outlined;
+      case 'Slots':
+        return Icons.event_available_outlined;
+      case 'Project Timeline':
+        return Icons.timeline_rounded;
+      case 'Virtual Tour':
+        return Icons.view_in_ar_rounded;
+      case 'Inspection Requests':
+        return Icons.fact_check_outlined;
       default:
         return fallback;
     }
@@ -2360,6 +2711,8 @@ class AdminHomeState extends State<AdminHome> {
         await Future.delayed(Duration(milliseconds: 300));
         return;
       }
+
+      if (widget is! Widget) return;
 
       NavigationDebounce.beginPush();
       try {

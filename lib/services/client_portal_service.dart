@@ -34,6 +34,7 @@ class ClientPortalService {
     'site_preparation',
     'demolition',
     'site_inspection',
+    'slots',
     'all_documents',
     'payment_proof',
   ];
@@ -418,6 +419,7 @@ class ClientPortalService {
   Future<Map<String, dynamic>> getDemolition() => getSection('demolition');
   Future<Map<String, dynamic>> getSiteInspection() =>
       getSection('site_inspection');
+  Future<Map<String, dynamic>> getSlots() => getSection('slots');
   Future<Map<String, dynamic>> getAllDocuments() =>
       getSection('all_documents');
   Future<Map<String, dynamic>> getProject() => getSection('project');
@@ -695,6 +697,16 @@ class ClientPortalService {
       }
     }
     _throwLastError(lastError, 'Could not submit site inspection');
+  }
+
+  /// POST /api/client_portal/slots/select
+  Future<Map<String, dynamic>> selectSlots(Map<String, dynamic> body) {
+    return _postJson('/api/client_portal/slots/select', body);
+  }
+
+  /// POST /api/client_portal/slots/confirm
+  Future<Map<String, dynamic>> confirmSlots(Map<String, dynamic> body) {
+    return _postJson('/api/client_portal/slots/confirm', body);
   }
 
   /// POST /api/client_portal/tutorial_complete
