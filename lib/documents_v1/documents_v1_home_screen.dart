@@ -1,8 +1,13 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../app_theme.dart';
 import '../client_portal/client_portal_document_ui.dart';
 import '../models/workflow_document.dart';
+import '../services/mobile_documents.dart';
+import '../services/mobile_documents_service.dart';
 import '../services/workflow_document_service.dart';
 import '../widgets/skeleton_loader.dart';
 import '../widgets/workflow_document_viewer.dart';
@@ -21,42 +26,124 @@ class DocumentsV1HomeScreen extends StatefulWidget {
   State<DocumentsV1HomeScreen> createState() => _DocumentsV1HomeScreenState();
 }
 
-class _DocumentsV1HomeScreenState extends State<DocumentsV1HomeScreen> {
+class _DocumentsV1HomeScreenState extends State<DocumentsV1HomeScreen>
+    with _DebouncedSearchRebuild {
   bool _loading = true;
   String? _error;
   WorkflowDocumentLibrary? _library;
+  String? _appliedProjectId;
+  bool _usingBackend = false;
+  int _loadSeq = 0;
   final _searchCtrl = TextEditingController();
+
+  MobileDocumentsService get _docs => MobileDocumentsService.instance;
 
   @override
   void initState() {
     super.initState();
-    _searchCtrl.addListener(() => setState(() {}));
+    _searchCtrl.addListener(_onDebouncedSearch);
+    _docs.revision.addListener(_onDocumentsRevision);
     _load();
   }
 
   @override
   void dispose() {
+    _docs.revision.removeListener(_onDocumentsRevision);
+    _disposeSearchDebounce();
     _searchCtrl.dispose();
     super.dispose();
   }
 
-  Future<void> _load() async {
+  void _onDocumentsRevision() {
+    if (!mounted) return;
+    _applyBackendSnapshotIfCurrent();
+  }
+
+  Future<String> _currentProjectId() async {
+    final prefs = await SharedPreferences.getInstance();
+    return (prefs.getString('project_id') ?? '').trim();
+  }
+
+  bool _applyBackendSnapshotIfCurrent({String? projectId}) {
+    final expected = (projectId ?? _appliedProjectId ?? '').trim();
+    final snapshot = _docs.snapshotFor(
+      projectId: expected.isEmpty ? null : expected,
+    );
+    if (!shouldUseMobileDocumentsSnapshot(snapshot)) return false;
+    if (expected.isNotEmpty && snapshot!.projectId != expected) return false;
+    _setLibrary(
+      snapshot!.library,
+      projectId: snapshot.projectId,
+      backend: true,
+    );
+    return true;
+  }
+
+  void _setLibrary(
+    WorkflowDocumentLibrary library, {
+    required String projectId,
+    required bool backend,
+  }) {
+    if (!mounted) return;
     setState(() {
-      _loading = true;
+      _library = library;
+      _appliedProjectId = projectId;
+      _usingBackend = backend;
+      _loading = false;
       _error = null;
     });
-    try {
-      final library = await WorkflowDocumentService().fetchLibrary();
-      if (!mounted) return;
+  }
+
+  Future<void> _load({bool force = false}) async {
+    final seq = ++_loadSeq;
+    final projectId = await _currentProjectId();
+    if (!mounted || seq != _loadSeq) return;
+
+    if (_appliedProjectId != null &&
+        projectId.isNotEmpty &&
+        _appliedProjectId != projectId) {
       setState(() {
-        _loading = false;
-        _library = library;
+        _library = null;
+        _error = null;
+        _usingBackend = false;
+        _appliedProjectId = projectId;
+        _loading = true;
       });
+    }
+
+    final showingCurrentProject =
+        _library != null &&
+        (projectId.isEmpty || _appliedProjectId == projectId);
+    if (!showingCurrentProject && mounted) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
+
+    await _docs.ensureLibrary(projectId: projectId, force: force);
+    if (!mounted || seq != _loadSeq) return;
+
+    if (_applyBackendSnapshotIfCurrent(projectId: projectId)) return;
+
+    if (showingCurrentProject && _usingBackend) {
+      setState(() => _loading = false);
+      return;
+    }
+
+    try {
+      final fallback = await WorkflowDocumentService().fetchLibrary(
+        projectId: projectId.isEmpty ? null : projectId,
+      );
+      if (!mounted || seq != _loadSeq) return;
+      _setLibrary(fallback, projectId: projectId, backend: false);
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || seq != _loadSeq) return;
       setState(() {
         _loading = false;
-        _error = e.toString().replaceFirst('Exception: ', '');
+        if (_library == null) {
+          _error = e.toString().replaceFirst('Exception: ', '');
+        }
       });
     }
   }
@@ -85,7 +172,7 @@ class _DocumentsV1HomeScreenState extends State<DocumentsV1HomeScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh_rounded),
-            onPressed: _loading ? null : _load,
+            onPressed: _loading ? null : () => _load(force: true),
           ),
         ],
       ),
@@ -93,13 +180,16 @@ class _DocumentsV1HomeScreenState extends State<DocumentsV1HomeScreen> {
         child: _loading
             ? const SkeletonListLoader(cardCount: 6)
             : _error != null
-                ? _ErrorPane(message: _error!, onRetry: _load)
+                ? _ErrorPane(
+                    message: _error!,
+                    onRetry: () => _load(force: true),
+                  )
                 : (_library?.libraryCategories.isEmpty ?? true) &&
                         _searchCtrl.text.trim().isEmpty
-                    ? _EmptyPane(onRetry: _load)
+                    ? _EmptyPane(onRetry: () => _load(force: true))
                     : RefreshIndicator(
                         color: ClientPortalDocTheme.accentBlue,
-                        onRefresh: _load,
+                        onRefresh: () => _load(force: true),
                         child: ListView(
                           padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
                           children: [
@@ -137,7 +227,7 @@ class _DocumentsV1HomeScreenState extends State<DocumentsV1HomeScreen> {
                                   child: ClientPortalCategoryCard(
                                     icon: visual.icon,
                                     title: category.label,
-                                    subtitle: visual.subtitle,
+                                    subtitle: catalogCategorySubtitle(category),
                                     badgeCount: count,
                                     iconBg: visual.iconBg,
                                     iconFg: visual.iconFg,
@@ -178,17 +268,19 @@ class DocumentsV1CategoryScreen extends StatefulWidget {
       _DocumentsV1CategoryScreenState();
 }
 
-class _DocumentsV1CategoryScreenState extends State<DocumentsV1CategoryScreen> {
+class _DocumentsV1CategoryScreenState extends State<DocumentsV1CategoryScreen>
+    with _DebouncedSearchRebuild {
   final _searchCtrl = TextEditingController();
 
   @override
   void initState() {
     super.initState();
-    _searchCtrl.addListener(() => setState(() {}));
+    _searchCtrl.addListener(_onDebouncedSearch);
   }
 
   @override
   void dispose() {
+    _disposeSearchDebounce();
     _searchCtrl.dispose();
     super.dispose();
   }
@@ -294,7 +386,8 @@ class DocumentsV1ListScreen extends StatefulWidget {
   State<DocumentsV1ListScreen> createState() => _DocumentsV1ListScreenState();
 }
 
-class _DocumentsV1ListScreenState extends State<DocumentsV1ListScreen> {
+class _DocumentsV1ListScreenState extends State<DocumentsV1ListScreen>
+    with _DebouncedSearchRebuild {
   final _searchCtrl = TextEditingController();
   int _filterIndex = 1;
   ClientPortalDocumentSort _sort = ClientPortalDocumentSort.newest;
@@ -303,20 +396,20 @@ class _DocumentsV1ListScreenState extends State<DocumentsV1ListScreen> {
       widget.categoryLabel.toLowerCase().contains('quality');
 
   bool get _showThumbnails =>
-      widget.clientMode &&
-      (widget.categoryLabel.toLowerCase().contains('design') ||
-          widget.categoryLabel.toLowerCase().contains('floor plan') ||
-          widget.section.clientJourneyKey?.contains('design') == true ||
-          widget.section.clientJourneyKey?.contains('floor_plan') == true);
+      widget.categoryLabel.toLowerCase().contains('design') ||
+      widget.categoryLabel.toLowerCase().contains('floor plan') ||
+      widget.section.clientJourneyKey?.contains('design') == true ||
+      widget.section.clientJourneyKey?.contains('floor_plan') == true;
 
   @override
   void initState() {
     super.initState();
-    _searchCtrl.addListener(() => setState(() {}));
+    _searchCtrl.addListener(_onDebouncedSearch);
   }
 
   @override
   void dispose() {
+    _disposeSearchDebounce();
     _searchCtrl.dispose();
     super.dispose();
   }
@@ -344,10 +437,6 @@ class _DocumentsV1ListScreenState extends State<DocumentsV1ListScreen> {
   }
 
   void _openDocument(WorkflowDocumentUpload doc) {
-    if (widget.clientMode) {
-      openWorkflowDocument(context, doc, clientMode: true);
-      return;
-    }
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -366,73 +455,6 @@ class _DocumentsV1ListScreenState extends State<DocumentsV1ListScreen> {
   @override
   Widget build(BuildContext context) {
     final docs = _filtered();
-
-    if (widget.clientMode) {
-      return Scaffold(
-        backgroundColor: AppTheme.getBackgroundPrimary(context),
-        appBar: AppBar(
-          backgroundColor: AppTheme.getBackgroundSecondary(context),
-          foregroundColor: AppTheme.navy,
-          elevation: 0,
-          title: Text(
-            widget.section.label,
-            style: const TextStyle(
-              color: AppTheme.navy,
-              fontSize: 17,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-        ),
-        body: SafeArea(
-          child: docs.isEmpty
-              ? ListView(
-                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
-                  children: [
-                    ClientPortalSectionHeroCard(section: widget.section),
-                    const SizedBox(height: 20),
-                    Center(
-                      child: Text(
-                        'No documents yet.',
-                        style: TextStyle(
-                          color: AppTheme.getTextSecondary(context),
-                        ),
-                      ),
-                    ),
-                  ],
-                )
-              : ListView(
-                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
-                  children: [
-                    ClientPortalSectionHeroCard(section: widget.section),
-                    const SizedBox(height: 20),
-                    const Text(
-                      'Latest Documents',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w800,
-                        fontSize: 16,
-                        color: AppTheme.navy,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    ...docs.map(
-                      (doc) => Padding(
-                        padding: const EdgeInsets.only(bottom: 10),
-                        child: ClientPortalJourneyDocumentRow(
-                          document: doc,
-                          onTap: () => _openDocument(doc),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    const ClientPortalInfoBanner(
-                      message:
-                          'Showing the latest uploaded documents for this section.',
-                    ),
-                  ],
-                ),
-        ),
-      );
-    }
 
     return Scaffold(
       backgroundColor: AppTheme.getBackgroundPrimary(context),
@@ -584,7 +606,7 @@ class ClientJourneyDocumentsScreen extends StatefulWidget {
 }
 
 class _ClientJourneyDocumentsScreenState
-    extends State<ClientJourneyDocumentsScreen> {
+    extends State<ClientJourneyDocumentsScreen> with _DebouncedSearchRebuild {
   final _searchCtrl = TextEditingController();
   bool _loading = true;
   String? _error;
@@ -594,11 +616,12 @@ class _ClientJourneyDocumentsScreenState
   void initState() {
     super.initState();
     _load();
-    _searchCtrl.addListener(() => setState(() {}));
+    _searchCtrl.addListener(_onDebouncedSearch);
   }
 
   @override
   void dispose() {
+    _disposeSearchDebounce();
     _searchCtrl.dispose();
     super.dispose();
   }
@@ -889,5 +912,19 @@ class _LegacyDocTile extends StatelessWidget {
         clientMode: true,
       ),
     );
+  }
+}
+
+mixin _DebouncedSearchRebuild<T extends StatefulWidget> on State<T> {
+  Timer? _searchDebounce;
+  void _onDebouncedSearch() {
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 150), () {
+      if (mounted) setState(() {});
+    });
+  }
+
+  void _disposeSearchDebounce() {
+    _searchDebounce?.cancel();
   }
 }

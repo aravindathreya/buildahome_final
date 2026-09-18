@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -594,7 +595,7 @@ class _SwipeToCompleteState extends State<SwipeToComplete>
     )..addListener(() {
         final anim = _settleAnimation;
         if (anim == null) return;
-        setState(() => _dragExtent = anim.value);
+        _dragExtent = anim.value;
       });
 
     _successController = AnimationController(
@@ -676,6 +677,9 @@ class _SwipeToCompleteState extends State<SwipeToComplete>
     return LayoutBuilder(
       builder: (context, constraints) {
         _maxExtent = math.max(constraints.maxWidth, 1);
+        return AnimatedBuilder(
+          animation: Listenable.merge([_settleController, _successController]),
+          builder: (context, _) {
         final progress = _progress;
 
         return ClipRRect(
@@ -778,33 +782,44 @@ class _SwipeToCompleteState extends State<SwipeToComplete>
                 ),
               ),
 
-              // Draggable card surface.
-              GestureDetector(
+              // Swipe-to-complete, but yield immediately to vertical list scroll.
+              RawGestureDetector(
                 behavior: HitTestBehavior.deferToChild,
-                onHorizontalDragStart: (_) {
-                  if (_completing || _succeeded) return;
-                  _settleController.stop();
-                },
-                onHorizontalDragUpdate: (details) {
-                  if (_completing || _succeeded) return;
-                  final next = (_dragExtent + details.delta.dx)
-                      .clamp(0.0, _maxExtent);
-                  final crossed = !_armed &&
-                      next / _maxExtent >= widget.confirmationFraction;
-                  setState(() => _dragExtent = next);
-                  if (crossed) {
-                    _armed = true;
-                    HapticFeedback.selectionClick();
-                  } else if (next / _maxExtent <
-                      widget.confirmationFraction * 0.85) {
-                    _armed = false;
-                  }
-                },
-                onHorizontalDragEnd: _onDragEnd,
-                onHorizontalDragCancel: () {
-                  if (_completing || _succeeded) return;
-                  _armed = false;
-                  unawaited(_animateTo(0));
+                gestures: {
+                  _VerticalScrollFriendlyHorizontalDragRecognizer:
+                      GestureRecognizerFactoryWithHandlers<
+                          _VerticalScrollFriendlyHorizontalDragRecognizer>(
+                    () => _VerticalScrollFriendlyHorizontalDragRecognizer(),
+                    (instance) {
+                      instance
+                        ..onStart = (_) {
+                          if (_completing || _succeeded) return;
+                          _settleController.stop();
+                        }
+                        ..onUpdate = (details) {
+                          if (_completing || _succeeded) return;
+                          final next = (_dragExtent + details.delta.dx)
+                              .clamp(0.0, _maxExtent);
+                          final crossed = !_armed &&
+                              next / _maxExtent >=
+                                  widget.confirmationFraction;
+                          setState(() => _dragExtent = next);
+                          if (crossed) {
+                            _armed = true;
+                            HapticFeedback.selectionClick();
+                          } else if (next / _maxExtent <
+                              widget.confirmationFraction * 0.85) {
+                            _armed = false;
+                          }
+                        }
+                        ..onEnd = _onDragEnd
+                        ..onCancel = () {
+                          if (_completing || _succeeded) return;
+                          _armed = false;
+                          unawaited(_animateTo(0));
+                        };
+                    },
+                  ),
                 },
                 child: Transform.translate(
                   offset: Offset(_dragExtent, 0),
@@ -813,6 +828,8 @@ class _SwipeToCompleteState extends State<SwipeToComplete>
               ),
             ],
           ),
+        );
+          },
         );
       },
     );
@@ -1032,7 +1049,7 @@ class TaskHelpBanner extends StatelessWidget {
             child: InkWell(
               onTap: onChat,
               borderRadius: BorderRadius.circular(10),
-              child: const Padding(
+                child: const Padding(
                 padding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                 child: Text(
                   'Chat with\nExpert',
@@ -1050,5 +1067,22 @@ class TaskHelpBanner extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+/// Lets the parent list win as soon as the finger moves more vertically than horizontally.
+class _VerticalScrollFriendlyHorizontalDragRecognizer
+    extends HorizontalDragGestureRecognizer {
+  @override
+  void handleEvent(PointerEvent event) {
+    if (event is PointerMoveEvent) {
+      final dx = event.delta.dx.abs();
+      final dy = event.delta.dy.abs();
+      if (dy > dx && dy > 1.2) {
+        resolve(GestureDisposition.rejected);
+        return;
+      }
+    }
+    super.handleEvent(event);
   }
 }

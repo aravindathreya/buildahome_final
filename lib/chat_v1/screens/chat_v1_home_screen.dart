@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -33,6 +35,7 @@ class _ChatV1HomeScreenState extends State<ChatV1HomeScreen> {
   final _search = TextEditingController();
   final _ctrl = ChatV1Controller.instance;
   String _query = '';
+  Timer? _searchDebounce;
   ChatV1Filter _filter = ChatV1Filter.all;
   final Set<String> _selected = {};
   /// True until the first cold load finishes (no cached chats yet).
@@ -54,6 +57,7 @@ class _ChatV1HomeScreenState extends State<ChatV1HomeScreen> {
 
   @override
   void dispose() {
+    _searchDebounce?.cancel();
     _ctrl.removeListener(_onCtrl);
     _search.dispose();
     super.dispose();
@@ -131,6 +135,12 @@ class _ChatV1HomeScreenState extends State<ChatV1HomeScreen> {
     ]);
     final custom = _apply(_ctrl.customGroups);
     final dms = _apply(_ctrl.dms);
+    final chatRows = _chatHomeRows(
+      channels: channels,
+      hubs: hubs,
+      custom: custom,
+      dms: dms,
+    );
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: ChatV1Theme.isDark(context)
@@ -147,7 +157,13 @@ class _ChatV1HomeScreenState extends State<ChatV1HomeScreen> {
                 child: Cv1SearchField(
                   controller: _search,
                   hint: 'Search',
-                  onChanged: (v) => setState(() => _query = v.toLowerCase()),
+                  onChanged: (v) {
+                    _searchDebounce?.cancel();
+                    _searchDebounce = Timer(const Duration(milliseconds: 140), () {
+                      if (!mounted) return;
+                      setState(() => _query = v.toLowerCase());
+                    });
+                  },
                 ),
               ),
               Cv1FilterChips(
@@ -196,66 +212,14 @@ class _ChatV1HomeScreenState extends State<ChatV1HomeScreen> {
                                 ),
                               ],
                             )
-                          : ListView(
+                          : ListView.builder(
                               physics: const BouncingScrollPhysics(
                                 parent: AlwaysScrollableScrollPhysics(),
                               ),
-                              children: [
-                                if (_ctrl.salesSopId != null)
-                                  Padding(
-                                    padding: const EdgeInsets.fromLTRB(
-                                        16, 4, 16, 8),
-                                    child: Text(
-                                      'Project SOP #${_ctrl.salesSopId}',
-                                      style: TextStyle(
-                                        color: ChatV1Theme.textMuted(context),
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                  ),
-                                if (channels.isNotEmpty) ...[
-                                  const Cv1SectionHeader(label: 'Channels'),
-                                  ...channels.map(_tile),
-                                ],
-                                if (hubs.isNotEmpty) ...[
-                                  const Cv1SectionHeader(
-                                      label: 'Task & workflow'),
-                                  ...hubs.map(_tile),
-                                ],
-                                if (custom.isNotEmpty) ...[
-                                  Padding(
-                                    padding:
-                                        const EdgeInsets.fromLTRB(16, 8, 16, 8),
-                                    child: Divider(
-                                        color: ChatV1Theme.border(context)),
-                                  ),
-                                  const Cv1SectionHeader(
-                                      label: 'Custom groups'),
-                                  ...custom.map(_tile),
-                                ],
-                                if (dms.isNotEmpty) ...[
-                                  const Cv1SectionHeader(
-                                      label: 'Direct messages'),
-                                  ...dms.map(_tile),
-                                ],
-                                if (channels.isEmpty &&
-                                    hubs.isEmpty &&
-                                    custom.isEmpty &&
-                                    dms.isEmpty)
-                                  Padding(
-                                    padding: const EdgeInsets.all(40),
-                                    child: Center(
-                                      child: Text(
-                                        'No chats match your filter',
-                                        style: TextStyle(
-                                            color: ChatV1Theme.textMuted(
-                                                context)),
-                                      ),
-                                    ),
-                                  ),
-                                const SizedBox(height: 88),
-                              ],
+                              itemCount: chatRows.length,
+                              itemBuilder: (context, index) {
+                                return _buildChatHomeRow(context, chatRows[index]);
+                              },
                             ),
                 ),
               ),
@@ -271,7 +235,8 @@ class _ChatV1HomeScreenState extends State<ChatV1HomeScreen> {
   }
 
   Widget _tile(ChatV1ChatItem item) {
-    return Cv1ChatTile(
+    return RepaintBoundary(
+      child: Cv1ChatTile(
       item: item,
       selected: _selected.contains(item.id),
       onTap: () {
@@ -301,7 +266,80 @@ class _ChatV1HomeScreenState extends State<ChatV1HomeScreen> {
       onMute: () =>
           _updateItem(item.id, (e) => e.copyWith(isMuted: !e.isMuted)),
       onMarkRead: () => _updateItem(item.id, (e) => e.copyWith(unread: 0)),
+    ),
     );
+  }
+
+  List<_Cv1HomeRow> _chatHomeRows({
+    required List<ChatV1ChatItem> channels,
+    required List<ChatV1ChatItem> hubs,
+    required List<ChatV1ChatItem> custom,
+    required List<ChatV1ChatItem> dms,
+  }) {
+    final rows = <_Cv1HomeRow>[];
+    if (_ctrl.salesSopId != null) {
+      rows.add(_Cv1HomeRow.sop('Project SOP #${_ctrl.salesSopId}'));
+    }
+    if (channels.isNotEmpty) {
+      rows.add(const _Cv1HomeRow.header('Channels'));
+      rows.addAll(channels.map(_Cv1HomeRow.tile));
+    }
+    if (hubs.isNotEmpty) {
+      rows.add(const _Cv1HomeRow.header('Task & workflow'));
+      rows.addAll(hubs.map(_Cv1HomeRow.tile));
+    }
+    if (custom.isNotEmpty) {
+      rows.add(const _Cv1HomeRow.divider());
+      rows.add(const _Cv1HomeRow.header('Custom groups'));
+      rows.addAll(custom.map(_Cv1HomeRow.tile));
+    }
+    if (dms.isNotEmpty) {
+      rows.add(const _Cv1HomeRow.header('Direct messages'));
+      rows.addAll(dms.map(_Cv1HomeRow.tile));
+    }
+    if (channels.isEmpty && hubs.isEmpty && custom.isEmpty && dms.isEmpty) {
+      rows.add(const _Cv1HomeRow.empty());
+    }
+    rows.add(const _Cv1HomeRow.spacer());
+    return rows;
+  }
+
+  Widget _buildChatHomeRow(BuildContext context, _Cv1HomeRow row) {
+    switch (row.kind) {
+      case 3:
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+          child: Text(
+            row.label ?? '',
+            style: TextStyle(
+              color: ChatV1Theme.textMuted(context),
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        );
+      case 0:
+        return Cv1SectionHeader(label: row.label ?? '');
+      case 2:
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+          child: Divider(color: ChatV1Theme.border(context)),
+        );
+      case 1:
+        return _tile(row.item!);
+      case 4:
+        return Padding(
+          padding: const EdgeInsets.all(40),
+          child: Center(
+            child: Text(
+              'No chats match your filter',
+              style: TextStyle(color: ChatV1Theme.textMuted(context)),
+            ),
+          ),
+        );
+      default:
+        return const SizedBox(height: 88);
+    }
   }
 
   Widget _header(BuildContext context) {
@@ -362,4 +400,18 @@ class _ChatV1HomeScreenState extends State<ChatV1HomeScreen> {
       ),
     );
   }
+}
+
+class _Cv1HomeRow {
+  const _Cv1HomeRow._(this.kind, {this.item, this.label});
+  const _Cv1HomeRow.header(String label) : this._(0, label: label);
+  const _Cv1HomeRow.tile(ChatV1ChatItem item) : this._(1, item: item);
+  const _Cv1HomeRow.divider() : this._(2);
+  const _Cv1HomeRow.sop(String label) : this._(3, label: label);
+  const _Cv1HomeRow.empty() : this._(4);
+  const _Cv1HomeRow.spacer() : this._(5);
+
+  final int kind;
+  final ChatV1ChatItem? item;
+  final String? label;
 }

@@ -1,8 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../app_theme.dart';
 import '../documents_v1/documents_v1_home_screen.dart';
 import '../models/workflow_document.dart';
+import '../services/mobile_documents.dart';
+import '../services/mobile_documents_service.dart';
 import '../services/workflow_document_service.dart';
 import '../widgets/skeleton_loader.dart';
 import 'client_portal_document_ui.dart';
@@ -18,6 +22,7 @@ class ClientPortalDocumentsTab extends StatefulWidget {
 
 class _ClientPortalDocumentsTabState extends State<ClientPortalDocumentsTab> {
   final _searchCtrl = TextEditingController();
+  Timer? _searchDebounce;
   bool _loading = true;
   String? _error;
   WorkflowDocumentLibrary? _library;
@@ -26,11 +31,17 @@ class _ClientPortalDocumentsTabState extends State<ClientPortalDocumentsTab> {
   void initState() {
     super.initState();
     _load();
-    _searchCtrl.addListener(() => setState(() {}));
+    _searchCtrl.addListener(() {
+      _searchDebounce?.cancel();
+      _searchDebounce = Timer(const Duration(milliseconds: 150), () {
+        if (mounted) setState(() {});
+      });
+    });
   }
 
   @override
   void dispose() {
+    _searchDebounce?.cancel();
     _searchCtrl.dispose();
     super.dispose();
   }
@@ -41,7 +52,14 @@ class _ClientPortalDocumentsTabState extends State<ClientPortalDocumentsTab> {
       _error = null;
     });
     try {
-      final library = await WorkflowDocumentService().fetchLibrary();
+      await MobileDocumentsService.instance.ensureLibrary();
+      final snapshot = MobileDocumentsService.instance.snapshotFor();
+      WorkflowDocumentLibrary library;
+      if (shouldUseMobileDocumentsSnapshot(snapshot)) {
+        library = snapshot!.library;
+      } else {
+        library = await WorkflowDocumentService().fetchLibrary();
+      }
       if (!mounted) return;
       setState(() {
         _loading = false;
@@ -57,13 +75,11 @@ class _ClientPortalDocumentsTabState extends State<ClientPortalDocumentsTab> {
   }
 
   void _openCategory(WorkflowDocumentCategory category) {
-    final journeyKey = category.clientJourneyKey ?? category.id;
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => ClientJourneyDocumentsScreen(
-          title: category.label,
-          journeyKey: journeyKey,
+        builder: (_) => DocumentsV1CategoryScreen(
+          category: category,
           clientMode: true,
         ),
       ),

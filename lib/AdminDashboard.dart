@@ -26,6 +26,8 @@ import 'services/profile_picture_service.dart';
 import 'services/project_open_timing.dart';
 import 'services/rbac_service.dart';
 import 'services/api_http.dart';
+import 'services/mobile_bottom_nav.dart';
+import 'services/mobile_bottom_nav_service.dart';
 import 'services/mobile_quick_actions.dart';
 import 'services/mobile_quick_actions_service.dart';
 import 'services/session_manager.dart';
@@ -78,18 +80,18 @@ class _AdminDashboardState extends State<AdminDashboard> {
   @override
   void initState() {
     super.initState();
+    MobileBottomNavService.instance.revision
+        .addListener(_onBottomNavConfigChanged);
+    unawaited(MobileBottomNavService.instance.ensureSurface(
+      MobileBottomNavSurface.staff,
+      force: true,
+    ));
     // Periodically check if AdminHomeState is ready and rebuild if needed
     Future.delayed(Duration(milliseconds: 100), () {
       if (mounted && _adminHomeKey.currentState != null) {
         setState(() {
           _rebuildTrigger++;
         });
-      }
-    });
-    // Listen to search query changes to rebuild search results
-    _searchQueryNotifier.addListener(() {
-      if (mounted) {
-        setState(() {});
       }
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -99,8 +101,29 @@ class _AdminDashboardState extends State<AdminDashboard> {
 
   @override
   void dispose() {
+    MobileBottomNavService.instance.revision
+        .removeListener(_onBottomNavConfigChanged);
     _searchQueryNotifier.dispose();
     super.dispose();
+  }
+
+  void _onBottomNavConfigChanged() {
+    if (!mounted) return;
+    setState(() {
+      final keys = _resolvedBottomNavKeys();
+      if (_bottomNavIndex >= keys.length) {
+        _bottomNavIndex = 0;
+      }
+    });
+  }
+
+  List<String> _resolvedBottomNavKeys() {
+    return resolveMobileBottomNavActionKeys(
+      surface: MobileBottomNavSurface.staff,
+      fallbackKeys: fallbackBottomNavKeysFor(MobileBottomNavSurface.staff),
+      snapshot: MobileBottomNavService.instance
+          .snapshot(MobileBottomNavSurface.staff),
+    );
   }
 
   /// Wait for the login transition, then:
@@ -128,11 +151,15 @@ class _AdminDashboardState extends State<AdminDashboard> {
   }
 
   Future<void> _onBottomNavTap(int index) async {
-    if (index == 0) {
-      setState(() => _bottomNavIndex = 0);
+    final keys = _resolvedBottomNavKeys();
+    if (index < 0 || index >= keys.length) return;
+    final key = keys[index];
+
+    if (key == kMobileBottomNavHomeKey) {
+      setState(() => _bottomNavIndex = index);
       return;
     }
-    if (index == 4) {
+    if (key == kMobileBottomNavMoreKey) {
       _scaffoldKey.currentState?.openDrawer();
       return;
     }
@@ -144,30 +171,19 @@ class _AdminDashboardState extends State<AdminDashboard> {
       return;
     }
 
-    switch (index) {
-      case 1:
-        await home.openTasksScreen();
-        break;
-      case 2:
-        await home.openProjectsPicker();
-        break;
-      case 3:
-        await home.openSiteVisits();
-        break;
-    }
+    await home.openBottomNavAction(key);
     if (mounted) setState(() => _bottomNavIndex = 0);
   }
 
-  Widget _buildBottomNav() {
+  Widget _buildBottomNav([List<String>? resolvedKeys]) {
+    final keys = resolvedKeys ?? _resolvedBottomNavKeys();
     final items = <_AdminDashNavItem>[
-      _AdminDashNavItem(Icons.home_rounded, Icons.home_outlined, 'Home'),
-      _AdminDashNavItem(
-          Icons.pending_actions_rounded, Icons.pending_actions_outlined, 'Tasks'),
-      _AdminDashNavItem(
-          Icons.folder_special_rounded, Icons.folder_special_outlined, 'Projects'),
-      _AdminDashNavItem(
-          Icons.location_on_rounded, Icons.location_on_outlined, 'Site Visits'),
-      _AdminDashNavItem(Icons.menu_rounded, Icons.menu_rounded, 'More'),
+      for (final key in keys)
+        _AdminDashNavItem(
+          activeIconForMobileBottomNav(key) ?? Icons.circle,
+          outlinedIconForMobileBottomNav(key) ?? Icons.circle_outlined,
+          labelForMobileBottomNav(key) ?? key,
+        ),
     ];
 
     return Container(
@@ -242,7 +258,20 @@ class _AdminDashboardState extends State<AdminDashboard> {
           searchQueryNotifier: _searchQueryNotifier,
         ),
       ),
-      bottomNavigationBar: _buildBottomNav(),
+      bottomNavigationBar: ValueListenableBuilder<int>(
+        valueListenable: MobileBottomNavService.instance.revision,
+        builder: (context, revision, _) {
+          final keys = _resolvedBottomNavKeys();
+          if (_bottomNavIndex >= keys.length) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted && _bottomNavIndex >= keys.length) {
+                setState(() => _bottomNavIndex = 0);
+              }
+            });
+          }
+          return _buildBottomNav(keys);
+        },
+      ),
     );
   }
 }
@@ -386,7 +415,7 @@ class AdminHome extends StatefulWidget {
   }
 }
 
-class AdminHomeState extends State<AdminHome> {
+class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
   static const Color _navy = Color(0xFF1B254B);
   static const Color _mutedGrey = Color(0xFF8A94A6);
   static const Color _cardBorder = Color(0xFFE8ECF1);
@@ -427,6 +456,7 @@ class AdminHomeState extends State<AdminHome> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     searchProjectfocusNode.dispose();
     searchProjectTextController.dispose();
     _quickSearchController.dispose();
@@ -540,6 +570,7 @@ class AdminHomeState extends State<AdminHome> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _searchQueryNotifier = widget.searchQueryNotifier;
     setDate();
     setRole();
@@ -550,6 +581,11 @@ class AdminHomeState extends State<AdminHome> {
       projects = initialProjects;
       projectsToShow = projects;
     });
+    final cachedTasks = DataProvider().cachedUserTasks;
+    if (cachedTasks.isNotEmpty) {
+      _tasks = List<dynamic>.from(cachedTasks);
+      _hasLoadedTasksOnce = true;
+    }
     // Refresh in background; only show a loader if nothing is cached yet.
     loadProjects(
       force: initialProjects.isEmpty,
@@ -558,9 +594,21 @@ class AdminHomeState extends State<AdminHome> {
     _startProjectsAutoRefresh();
     MobileQuickActionsService.instance.revision
         .addListener(_onQuickActionsChanged);
-    MobileQuickActionsService.instance
-        .ensureSurface(MobileQuickActionSurface.staffHome);
+    unawaited(MobileQuickActionsService.instance
+        .ensureSurface(MobileQuickActionSurface.staffHome));
     // Note: loadTasks() will be called by loadProjects() after projects are loaded
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && mounted) {
+      loadProjects(
+        force: false,
+        showLoader: false,
+        refreshTasks: true,
+        silentTasks: true,
+      );
+    }
   }
 
   void _onQuickActionsChanged() {
@@ -643,9 +691,42 @@ class AdminHomeState extends State<AdminHome> {
     }
   }
 
+  /// Opens a backend bottom-nav tab by canonical action key.
+  Future<void> openBottomNavAction(String key) async {
+    final canonical = canonicalizeMobileBottomNavKey(key);
+    if (canonical.isEmpty || isPinnedBottomNavKey(canonical)) return;
+
+    switch (canonical) {
+      case 'my_tasks':
+        await openTasksScreen();
+        return;
+      case 'projects':
+        await openProjectsPicker();
+        return;
+      case 'site_visit_reports':
+        await openSiteVisits();
+        return;
+    }
+
+    final title = flutterTitleForMobileBottomNav(
+      MobileBottomNavSurface.staff,
+      canonical,
+    );
+    if (title == null) return;
+    Map<String, dynamic>? item;
+    for (final candidate in getQuickActionCatalog()) {
+      if (candidate['title']?.toString() == title) {
+        item = candidate;
+        break;
+      }
+    }
+    if (item == null) return;
+    await _handleMenuTap(context, item);
+  }
+
   void _startProjectsAutoRefresh() {
     _projectsRefreshTimer?.cancel();
-    _projectsRefreshTimer = Timer.periodic(Duration(minutes: 1), (_) {
+    _projectsRefreshTimer = Timer.periodic(const Duration(minutes: 5), (_) {
       if (!mounted) return;
       // Silent background refresh — UI updates only when data changes.
       loadProjects(
@@ -692,15 +773,12 @@ class AdminHomeState extends State<AdminHome> {
       return;
     }
 
-    final showLoader = !silent && !_hasLoadedTasksOnce;
+    final showLoader = !silent && _tasks.isEmpty;
     if (showLoader) {
       setState(() {
         _isLoadingTasks = true;
         _tasksError = null;
       });
-    } else {
-      _isLoadingTasks = true;
-      _tasksError = null;
     }
 
     try {
@@ -714,58 +792,14 @@ class AdminHomeState extends State<AdminHome> {
         throw Exception('Missing credentials. Please log in again.');
       }
 
-      // Build query parameters for GET request
-      // API uses OR logic - tasks matching ANY filter will be returned
-      Map<String, String> queryParams = {
-        'user_id': userId,
-        'assigned_to': userId,
-      };
+      final provider = DataProvider();
+      List<dynamic> allTasks = await provider.loadUserTasks(force: !silent);
 
-      List<dynamic> allTasks = [];
-
-      // Fetch tasks for user_id and assigned_to
-      Uri uri = Uri.parse("https://office.buildahome.in/API/get_tasks").replace(
-        queryParameters: queryParams,
+      // API uses OR logic across filters, so keep only tasks assigned to user.
+      allTasks = filterTasksForProjectAndAssignee(
+        allTasks,
+        userId: userId,
       );
-
-      print('Uri ${uri.toString()}');
-      var response = await ApiHttp.get(uri).timeout(const Duration(seconds: 20));
-      print('Response ${response.body}');
-
-      if (response.statusCode == 200) {
-        final decoded = jsonDecode(response.body);
-        List<dynamic> fetchedTasks = [];
-
-        if (decoded is Map &&
-            decoded['success'] == true &&
-            decoded['tasks'] != null) {
-          fetchedTasks = decoded['tasks'] is List ? decoded['tasks'] : [];
-        } else if (decoded is Map && decoded['tasks'] != null) {
-          fetchedTasks = decoded['tasks'] is List ? decoded['tasks'] : [];
-        } else if (decoded is List) {
-          fetchedTasks = decoded;
-        }
-
-        // Add tasks to our list (deduplicate by task id)
-        Map<int, dynamic> taskMap = {};
-        for (var task in fetchedTasks) {
-          if (task is Map && task['id'] != null) {
-            int taskId = int.tryParse(task['id'].toString()) ?? 0;
-            if (taskId != 0) {
-              taskMap[taskId] = task;
-            }
-          }
-        }
-        allTasks = taskMap.values.toList();
-
-        // Learn sales_sop_id from tasks (chat is keyed by SOP id, not ERP project_id).
-        await DataProvider().cacheSalesSopIdsFromTasks(allTasks);
-
-        // API uses OR logic across filters, so keep only tasks assigned to user.
-        allTasks = filterTasksForProjectAndAssignee(
-          allTasks,
-          userId: userId,
-        );
 
         // Check if tasks have changed
         Map<int, Map<String, dynamic>> currentTasksMap = {};
@@ -814,23 +848,6 @@ class AdminHomeState extends State<AdminHome> {
           _isLoadingTasks = false;
           _hasLoadedTasksOnce = true;
         }
-      } else if (response.statusCode == 404) {
-        // No tasks found - this is okay
-        if (!mounted) return;
-        if (_tasks.isNotEmpty || _isLoadingTasks || !_hasLoadedTasksOnce) {
-          setState(() {
-            _tasks = [];
-            _isLoadingTasks = false;
-            _hasLoadedTasksOnce = true;
-            _previousTasksMap = {};
-          });
-        } else {
-          _isLoadingTasks = false;
-          _hasLoadedTasksOnce = true;
-        }
-      } else {
-        throw Exception('Unable to load tasks (code ${response.body})');
-      }
     } catch (e) {
       if (e is SessionInvalidatedException) return;
       if (!mounted) return;
@@ -1423,13 +1440,15 @@ class AdminHomeState extends State<AdminHome> {
 
     return RefreshIndicator(
       onRefresh: () async {
-        await loadProjects(force: true);
-        await loadTasks();
-        await _loadUnreadNotifications(force: true);
-        await MobileQuickActionsService.instance.ensureSurface(
-          MobileQuickActionSurface.staffHome,
-          force: true,
-        );
+        await Future.wait([
+          loadProjects(force: true),
+          loadTasks(),
+          _loadUnreadNotifications(force: true),
+          MobileQuickActionsService.instance.ensureSurface(
+            MobileQuickActionSurface.staffHome,
+            force: true,
+          ),
+        ]);
       },
       color: _navy,
       child: Container(
@@ -1448,10 +1467,6 @@ class AdminHomeState extends State<AdminHome> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   const SizedBox(height: 8),
-                  _buildHeroBanner(),
-                  const SizedBox(height: 16),
-                  _buildSearchField(),
-                  const SizedBox(height: 16),
                   if (_projectsError != null)
                     Container(
                       margin: const EdgeInsets.only(bottom: 12),
@@ -1479,8 +1494,11 @@ class AdminHomeState extends State<AdminHome> {
                         ],
                       ),
                     ),
-                  if (currentUserRole != 'Client')
+                  if (currentUserRole != 'Client') ...[
+                    _buildHeroBanner(),
+                    const SizedBox(height: 18),
                     _buildOverviewCard(totalProjects, pendingCount),
+                  ],
                   const SizedBox(height: 18),
                   if (currentUserRole != 'Billing') _buildTasksSection(),
                   if (allQuickActions.isNotEmpty) ...[
@@ -1944,6 +1962,11 @@ class AdminHomeState extends State<AdminHome> {
                   ),
                 ],
               ),
+            ),
+            const Icon(
+              Icons.chevron_right_rounded,
+              size: 20,
+              color: _mutedGrey,
             ),
           ],
         ),
@@ -2717,7 +2740,10 @@ class AdminHomeState extends State<AdminHome> {
       NavigationDebounce.beginPush();
       try {
         await _navigateWithAnimation(context, widget);
-        if (mounted) loadProjects();
+        if (mounted) {
+          unawaited(loadProjects(refreshTasks: false));
+          unawaited(loadTasks(silent: true));
+        }
       } finally {
         NavigationDebounce.endPush();
       }
@@ -2812,47 +2838,10 @@ class AdminHomeState extends State<AdminHome> {
 
   Widget _buildTasksSection() {
     final recent = _activeRecentTasks.take(4).toList();
-    final pendingCount = _tasks.where((task) {
-      if (task is! Map) return false;
-      final status = task['status']?.toString().toLowerCase() ?? '';
-      return status == 'pending' ||
-          status == 'in_progress' ||
-          status == 'ready' ||
-          status == 'scheduled';
-    }).length;
-    final completedCount = _tasks.where((task) {
-      if (task is! Map) return false;
-      return kCompletedTaskStatuses
-          .contains(task['status']?.toString().toLowerCase() ?? '');
-    }).length;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          children: [
-            Expanded(
-              child: TaskSummaryStatCard(
-                value: '$pendingCount',
-                label: 'Pending tasks',
-                icon: Icons.assignment_outlined,
-                iconColor: const Color(0xFFEAB308),
-                iconBg: const Color(0xFFFFF1D6),
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: TaskSummaryStatCard(
-                value: '$completedCount',
-                label: 'Completed tasks',
-                icon: Icons.check_circle_outline_rounded,
-                iconColor: const Color(0xFF16A34A),
-                iconBg: const Color(0xFFDCFCE7),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 18),
         Row(
           children: [
             const Expanded(
@@ -3448,6 +3437,7 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
   String? selectedUserName;
   List<dynamic> _projects = [];
   List<dynamic> _filteredProjects = [];
+  Timer? _filterDebounce;
 
   @override
   void initState() {
@@ -3458,6 +3448,7 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
 
   @override
   void dispose() {
+    _filterDebounce?.cancel();
     noteController.dispose();
     _searchController.removeListener(_filterProjects);
     _searchController.dispose();
@@ -3465,20 +3456,24 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
   }
 
   void _filterProjects() {
-    final query = _searchController.text.toLowerCase().trim();
-    setState(() {
-      if (query.isEmpty) {
-        _filteredProjects = List<dynamic>.from(_projects);
-      } else {
-        _filteredProjects = _projects.where((project) {
-          final name = project['name']?.toString().toLowerCase() ?? '';
-          final id = project['id']?.toString() ?? '';
-          final client = project['client_name']?.toString().toLowerCase() ?? '';
-          return name.contains(query) ||
-              id.contains(query) ||
-              client.contains(query);
-        }).toList();
-      }
+    _filterDebounce?.cancel();
+    _filterDebounce = Timer(const Duration(milliseconds: 140), () {
+      if (!mounted) return;
+      final query = _searchController.text.toLowerCase().trim();
+      setState(() {
+        if (query.isEmpty) {
+          _filteredProjects = List<dynamic>.from(_projects);
+        } else {
+          _filteredProjects = _projects.where((project) {
+            final name = project['name']?.toString().toLowerCase() ?? '';
+            final id = project['id']?.toString() ?? '';
+            final client = project['client_name']?.toString().toLowerCase() ?? '';
+            return name.contains(query) ||
+                id.contains(query) ||
+                client.contains(query);
+          }).toList();
+        }
+      });
     });
   }
 

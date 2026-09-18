@@ -10,6 +10,8 @@ import 'client_generation_service.dart';
 import 'client_portal_service.dart';
 import 'data_provider.dart';
 import 'mobile_live_test_storage.dart';
+import 'mobile_bottom_nav_service.dart';
+import 'mobile_documents_service.dart';
 import 'mobile_more_menu_service.dart';
 import 'mobile_quick_actions_service.dart';
 import 'notification_service.dart';
@@ -29,6 +31,8 @@ class AppLogout {
     DataProvider().clearData();
     MobileQuickActionsService.instance.clearMemory();
     MobileMoreMenuService.instance.clearMemory();
+    MobileBottomNavService.instance.clearMemory();
+    MobileDocumentsService.instance.clearMemory();
     AppDeepLinkService.instance.onLoggedOut();
     ProfilePictureService.picturePathNotifier.value = null;
     ProfilePictureService.promptShownThisSession = false;

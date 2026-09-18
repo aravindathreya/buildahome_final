@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -33,6 +34,7 @@ class ClientGenerationService {
       ValueNotifier<ClientGeneration>(ClientGeneration.legacy);
 
   bool _hydrated = false;
+  bool _hasPersistedGeneration = false;
   String? _hydratedProjectId;
   String? _refreshingProjectId;
   Future<void>? _refreshInFlight;
@@ -47,9 +49,30 @@ class ClientGenerationService {
     return (role ?? '').trim().toLowerCase() == 'client' && isLegacy;
   }
 
-  Future<void> ensureLoaded({String? projectId}) async {
-    if (!_hydrated) {
+  /// Cache-first: hydrate prefs, paint immediately when a value exists for
+  /// this project, then refresh in the background. Awaits the network only
+  /// when there is no persisted generation for the current project.
+  Future<void> ensureLoaded({String? projectId, bool force = false}) async {
+    final pid = projectId?.trim();
+    if (!_hydrated ||
+        (pid != null &&
+            pid.isNotEmpty &&
+            _hydratedProjectId != null &&
+            _hydratedProjectId != pid)) {
       await _hydrateFromPrefs();
+    } else if (!_hydrated) {
+      await _hydrateFromPrefs();
+    }
+
+    final hasCacheForProject = _hasPersistedGeneration &&
+        (pid == null ||
+            pid.isEmpty ||
+            _hydratedProjectId == null ||
+            _hydratedProjectId == pid);
+
+    if (hasCacheForProject && !force) {
+      unawaited(refresh(projectId: projectId));
+      return;
     }
     await refresh(projectId: projectId);
   }
@@ -96,6 +119,7 @@ class ClientGenerationService {
   void clearMemory() {
     generation.value = ClientGeneration.legacy;
     _hydrated = false;
+    _hasPersistedGeneration = false;
     _hydratedProjectId = null;
   }
 
@@ -160,16 +184,17 @@ class ClientGenerationService {
       // Cached generation only applies to the same project.
       if (currentProjectId != null &&
           currentProjectId.isNotEmpty &&
-          storedProjectId == currentProjectId) {
-        if (stored == 'current') {
-          generation.value = ClientGeneration.current;
-        } else if (stored == 'legacy') {
-          generation.value = ClientGeneration.legacy;
-        }
+          storedProjectId == currentProjectId &&
+          (stored == 'current' || stored == 'legacy')) {
+        generation.value = stored == 'current'
+            ? ClientGeneration.current
+            : ClientGeneration.legacy;
         _hydratedProjectId = currentProjectId;
+        _hasPersistedGeneration = true;
       } else {
         generation.value = ClientGeneration.legacy;
         _hydratedProjectId = currentProjectId;
+        _hasPersistedGeneration = false;
       }
     } catch (_) {}
     _hydrated = true;
@@ -277,6 +302,7 @@ class ClientGenerationService {
       generation.value = next;
     }
     _hydrated = true;
+    _hasPersistedGeneration = true;
     if (projectId != null && projectId.trim().isNotEmpty) {
       _hydratedProjectId = projectId.trim();
     }

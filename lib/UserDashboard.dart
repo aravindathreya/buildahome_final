@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:http/http.dart' as http;
+import 'dart:async';
 import 'dart:convert';
 import "Payments.dart";
 import 'app_theme.dart';
@@ -17,7 +18,6 @@ import 'NotesAndComments.dart';
 import 'chat_v1/chat_v1_app.dart';
 import 'ProjectFocusScreen.dart';
 import 'checklist_categories.dart';
-import 'services/api_http.dart';
 import 'services/data_provider.dart';
 import 'services/notification_service.dart';
 import 'services/rbac_service.dart';
@@ -47,12 +47,15 @@ import 'notifcations.dart';
 import 'Dpr.dart';
 import 'services/client_generation_service.dart';
 import 'services/legacy_client_features.dart';
+import 'services/mobile_bottom_nav.dart';
+import 'services/mobile_bottom_nav_service.dart';
 import 'services/mobile_quick_actions.dart';
 import 'services/mobile_quick_actions_service.dart';
 import 'services/profile_picture_service.dart';
 import 'utilities/role_app_bar_color.dart';
 import 'widgets/client_home_tour.dart';
 import 'widgets/dashboard_chrome.dart';
+import 'widgets/floating_client_chatbot.dart';
 import 'widgets/modern_task_card.dart';
 import 'widgets/profile_picture_dialog.dart';
 
@@ -261,6 +264,7 @@ class UserDashboardLayoutState extends State<UserDashboardLayout> {
   int _bottomNavIndex = 0;
   bool _tourActive = false;
   bool _tourStartInFlight = false;
+  List<String>? _lastLoggedBottomNavKeys;
   static const Color _navy = Color(0xFF1B254B);
   static const Color _mutedGrey = Color(0xFF8A94A6);
   // Removed local navigatorKey and observer - using global ones from main.dart
@@ -272,14 +276,37 @@ class UserDashboardLayoutState extends State<UserDashboardLayout> {
     return role.toLowerCase() != 'client';
   }
 
+  bool get _showBackButton {
+    if (_showBackToDashboard) return true;
+    return !widget.fromAdminDashboard && Navigator.of(context).canPop();
+  }
+
+  bool get _isClientRole =>
+      (_userRole ?? '').trim().toLowerCase() == 'client';
+
+  /// Floating chatbot on client project home.
+  /// Shows for Client role (including when staff opens a project as that client
+  /// shell only if role is Client). Hidden during the first-run tour.
+  bool get _showFloatingChatbot {
+    final role = (_userRole ?? '').trim().toLowerCase();
+    final isClient = role == 'client';
+    final show = isClient && !_tourActive;
+    return show;
+  }
+
   @override
   void initState() {
     super.initState();
     ClientGenerationService.instance.generation
         .addListener(_onClientGenerationChanged);
+    MobileBottomNavService.instance.revision
+        .addListener(_onBottomNavConfigChanged);
     _loadDisplayName();
     _loadUnreadNotifications();
-    ClientGenerationService.instance.ensureLoaded();
+    unawaited(ClientGenerationService.instance.ensureLoaded());
+    // Force network so a prior failed fetch / stale configured:false cache
+    // cannot leave Chat on the hardcoded fallback bar.
+    unawaited(_ensureBottomNavSurface(force: true));
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _tryStartFirstRun();
     });
@@ -289,14 +316,69 @@ class UserDashboardLayoutState extends State<UserDashboardLayout> {
   void dispose() {
     ClientGenerationService.instance.generation
         .removeListener(_onClientGenerationChanged);
+    MobileBottomNavService.instance.revision
+        .removeListener(_onBottomNavConfigChanged);
     super.dispose();
   }
 
   void _onClientGenerationChanged() {
     if (mounted) {
       setState(() {});
+      unawaited(_ensureBottomNavSurface());
       _tryStartFirstRun();
     }
+  }
+
+  void _onBottomNavConfigChanged() {
+    if (!mounted) return;
+    setState(() {
+      final keys = _resolvedBottomNavKeys();
+      if (_bottomNavIndex >= keys.length) {
+        _bottomNavIndex = 0;
+      }
+    });
+  }
+
+  MobileBottomNavSurface get _bottomNavSurface {
+    // UserDashboardLayout is only the new project home shell. Client bottom
+    // nav must match web saves for `bottom_nav_project_new` (not staff / old).
+    return MobileBottomNavSurface.projectNew;
+  }
+
+  Future<void> _ensureBottomNavSurface({bool force = false}) async {
+    await MobileBottomNavService.instance.ensureSurface(
+      _bottomNavSurface,
+      force: force,
+    );
+    if (mounted) setState(() {});
+  }
+
+  List<String> _resolvedBottomNavKeys() {
+    final surface = _bottomNavSurface;
+    final snapshot = MobileBottomNavService.instance.snapshot(surface);
+    final keys = resolveMobileBottomNavActionKeys(
+      surface: surface,
+      fallbackKeys: fallbackBottomNavKeysFor(surface),
+      snapshot: snapshot,
+    );
+    final previous = _lastLoggedBottomNavKeys;
+    if (previous == null ||
+        previous.length != keys.length ||
+        !_listEquals(previous, keys)) {
+      _lastLoggedBottomNavKeys = List<String>.from(keys);
+      print(
+        '[MobileBottomNav] ui surface=${surface.apiName} '
+        'configured=${snapshot?.configured == true} keys=$keys',
+      );
+    }
+    return keys;
+  }
+
+  bool _listEquals(List<String> a, List<String> b) {
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
+    }
+    return true;
   }
 
   bool get _restrictLegacyClientFeatures =>
@@ -424,16 +506,20 @@ class UserDashboardLayoutState extends State<UserDashboardLayout> {
   }
 
   Future<void> _onBottomNavTap(int index) async {
-    if (index == 0) {
-      setState(() => _bottomNavIndex = 0);
+    final keys = _resolvedBottomNavKeys();
+    if (index < 0 || index >= keys.length) return;
+    final key = keys[index];
+
+    if (key == kMobileBottomNavHomeKey) {
+      setState(() => _bottomNavIndex = index);
       return;
     }
-    if (index == 4) {
+    if (key == kMobileBottomNavMoreKey) {
       _scaffoldKey.currentState?.openDrawer();
       return;
     }
 
-    if (_restrictLegacyClientFeatures && index == 1) {
+    if (_restrictLegacyClientFeatures && key == 'my_tasks') {
       await showFeatureComingSoon(
         context,
         featureName: 'My tasks',
@@ -443,47 +529,22 @@ class UserDashboardLayoutState extends State<UserDashboardLayout> {
 
     setState(() => _bottomNavIndex = index);
     final screen = _userDashboardKey.currentState;
-    Widget? page;
-    switch (index) {
-      case 1:
-        final tasks = screen?._tasks ?? <dynamic>[];
-        page = MyTasksScreen(
-          tasks: List<dynamic>.from(tasks),
-          onRefresh: screen == null
-              ? null
-              : () => screen._refreshTasksForMyTasks(),
-        );
-        break;
-      case 2:
-        page = const DprScreen(title: 'Updates');
-        break;
-      case 3:
-        if (screen != null) {
-          await screen.openChat();
-        }
-        if (mounted) setState(() => _bottomNavIndex = 0);
-        return;
+    if (screen == null) {
+      setState(() => _bottomNavIndex = 0);
+      return;
     }
 
-    if (page != null) {
-      final chrome = widget.fromAdminDashboard
+    await screen.openBottomNavAction(
+      key,
+      surface: _bottomNavSurface,
+      chromeStyle: widget.fromAdminDashboard
           ? DashboardChromeStyle.admin
-          : DashboardChromeStyle.user;
-      final appBarColor = chrome == DashboardChromeStyle.admin
+          : DashboardChromeStyle.user,
+      appBarColor: widget.fromAdminDashboard
           ? RoleAppBarColor.forRole(_userRole)
-          : null;
-      await Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => DashboardChrome.wrap(
-            chrome,
-            page!,
-            appBarColor: appBarColor,
-          ),
-        ),
-      );
-      if (mounted) setState(() => _bottomNavIndex = 0);
-    }
+          : null,
+    );
+    if (mounted) setState(() => _bottomNavIndex = 0);
   }
 
   Widget _buildUserHeader() {
@@ -495,38 +556,23 @@ class UserDashboardLayoutState extends State<UserDashboardLayout> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (_showBackToDashboard) ...[
-            Material(
-              color: const Color(0xFFF1F4F8),
-              borderRadius: BorderRadius.circular(999),
-              child: InkWell(
-                onTap: _goBackToDashboard,
-                borderRadius: BorderRadius.circular(999),
-                child: const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.arrow_back_rounded, color: _navy, size: 18),
-                      SizedBox(width: 6),
-                      Text(
-                        'Back to dashboard',
-                        style: TextStyle(
-                          color: _navy,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 10),
-          ],
           Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
+              if (_showBackButton) ...[
+                IconButton(
+                  tooltip: 'Back to dashboard',
+                  onPressed: _goBackToDashboard,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+                  icon: const Icon(
+                    Icons.arrow_back_rounded,
+                    color: _navy,
+                    size: 22,
+                  ),
+                ),
+                const SizedBox(width: 4),
+              ],
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -644,16 +690,15 @@ class UserDashboardLayoutState extends State<UserDashboardLayout> {
     );
   }
 
-  Widget _buildBottomNav() {
+  Widget _buildBottomNav([List<String>? resolvedKeys]) {
+    final keys = resolvedKeys ?? _resolvedBottomNavKeys();
     final items = <_DashNavItem>[
-      _DashNavItem(Icons.home_rounded, Icons.home_outlined, 'Home'),
-      _DashNavItem(
-          Icons.pending_actions_rounded, Icons.pending_actions_outlined, 'Tasks'),
-      _DashNavItem(
-          Icons.description_rounded, Icons.description_outlined, 'Updates'),
-      _DashNavItem(
-          Icons.chat_bubble_rounded, Icons.chat_bubble_outline_rounded, 'Chat'),
-      _DashNavItem(Icons.menu_rounded, Icons.menu_rounded, 'More'),
+      for (final key in keys)
+        _DashNavItem(
+          activeIconForMobileBottomNav(key) ?? Icons.circle,
+          outlinedIconForMobileBottomNav(key) ?? Icons.circle_outlined,
+          labelForMobileBottomNav(key) ?? key,
+        ),
     ];
 
     return Container(
@@ -669,8 +714,10 @@ class UserDashboardLayoutState extends State<UserDashboardLayout> {
           child: Row(
             children: List.generate(items.length, (index) {
               final item = items[index];
+              final key = keys[index];
               final selected = _bottomNavIndex == index;
-              final comingSoon = _restrictLegacyClientFeatures && index == 1;
+              final comingSoon =
+                  _restrictLegacyClientFeatures && key == 'my_tasks';
               final color = comingSoon
                   ? const Color(0xFFB0B7C3)
                   : (selected ? _navy : _mutedGrey);
@@ -738,26 +785,6 @@ class UserDashboardLayoutState extends State<UserDashboardLayout> {
             key: _scaffoldKey,
             backgroundColor: Colors.white,
             drawer: NavMenuWidget(),
-            appBar: (!widget.fromAdminDashboard && Navigator.of(context).canPop())
-                ? AppBar(
-                    backgroundColor: Colors.white,
-                    elevation: 0,
-                    leading: IconButton(
-                      icon: const Icon(Icons.arrow_back),
-                      color: _navy,
-                      onPressed: () => Navigator.of(context).pop(),
-                    ),
-                    title: const Text(
-                      'Project',
-                      style: TextStyle(
-                        color: _navy,
-                        fontSize: 18,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    iconTheme: const IconThemeData(color: _navy),
-                  )
-                : null,
             body: Column(
               children: [
                 _buildUserHeader(),
@@ -771,8 +798,23 @@ class UserDashboardLayoutState extends State<UserDashboardLayout> {
                 ),
               ],
             ),
-            bottomNavigationBar: _buildBottomNav(),
+            bottomNavigationBar: ValueListenableBuilder<int>(
+              valueListenable: MobileBottomNavService.instance.revision,
+              builder: (context, revision, _) {
+                // Keep selected index in range when keys shrink (e.g. Chat removed).
+                final keys = _resolvedBottomNavKeys();
+                if (_bottomNavIndex >= keys.length) {
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    if (mounted && _bottomNavIndex >= keys.length) {
+                      setState(() => _bottomNavIndex = 0);
+                    }
+                  });
+                }
+                return _buildBottomNav(keys);
+              },
+            ),
           ),
+          if (_showFloatingChatbot) const FloatingClientChatbot(),
           if (_tourActive)
             Positioned.fill(
               child: ClientHomeTourOverlay(
@@ -886,6 +928,7 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
     viewportFraction: 1 / 3,
   );
   String _quickSearchQuery = '';
+  Timer? _searchDebounce;
   String? _currentRole;
   bool _openingMenu = false;
 
@@ -900,6 +943,7 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
         .removeListener(_onClientGenerationChanged);
     MobileQuickActionsService.instance.revision
         .removeListener(_onQuickActionsChanged);
+    _searchDebounce?.cancel();
     _quickSearchController.dispose();
     _quickSearchFocusNode.dispose();
     _scrollController.dispose();
@@ -916,15 +960,16 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
         .addListener(_onQuickActionsChanged);
     // Load role
     _loadRole();
-    // Load cached data (if available) without blocking the transition
     loadDataFromProvider();
-    // Fetch fresh data asynchronously and preload project data for non-Client users
+    final cachedTasks = DataProvider().cachedUserTasks;
+    if (cachedTasks.isNotEmpty) {
+      _tasks = List<dynamic>.from(cachedTasks);
+    }
     _initializeData();
-    // Load tasks for the current user
     loadTasks();
-    ClientGenerationService.instance.ensureLoaded();
-    MobileQuickActionsService.instance
-        .ensureSurface(MobileQuickActionSurface.projectHomeNew);
+    unawaited(ClientGenerationService.instance.ensureLoaded());
+    unawaited(MobileQuickActionsService.instance
+        .ensureSurface(MobileQuickActionSurface.projectHomeNew));
 
     // Add listener to scroll to top when search field is focused
     _quickSearchFocusNode.addListener(() {
@@ -956,67 +1001,10 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
   }
 
   Future<void> _initializeData() async {
-    // Load updates immediately and independently - this is critical for showing updates right away
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    final role = prefs.getString('role');
-    final projectId = prefs.getString('project_id');
-
-    final dataProvider = DataProvider();
-
-    if (projectId != null && projectId.isNotEmpty) {
-      // First priority: Load latest updates independently and immediately
-      // This ensures updates show without waiting for other data to load
-      dataProvider.loadLatestUpdatesForProject(projectId).then((_) {
-        // Refresh UI after updates load
-        if (mounted) {
-          loadDataFromProvider();
-        }
-      }).catchError((e) {
-        print('[UserDashboard] Error loading latest updates: $e');
-      });
-
-      // Load other project data (location, completion, etc.) in parallel
-      if (role == 'Client') {
-        // For Client users, load client project data which includes all project info
-        dataProvider.loadClientProjectData().catchError((e) {
-          print('[UserDashboard] Error loading client project data: $e');
-        });
-      } else {
-        // For non-Client users, load project data (location, completion, etc.)
-        // Updates are already loading above, but this also includes them (for consistency)
-        dataProvider.loadProjectDataForProject(projectId).catchError((e) {
-          print('[UserDashboard] Error loading project data: $e');
-        });
-
-        // Preload other project data (payments, gallery, etc.) in background
-        // This doesn't block updates from loading
-        dataProvider.loadProjectDataForNonClient(projectId).catchError((e) {
-          print('[UserDashboard] Error preloading project data: $e');
-        });
-      }
-
-      DataProvider().loadProjectTimeline().then((_) {
-        if (mounted) setState(() {});
-      }).catchError((e) {
-        print('[UserDashboard] Error preloading project timeline: $e');
-      });
-
-      // Refresh UI periodically to pick up loaded data
-      Future.delayed(Duration(milliseconds: 500), () {
-        if (mounted) {
-          loadDataFromProvider();
-        }
-      });
-
-      Future.delayed(Duration(milliseconds: 1000), () {
-        if (mounted) {
-          loadDataFromProvider();
-        }
-      });
+    await DataProvider().openHome(force: false);
+    if (mounted) {
+      await loadDataFromProvider();
     }
-
-    // Also run the standard reloadData for other data dependencies
-    await reloadData(force: true);
   }
 
   loadDataFromProvider() async {
@@ -1101,9 +1089,20 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
         MobileQuickActionSurface.projectHomeNew,
         force: true,
       );
+      await MobileBottomNavService.instance.ensureSurface(
+        MobileBottomNavSurface.projectNew,
+        force: true,
+      );
     }
     // Section flags are reset inside loadDataFromProvider once data is applied.
     // Note: loadTasks() is only called once at initState to avoid multiple API calls
+  }
+
+  Future<void> _openHomeSlotsViewAll() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const SlotsScreen()),
+    );
   }
 
   String _tasksDeltaKey(List<dynamic> tasks) {
@@ -1153,107 +1152,54 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
         throw Exception('Missing credentials. Please log in again.');
       }
 
-      // Fetch tasks for the current client/user and project. Some workflow
-      // tasks are assigned directly to the user, so project_id alone can miss
-      // client-assigned work.
-      Map<String, String> queryParams = {
-        'user_id': userId,
-        'assigned_to': userId,
-      };
-      if (projectId != null && projectId.isNotEmpty) {
-        queryParams['project_id'] = projectId;
-      }
-
-      Uri uri = Uri.parse("https://office.buildahome.in/API/get_tasks").replace(
-        queryParameters: queryParams,
+      final provider = DataProvider();
+      List<dynamic> allTasks = await provider.loadUserTasks(
+        projectId: projectId,
+        applyProjectId: projectId != null && projectId.isNotEmpty,
       );
 
-      print('[UserDashboard] Fetching tasks with filters: $queryParams');
-      var response = await ApiHttp.get(uri).timeout(const Duration(seconds: 20));
-
-      if (response.statusCode == 200) {
-        final decoded = jsonDecode(response.body);
-        List<dynamic> fetchedTasks = [];
-
-        if (decoded is Map &&
-            decoded['success'] == true &&
-            decoded['tasks'] != null) {
-          fetchedTasks = decoded['tasks'] is List ? decoded['tasks'] : [];
-        } else if (decoded is Map && decoded['tasks'] != null) {
-          fetchedTasks = decoded['tasks'] is List ? decoded['tasks'] : [];
-        } else if (decoded is List) {
-          fetchedTasks = decoded;
-        }
-
-        // Deduplicate by task id (workflow ids may not be integers).
-        final taskMap = <String, dynamic>{};
-        for (var task in fetchedTasks) {
-          if (task is Map && task['id'] != null) {
-            final taskId = task['id'].toString().trim();
-            if (taskId.isNotEmpty && taskId != '0') {
-              taskMap[taskId] = task;
-            }
-          }
-        }
-
-        List<dynamic> allTasks = taskMap.values.toList();
-
-        await DataProvider().cacheSalesSopIdsFromTasks(allTasks);
-        String? salesSopId;
-        if (projectId != null && projectId.isNotEmpty) {
-          salesSopId = await DataProvider().resolveSalesSopId(
-            projectId: projectId,
-            apiToken: apiToken,
-            tasksHint: allTasks,
-          );
-        }
-
-        // API uses OR logic across filters. Keep this user's tasks for the
-        // selected project, including workflow rows keyed by sales_sop_id.
-        allTasks = filterTasksForProjectAndAssignee(
-          allTasks,
-          userId: userId,
+      await provider.cacheSalesSopIdsFromTasks(allTasks);
+      String? salesSopId;
+      if (projectId != null && projectId.isNotEmpty) {
+        salesSopId = await provider.resolveSalesSopId(
           projectId: projectId,
-          alsoMatchProjectIds: [
-            if (salesSopId != null && salesSopId.isNotEmpty) salesSopId,
-          ],
+          apiToken: apiToken,
+          tasksHint: allTasks,
         );
-
-        // Sort by creation date (newest first)
-        allTasks.sort((a, b) {
-          if (a is! Map || b is! Map) return 0;
-          String aDate = (a['created_at'] ?? '').toString();
-          String bDate = (b['created_at'] ?? '').toString();
-          return bDate.compareTo(aDate);
-        });
-
-        if (!mounted) return;
-        final changed = _tasksDeltaKey(_tasks) != _tasksDeltaKey(allTasks);
-        if (changed || showLoader) {
-          setState(() {
-            _tasks = allTasks;
-            _isLoadingTasks = false;
-          });
-        } else {
-          _isLoadingTasks = false;
-        }
-
-        print(
-            '[UserDashboard] Loaded ${allTasks.length} tasks for project $projectId');
-      } else if (response.statusCode == 404) {
-        // No tasks found - this is okay
-        if (!mounted) return;
-        if (_tasks.isNotEmpty || showLoader) {
-          setState(() {
-            _tasks = [];
-            _isLoadingTasks = false;
-          });
-        } else {
-          _isLoadingTasks = false;
-        }
-      } else {
-        throw Exception('Unable to load tasks (code ${response.statusCode})');
       }
+
+      // API uses OR logic across filters. Keep this user's tasks for the
+      // selected project, including workflow rows keyed by sales_sop_id.
+      allTasks = filterTasksForProjectAndAssignee(
+        allTasks,
+        userId: userId,
+        projectId: projectId,
+        alsoMatchProjectIds: [
+          if (salesSopId != null && salesSopId.isNotEmpty) salesSopId,
+        ],
+      );
+
+      // Sort by creation date (newest first)
+      allTasks.sort((a, b) {
+        if (a is! Map || b is! Map) return 0;
+        String aDate = (a['created_at'] ?? '').toString();
+        String bDate = (b['created_at'] ?? '').toString();
+        return bDate.compareTo(aDate);
+      });
+
+      if (!mounted) return;
+      final changed = _tasksDeltaKey(_tasks) != _tasksDeltaKey(allTasks);
+      if (changed || showLoader) {
+        setState(() {
+          _tasks = allTasks;
+          _isLoadingTasks = false;
+        });
+      } else {
+        _isLoadingTasks = false;
+      }
+
+      print(
+          '[UserDashboard] Loaded ${allTasks.length} tasks for project $projectId');
     } catch (e) {
       if (e is SessionInvalidatedException) return;
       if (!mounted) return;
@@ -1628,7 +1574,7 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
         children: [
           Expanded(child: _buildBahChatCard()),
           const SizedBox(width: 12),
-          Expanded(child: _buildProjectLatestTasksCard()),
+          Expanded(child: _buildProjectSlotsCard()),
         ],
       ),
     );
@@ -1693,6 +1639,94 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
                   const Center(
                     child: Text(
                       'Start a conversation',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: _mutedGrey,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                        height: 1.3,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              Positioned(
+                right: 0,
+                top: 54,
+                child: Container(
+                  width: 28,
+                  height: 28,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: const Color(0xFFE8ECF1)),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Color(0x12000000),
+                        blurRadius: 8,
+                        offset: Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: const Icon(
+                    Icons.chevron_right_rounded,
+                    color: Color(0xFF2563EB),
+                    size: 18,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildProjectSlotsCard() {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: _openHomeSlotsViewAll,
+        borderRadius: BorderRadius.circular(18),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(14, 14, 14, 16),
+          decoration: _dashboardSurfaceDecoration,
+          child: Stack(
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Your Slots',
+                    style: TextStyle(
+                      color: _navy,
+                      fontSize: 14.5,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  Center(
+                    child: Container(
+                      width: 88,
+                      height: 88,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFEFF6FF),
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: const Color(0xFFDBEAFE),
+                        ),
+                      ),
+                      child: Icon(
+                        Icons.event_available_outlined,
+                        size: 34,
+                        color: AppTheme.getPrimaryColor(context),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  const Center(
+                    child: Text(
+                      'View and choose visit times',
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         color: _mutedGrey,
@@ -3075,24 +3109,22 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
       menuItems.add({
         'title': 'Indents',
         'icon': Icons.request_quote,
-        'route': () async {
-          final prefs = await SharedPreferences.getInstance();
+        'route': () {
+          final dp = DataProvider();
           return IndentsScreenLayout(
-            initialProjectId: prefs.getString('project_id'),
-            initialProjectName: prefs.getString('client_name'),
+            initialProjectId: dp.clientProjectId,
+            initialProjectName: username == ' ' ? null : username,
           );
         },
       });
       menuItems.add({
         'title': 'Approved POs',
         'icon': Icons.receipt_long_outlined,
-        'route': () async {
-          final prefs = await SharedPreferences.getInstance();
-          final projectId = prefs.getString('project_id');
-          final projectName = prefs.getString('client_name');
+        'route': () {
+          final dp = DataProvider();
           return ApprovedPosScreenLayout(
-            initialProjectId: projectId,
-            initialProjectName: projectName,
+            initialProjectId: dp.clientProjectId,
+            initialProjectName: username == ' ' ? null : username,
           );
         },
       });
@@ -3751,8 +3783,12 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
         controller: _quickSearchController,
         focusNode: _quickSearchFocusNode,
         onChanged: (value) {
-          setState(() {
-            _quickSearchQuery = value;
+          _searchDebounce?.cancel();
+          _searchDebounce = Timer(const Duration(milliseconds: 140), () {
+            if (!mounted) return;
+            setState(() {
+              _quickSearchQuery = value;
+            });
           });
         },
         style: TextStyle(fontSize: 14, color: AppTheme.getTextPrimary(context)),
@@ -3842,8 +3878,12 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
               }
             },
             onChanged: (value) {
-              setState(() {
-                _quickSearchQuery = value;
+              _searchDebounce?.cancel();
+              _searchDebounce = Timer(const Duration(milliseconds: 140), () {
+                if (!mounted) return;
+                setState(() {
+                  _quickSearchQuery = value;
+                });
               });
             },
             decoration: InputDecoration(
@@ -3929,6 +3969,7 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
 
   void _clearQuickSearch() {
     if (!mounted) return;
+    _searchDebounce?.cancel();
     _quickSearchController.clear();
     _quickSearchFocusNode.unfocus();
     setState(() {
@@ -4023,6 +4064,78 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
     await _navigateToWidget(
       ChatV1App.openQuick(tasksHint: _tasks),
     );
+  }
+
+  /// Opens a backend bottom-nav tab by canonical action key.
+  Future<void> openBottomNavAction(
+    String key, {
+    required MobileBottomNavSurface surface,
+    DashboardChromeStyle chromeStyle = DashboardChromeStyle.user,
+    Color? appBarColor,
+  }) async {
+    final canonical = canonicalizeMobileBottomNavKey(key);
+    if (canonical.isEmpty || isPinnedBottomNavKey(canonical)) return;
+
+    if (canonical == 'my_tasks') {
+      await _navigateToWidget(
+        MyTasksScreen(
+          tasks: List<dynamic>.from(_tasks),
+          onRefresh: _refreshTasksForMyTasks,
+        ),
+        chromeStyle: chromeStyle,
+        appBarColor: appBarColor,
+      );
+      return;
+    }
+    if (canonical == 'updates') {
+      await _navigateToWidget(
+        const DprScreen(title: 'Updates'),
+        chromeStyle: chromeStyle,
+        appBarColor: appBarColor,
+      );
+      return;
+    }
+    if (canonical == 'chatbox') {
+      if (_restrictLegacyClientFeatures) {
+        await showFeatureComingSoon(context, featureName: 'Chat');
+        return;
+      }
+      await _navigateToWidget(
+        ChatV1App.openQuick(tasksHint: _tasks),
+        chromeStyle: chromeStyle,
+        appBarColor: appBarColor,
+      );
+      return;
+    }
+
+    final title = flutterTitleForMobileBottomNav(surface, canonical);
+    if (title == null) return;
+    Map<String, dynamic>? item;
+    for (final candidate in getMenuItems()) {
+      if (candidate['title']?.toString() == title) {
+        item = candidate;
+        break;
+      }
+    }
+    if (item == null) return;
+    if (_restrictLegacyClientFeatures && !_isLegacyFeatureAllowed(title)) {
+      await showFeatureComingSoon(context, featureName: title);
+      return;
+    }
+    if (_openingMenu) return;
+    _openingMenu = true;
+    try {
+      final routeResult = item['route']();
+      final widget = routeResult is Future ? await routeResult : routeResult;
+      if (widget is! Widget) return;
+      await _navigateToWidget(
+        widget,
+        chromeStyle: chromeStyle,
+        appBarColor: appBarColor,
+      );
+    } finally {
+      _openingMenu = false;
+    }
   }
 
   Future<void> openDocuments() async {
@@ -4302,29 +4415,28 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
     await _navigateToWidget(PaymentTaskWidget(initialCategory: category));
   }
 
-  Future<void> _navigateToWidget(Widget widget) async {
-    await DataProvider().reloadData();
+  Future<void> _navigateToWidget(
+    Widget widget, {
+    DashboardChromeStyle chromeStyle = DashboardChromeStyle.user,
+    Color? appBarColor,
+  }) async {
     if (!mounted) return;
 
-    // Create a custom route that intercepts back button presses
     final routeName = widget.runtimeType.toString();
     final route = _BackButtonInterceptingRoute(
       routeName: routeName,
       pageBuilder: (context, animation, secondaryAnimation) =>
-          DashboardChrome.wrap(DashboardChromeStyle.user, widget),
+          DashboardChrome.wrap(
+        chromeStyle,
+        widget,
+        appBarColor: appBarColor,
+      ),
     );
-
-    print('[UserDashboard] Pushing route: $routeName');
-    print('[UserDashboard] Route type: ${route.runtimeType}');
-    print('[UserDashboard] Route settings: ${route.settings}');
 
     await Navigator.push(context, route);
 
     if (!mounted) return;
-    print('[UserDashboard] ========== Navigator.push completed ==========');
-    print('[UserDashboard] Route popped - returned from: $routeName');
-    print('[UserDashboard] ===============================================');
-    reloadData();
+    unawaited(reloadData(force: false));
   }
 
   Widget _buildLoadingState() {

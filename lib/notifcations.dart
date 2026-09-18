@@ -12,7 +12,6 @@ import 'approved_pos_screen.dart';
 import 'indent_proof.dart';
 import 'indents_screen.dart';
 import 'services/app_deep_link_service.dart';
-import 'services/data_provider.dart';
 import 'services/notification_service.dart';
 import 'widgets/themed_scaffold.dart';
 import 'widgets/skeleton_loader.dart';
@@ -467,23 +466,14 @@ class NotificationPageBodyState extends State<NotificationPageBody> {
   }
 
   Future<void> _openMyTasks({String? focusTaskId}) async {
-    final dp = DataProvider();
-    final tasks = <dynamic>[
-      ...dp.clientPendingTasks,
-      ...dp.clientTimelineTasks,
-    ];
+    final tasks = await fetchTasksForCurrentUser();
+    if (!mounted) return;
     await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => MyTasksScreen(
           tasks: tasks,
           focusTaskId: focusTaskId,
-          onRefresh: () async {
-            await dp.reloadData();
-            return <dynamic>[
-              ...DataProvider().clientPendingTasks,
-              ...DataProvider().clientTimelineTasks,
-            ];
-          },
+          onRefresh: fetchTasksForCurrentUser,
         ),
       ),
     );

@@ -118,13 +118,33 @@ class WorkflowDocumentUpload {
 
   /// Status label from backend when available; otherwise derived from isLatest.
   String get displayStatus {
-    final rawStatus = status?.trim().toLowerCase();
+    final rawStatus = status?.trim();
     if (rawStatus != null && rawStatus.isNotEmpty) {
-      if (rawStatus == 'latest') return 'Latest';
-      if (rawStatus == 'superseded') return 'Superseded';
-      if (rawStatus == 'verified') return 'Verified';
-      return status!.trim();
+      switch (rawStatus.toLowerCase()) {
+        case 'latest':
+          return 'Latest';
+        case 'uploaded':
+          return 'Uploaded';
+        case 'available':
+          return 'Available';
+        case 'pending':
+          return 'Pending';
+        case 'missing':
+          return 'Missing';
+        case 'inactive':
+          return 'Inactive';
+        case 'mandatory':
+        case 'required':
+          return 'Required';
+        case 'superseded':
+          return 'Superseded';
+        case 'verified':
+          return 'Verified';
+        default:
+          return rawStatus;
+      }
     }
+    if (!hasUrl) return 'Pending';
     return isLatest ? 'Latest' : 'Superseded';
   }
 
@@ -307,14 +327,27 @@ class WorkflowDocumentLibrary {
     return null;
   }
 
-  /// Categories for the Documents tab (excludes KYC-only journey).
+  /// Categories for client document lists (excludes KYC / office / receipts).
   List<WorkflowDocumentCategory> get documentsTabCategories {
-    const excluded = {'kyc_documents'};
-    return clientJourneyCategories
-        .where((category) {
-          final key = (category.clientJourneyKey ?? category.id).toLowerCase();
-          return !excluded.contains(key);
-        })
-        .toList();
+    const excluded = {
+      'kyc_documents',
+      'office_documents',
+      'receipts_and_agreements',
+      'gallery',
+    };
+    bool keep(WorkflowDocumentCategory category) {
+      final key = (category.clientJourneyKey ??
+              category.libraryGroupKey ??
+              category.id)
+          .toLowerCase();
+      if (excluded.contains(key)) return false;
+      if (key.contains('kyc')) return false;
+      return true;
+    }
+
+    final source = libraryCategories.isNotEmpty
+        ? libraryCategories
+        : clientJourneyCategories;
+    return source.where(keep).toList();
   }
 }

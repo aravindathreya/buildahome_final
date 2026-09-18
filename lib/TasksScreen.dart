@@ -215,25 +215,32 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
 
   @override
   void dispose() {
+    _filterDebounce?.cancel();
     noteController.dispose();
     _searchController.removeListener(_filterProjects);
     _searchController.dispose();
     super.dispose();
   }
 
+  Timer? _filterDebounce;
+
   void _filterProjects() {
-    final query = _searchController.text.toLowerCase().trim();
-    setState(() {
-      if (query.isEmpty) {
-        _filteredProjects = List<dynamic>.from(_projects);
-      } else {
-        _filteredProjects = _projects.where((project) {
-          final name = project['name']?.toString().toLowerCase() ?? '';
-          final id = project['id']?.toString() ?? '';
-          final client = project['client_name']?.toString().toLowerCase() ?? '';
-          return name.contains(query) || id.contains(query) || client.contains(query);
-        }).toList();
-      }
+    _filterDebounce?.cancel();
+    _filterDebounce = Timer(const Duration(milliseconds: 140), () {
+      if (!mounted) return;
+      final query = _searchController.text.toLowerCase().trim();
+      setState(() {
+        if (query.isEmpty) {
+          _filteredProjects = List<dynamic>.from(_projects);
+        } else {
+          _filteredProjects = _projects.where((project) {
+            final name = project['name']?.toString().toLowerCase() ?? '';
+            final id = project['id']?.toString() ?? '';
+            final client = project['client_name']?.toString().toLowerCase() ?? '';
+            return name.contains(query) || id.contains(query) || client.contains(query);
+          }).toList();
+        }
+      });
     });
   }
 
@@ -1477,14 +1484,16 @@ class _ViewTasksPageState extends State<ViewTasksPage> {
                     }
                   },
                   color: AppTheme.getPrimaryColor(context),
-                  child: ListView(
+                  child: ListView.builder(
                     padding: EdgeInsets.all(20),
-                    children: _filteredTasks.map((task) {
+                    itemCount: _filteredTasks.length,
+                    itemBuilder: (context, index) {
+                      final task = _filteredTasks[index];
                       if (task is Map<String, dynamic>) {
-                        return _buildTaskCard(task);
+                        return RepaintBoundary(child: _buildTaskCard(task));
                       }
-                      return SizedBox.shrink();
-                    }).toList(),
+                      return const SizedBox.shrink();
+                    },
                   ),
                 ),
         ),

@@ -19,6 +19,9 @@ class WorkflowDocumentService {
 
   static const String baseUrl = 'https://office.buildahome.in';
 
+  Uri? _workingDetailsUri;
+  Uri? _workingTasksUri;
+
   Future<WorkflowDocumentLibrary> fetchLibrary({String? projectId}) async {
     final prefs = await SharedPreferences.getInstance();
     final resolvedProjectId =
@@ -32,22 +35,21 @@ class WorkflowDocumentService {
       throw Exception('Project not selected');
     }
 
-    dynamic salesSopDetails;
-    dynamic taskData;
-
-    salesSopDetails = await _fetchSalesSopDetails(
-      projectId: resolvedProjectId,
-      salesSopId: salesSopId,
-      apiToken: apiToken,
-    );
-    taskData = await _fetchProjectTasks(
-      projectId: resolvedProjectId,
-      apiToken: apiToken,
-    );
+    final results = await Future.wait<dynamic>([
+      _fetchSalesSopDetails(
+        projectId: resolvedProjectId,
+        salesSopId: salesSopId,
+        apiToken: apiToken,
+      ),
+      _fetchProjectTasks(
+        projectId: resolvedProjectId,
+        apiToken: apiToken,
+      ),
+    ]);
 
     return _buildLibrary(
-      salesSopDetails: salesSopDetails,
-      taskData: taskData,
+      salesSopDetails: results[0],
+      taskData: results[1],
     );
   }
 
@@ -77,22 +79,36 @@ class WorkflowDocumentService {
       '$baseUrl/API/sales_sop_details',
     ];
 
+    Future<dynamic> tryUri(Uri uri) async {
+      try {
+        final response = await ApiHttp.get(
+          uri,
+          headers: {
+            'Accept': 'application/json',
+            'X-Api-Token': apiToken,
+            'Authorization': 'Bearer $apiToken',
+          },
+        ).timeout(const Duration(seconds: 20));
+        if (response.statusCode != 200) return null;
+        return jsonDecode(response.body);
+      } catch (_) {
+        return null;
+      }
+    }
+
+    if (_workingDetailsUri != null) {
+      final cached = await tryUri(_workingDetailsUri!);
+      if (cached != null) return cached;
+      _workingDetailsUri = null;
+    }
+
     for (final path in paths) {
       for (final query in queryAttempts) {
-        try {
-          final uri = Uri.parse(path).replace(queryParameters: query);
-          final response = await ApiHttp.get(
-            uri,
-            headers: {
-              'Accept': 'application/json',
-              'X-Api-Token': apiToken,
-              'Authorization': 'Bearer $apiToken',
-            },
-          ).timeout(const Duration(seconds: 20));
-          if (response.statusCode != 200) continue;
-          return jsonDecode(response.body);
-        } catch (_) {
-          continue;
+        final uri = Uri.parse(path).replace(queryParameters: query);
+        final hit = await tryUri(uri);
+        if (hit != null) {
+          _workingDetailsUri = uri;
+          return hit;
         }
       }
     }
@@ -112,6 +128,10 @@ class WorkflowDocumentService {
       ),
     ];
 
+    if (_workingTasksUri != null) {
+      attempts.insert(0, _workingTasksUri!);
+    }
+
     for (final uri in attempts) {
       try {
         final response = await ApiHttp.get(
@@ -123,6 +143,7 @@ class WorkflowDocumentService {
           },
         ).timeout(const Duration(seconds: 20));
         if (response.statusCode != 200) continue;
+        _workingTasksUri = uri;
         return jsonDecode(response.body);
       } catch (_) {
         continue;

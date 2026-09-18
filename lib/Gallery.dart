@@ -522,9 +522,12 @@ class _GalleryState extends State<Gallery> {
         (MediaQuery.of(context).size.width - 16 * 2 - 27 * 2) / 3;
     final imageUrl =
         "https://office.buildahome.in/files/migrated/${entry['image']}";
+    final cacheWidth = _galleryImageCacheWidth(context);
     final child = CachedNetworkImage(
       imageUrl: imageUrl,
       fit: BoxFit.cover,
+      memCacheWidth: cacheWidth,
+      memCacheHeight: cacheWidth,
       progressIndicatorBuilder: (context, url, progress) => _buildImageSkeleton(),
       errorWidget: (context, url, error) => _buildBrokenImage(context),
     );
@@ -532,10 +535,7 @@ class _GalleryState extends State<Gallery> {
           MaterialPageRoute(builder: (_) => FullScreenImage(imageUrl)),
         );
 
-    return AnimatedWidgetSlide(
-      direction: SlideDirection.bottomToTop,
-      duration: const Duration(milliseconds: 300),
-      child: InkWell(
+    return InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(12),
         child: Ink(
@@ -557,7 +557,6 @@ class _GalleryState extends State<Gallery> {
             child: child,
           ),
         ),
-      ),
     );
   }
 

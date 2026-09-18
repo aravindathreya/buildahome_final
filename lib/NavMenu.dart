@@ -1,9 +1,7 @@
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'AddDailyUpdate.dart';
@@ -82,65 +80,6 @@ Future<void> Function(BuildContext) _openAfterProjectPick(
     if (!context.mounted || page == null) return;
     await Navigator.push(context, _navFadeRoute(page));
   };
-}
-
-Future<List<dynamic>> _fetchTasksForCurrentUser() async {
-  final prefs = await SharedPreferences.getInstance();
-  final userId = prefs.getString('userId') ?? prefs.getString('user_id');
-  final apiToken = prefs.getString('api_token');
-  final role = prefs.getString('role');
-  final projectId = prefs.getString('project_id');
-  if (userId == null || apiToken == null) return <dynamic>[];
-
-  final queryParams = <String, String>{
-    'user_id': userId,
-    'assigned_to': userId,
-  };
-  if (role == 'Client' && projectId != null && projectId.isNotEmpty) {
-    queryParams['project_id'] = projectId;
-  }
-
-  final uri = Uri.parse('https://office.buildahome.in/API/get_tasks').replace(
-    queryParameters: queryParams,
-  );
-  final response = await http.get(uri).timeout(const Duration(seconds: 20));
-  if (response.statusCode != 200) return <dynamic>[];
-
-  final decoded = jsonDecode(response.body);
-  List<dynamic> fetched = [];
-  if (decoded is Map && decoded['tasks'] is List) {
-    fetched = decoded['tasks'];
-  } else if (decoded is List) {
-    fetched = decoded;
-  }
-
-  final taskMap = <String, dynamic>{};
-  for (final task in fetched) {
-    if (task is Map && task['id'] != null) {
-      final id = task['id'].toString().trim();
-      if (id.isNotEmpty && id != '0') taskMap[id] = task;
-    }
-  }
-
-  final allTasks = taskMap.values.toList();
-  String? salesSopId;
-  if (role == 'Client' && projectId != null && projectId.isNotEmpty) {
-    await DataProvider().cacheSalesSopIdsFromTasks(allTasks);
-    salesSopId = await DataProvider().resolveSalesSopId(
-      projectId: projectId,
-      apiToken: apiToken,
-      tasksHint: allTasks,
-    );
-  }
-
-  return filterTasksForProjectAndAssignee(
-    allTasks,
-    userId: userId,
-    projectId: role == 'Client' ? projectId : null,
-    alsoMatchProjectIds: [
-      if (salesSopId != null && salesSopId.isNotEmpty) salesSopId,
-    ],
-  );
 }
 
 class _NavSection {
@@ -287,38 +226,16 @@ class NavMenuItem extends StatelessWidget {
       color: Colors.transparent,
       child: InkWell(
         onTap: () => _handleTap(context),
-        child: Container(
-          margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-          decoration: BoxDecoration(
-            color: isLogout
-                ? const Color(0xFFFFF1F2)
-                : AppTheme.getBackgroundPrimaryLight(context),
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(
-              color: isLogout
-                  ? const Color(0xFFFECACA)
-                  : AppTheme.getBorderColor(context),
-            ),
-          ),
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(20, isLogout ? 10 : 8, 16, isLogout ? 10 : 8),
           child: Row(
             children: [
-              Container(
-                width: 38,
-                height: 38,
-                decoration: BoxDecoration(
-                  color: isLogout
-                      ? const Color(0xFFFEE2E2)
-                      : AppTheme.navy.withValues(alpha: 0.08),
-                  borderRadius: BorderRadius.circular(11),
-                ),
-                child: Icon(
-                  entry.icon,
-                  color: isLogout ? const Color(0xFFDC2626) : AppTheme.navy,
-                  size: 20,
-                ),
+              Icon(
+                entry.icon,
+                color: isLogout ? const Color(0xFFDC2626) : AppTheme.navy,
+                size: 22,
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 14),
               Expanded(
                 child: Text(
                   entry.comingSoon && entry.title == 'ChatBox'
@@ -326,7 +243,7 @@ class NavMenuItem extends StatelessWidget {
                       : entry.title,
                   style: TextStyle(
                     fontSize: 15,
-                    fontWeight: FontWeight.w700,
+                    fontWeight: FontWeight.w600,
                     color: isLogout
                         ? const Color(0xFFB91C1C)
                         : entry.comingSoon
@@ -562,11 +479,11 @@ class NavMenuWidgetState extends State<NavMenuWidget> {
         actionKey: 'my_tasks',
         title: 'My Tasks',
         icon: Icons.pending_actions_rounded,
-        route: () async {
-          final tasks = await _fetchTasksForCurrentUser();
+        route: () {
+          final cached = DataProvider().cachedUserTasks;
           return MyTasksScreen(
-            tasks: tasks,
-            onRefresh: _fetchTasksForCurrentUser,
+            tasks: cached.isNotEmpty ? cached : const [],
+            onRefresh: fetchTasksForCurrentUser,
           );
         },
       ),
@@ -886,8 +803,8 @@ class NavMenuWidgetState extends State<NavMenuWidget> {
           children: [
             Container(
               width: double.infinity,
-              margin: const EdgeInsets.fromLTRB(12, 8, 12, 12),
-              padding: const EdgeInsets.fromLTRB(16, 18, 16, 18),
+              margin: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+              padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
               decoration: BoxDecoration(
                 gradient: const LinearGradient(
                   colors: [AppTheme.navy, AppTheme.navySoft],
@@ -957,11 +874,11 @@ class NavMenuWidgetState extends State<NavMenuWidget> {
             Expanded(
               child: ListView(
                 dragStartBehavior: DragStartBehavior.start,
-                padding: const EdgeInsets.only(bottom: 24),
+                padding: const EdgeInsets.only(bottom: 16),
                 children: [
                   for (final section in sections) ...[
                     Padding(
-                      padding: const EdgeInsets.fromLTRB(20, 14, 20, 6),
+                      padding: const EdgeInsets.fromLTRB(20, 10, 20, 2),
                       child: Text(
                         section.title.toUpperCase(),
                         style: const TextStyle(

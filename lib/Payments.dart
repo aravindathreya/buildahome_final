@@ -42,6 +42,7 @@ class _PaymentsDashboardState extends State<PaymentsDashboard> {
   String? errorMessage;
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
+  Timer? _searchDebounce;
   int _loadRequestId = 0;
   static const Duration _requestTimeout = Duration(seconds: 20);
   double _zoomLevel = 1.0; // Zoom level: 1.0 = 100%, base is smaller
@@ -72,6 +73,7 @@ class _PaymentsDashboardState extends State<PaymentsDashboard> {
     print('║  Reason: Android/system back button was pressed                ║');
     print('╚════════════════════════════════════════════════════════════════╝');
     print('\n');
+    _searchDebounce?.cancel();
     _searchController.dispose();
     _loadRequestId++;
     super.dispose();
@@ -112,12 +114,20 @@ class _PaymentsDashboardState extends State<PaymentsDashboard> {
         cachedTenderData = dataProvider.cachedSchedule;
       }
 
-      // Use cache if available and not initial load
-      if (cachedPaymentData != null && !showLoader) {
-        _processPaymentData(cachedPaymentData, cachedTenderData ?? [], [], requestId);
-        
-        // Still refresh in background
-        _fetchPaymentsFromApi(projectId, dataProvider, role, requestId);
+      // Paint cached payments immediately, then refresh in the background.
+      if (cachedPaymentData != null) {
+        _processPaymentData(
+          cachedPaymentData,
+          cachedTenderData ?? [],
+          [],
+          requestId,
+        );
+        if (showLoader && mounted && !_shouldIgnoreLoad(requestId)) {
+          _safeSetState(() {
+            isLoading = false;
+          });
+        }
+        unawaited(_fetchPaymentsFromApi(projectId, dataProvider, role, requestId));
         return;
       }
 
@@ -148,41 +158,52 @@ class _PaymentsDashboardState extends State<PaymentsDashboard> {
 
       print('[Payments] Loading data for project $projectId');
 
-      final paymentResponse = await _fetchWithLogging('payment', paymentUrl);
-      print('[Payments] Payment response: ${paymentResponse.body}');
-      if (paymentResponse.statusCode != 200) {
+      Future<http.Response?> safeGet(String label, String url) async {
+        try {
+          return await _fetchWithLogging(label, url);
+        } catch (e) {
+          print('[Payments] $label request error: $e');
+          return null;
+        }
+      }
+
+      final results = await Future.wait([
+        safeGet('payment', paymentUrl),
+        safeGet('tender', tenderUrl),
+        safeGet('non-tender', nonTenderUrl),
+      ]);
+
+      if (_shouldIgnoreLoad(requestId)) return;
+
+      final paymentResponse = results[0];
+      if (paymentResponse == null || paymentResponse.statusCode != 200) {
         throw Exception('Unable to load payment summary right now.');
       }
+      print('[Payments] Payment response: ${paymentResponse.body}');
 
       List<dynamic> tenderData = [];
       List<dynamic> nonTenderData = [];
 
-      try {
-        final tenderResponse = await _fetchWithLogging('tender', tenderUrl);
-        if (tenderResponse.statusCode == 200) {
-          final decoded = jsonDecode(tenderResponse.body);
-          if (decoded is List) {
-            tenderData = decoded;
-          }
-        } else {
-          print('[Payments] Tender request failed with status ${tenderResponse.statusCode}');
+      final tenderResponse = results[1];
+      if (tenderResponse != null && tenderResponse.statusCode == 200) {
+        final decoded = jsonDecode(tenderResponse.body);
+        if (decoded is List) {
+          tenderData = decoded;
         }
-      } catch (e) {
-        print('[Payments] Tender request error: $e');
+      } else if (tenderResponse != null) {
+        print(
+            '[Payments] Tender request failed with status ${tenderResponse.statusCode}');
       }
 
-      try {
-        final nonTenderResponse = await _fetchWithLogging('non-tender', nonTenderUrl);
-        if (nonTenderResponse.statusCode == 200) {
-          final decoded = jsonDecode(nonTenderResponse.body);
-          if (decoded is List) {
-            nonTenderData = decoded;
-          }
-        } else {
-          print('[Payments] Non-tender request failed with status ${nonTenderResponse.statusCode}');
+      final nonTenderResponse = results[2];
+      if (nonTenderResponse != null && nonTenderResponse.statusCode == 200) {
+        final decoded = jsonDecode(nonTenderResponse.body);
+        if (decoded is List) {
+          nonTenderData = decoded;
         }
-      } catch (e) {
-        print('[Payments] Non-tender request error: $e');
+      } else if (nonTenderResponse != null) {
+        print(
+            '[Payments] Non-tender request failed with status ${nonTenderResponse.statusCode}');
       }
 
       final paymentDetails = jsonDecode(paymentResponse.body);
@@ -313,22 +334,38 @@ class _PaymentsDashboardState extends State<PaymentsDashboard> {
       return _buildError();
     }
 
+    final items = _filteredItems;
+    final summary = _currentSummary;
     return RefreshIndicator(
       onRefresh: () => _loadData(showLoader: false),
       color: AppTheme.navy,
-      child: ListView(
-        physics: AlwaysScrollableScrollPhysics(),
-        padding: EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-        children: [
-          _buildHeader(),
-          SizedBox(height: 16),
-          _buildFilterChips(),
-          SizedBox(height: 16),
-          _buildSummaryCards(_currentSummary),
-          SizedBox(height: 24),
-          _buildSearchField(),
-          SizedBox(height: 20),
-          _buildPaymentList(_filteredItems, _currentSummary, isSearching: _isSearching),
+      child: CustomScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        slivers: [
+          SliverPadding(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+            sliver: SliverToBoxAdapter(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildHeader(),
+                  const SizedBox(height: 16),
+                  _buildFilterChips(),
+                  const SizedBox(height: 16),
+                  _buildSummaryCards(summary),
+                  const SizedBox(height: 24),
+                  _buildSearchField(),
+                  const SizedBox(height: 20),
+                  _buildPaymentListHeader(items, isSearching: _isSearching),
+                ],
+              ),
+            ),
+          ),
+          if (items.isNotEmpty)
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+              sliver: _buildPaymentTableSliver(items, summary),
+            ),
         ],
       ),
     );
@@ -400,7 +437,14 @@ class _PaymentsDashboardState extends State<PaymentsDashboard> {
   Widget _buildSearchField() {
     return TextField(
       controller: _searchController,
-      onChanged: (value) => setState(() => _searchQuery = value),
+      onChanged: (value) {
+        _searchDebounce?.cancel();
+        _searchDebounce = Timer(const Duration(milliseconds: 140), () {
+          if (!mounted) return;
+          if (_searchQuery == value) return;
+          setState(() => _searchQuery = value);
+        });
+      },
       style: const TextStyle(
         color: AppTheme.navy,
         fontWeight: FontWeight.w600,
@@ -417,6 +461,7 @@ class _PaymentsDashboardState extends State<PaymentsDashboard> {
             : IconButton(
                 icon: const Icon(Icons.close_rounded, color: AppTheme.mutedGrey),
                 onPressed: () {
+                  _searchDebounce?.cancel();
                   _searchController.clear();
                   setState(() => _searchQuery = '');
                 },
@@ -550,7 +595,7 @@ class _PaymentsDashboardState extends State<PaymentsDashboard> {
     );
   }
 
-  Widget _buildPaymentList(List<PaymentItem> items, PaymentSummary summary, {bool isSearching = false}) {
+  Widget _buildPaymentListHeader(List<PaymentItem> items, {bool isSearching = false}) {
     if (items.isEmpty) {
       return Container(
         padding: EdgeInsets.all(24),
@@ -581,15 +626,6 @@ class _PaymentsDashboardState extends State<PaymentsDashboard> {
       );
     }
 
-    // Calculate total percentage billed - only include tasks that are paid or pending
-    double totalPercentage = items.fold(0.0, (sum, item) {
-      final status = item.status.toLowerCase().trim();
-      if (status == 'paid' || status == 'pending') {
-        return sum + item.percentage;
-      }
-      return sum;
-    });
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -607,8 +643,7 @@ class _PaymentsDashboardState extends State<PaymentsDashboard> {
             _buildZoomControls(),
           ],
         ),
-        SizedBox(height: 16),
-        _buildPaymentTable(items, summary, totalPercentage),
+        const SizedBox(height: 16),
       ],
     );
   }
@@ -667,7 +702,7 @@ class _PaymentsDashboardState extends State<PaymentsDashboard> {
     return baseSize * _zoomLevel;
   }
 
-  Widget _buildPaymentTable(List<PaymentItem> items, PaymentSummary summary, double totalPercentage) {
+  Widget _buildPaymentTableSliver(List<PaymentItem> items, PaymentSummary summary) {
     final headerFontSize = _getScaledFontSize(11);
     final cellFontSize = _getScaledFontSize(11);
     final noteFontSize = _getScaledFontSize(10);
@@ -675,17 +710,18 @@ class _PaymentsDashboardState extends State<PaymentsDashboard> {
     final paddingVertical = 10 * _zoomLevel;
     final paddingHorizontal = 12 * _zoomLevel;
     final bool isNonTender = selectedCategory == PaymentCategory.nonTender;
-    
-    final tableContent = Container(
+
+    return DecoratedSliver(
       decoration: BoxDecoration(
         color: AppTheme.getBackgroundSecondary(context),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: AppTheme.getPrimaryColor(context).withOpacity(0.1)),
       ),
-      child: Column(
-        children: [
-          // Table Header
-          Container(
+      sliver: SliverList(
+        delegate: SliverChildBuilderDelegate(
+          (context, index) {
+            if (index == 0) {
+              return Container(
             padding: EdgeInsets.symmetric(horizontal: paddingHorizontal, vertical: paddingVertical),
             decoration: BoxDecoration(
               color: AppTheme.getPrimaryColor(context).withOpacity(0.1),
@@ -746,9 +782,10 @@ class _PaymentsDashboardState extends State<PaymentsDashboard> {
                 ),
               ],
             ),
-          ),
-          // Table Rows
-          ...items.map((item) {
+            );
+            }
+
+            final item = items[index - 1];
             final double amount = item.amountOverride ?? (summary.valueNumeric * (item.percentage / 100));
             final amountText = amount > 0 ? currencyFormatter.format(amount) : '—';
             final style = _statusStyle(item.status);
@@ -866,12 +903,11 @@ class _PaymentsDashboardState extends State<PaymentsDashboard> {
                 ),
               ),
             );
-          }),
-        ],
+          },
+          childCount: items.length + 1,
+        ),
       ),
     );
-
-    return tableContent;
   }
 
 
@@ -1887,24 +1923,19 @@ class PaymentTasks extends State<PaymentTasksClass> {
               ),
             new ListView.builder(
                 shrinkWrap: true,
-                physics: BouncingScrollPhysics(),
+                physics: const NeverScrollableScrollPhysics(),
                 itemCount: body == null ? 0 : body.length,
                 itemBuilder: (BuildContext ctxt, int index) {
-                  return AnimatedWidgetSlide(
-                      direction: index % 2 == 0 ? SlideDirection.leftToRight : SlideDirection.rightToLeft, // Specify the slide direction
-                      duration: Duration(milliseconds: 300),
-                      child: Container(
-                        child: TaskItem(
-                            body[index]['task_name'].toString(),
-                            body[index]['start_date'].toString(),
-                            body[index]['end_date'].toString(),
-                            body[index]['payment'].toString(),
-                            body[index]['paid'].toString(),
-                            body[index]['p_note'].toString(),
-                            projectValue,
-                            markedAsDueOn: body[index]['marked_as_due_on']?.toString(),
-                            markedAsPaidOn: body[index]['marked_as_paid_on']?.toString()),
-                      ));
+                  return TaskItem(
+                      body[index]['task_name'].toString(),
+                      body[index]['start_date'].toString(),
+                      body[index]['end_date'].toString(),
+                      body[index]['payment'].toString(),
+                      body[index]['paid'].toString(),
+                      body[index]['p_note'].toString(),
+                      projectValue,
+                      markedAsDueOn: body[index]['marked_as_due_on']?.toString(),
+                      markedAsPaidOn: body[index]['marked_as_paid_on']?.toString());
                 }),
             ]),
           ),

@@ -273,23 +273,9 @@ class LegacyClientDashboardScreenState extends State<LegacyClientDashboardScreen
 
     print('[LegacyClientHome] init project_id=$projectId role=$role');
 
-    if (projectId != null && projectId.isNotEmpty) {
-      await DataProvider().loadProjectDataForProject(projectId);
-      if (!mounted) return;
-      await loadDataFromProvider();
-    } else {
-      await reloadData(force: true);
-    }
-
-    // Staff opening an older project still benefits from cached gallery/payments.
-    if (role != null &&
-        role.trim().toLowerCase() != 'client' &&
-        projectId != null &&
-        projectId.isNotEmpty) {
-      DataProvider().loadProjectDataForNonClient(projectId).catchError((e) {
-        print('[LegacyClientHome] Error preloading project data: $e');
-      });
-    }
+    await DataProvider().openHome(force: false);
+    if (!mounted) return;
+    await loadDataFromProvider();
   }
 
   loadDataFromProvider() async {
@@ -425,7 +411,7 @@ class LegacyClientDashboardScreenState extends State<LegacyClientDashboardScreen
       ),
     );
     if (!mounted) return;
-    reloadData(force: true);
+    unawaited(reloadData(force: false));
   }
 
   bool get _shouldShowInitialSummarySkeleton => _isLoadingSummary && !_hasLoadedSummary;

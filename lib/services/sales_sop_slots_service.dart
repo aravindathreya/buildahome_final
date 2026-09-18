@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/sales_sop_slot.dart';
@@ -10,6 +11,7 @@ import 'session_manager.dart';
 
 /// Loads and acts on unified sales SOP slots.
 ///
+/// GET `/API/mobile/home/slots` — aggregated personal Home schedule
 /// GET `/API/sales_sop_details/{id}/slots`
 /// Clients can also GET `/api/client_portal/sections/slots`
 /// POST select `/API/sales_sop_details/{id}/slots/select`
@@ -27,6 +29,12 @@ class SalesSopSlotsService {
     'https://office.buildahome.in',
     'https://app.buildahome.in',
   ];
+
+  static const Duration _homeSlotsTtl = Duration(seconds: 45);
+
+  SalesSopSlotsResult? _homeSlotsCache;
+  DateTime? _homeSlotsCachedAt;
+  final ValueNotifier<int> homeSlotsRevision = ValueNotifier<int>(0);
 
   Future<SalesSopSlotsResult> fetchSlots({String? salesSopId}) async {
     final auth = await _authParams();
@@ -64,6 +72,40 @@ class SalesSopSlotsService {
     return SalesSopSlotsResult.fromJson(body);
   }
 
+  /// Aggregated personal schedule for Home. Does not loop projects.
+  /// GET `/API/mobile/home/slots`
+  Future<SalesSopSlotsResult> fetchHomeSlots({bool force = false}) async {
+    final cached = _homeSlotsCache;
+    final cachedAt = _homeSlotsCachedAt;
+    if (!force &&
+        cached != null &&
+        cachedAt != null &&
+        DateTime.now().difference(cachedAt) < _homeSlotsTtl) {
+      return cached;
+    }
+
+    final auth = await _authParams();
+    final query = <String, String>{
+      'api_token': auth.token,
+      if (auth.userId.isNotEmpty) 'user_id': auth.userId,
+    };
+    final body = await _getJson(
+      pathSuffix: 'mobile/home/slots',
+      query: query,
+      auth: auth,
+    );
+    final result = SalesSopSlotsResult.fromJson(body);
+    _homeSlotsCache = result;
+    _homeSlotsCachedAt = DateTime.now();
+    homeSlotsRevision.value++;
+    return result;
+  }
+
+  void invalidateHomeSlotsCache() {
+    _homeSlotsCache = null;
+    _homeSlotsCachedAt = null;
+  }
+
   Future<SalesSopSlotsResult?> selectSlots({
     required SalesSopSlot slot,
     required List<Map<String, dynamic>> slots,
@@ -98,6 +140,7 @@ class SalesSopSlotsService {
     if (auth.isClient) {
       try {
         final body = await ClientPortalService().selectSlots(payload);
+        invalidateHomeSlotsCache();
         return _resultFromBody(body);
       } catch (e) {
         if (e is SalesSopSlotsException) rethrow;
@@ -116,6 +159,7 @@ class SalesSopSlotsService {
       auth: auth,
       errorFallback: 'Could not submit slots',
     );
+    invalidateHomeSlotsCache();
     return _resultFromBody(body);
   }
 

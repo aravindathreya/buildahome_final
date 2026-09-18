@@ -143,17 +143,17 @@ class LoginScreenNewState extends State<LoginScreenNew>
           showSplash = true;
         });
       }
-      await ProfilePictureService.getStoredPath();
       ProfilePictureService.promptShownThisSession = false;
-      if ((role ?? '').trim().toLowerCase() == 'client') {
-        await DataProvider().ensureClientProjectSelected();
-      }
-      final projectId =
-          (await SharedPreferences.getInstance()).getString('project_id');
-      await ClientGenerationService.instance.ensureLoaded(projectId: projectId);
-      await DataProvider().initializeData(force: true);
+      unawaited(ProfilePictureService.getStoredPath());
+
+      // Paint Home immediately. Project resolve, generation, and DataProvider
+      // boot continue on the destination screens (cache-first + SWR).
+      final isClient = (role ?? '').trim().toLowerCase() == 'client';
+      unawaited(ClientGenerationService.instance.ensureLoaded());
+      unawaited(DataProvider().initializeData(force: false));
+
       if (!mounted) return;
-      if ((role ?? '').trim().toLowerCase() == 'client') {
+      if (isClient) {
         await _openAppScreen(Home());
       } else {
         await _openAppScreen(AdminDashboard());
@@ -532,14 +532,15 @@ class LoginScreenNewState extends State<LoginScreenNew>
           }
         } catch (_) {}
 
-        // OTP verify often omits project_id for legacy clients — resolve it now.
+        // OTP verify often omits project_id for legacy clients — resolve it
+        // after navigation so Home is not blocked on fallback APIs.
         if (role.trim().toLowerCase() == 'client') {
-          projectId = await DataProvider().ensureClientProjectSelected(
+          unawaited(DataProvider().ensureClientProjectSelected(
             loginPayload: {
               ...body,
               'user': user,
             },
-          );
+          ));
         }
 
         if ((projectId == null || projectId.isEmpty) &&
@@ -564,7 +565,7 @@ class LoginScreenNewState extends State<LoginScreenNew>
           },
         ));
 
-        await DataProvider().initializeData(force: true);
+        unawaited(DataProvider().initializeData(force: true));
 
         if (!mounted) return;
         if (role == 'Client') {

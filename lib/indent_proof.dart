@@ -1032,6 +1032,8 @@ class _IndentProofDetailScreenState extends State<IndentProofDetailScreen> {
                           url,
                           width: 84,
                           height: 84,
+                          cacheWidth: 168,
+                          cacheHeight: 168,
                           fit: BoxFit.cover,
                           errorBuilder: (_, __, ___) => Container(
                             width: 84,
@@ -1582,6 +1584,8 @@ Widget _mediaSection(
                     url,
                     width: 84,
                     height: 84,
+                    cacheWidth: 168,
+                    cacheHeight: 168,
                     fit: BoxFit.cover,
                     errorBuilder: (_, __, ___) => Container(
                       width: 84,

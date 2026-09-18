@@ -35,6 +35,7 @@ import 'task_display_title.dart';
 import 'widgets/modern_task_card.dart';
 import 'widgets/themed_scaffold.dart';
 import 'widgets/skeleton_loader.dart';
+import 'SlotsScreen.dart';
 
 const String _workflowApiBaseUrl = 'https://office.buildahome.in';
 const Color _premiumBackground = Color(0xFFF7F8FB);
@@ -787,6 +788,41 @@ List<dynamic> filterTasksForProjectAndAssignee(
   }).toList();
 }
 
+/// Tasks assigned to (or awaiting review by) the signed-in user.
+/// Clients stay scoped to their project; staff see their tasks across projects.
+Future<List<dynamic>> fetchTasksForCurrentUser() async {
+  final prefs = await SharedPreferences.getInstance();
+  final userId = prefs.getString('userId') ?? prefs.getString('user_id');
+  final apiToken = prefs.getString('api_token');
+  final role = prefs.getString('role');
+  final projectId = prefs.getString('project_id');
+  if (userId == null || apiToken == null) return <dynamic>[];
+
+  final isClient = role == 'Client';
+  final fetched = await DataProvider().loadUserTasks(
+    projectId: projectId,
+    applyProjectId: isClient,
+  );
+
+  String? salesSopId;
+  if (isClient && projectId != null && projectId.isNotEmpty) {
+    salesSopId = await DataProvider().resolveSalesSopId(
+      projectId: projectId,
+      apiToken: apiToken,
+      tasksHint: fetched,
+    );
+  }
+
+  return filterTasksForProjectAndAssignee(
+    fetched,
+    userId: userId,
+    projectId: isClient ? projectId : null,
+    alsoMatchProjectIds: [
+      if (salesSopId != null && salesSopId.isNotEmpty) salesSopId,
+    ],
+  );
+}
+
 List<Map<String, dynamic>> filterActiveRecentTasks(
   List<dynamic> tasks, {
   String? userRole,
@@ -996,6 +1032,7 @@ class _MyTasksScreenState extends State<MyTasksScreen>
 
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
+  Timer? _searchDebounce;
   bool _isSearchVisible = false;
   String? _currentUserId;
   String? _currentUserRole;
@@ -1063,9 +1100,19 @@ class _MyTasksScreenState extends State<MyTasksScreen>
     _tasksSignature = _tasksListSignature(_tasks);
     _logDelayGatedTasks(_tasks);
     _searchController.addListener(() {
-      if (mounted) setState(() {});
+      _searchDebounce?.cancel();
+      if (_searchController.text.isEmpty) {
+        if (mounted) setState(() {});
+        return;
+      }
+      _searchDebounce = Timer(const Duration(milliseconds: 140), () {
+        if (mounted) setState(() {});
+      });
     });
     _loadCurrentUserId();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _refreshTasks();
+    });
   }
 
   @override
@@ -1114,6 +1161,7 @@ class _MyTasksScreenState extends State<MyTasksScreen>
 
   @override
   void dispose() {
+    _searchDebounce?.cancel();
     _searchController.dispose();
     _searchFocusNode.dispose();
     _tabController.dispose();
@@ -1993,6 +2041,8 @@ class _TaskList extends StatelessWidget {
 
     return ListView.builder(
       padding: const EdgeInsets.fromLTRB(18, 4, 18, 28),
+      cacheExtent: 420,
+      addAutomaticKeepAlives: false,
       itemCount: tasks.length + 1,
       itemBuilder: (context, index) {
         if (index == tasks.length) {
@@ -2007,14 +2057,16 @@ class _TaskList extends StatelessWidget {
         }
         final task = tasks[index];
         final focusId = focusTaskId?.toString().trim() ?? '';
-        return _TaskCard(
-          task: task,
-          accentIndex: index,
-          onWorkflowActionCompleted: onWorkflowActionCompleted,
-          onWorkflowTaskFinished: onWorkflowTaskFinished,
-          showWorkflowActions: showWorkflowActions,
-          isSelected:
-              focusId.isNotEmpty && task['id']?.toString() == focusId,
+        return RepaintBoundary(
+          child: _TaskCard(
+            task: task,
+            accentIndex: index,
+            onWorkflowActionCompleted: onWorkflowActionCompleted,
+            onWorkflowTaskFinished: onWorkflowTaskFinished,
+            showWorkflowActions: showWorkflowActions,
+            isSelected:
+                focusId.isNotEmpty && task['id']?.toString() == focusId,
+          ),
         );
       },
     );
@@ -4450,6 +4502,8 @@ class _IndentSiteProofStepTile extends StatelessWidget {
                     _absoluteWorkflowUrl(thumbnailUrl!),
                     width: 42,
                     height: 42,
+                    cacheWidth: 84,
+                    cacheHeight: 84,
                     fit: BoxFit.cover,
                     errorBuilder: (_, __, ___) => Container(
                       width: 42,
@@ -4656,6 +4710,8 @@ class _UploadThumbnail extends StatelessWidget {
       return Image.network(
         resolvedUrl,
         fit: BoxFit.cover,
+        cacheWidth: 240,
+        cacheHeight: 240,
         errorBuilder: (_, __, ___) => _fallbackIcon(),
       );
     }
@@ -8138,320 +8194,10 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
   }
 
   Future<void> _showSlotSelectionSheet() async {
-    final configuredSlotCount = _intValue(_slotActionValue('slot_count')) ?? 3;
-    final slotCount = configuredSlotCount.clamp(1, 12).toInt();
-    final minNoticeHours = _intValue(_slotActionValue('min_notice_hours'));
-    final allowNote = !_falseyValue(_slotActionValue('allow_note'));
-    final requireNote = _truthyValue(_slotActionValue('require_note'));
-    final timeOptions = _slotTimeOptions(_slotActionValue('time_options'));
-    final usePredefinedTimes =
-        _truthyValue(_slotActionValue('use_predefined_times')) &&
-            timeOptions.isNotEmpty;
-    final rows = List<_SlotSelectionRow>.generate(
-      slotCount,
-      (_) => _SlotSelectionRow(),
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const SlotsScreen()),
     );
-    final noteController = TextEditingController();
-    final title = _label('Select slots');
-    final heading = _slotActionValue('heading')?.toString().trim() ?? '';
-    final submitButtonLabel =
-        _slotActionValue('submit_button_label')?.toString().trim() ?? '';
-    final submitLabel =
-        submitButtonLabel.isNotEmpty ? submitButtonLabel : 'Submit slots';
-    bool isSubmitting = false;
-    String? serverError;
-    Map<int, String> rowErrors = <int, String>{};
-    String? noteError;
-
-    bool basicFieldsComplete() {
-      final slotsReady = rows.every(
-        (row) => usePredefinedTimes
-            ? row.date != null && row.timeOption != null
-            : row.dateTime != null,
-      );
-      final noteReady = !requireNote || noteController.text.trim().isNotEmpty;
-      return slotsReady && noteReady;
-    }
-
-    Map<int, String> validateRows() {
-      final errors = <int, String>{};
-      final seen = <String>{};
-      final now = DateTime.now();
-      final validLabels = timeOptions.map((option) => option.label).toSet();
-
-      for (var index = 0; index < rows.length; index++) {
-        final row = rows[index];
-        late final DateTime selectedAt;
-        late final String duplicateKey;
-
-        if (usePredefinedTimes) {
-          if (row.date == null || row.timeOption == null) {
-            errors[index] = 'Choose a date and time option.';
-            continue;
-          }
-          if (!validLabels.contains(row.timeOption!.label)) {
-            errors[index] = 'Choose one of the available time options.';
-            continue;
-          }
-          selectedAt = _combineSlotDateAndTime(row.date!, row.timeOption!.time);
-          duplicateKey =
-              '${_formatSlotDate(row.date!)} ${row.timeOption!.time}';
-        } else {
-          if (row.dateTime == null) {
-            errors[index] = 'Choose a date and time.';
-            continue;
-          }
-          selectedAt = row.dateTime!;
-          duplicateKey = _formatSlotDateTimeValue(row.dateTime!);
-        }
-
-        if (minNoticeHours != null &&
-            selectedAt.isBefore(now.add(Duration(hours: minNoticeHours)))) {
-          errors[index] = 'Slot must be at least $minNoticeHours hours away.';
-          continue;
-        }
-        if (!seen.add(duplicateKey)) {
-          errors[index] = 'This date and time is already selected.';
-        }
-      }
-
-      return errors;
-    }
-
-    final submittedResult = await showModalBottomSheet<Object>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (sheetContext) {
-        return StatefulBuilder(
-          builder: (context, setSheetState) {
-            void clearValidationForEdit() {
-              rowErrors = <int, String>{};
-              noteError = null;
-              serverError = null;
-            }
-
-            Future<void> pickDate(_SlotSelectionRow row) async {
-              final now = DateTime.now();
-              final selected = await showDatePicker(
-                context: context,
-                initialDate: row.date ?? now,
-                firstDate: DateTime(now.year, now.month, now.day),
-                lastDate: DateTime(now.year + 5),
-                initialEntryMode: DatePickerEntryMode.calendarOnly,
-              );
-              if (selected == null) return;
-              setSheetState(() {
-                clearValidationForEdit();
-                row.date = selected;
-              });
-            }
-
-            void applyQuickDate(_SlotSelectionRow row, DateTime date) {
-              setSheetState(() {
-                clearValidationForEdit();
-                row.date = date;
-                if (!usePredefinedTimes) {
-                  final previous = row.dateTime;
-                  row.dateTime = DateTime(
-                    date.year,
-                    date.month,
-                    date.day,
-                    previous?.hour ?? 10,
-                    previous?.minute ?? 0,
-                  );
-                }
-              });
-            }
-
-            Future<void> pickDateTime(_SlotSelectionRow row) async {
-              final now = DateTime.now();
-              final current = row.dateTime ?? now.add(const Duration(hours: 1));
-              final selectedDate = await showDatePicker(
-                context: context,
-                initialDate: current,
-                firstDate: DateTime(now.year, now.month, now.day),
-                lastDate: DateTime(now.year + 5),
-                initialEntryMode: DatePickerEntryMode.calendarOnly,
-              );
-              if (selectedDate == null) return;
-
-              final selectedTime = await showTimePicker(
-                context: context,
-                initialTime: TimeOfDay.fromDateTime(current),
-                initialEntryMode: TimePickerEntryMode.dial,
-              );
-              if (selectedTime == null) {
-                applyQuickDate(row, selectedDate);
-                return;
-              }
-
-              setSheetState(() {
-                clearValidationForEdit();
-                row.dateTime = DateTime(
-                  selectedDate.year,
-                  selectedDate.month,
-                  selectedDate.day,
-                  selectedTime.hour,
-                  selectedTime.minute,
-                );
-                row.date = selectedDate;
-              });
-            }
-
-            Future<void> pickPredefinedTime(_SlotSelectionRow row) async {
-              final selected = await showModalBottomSheet<_SlotTimeOption>(
-                context: context,
-                backgroundColor: Colors.transparent,
-                builder: (_) => _SlotTimeOptionPickerSheet(
-                  options: timeOptions,
-                  selected: row.timeOption,
-                ),
-              );
-              if (selected == null) return;
-              setSheetState(() {
-                clearValidationForEdit();
-                row.timeOption = selected;
-              });
-            }
-
-            Future<void> submit() async {
-              final validationErrors = validateRows();
-              final validationNoteError =
-                  requireNote && noteController.text.trim().isEmpty
-                      ? 'Comment is required.'
-                      : null;
-
-              if (validationErrors.isNotEmpty || validationNoteError != null) {
-                setSheetState(() {
-                  rowErrors = validationErrors;
-                  noteError = validationNoteError;
-                  serverError = null;
-                });
-                return;
-              }
-
-              setSheetState(() {
-                isSubmitting = true;
-                rowErrors = <int, String>{};
-                noteError = null;
-                serverError = null;
-              });
-
-              final navigator = Navigator.of(sheetContext);
-              final slotPayload = <Map<String, dynamic>>[];
-              for (var index = 0; index < rows.length; index++) {
-                final row = rows[index];
-                if (usePredefinedTimes) {
-                  slotPayload.add({
-                    'date': _formatSlotDate(row.date!),
-                    'time_label': row.timeOption!.label,
-                  });
-                } else {
-                  slotPayload.add({
-                    'value': row.dateTime!.toIso8601String(),
-                  });
-                }
-              }
-              _popWorkflowSheet(
-                navigator,
-                _PendingSlotSelectionSubmit(
-                  slots: slotPayload,
-                  note: allowNote ? noteController.text.trim() : null,
-                ),
-              );
-            }
-
-            final helperText = _slotHelperText(
-              heading: heading,
-              minNoticeHours: minNoticeHours,
-            );
-            final canSubmit = basicFieldsComplete();
-
-            return LiveTestAutoPlayHook(
-              onPlay: () async {
-                if (!MobileLiveTestAutoPlay.instance.running) return;
-                final today = DateTime.now();
-                for (var index = 0; index < rows.length; index++) {
-                  final day = DateTime(today.year, today.month, today.day)
-                      .add(Duration(days: index + 1));
-                  rows[index].date = day;
-                  if (usePredefinedTimes) {
-                    if (timeOptions.isNotEmpty) {
-                      rows[index].timeOption = timeOptions.first;
-                    }
-                  } else {
-                    rows[index].dateTime = DateTime(
-                      day.year,
-                      day.month,
-                      day.day,
-                      10,
-                    );
-                  }
-                }
-                setSheetState(clearValidationForEdit);
-                await Future<void>.delayed(const Duration(milliseconds: 250));
-                if (!MobileLiveTestAutoPlay.instance.running) return;
-                await submit();
-              },
-              child: _SlotSelectionSheetFrame(
-              title: title,
-              subtitle: helperText,
-              slotCount: slotCount,
-              isSubmitting: isSubmitting,
-              submitLabel: submitLabel,
-              canSubmit: canSubmit,
-              onSubmit: submit,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (serverError != null) ...[
-                    _SlotServerErrorBanner(message: serverError!),
-                    SizedBox(height: 14),
-                  ],
-                  ...rows.asMap().entries.map(
-                        (entry) => _SlotSelectionRowCard(
-                          number: entry.key + 1,
-                          row: entry.value,
-                          usePredefinedTimes: usePredefinedTimes,
-                          error: rowErrors[entry.key],
-                          onPickDate: () => pickDate(entry.value),
-                          onPickDateTime: () => pickDateTime(entry.value),
-                          onPickPredefinedTime: () =>
-                              pickPredefinedTime(entry.value),
-                        ),
-                      ),
-                  if (allowNote) ...[
-                    SizedBox(height: 4),
-                    TextField(
-                      controller: noteController,
-                      maxLines: 3,
-                      onChanged: (_) => setSheetState(() {
-                        noteError = null;
-                      }),
-                      style: TextStyle(
-                        color: AppTheme.getTextPrimary(context),
-                      ),
-                      decoration: _sheetInputDecoration(
-                        context,
-                        requireNote ? 'Comment *' : 'Comment',
-                      ).copyWith(errorText: noteError),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-            );
-          },
-        );
-      },
-    );
-
-    if (submittedResult == true && mounted) {
-      _refreshAfterClosedSheet(true);
-    } else if (submittedResult is _PendingSlotSelectionSubmit && mounted) {
-      await _finishSlotSelectionSubmit(submittedResult);
-    }
+    if (mounted) _refreshAfterClosedSheet(true);
   }
 
   bool _slotSelectionLooksSaved(Map<String, dynamic> source) {
@@ -8463,79 +8209,6 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
       if (_mapListFlexible(response['slots']).isNotEmpty) return true;
     }
     return false;
-  }
-
-  Future<void> _finishSlotSelectionSubmit(
-    _PendingSlotSelectionSubmit request,
-  ) async {
-    var saved = false;
-    String? error;
-    try {
-      final credentials = await _credentials();
-      final endpoint = _workflowRequestUri(
-        '/API/workflow/item-runs/$_resolvedWorkflowItemRunId/slot-selection',
-        task,
-      );
-      final payload = <String, dynamic>{
-        'user_id': credentials.userId,
-        'api_token': credentials.apiToken,
-        'action_id': action['id']?.toString() ?? '',
-        'slots': request.slots,
-        ...MobileLiveTestWorkflow.submitPayloadFlags(task),
-      };
-      if (request.note != null && request.note!.trim().isNotEmpty) {
-        payload['note'] = request.note!.trim();
-      }
-      final response = await _workflowPost(
-            endpoint,
-            task,
-            headers: {
-              'Content-Type': 'application/json',
-              'X-Api-Token': credentials.apiToken,
-            },
-            body: jsonEncode(payload),
-          )
-          .timeout(const Duration(seconds: 12));
-      print(
-        '[WorkflowSlotSelection] endpoint=$endpoint '
-        'payload=$payload '
-        'status=${response.statusCode} '
-        'body=${response.body}',
-      );
-      _successMessageOrThrow(response, 'Slots submitted');
-      saved = true;
-    } catch (e) {
-      error = e.toString().replaceAll('Exception: ', '');
-    }
-
-    if (!mounted) return;
-    try {
-      final fresh = await _loadFreshWorkflowActionContext();
-      if (_slotSelectionLooksSaved(fresh.action)) saved = true;
-    } catch (_) {}
-
-    if (!mounted) return;
-    if (saved) {
-      await _showSlotOutcomeSheet(
-        saved: true,
-        title: 'Slots selected',
-        message: 'Done. Your slot selection was saved.',
-      );
-      if (mounted) _refreshAfterClosedSheet(true);
-      return;
-    }
-
-    final retry = await _showSlotOutcomeSheet(
-      saved: false,
-      title: 'Slots not saved',
-      message: (error == null || error.trim().isEmpty)
-          ? 'Slots were not saved. Please select again and submit.'
-          : '$error\n\nPlease select the slots again and submit.',
-      retryLabel: 'Select again',
-    );
-    if (retry == true && mounted) {
-      await _showSlotSelectionSheet();
-    }
   }
 
   Future<bool?> _showSlotOutcomeSheet({
@@ -11412,9 +11085,11 @@ class _KypProjectPickerSheet extends StatefulWidget {
 
 class _KypProjectPickerSheetState extends State<_KypProjectPickerSheet> {
   final TextEditingController _searchController = TextEditingController();
+  Timer? _searchDebounce;
 
   @override
   void dispose() {
+    _searchDebounce?.cancel();
     _searchController.dispose();
     super.dispose();
   }
@@ -11467,7 +11142,12 @@ class _KypProjectPickerSheetState extends State<_KypProjectPickerSheet> {
             padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
             child: TextField(
               controller: _searchController,
-              onChanged: (_) => setState(() {}),
+              onChanged: (_) {
+                _searchDebounce?.cancel();
+                _searchDebounce = Timer(const Duration(milliseconds: 140), () {
+                  if (mounted) setState(() {});
+                });
+              },
               style: TextStyle(color: AppTheme.getTextPrimary(context)),
               decoration: _sheetInputDecoration(
                 context,
@@ -12331,6 +12011,8 @@ class _ResponseFileTile extends StatelessWidget {
                     ? Image.network(
                         _absoluteWorkflowUrl(url),
                         fit: BoxFit.cover,
+                        cacheWidth: 120,
+                        cacheHeight: 120,
                         errorBuilder: (_, __, ___) => _fileIcon(context, isVideo: isVideo, isPdf: isPdf),
                       )
                     : _fileIcon(context, isVideo: isVideo, isPdf: isPdf),
@@ -12737,6 +12419,8 @@ class _UploadedProgressCarouselCard extends StatelessWidget {
                       : Image.network(
                           absoluteUrl,
                           fit: BoxFit.cover,
+                          cacheWidth: 400,
+                          cacheHeight: 400,
                           errorBuilder: (_, __, ___) => const Center(
                             child: Icon(
                               Icons.broken_image_outlined,
@@ -12873,6 +12557,8 @@ class _UploadedDocumentImagePreview extends StatelessWidget {
           absoluteUrl,
           width: size,
           height: size,
+          cacheWidth: (size * 2).round().clamp(64, 800),
+          cacheHeight: (size * 2).round().clamp(64, 800),
           fit: BoxFit.contain,
           errorBuilder: (_, __, ___) => const Center(
             child: Icon(
@@ -17624,6 +17310,8 @@ class _PictureChoiceImagePreview extends StatelessWidget {
       return Image.network(
         resolvedUrl,
         fit: BoxFit.cover,
+        cacheWidth: 400,
+        cacheHeight: 400,
         errorBuilder: (_, __, ___) => _fallback(),
       );
     }

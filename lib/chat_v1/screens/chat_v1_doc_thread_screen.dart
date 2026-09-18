@@ -497,6 +497,8 @@ class _ChatV1DocThreadScreenState extends State<ChatV1DocThreadScreen> {
                       child: Image.network(
                         att.storagePath,
                         width: 180,
+                        cacheWidth: 360,
+                        cacheHeight: 360,
                         fit: BoxFit.cover,
                         errorBuilder: (_, __, ___) => Text(att.fileName),
                       ),

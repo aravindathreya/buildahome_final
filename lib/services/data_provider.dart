@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'api_http.dart';
 import 'client_generation_service.dart';
+import 'mobile_documents_service.dart';
 import 'session_manager.dart';
 
 class DataProvider {
@@ -71,6 +72,24 @@ class DataProvider {
   DateTime? lastDocumentsLoad;
   bool isLoadingProjectData = false;
 
+  /// User-scoped task list shared by Home, My Tasks, and View All Tasks.
+  List<dynamic> cachedUserTasks = [];
+  DateTime? lastUserTasksLoad;
+  Future<void>? _userTasksInFlight;
+  String? _userTasksInFlightKey;
+
+  Future<void>? _openHomeInFlight;
+  String? _openHomeKey;
+  Future<void>? _projectDataInFlight;
+  String? _projectDataInFlightId;
+
+  /// Last sales_sop_details URI that returned 200 for a project.
+  final Map<String, Uri> _workingSopDetailsUriByProject = {};
+
+  static const Duration _homeDataTtl = Duration(minutes: 5);
+  static const Duration _tasksTtl = Duration(seconds: 45);
+  static const Duration _projectsTtl = Duration(minutes: 5);
+
   // Load projects for non-Client users
   Future<void> loadProjects({bool force = false}) async {
     if (projectsLoading && !force) return;
@@ -91,6 +110,13 @@ class DataProvider {
 
     if (currentRole == 'Client') {
       return; // Don't load projects for clients
+    }
+
+    if (!force &&
+        lastProjectsLoad != null &&
+        projects.isNotEmpty &&
+        DateTime.now().difference(lastProjectsLoad!) < _projectsTtl) {
+      return;
     }
 
     // Force refreshes credentials/cache timestamp but keeps the current list
@@ -128,12 +154,16 @@ class DataProvider {
             '[DataProvider] Loaded ${projects.length} projects for user $currentUserId (role: $currentRole)');
       } else {
         print('[DataProvider] Failed to load projects: ${response.statusCode}');
-        projects = []; // Clear projects on error
+        if (projects.isEmpty) {
+          projects = [];
+        }
       }
     } catch (e) {
       if (e is SessionInvalidatedException) rethrow;
       print('[DataProvider] Error loading projects: $e');
-      projects = []; // Clear projects on error
+      if (projects.isEmpty) {
+        projects = [];
+      }
     } finally {
       projectsLoading = false;
     }
@@ -158,19 +188,45 @@ class DataProvider {
     await _loadProjectData(projectId.trim());
   }
 
-  Future<void> loadProjectDataForProject(String projectId) async {
-    await _loadProjectData(projectId);
-  }
-
-  Future<void> _loadProjectData(String projectId) async {
+  Future<void> loadProjectDataForProject(
+    String projectId, {
+    bool force = false,
+  }) async {
     projectId = projectId.trim();
     if (projectId.isEmpty) return;
 
-    // Allow concurrent loads for updates - they're lightweight and should load independently
-    // Only prevent concurrent loads if we're loading the same project
-    if (clientDataLoading && clientProjectId == projectId) {
-      // If already loading the same project, wait for it to complete, then keep
-      // whatever was loaded (do not skip a forced caller with empty state).
+    if (!force &&
+        clientProjectId == projectId &&
+        lastClientDataLoad != null &&
+        DateTime.now().difference(lastClientDataLoad!) < _homeDataTtl) {
+      return;
+    }
+
+    if (_projectDataInFlight != null &&
+        _projectDataInFlightId == projectId &&
+        !force) {
+      await _projectDataInFlight;
+      return;
+    }
+
+    final future = _loadProjectData(projectId, force: force);
+    _projectDataInFlight = future;
+    _projectDataInFlightId = projectId;
+    try {
+      await future;
+    } finally {
+      if (identical(_projectDataInFlight, future)) {
+        _projectDataInFlight = null;
+        _projectDataInFlightId = null;
+      }
+    }
+  }
+
+  Future<void> _loadProjectData(String projectId, {bool force = false}) async {
+    projectId = projectId.trim();
+    if (projectId.isEmpty) return;
+
+    if (clientDataLoading && clientProjectId == projectId && !force) {
       while (clientDataLoading && clientProjectId == projectId) {
         await Future.delayed(Duration(milliseconds: 100));
       }
@@ -179,11 +235,11 @@ class DataProvider {
 
     SharedPreferences prefs = await SharedPreferences.getInstance();
 
-    // Update currentRole if not set
     if (currentRole == null) {
       currentRole = prefs.getString('role');
     }
 
+    final switchingProject = clientProjectId != projectId;
     clientProjectId = projectId;
     clientDataLoading = true;
 
@@ -191,8 +247,10 @@ class DataProvider {
     print('[DataProvider] Current role: $currentRole');
     print('[DataProvider] Current user id: $currentUserId');
 
-    // Reset updates so UI shows loading instead of stale empty state.
-    clientProjectUpdates = null;
+    // Keep cached updates on a background refresh so Home does not flash empty.
+    if (force || switchingProject || clientProjectUpdates == null) {
+      clientProjectUpdates = null;
+    }
 
     // Load project value from SharedPreferences (synchronous, no API call needed)
     final role = (currentRole ?? '').trim().toLowerCase();
@@ -210,7 +268,7 @@ class DataProvider {
       // Load critical data first: updates and percentage (required for immediate display)
       // Never skip on a fresh project load — skipIfRecent can hide updates after reset.
       await Future.wait([
-        _loadLatestUpdates(projectId, prefs, skipIfRecent: false),
+        _loadLatestUpdates(projectId, prefs, skipIfRecent: !force && !switchingProject),
         _loadProjectPercentage(projectId, prefs),
       ], eagerError: false);
 
@@ -1031,6 +1089,48 @@ class DataProvider {
     String? projectId,
     required String apiToken,
   }) async {
+    Future<Map<String, dynamic>?> tryUri(Uri uri) async {
+      try {
+        final response = await ApiHttp.get(
+          uri,
+          headers: _apiAuthHeaders(apiToken),
+        ).timeout(Duration(seconds: 20));
+        if (response.statusCode != 200) return null;
+
+        final body = jsonDecode(response.body);
+        if (body is! Map) return null;
+
+        final decoded = Map<String, dynamic>.from(body);
+        if (decoded['success'] == false) return null;
+
+        final candidate = decoded['api_sales_sop_details'] ??
+            decoded['sales_sop_details'] ??
+            decoded['data'] ??
+            decoded['project'] ??
+            decoded;
+        final details =
+            candidate is Map ? Map<String, dynamic>.from(candidate) : null;
+
+        return {
+          'decoded': decoded,
+          'details': details,
+        };
+      } catch (e) {
+        print('[DataProvider] SOP details lookup skipped: $e');
+        return null;
+      }
+    }
+
+    final cacheKey = (projectId ?? '').trim();
+    final cached = cacheKey.isEmpty
+        ? null
+        : _workingSopDetailsUriByProject[cacheKey];
+    if (cached != null) {
+      final hit = await tryUri(cached);
+      if (hit != null) return hit;
+      _workingSopDetailsUriByProject.remove(cacheKey);
+    }
+
     final queryAttempts = <Map<String, String>>[
       if (projectId != null && projectId.isNotEmpty)
         {'project_id': projectId, 'api_token': apiToken},
@@ -1046,34 +1146,13 @@ class DataProvider {
 
     for (final basePath in detailPaths) {
       for (final query in queryAttempts) {
-        try {
-          final uri = Uri.parse(basePath).replace(queryParameters: query);
-          final response = await ApiHttp.get(
-            uri,
-            headers: _apiAuthHeaders(apiToken),
-          ).timeout(Duration(seconds: 20));
-          if (response.statusCode != 200) continue;
-
-          final body = jsonDecode(response.body);
-          if (body is! Map) continue;
-
-          final decoded = Map<String, dynamic>.from(body);
-          if (decoded['success'] == false) continue;
-
-          final candidate = decoded['api_sales_sop_details'] ??
-              decoded['sales_sop_details'] ??
-              decoded['data'] ??
-              decoded['project'] ??
-              decoded;
-          final details =
-              candidate is Map ? Map<String, dynamic>.from(candidate) : null;
-
-          return {
-            'decoded': decoded,
-            'details': details,
-          };
-        } catch (e) {
-          print('[DataProvider] SOP details lookup skipped: $e');
+        final uri = Uri.parse(basePath).replace(queryParameters: query);
+        final hit = await tryUri(uri);
+        if (hit != null) {
+          if (cacheKey.isNotEmpty) {
+            _workingSopDetailsUriByProject[cacheKey] = uri;
+          }
+          return hit;
         }
       }
     }
@@ -1379,34 +1458,67 @@ class DataProvider {
   }
 
   // Initialize data based on user role
-  Future<void> initializeData({bool force = false}) async {
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    var role = prefs.getString('role');
+  Future<void> initializeData({bool force = false}) => openHome(force: force);
 
-    if (role == null) {
+  /// Single Home/boot coordinator. Dedupes overlapping callers (login, Home,
+  /// dashboard) and skips a network round-trip when data is still fresh.
+  Future<void> openHome({bool force = false}) async {
+    final prefs = await SharedPreferences.getInstance();
+    currentRole = prefs.getString('role') ?? currentRole;
+    currentUserId =
+        prefs.getString('userId') ?? prefs.getString('user_id') ?? currentUserId;
+    currentApiToken = prefs.getString('api_token') ?? currentApiToken;
+
+    if (currentRole == null) return;
+
+    final isClient = currentRole!.trim().toLowerCase() == 'client';
+    var projectId = prefs.getString('project_id')?.trim();
+    if (isClient && (projectId == null || projectId.isEmpty)) {
+      projectId = await ensureClientProjectSelected();
+    }
+
+    final key = '${currentRole}|${currentUserId}|${projectId ?? ''}';
+    if (_openHomeInFlight != null && _openHomeKey == key && !force) {
+      await _openHomeInFlight;
       return;
     }
 
-    // Ensure we have fresh credentials
-    currentRole = role;
-    currentUserId = prefs.getString('userId') ?? prefs.getString('user_id');
-    currentApiToken = prefs.getString('api_token');
-
-    if ((role).trim().toLowerCase() == 'client') {
-      final projectId = await ensureClientProjectSelected();
-      if (projectId != null && projectId.isNotEmpty) {
-        await loadProjectDataForProject(projectId);
-      } else {
-        print('[DataProvider] initializeData: Client missing project_id');
-      }
-    } else {
-      // Force reload projects after login to ensure fresh data
-      await loadProjects(force: force);
-      final projectId = prefs.getString('project_id')?.trim();
-      if (projectId != null && projectId.isNotEmpty) {
-        await loadProjectDataForProject(projectId);
+    final future = _openHomeInternal(
+      force: force,
+      isClient: isClient,
+      projectId: projectId,
+    );
+    _openHomeInFlight = future;
+    _openHomeKey = key;
+    try {
+      await future;
+    } finally {
+      if (identical(_openHomeInFlight, future)) {
+        _openHomeInFlight = null;
+        _openHomeKey = null;
       }
     }
+  }
+
+  Future<void> _openHomeInternal({
+    required bool force,
+    required bool isClient,
+    String? projectId,
+  }) async {
+    unawaited(
+      ClientGenerationService.instance.ensureLoaded(projectId: projectId),
+    );
+
+    final work = <Future<void>>[];
+    if (projectId != null && projectId.isNotEmpty) {
+      work.add(loadProjectDataForProject(projectId, force: force));
+      work.add(loadProjectTimeline(force: force));
+    }
+    if (!isClient) {
+      work.add(loadProjects(force: force));
+    }
+    if (work.isEmpty) return;
+    await Future.wait(work, eagerError: false);
   }
 
   /// Ensures a Client has `project_id` in SharedPreferences.
@@ -1808,6 +1920,102 @@ class DataProvider {
     }
   }
 
+  /// Shared get_tasks fetch used by Home, My Tasks, and View All Tasks.
+  Future<List<dynamic>> loadUserTasks({
+    bool force = false,
+    String? projectId,
+    bool applyProjectId = false,
+  }) async {
+    final prefs = await SharedPreferences.getInstance();
+    currentRole = prefs.getString('role') ?? currentRole;
+    currentUserId =
+        prefs.getString('userId') ?? prefs.getString('user_id') ?? currentUserId;
+    currentApiToken = prefs.getString('api_token') ?? currentApiToken;
+    final resolvedProjectId =
+        (projectId ?? prefs.getString('project_id'))?.trim();
+
+    if (currentUserId == null || currentApiToken == null) {
+      return cachedUserTasks;
+    }
+
+    final isClient = (currentRole ?? '').trim().toLowerCase() == 'client';
+    final applyProject =
+        applyProjectId || isClient;
+    final cacheKey =
+        '${currentUserId}|${applyProject ? resolvedProjectId ?? '' : ''}';
+
+    if (!force &&
+        lastUserTasksLoad != null &&
+        DateTime.now().difference(lastUserTasksLoad!) < _tasksTtl &&
+        cachedUserTasks.isNotEmpty &&
+        _userTasksInFlightKey == cacheKey) {
+      return cachedUserTasks;
+    }
+
+    if (_userTasksInFlight != null &&
+        _userTasksInFlightKey == cacheKey &&
+        !force) {
+      await _userTasksInFlight;
+      return cachedUserTasks;
+    }
+
+    final future = _fetchUserTasks(
+      userId: currentUserId!,
+      apiToken: currentApiToken!,
+      projectId: applyProject ? resolvedProjectId : null,
+    );
+    _userTasksInFlight = future;
+    _userTasksInFlightKey = cacheKey;
+    try {
+      await future;
+    } finally {
+      if (identical(_userTasksInFlight, future)) {
+        _userTasksInFlight = null;
+      }
+    }
+    return cachedUserTasks;
+  }
+
+  Future<void> _fetchUserTasks({
+    required String userId,
+    required String apiToken,
+    String? projectId,
+  }) async {
+    final queryParams = <String, String>{
+      'user_id': userId,
+      'assigned_to': userId,
+      'api_token': apiToken,
+    };
+    if (projectId != null && projectId.isNotEmpty) {
+      queryParams['project_id'] = projectId;
+    }
+
+    final uri = Uri.parse('https://office.buildahome.in/API/get_tasks')
+        .replace(queryParameters: queryParams);
+    final response =
+        await ApiHttp.get(uri).timeout(const Duration(seconds: 20));
+    if (response.statusCode != 200) return;
+
+    final decoded = jsonDecode(response.body);
+    List<dynamic> fetched = [];
+    if (decoded is Map && decoded['tasks'] is List) {
+      fetched = decoded['tasks'];
+    } else if (decoded is List) {
+      fetched = decoded;
+    }
+
+    final taskMap = <String, dynamic>{};
+    for (final task in fetched) {
+      if (task is Map && task['id'] != null) {
+        final id = task['id'].toString().trim();
+        if (id.isNotEmpty && id != '0') taskMap[id] = task;
+      }
+    }
+    cachedUserTasks = taskMap.values.toList();
+    lastUserTasksLoad = DateTime.now();
+    await cacheSalesSopIdsFromTasks(cachedUserTasks);
+  }
+
   // Reload data (used when navigating to screens)
   Future<void> reloadData({bool force = false}) async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
@@ -1825,28 +2033,10 @@ class DataProvider {
         projectId.isNotEmpty &&
         (force ||
             lastClientDataLoad == null ||
-            DateTime.now().difference(lastClientDataLoad!).inMinutes > 5)) {
-      await loadProjectDataForProject(projectId);
+            DateTime.now().difference(lastClientDataLoad!) > _homeDataTtl)) {
+      await loadProjectDataForProject(projectId, force: force);
     } else if (isClient && (projectId == null || projectId.isEmpty)) {
       print('[DataProvider] reloadData: Client missing project_id');
-    }
-
-    // Load project data for non-Client users (payments, gallery, etc.) in background
-    if (!isClient && projectId != null && projectId.isNotEmpty) {
-      final shouldLoad = force ||
-          lastPaymentsLoad == null ||
-          lastGalleryLoad == null ||
-          lastScheduleLoad == null ||
-          lastNotesLoad == null ||
-          lastDocumentsLoad == null ||
-          DateTime.now().difference(lastPaymentsLoad!).inMinutes > 5;
-
-      if (shouldLoad) {
-        loadProjectDataForNonClient(projectId).catchError((e) {
-          print(
-              '[DataProvider] Error loading project data in background: $e');
-        });
-      }
     }
   }
 
@@ -1872,6 +2062,12 @@ class DataProvider {
     clientTimelineUpcomingCount = 0;
     clientTimelineLoaded = false;
     lastClientDataLoad = null;
+    lastUpdatesLoad = null;
+    lastUserTasksLoad = null;
+    cachedUserTasks = [];
+    _workingSopDetailsUriByProject.clear();
+    _projectDataInFlight = null;
+    _projectDataInFlightId = null;
 
     // Clear cached project data
     cachedPayments = null;
@@ -1884,6 +2080,7 @@ class DataProvider {
     lastScheduleLoad = null;
     lastNotesLoad = null;
     lastDocumentsLoad = null;
+    MobileDocumentsService.instance.clearMemory();
 
     print('[DataProvider] Project data reset');
   }
@@ -1918,6 +2115,15 @@ class DataProvider {
     lastProjectsLoad = null;
     lastClientDataLoad = null;
     lastUpdatesLoad = null;
+    lastUserTasksLoad = null;
+    cachedUserTasks = [];
+    _workingSopDetailsUriByProject.clear();
+    _openHomeInFlight = null;
+    _openHomeKey = null;
+    _projectDataInFlight = null;
+    _projectDataInFlightId = null;
+    _userTasksInFlight = null;
+    _userTasksInFlightKey = null;
     currentRole = null;
     currentUserId = null;
     currentApiToken = null;
@@ -1939,6 +2145,7 @@ class DataProvider {
     lastScheduleLoad = null;
     lastNotesLoad = null;
     lastDocumentsLoad = null;
+    MobileDocumentsService.instance.clearMemory();
 
     print('[DataProvider] All data cleared');
     ClientGenerationService.instance.clearMemory();

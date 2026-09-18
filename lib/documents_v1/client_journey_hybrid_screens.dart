@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../app_theme.dart';
@@ -21,6 +23,7 @@ class _ClientFloorPlanElevationScreenState
     extends State<ClientFloorPlanElevationScreen> {
   final _portal = ClientPortalService();
   final _searchCtrl = TextEditingController();
+  Timer? _searchDebounce;
   bool _loading = true;
   String? _error;
   List<WorkflowDocumentSection> _sections = const [];
@@ -29,12 +32,18 @@ class _ClientFloorPlanElevationScreenState
   @override
   void initState() {
     super.initState();
-    _searchCtrl.addListener(() => setState(() {}));
+    _searchCtrl.addListener(() {
+      _searchDebounce?.cancel();
+      _searchDebounce = Timer(const Duration(milliseconds: 150), () {
+        if (mounted) setState(() {});
+      });
+    });
     _load();
   }
 
   @override
   void dispose() {
+    _searchDebounce?.cancel();
     _searchCtrl.dispose();
     super.dispose();
   }
@@ -222,6 +231,7 @@ class _ClientDesignElementsScreenState
     extends State<ClientDesignElementsScreen> {
   final _portal = ClientPortalService();
   final _searchCtrl = TextEditingController();
+  Timer? _searchDebounce;
   bool _loading = true;
   String? _error;
   List<WorkflowDocumentSection> _sections = const [];
@@ -229,12 +239,18 @@ class _ClientDesignElementsScreenState
   @override
   void initState() {
     super.initState();
-    _searchCtrl.addListener(() => setState(() {}));
+    _searchCtrl.addListener(() {
+      _searchDebounce?.cancel();
+      _searchDebounce = Timer(const Duration(milliseconds: 150), () {
+        if (mounted) setState(() {});
+      });
+    });
     _load();
   }
 
   @override
   void dispose() {
+    _searchDebounce?.cancel();
     _searchCtrl.dispose();
     super.dispose();
   }

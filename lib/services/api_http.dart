@@ -15,11 +15,18 @@ class SessionAwareClient extends http.BaseClient {
   Future<http.StreamedResponse> send(http.BaseRequest request) async {
     final streamed = await _inner.send(request);
     final bytes = await streamed.stream.toBytes();
-    final body = utf8.decode(bytes, allowMalformed: true);
+
+    // Avoid UTF-8-decoding large 2xx payloads just to inspect the session.
+    // Auth failures are almost always 401 or a small JSON error body.
+    final inspectBody = streamed.statusCode == 401 ||
+        streamed.statusCode == 403 ||
+        sessionBodyMayBeInvalid(bytes);
+    final body =
+        inspectBody ? utf8.decode(bytes, allowMalformed: true) : '';
 
     final loggedOut = await SessionManager.instance.handleStatusAndBody(
       statusCode: streamed.statusCode,
-      body: body,
+      body: inspectBody ? body : null,
       requestUrl: request.url,
       requestHadCredentials: requestCarriesCredentials(request),
     );
@@ -71,6 +78,16 @@ bool requestCarriesCredentials(http.BaseRequest request) {
   }
 
   return false;
+}
+
+/// Cheap ASCII scan so large 200 responses skip a full UTF-8 decode during
+/// session inspection. Error payloads that mention an invalid token are small.
+bool sessionBodyMayBeInvalid(List<int> bytes) {
+  if (bytes.isEmpty) return false;
+  final limit = bytes.length < 8192 ? bytes.length : 8192;
+  final sample = String.fromCharCodes(bytes.sublist(0, limit)).toLowerCase();
+  if (!sample.contains('invalid')) return false;
+  return sample.contains('token') || sample.contains('session');
 }
 
 /// App-wide authenticated HTTP helpers. Prefer these over raw `http.*`

@@ -8,13 +8,15 @@ import 'package:url_launcher/url_launcher.dart';
 
 import 'app_theme.dart';
 import 'client_portal/client_portal_document_ui.dart';
+import 'client_portal/client_portal_hub.dart';
 import 'client_portal/client_portal_kyc_checklist.dart';
 import 'client_portal/client_portal_kyc_document_screen.dart';
 import 'client_portal/kyc_document_record.dart';
-import 'documents_v1/client_journey_hybrid_screens.dart';
 import 'documents_v1/documents_v1_home_screen.dart';
 import 'models/workflow_document.dart';
 import 'services/client_portal_service.dart';
+import 'services/mobile_documents.dart';
+import 'services/mobile_documents_service.dart';
 import 'services/workflow_document_service.dart';
 import 'widgets/skeleton_loader.dart';
 
@@ -99,7 +101,21 @@ class _ClientPortalScreenState extends State<ClientPortalScreen> {
 
       WorkflowDocumentLibrary? library;
       try {
-        library = await WorkflowDocumentService().fetchLibrary();
+        final prefsProject =
+            (prefs.getString('project_id') ?? '').trim();
+        await MobileDocumentsService.instance.ensureLibrary(
+          projectId: prefsProject,
+        );
+        final snapshot = MobileDocumentsService.instance.snapshotFor(
+          projectId: prefsProject.isEmpty ? null : prefsProject,
+        );
+        if (shouldUseMobileDocumentsSnapshot(snapshot)) {
+          library = snapshot!.library;
+        } else {
+          library = await WorkflowDocumentService().fetchLibrary(
+            projectId: prefsProject.isEmpty ? null : prefsProject,
+          );
+        }
       } catch (_) {
         library = null;
       }
@@ -182,6 +198,27 @@ class _ClientPortalScreenState extends State<ClientPortalScreen> {
       return const _NoProjectState();
     }
 
+    final sections = _visiblePortalSections;
+    final pinned = sections.where((section) => section.isPinnedSpecial).toList();
+    final catalog = sections.where((section) => section.isCatalog).toList();
+    final steps = sections.where((section) => section.isProjectStep).toList();
+
+    Widget hubCard(ClientPortalHubItem section, {required bool journeyStyle}) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: ClientPortalCategoryCard(
+          icon: section.visual.icon,
+          title: section.title,
+          subtitle: section.subtitle,
+          badgeCount: section.badgeCount,
+          iconBg: section.visual.iconBg,
+          iconFg: section.visual.iconFg,
+          journeyStyle: journeyStyle,
+          onTap: () => _openSection(section),
+        ),
+      );
+    }
+
     return RefreshIndicator(
       color: AppTheme.navy,
       onRefresh: _bootstrap,
@@ -192,101 +229,61 @@ class _ClientPortalScreenState extends State<ClientPortalScreen> {
             _TutorialBanner(onComplete: _completeTutorial),
             const SizedBox(height: 14),
           ],
-          const Text(
-            'Your journey',
-            style: TextStyle(
-              fontSize: 15.5,
-              fontWeight: FontWeight.w800,
-              color: AppTheme.navy,
-            ),
-          ),
-          const SizedBox(height: 12),
-          ..._visiblePortalSections.asMap().entries.map((entry) {
-            final index = entry.key;
-            final section = entry.value;
-            final visual = categoryVisualFor(
-              journeyKey: section.journeyKey,
-              categoryId: section.id,
-              label: section.title,
-            );
-            final badgeCount = section.journeyKey != null
-                ? workflowDocCountForJourney(_docLibrary, section.journeyKey!)
-                : section.id == 'documents'
-                    ? workflowDocCountForJourney(
-                        _docLibrary, ClientJourneyKeys.preConversion)
-                    : 0;
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: _PortalNavTile(
-                icon: section.icon,
-                title: '${index + 1}. ${section.title}',
-                subtitle: section.subtitle,
-                badgeCount: badgeCount,
-                iconBg: visual.iconBg,
-                iconFg: visual.iconFg,
-                onTap: () => _openSection(section),
-              ),
-            );
-          }),
+          ...pinned.map((section) => hubCard(section, journeyStyle: true)),
+          if (catalog.isNotEmpty) ...[
+            if (pinned.isNotEmpty) const SizedBox(height: 6),
+            const ClientPortalSectionHeading(label: 'Document Categories'),
+            const SizedBox(height: 10),
+            ...catalog.map((section) => hubCard(section, journeyStyle: false)),
+          ],
+          if (steps.isNotEmpty) ...[
+            if (pinned.isNotEmpty || catalog.isNotEmpty) const SizedBox(height: 6),
+            const ClientPortalSectionHeading(label: 'Site'),
+            const SizedBox(height: 10),
+            ...steps.map((section) => hubCard(section, journeyStyle: true)),
+          ],
         ],
       ),
     );
   }
 
-  void _openSection(_PortalSectionMeta section) {
+  void _openSection(ClientPortalHubItem section) {
     Widget page;
-    switch (section.id) {
-      case 'documents':
+    switch (section.kind) {
+      case ClientPortalHubKind.kyc:
         page = const _DocumentsKycScreen();
         break;
-      case 'floor_plan':
-        page = const ClientFloorPlanElevationScreen();
+      case ClientPortalHubKind.officeDocuments:
+      case ClientPortalHubKind.receipts:
+        if (section.category != null) {
+          page = DocumentsV1CategoryScreen(
+            category: section.category!,
+            clientMode: true,
+          );
+        } else {
+          page = ClientJourneyDocumentsScreen(
+            title: section.title,
+            journeyKey: section.journeyKey ?? section.id,
+          );
+        }
         break;
-      case 'design':
-        page = const ClientDesignElementsScreen();
-        break;
-      case 'gfc':
-        page = ClientJourneyDocumentsScreen(
-          title: section.title,
-          journeyKey: section.journeyKey!,
+      case ClientPortalHubKind.catalog:
+        final category = section.category;
+        if (category == null) return;
+        page = DocumentsV1CategoryScreen(
+          category: category,
+          clientMode: true,
         );
         break;
-      case 'quality':
-        page = ClientJourneyDocumentsScreen(
-          title: section.title,
-          journeyKey: section.journeyKey!,
-        );
-        break;
-      case 'site_records':
-        page = ClientJourneyDocumentsScreen(
-          title: section.title,
-          journeyKey: section.journeyKey!,
-        );
-        break;
-      case 'doors_windows':
-        page = ClientJourneyDocumentsScreen(
-          title: section.title,
-          journeyKey: section.journeyKey!,
-        );
-        break;
-      case 'office_documents':
-      case 'receipts_and_agreements':
-        page = ClientJourneyDocumentsScreen(
-          title: section.title,
-          journeyKey: section.journeyKey!,
-        );
-        break;
-      case 'site_prep':
+      case ClientPortalHubKind.sitePrep:
         page = const _SitePreparationScreen();
         break;
-      case 'demolition':
+      case ClientPortalHubKind.demolition:
         page = const _DemolitionScreen();
         break;
-      case 'inspection':
+      case ClientPortalHubKind.inspection:
         page = const _SiteInspectionScreen();
         break;
-      default:
-        return;
     }
     Navigator.push(
       context,
@@ -294,137 +291,10 @@ class _ClientPortalScreenState extends State<ClientPortalScreen> {
     ).then((_) => _bootstrap());
   }
 
-  List<_PortalSectionMeta> get _visiblePortalSections {
-    final out = <_PortalSectionMeta>[];
-    for (final section in _portalSections) {
-      out.add(section);
-      if (section.id != 'documents') continue;
-      if (_hasDocumentJourney(ClientJourneyKeys.officeDocuments)) {
-        out.add(
-          const _PortalSectionMeta(
-            id: 'office_documents',
-            title: 'Documents',
-            subtitle: 'Office project library',
-            icon: Icons.folder_shared_outlined,
-            journeyKey: ClientJourneyKeys.officeDocuments,
-          ),
-        );
-      }
-      if (_hasDocumentJourney(ClientJourneyKeys.receiptsAndAgreements)) {
-        out.add(
-          const _PortalSectionMeta(
-            id: 'receipts_and_agreements',
-            title: 'Receipts and Agreements',
-            subtitle: 'Receipts, agreements & tax invoices',
-            icon: Icons.receipt_long_outlined,
-            journeyKey: ClientJourneyKeys.receiptsAndAgreements,
-          ),
-        );
-      }
-    }
-    return out;
-  }
-
-  bool _hasDocumentJourney(String journeyKey) {
-    final library = _docLibrary;
-    if (library == null) return false;
-    if (library.categoriesForJourney(journeyKey).isNotEmpty) return true;
-    if (library.sectionsForJourney(journeyKey).isNotEmpty) return true;
-    final normalized = journeyKey.trim().toLowerCase();
-    return library.libraryCategories.any((category) {
-      final key = (category.clientJourneyKey ?? category.id).toLowerCase();
-      return key == normalized;
-    });
+  List<ClientPortalHubItem> get _visiblePortalSections {
+    return buildClientPortalHubItems(_docLibrary);
   }
 }
-
-class _PortalSectionMeta {
-  final String id;
-  final String title;
-  final String subtitle;
-  final IconData icon;
-  final String? journeyKey;
-
-  const _PortalSectionMeta({
-    required this.id,
-    required this.title,
-    required this.subtitle,
-    required this.icon,
-    this.journeyKey,
-  });
-}
-
-const _portalSections = <_PortalSectionMeta>[
-  _PortalSectionMeta(
-    id: 'documents',
-    title: 'KYC & Documents',
-    subtitle: 'KYC and other project documents',
-    icon: Icons.folder_shared_outlined,
-  ),
-  _PortalSectionMeta(
-    id: 'floor_plan',
-    title: 'Floor Plan & Elevation',
-    subtitle: 'View floor plans and elevations',
-    icon: Icons.architecture_outlined,
-    journeyKey: ClientJourneyKeys.floorPlan,
-  ),
-  _PortalSectionMeta(
-    id: 'design',
-    title: 'Design Elements',
-    subtitle: 'Vastu, elevation refs & bylaws',
-    icon: Icons.auto_awesome_outlined,
-    journeyKey: ClientJourneyKeys.design,
-  ),
-  _PortalSectionMeta(
-    id: 'gfc',
-    title: 'GFC / Construction Drawings',
-    subtitle: 'Architectural, structural & electrical',
-    icon: Icons.domain_outlined,
-    journeyKey: ClientJourneyKeys.gfc,
-  ),
-  _PortalSectionMeta(
-    id: 'quality',
-    title: 'Quality & Test Reports',
-    subtitle: 'NDT & construction test reports',
-    icon: Icons.science_outlined,
-    journeyKey: ClientJourneyKeys.quality,
-  ),
-  _PortalSectionMeta(
-    id: 'site_records',
-    title: 'Site & Construction Records',
-    subtitle: 'Site marking, conduit marking & more',
-    icon: Icons.engineering_outlined,
-    journeyKey: ClientJourneyKeys.siteRecords,
-  ),
-  _PortalSectionMeta(
-    id: 'doors_windows',
-    title: 'Doors, Windows & Grills',
-    subtitle: 'Designs and details',
-    icon: Icons.grid_view_rounded,
-    journeyKey: ClientJourneyKeys.doorsWindows,
-  ),
-  _PortalSectionMeta(
-    id: 'site_prep',
-    title: 'Site Preparation',
-    subtitle: 'Demolition & borewell questionnaire',
-    icon: Icons.construction_outlined,
-    journeyKey: ClientJourneyKeys.sitePrep,
-  ),
-  _PortalSectionMeta(
-    id: 'demolition',
-    title: 'Demolition Details',
-    subtitle: 'Demolition completion & comments',
-    icon: Icons.domain_disabled_outlined,
-    journeyKey: ClientJourneyKeys.demolition,
-  ),
-  _PortalSectionMeta(
-    id: 'inspection',
-    title: 'Site Inspection',
-    subtitle: 'Book a slot or view reports',
-    icon: Icons.event_available_outlined,
-    journeyKey: ClientJourneyKeys.inspection,
-  ),
-];
 
 // ── Shared chrome ───────────────────────────────────────────────────────────
 
@@ -568,85 +438,6 @@ class _TutorialBanner extends StatelessWidget {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _PortalNavTile extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final int badgeCount;
-  final VoidCallback onTap;
-  final Color? iconBg;
-  final Color? iconFg;
-
-  const _PortalNavTile({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    this.badgeCount = 0,
-    required this.onTap,
-    this.iconBg,
-    this.iconFg,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: ClientPortalDocTheme.cardBackground,
-      borderRadius: BorderRadius.circular(14),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(14),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-          decoration: ClientPortalDocTheme.cardDecoration(),
-          child: Row(
-            children: [
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: iconBg ?? const Color(0xFFF0F4FF),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(icon, color: iconFg ?? AppTheme.navy, size: 22),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w800,
-                        color: AppTheme.navy,
-                        height: 1.25,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      subtitle,
-                      style: TextStyle(
-                        fontSize: 12,
-                        height: 1.3,
-                        color: AppTheme.getTextSecondary(context),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              ClientPortalCountBadge(count: badgeCount),
-              const SizedBox(width: 6),
-              Icon(Icons.chevron_right_rounded,
-                  color: AppTheme.getTextSecondary(context), size: 22),
-            ],
-          ),
-        ),
       ),
     );
   }

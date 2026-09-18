@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'app_theme.dart';
+import 'services/data_provider.dart';
 import 'widgets/modern_task_card.dart';
 import 'task_display_title.dart';
 import 'widgets/skeleton_loader.dart';
@@ -71,202 +72,50 @@ class _ViewAllTasksScreenState extends State<ViewAllTasksScreen> {
 
   Future<void> _loadAllTasks() async {
     if (_isLoading) return;
-    
+
     setState(() {
       _isLoading = true;
     });
 
     try {
       SharedPreferences prefs = await SharedPreferences.getInstance();
-      String? userId = prefs.getString('userId') ?? prefs.getString('user_id');
       String? role = prefs.getString('role');
-      String? apiToken = prefs.getString('api_token');
-      
-      List<dynamic> allFetchedTasks = [];
-      Map<int, dynamic> taskMap = {};
-      
-      // For non-Client users, fetch tasks from all sources
-      if (role != null && role != 'Client') {
-        // First, try fetching without any filters to get all tasks
-        try {
-          Uri uri = Uri.parse("http://192.168.2.32:5000/API/get_tasks");
-          var response = await http.get(uri).timeout(const Duration(seconds: 15));
-          
-          if (response.statusCode == 200) {
-            final decoded = jsonDecode(response.body);
-            List<dynamic> fetchedTasks = [];
-            
-            if (decoded is Map && decoded['success'] == true && decoded['tasks'] != null) {
-              fetchedTasks = decoded['tasks'] is List ? decoded['tasks'] : [];
-            } else if (decoded is Map && decoded['tasks'] != null) {
-              fetchedTasks = decoded['tasks'] is List ? decoded['tasks'] : [];
-            } else if (decoded is List) {
-              fetchedTasks = decoded;
-            }
-            
-            allFetchedTasks.addAll(fetchedTasks);
-          }
-        } catch (e) {
-          print('[ViewAllTasksScreen] Error fetching all tasks without filters: $e');
-        }
-        
-        // Also fetch tasks for the user (as backup/complement)
-        if (userId != null && userId.isNotEmpty) {
-          try {
-            Uri uri = Uri.parse("http://192.168.2.32:5000/API/get_tasks").replace(
-              queryParameters: {
-                'user_id': userId,
-                'assigned_to': userId,
-              },
-            );
-            var response = await http.get(uri).timeout(const Duration(seconds: 15));
-            
-            if (response.statusCode == 200) {
-              final decoded = jsonDecode(response.body);
-              List<dynamic> fetchedTasks = [];
-              
-              if (decoded is Map && decoded['success'] == true && decoded['tasks'] != null) {
-                fetchedTasks = decoded['tasks'] is List ? decoded['tasks'] : [];
-              } else if (decoded is Map && decoded['tasks'] != null) {
-                fetchedTasks = decoded['tasks'] is List ? decoded['tasks'] : [];
-              } else if (decoded is List) {
-                fetchedTasks = decoded;
-              }
-              
-              allFetchedTasks.addAll(fetchedTasks);
-            }
-          } catch (e) {
-            print('[ViewAllTasksScreen] Error fetching user tasks: $e');
-          }
-        }
-        
-        // Fetch user's projects and then fetch tasks for each project
-        if (userId != null && userId.isNotEmpty && apiToken != null) {
-          try {
-            // Get user's projects
-            var projectsResponse = await http.post(
-              Uri.parse("https://office.buildahome.in/API/get_projects_for_user"),
-              body: {
-                'user_id': userId,
-                'api_token': apiToken,
-              },
-            ).timeout(const Duration(seconds: 15));
-            
-            if (projectsResponse.statusCode == 200) {
-              final projectsDecoded = jsonDecode(projectsResponse.body);
-              List<dynamic> userProjects = [];
-              
-              if (projectsDecoded is List) {
-                userProjects = projectsDecoded;
-              } else if (projectsDecoded is Map && projectsDecoded['projects'] != null) {
-                userProjects = projectsDecoded['projects'] is List ? projectsDecoded['projects'] : [];
-              }
-              
-              // Extract project IDs
-              List<String> projectIds = [];
-              for (var project in userProjects) {
-                if (project is Map && project['id'] != null) {
-                  projectIds.add(project['id'].toString());
-                }
-              }
-              
-              // Fetch tasks for each project
-              for (String projectId in projectIds) {
-                try {
-                  Uri projectUri = Uri.parse("http://192.168.2.32:5000/API/get_tasks").replace(
-                    queryParameters: {'project_id': projectId},
-                  );
-                  var projectResponse = await http.get(projectUri).timeout(const Duration(seconds: 10));
-                  
-                  if (projectResponse.statusCode == 200) {
-                    final projectDecoded = jsonDecode(projectResponse.body);
-                    List<dynamic> projectTasks = [];
-                    
-                    if (projectDecoded is Map && projectDecoded['success'] == true && projectDecoded['tasks'] != null) {
-                      projectTasks = projectDecoded['tasks'] is List ? projectDecoded['tasks'] : [];
-                    } else if (projectDecoded is Map && projectDecoded['tasks'] != null) {
-                      projectTasks = projectDecoded['tasks'] is List ? projectDecoded['tasks'] : [];
-                    } else if (projectDecoded is List) {
-                      projectTasks = projectDecoded;
-                    }
-                    
-                    // Add tasks to map (deduplicate by ID)
-                    for (var task in projectTasks) {
-                      final taskId = _taskIdFrom(task);
-                      if (taskId != null) {
-                        taskMap[taskId] = task;
-                      }
-                    }
-                    
-                    // Update UI incrementally as we get more tasks
-                    if (mounted) {
-                      List<dynamic> currentTasks = taskMap.values.toList();
-                      currentTasks.sort((a, b) {
-                        if (a is! Map || b is! Map) return 0;
-                        String aDate = (a['created_at'] ?? '').toString();
-                        String bDate = (b['created_at'] ?? '').toString();
-                        return bDate.compareTo(aDate);
-                      });
-                      
-                      setState(() {
-                        _tasks = currentTasks;
-                      });
-                    }
-                  }
-                } catch (e) {
-                  // Continue with other projects if one fails
-                  print('[ViewAllTasksScreen] Error fetching tasks for project $projectId: $e');
-                }
-              }
-            }
-          } catch (e) {
-            print('[ViewAllTasksScreen] Error fetching projects: $e');
-          }
-        }
-      } else {
-        // For Clients, fetch tasks for their project
-        String? projectId = prefs.getString('project_id');
-        if (projectId != null && projectId.isNotEmpty) {
-          Uri uri = Uri.parse("http://192.168.2.32:5000/API/get_tasks").replace(
-            queryParameters: {'project_id': projectId},
-          );
-          var response = await http.get(uri).timeout(const Duration(seconds: 20));
-          
-          if (response.statusCode == 200) {
-            final decoded = jsonDecode(response.body);
-            List<dynamic> fetchedTasks = [];
-            
-            if (decoded is Map && decoded['success'] == true && decoded['tasks'] != null) {
-              fetchedTasks = decoded['tasks'] is List ? decoded['tasks'] : [];
-            } else if (decoded is Map && decoded['tasks'] != null) {
-              fetchedTasks = decoded['tasks'] is List ? decoded['tasks'] : [];
-            } else if (decoded is List) {
-              fetchedTasks = decoded;
-            }
-            
-            allFetchedTasks.addAll(fetchedTasks);
-          }
+      String? projectId = prefs.getString('project_id');
+      final isClient = role == 'Client';
+
+      final provider = DataProvider();
+      if (provider.cachedUserTasks.isNotEmpty && _tasks.isEmpty) {
+        if (mounted) {
+          setState(() {
+            _tasks = List<dynamic>.from(provider.cachedUserTasks);
+          });
         }
       }
-      
-      // Deduplicate tasks by ID (for tasks fetched in initial calls that weren't already added)
-      // Note: Project-specific tasks are already in taskMap, so we only need to add initial calls
-      for (var task in allFetchedTasks) {
-        final taskId = _taskIdFrom(task);
-        if (taskId != null && !taskMap.containsKey(taskId)) {
-          taskMap[taskId] = task;
-        }
+
+      // One production get_tasks call. Staff: user_id OR assigned_to.
+      // Clients: also scoped to their project. The LAN/per-project loop was
+      // redundant with this OR-filter and failed off the office network.
+      final fetched = await provider.loadUserTasks(
+        projectId: projectId,
+        applyProjectId: isClient,
+      );
+
+      final taskMap = <String, dynamic>{};
+      for (final task in fetched) {
+        if (task is! Map || task['id'] == null) continue;
+        final id = task['id'].toString().trim();
+        if (id.isEmpty || id == '0') continue;
+        taskMap[id] = task;
       }
-      
-      // Sort by creation date (newest first)
-      List<dynamic> allTasks = taskMap.values.toList();
+
+      final allTasks = taskMap.values.toList();
       allTasks.sort((a, b) {
         if (a is! Map || b is! Map) return 0;
         String aDate = (a['created_at'] ?? '').toString();
         String bDate = (b['created_at'] ?? '').toString();
         return bDate.compareTo(aDate);
       });
-      
+
       if (mounted) {
         setState(() {
           _tasks = allTasks;
@@ -279,7 +128,6 @@ class _ViewAllTasksScreenState extends State<ViewAllTasksScreen> {
         setState(() {
           _isLoading = false;
         });
-        // If fetch fails, keep the initial tasks that were passed
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Row(
@@ -287,7 +135,8 @@ class _ViewAllTasksScreenState extends State<ViewAllTasksScreen> {
                 Icon(Icons.warning, color: Colors.white, size: 20),
                 SizedBox(width: 8),
                 Expanded(
-                  child: Text('Could not load all tasks. Showing available tasks.'),
+                  child: Text(
+                      'Could not load all tasks. Showing available tasks.'),
                 ),
               ],
             ),
@@ -1330,14 +1179,16 @@ class _ViewAllTasksScreenState extends State<ViewAllTasksScreen> {
                     widget.onTaskUpdated?.call();
                   },
                   color: AppTheme.getPrimaryColor(context),
-                  child: ListView(
+                  child: ListView.builder(
                     padding: EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                    children: _tasks.map((task) {
+                    itemCount: _tasks.length,
+                    itemBuilder: (context, index) {
+                      final task = _tasks[index];
                       if (task is Map<String, dynamic>) {
-                        return _buildTaskCard(task);
+                        return RepaintBoundary(child: _buildTaskCard(task));
                       }
-                      return SizedBox.shrink();
-                    }).toList(),
+                      return const SizedBox.shrink();
+                    },
                   ),
                 ),
     );

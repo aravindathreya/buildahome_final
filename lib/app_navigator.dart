@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 
 /// Shared navigation / snackbar keys for app-wide flows (e.g. session logout).
@@ -23,7 +21,7 @@ class NavigationDebounce {
 
   /// Returns false when another navigation is already in flight / recently fired.
   static bool tryAcquire({
-    Duration cooldown = const Duration(milliseconds: 900),
+    Duration cooldown = const Duration(milliseconds: 280),
   }) {
     if (isLocked) return false;
     _lockedUntil = DateTime.now().add(cooldown);
@@ -34,57 +32,6 @@ class NavigationDebounce {
 
   static void endPush() {
     if (_pushDepth > 0) _pushDepth--;
-    _lockedUntil = DateTime.now().add(const Duration(milliseconds: 400));
-  }
-}
-
-/// Ignores follow-up taps for a short window so double/triple taps do not
-/// open the same screen multiple times (which then needs multiple backs).
-class AppTapGuard extends StatefulWidget {
-  final Widget child;
-  final Duration lockDuration;
-
-  const AppTapGuard({
-    super.key,
-    required this.child,
-    this.lockDuration = const Duration(milliseconds: 900),
-  });
-
-  @override
-  State<AppTapGuard> createState() => _AppTapGuardState();
-}
-
-class _AppTapGuardState extends State<AppTapGuard> {
-  bool _absorbing = false;
-  Timer? _timer;
-
-  @override
-  void dispose() {
-    _timer?.cancel();
-    super.dispose();
-  }
-
-  void _lockAfterThisTap() {
-    // First pointer-down already reached the child; block the next ones ASAP.
-    if (_absorbing) return;
-    _absorbing = true;
-    if (mounted) setState(() {});
-    _timer?.cancel();
-    _timer = Timer(widget.lockDuration, () {
-      if (!mounted) return;
-      setState(() => _absorbing = false);
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Listener(
-      behavior: HitTestBehavior.translucent,
-      onPointerDown: (_) => _lockAfterThisTap(),
-      child: AbsorbPointer(
-        absorbing: _absorbing,
-        child: widget.child,
-      ),
-    );
+    _lockedUntil = DateTime.now().add(const Duration(milliseconds: 120));
   }
 }

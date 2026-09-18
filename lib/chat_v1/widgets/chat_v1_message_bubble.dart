@@ -1,3 +1,4 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -290,31 +291,30 @@ class Cv1MessageBubble extends StatelessWidget {
         gaplessPlayback: true,
       );
     } else {
-      image = Image.network(
-        url,
+      image = CachedNetworkImage(
+        imageUrl: url,
         width: 240,
+        memCacheWidth: 480,
+        memCacheHeight: 480,
         fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => _fileTile(
+        errorWidget: (_, __, ___) => _fileTile(
           context,
           name: att.fileName,
           meta: att.contentType,
           icon: Icons.broken_image_outlined,
           onTap: () => _openUrl(url),
         ),
-        loadingBuilder: (context, child, progress) {
-          if (progress == null) return child;
-          return Container(
-            width: 240,
-            height: 160,
-            alignment: Alignment.center,
-            color: ChatV1Theme.bg(context),
-            child: const SizedBox(
-              width: 22,
-              height: 22,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            ),
-          );
-        },
+        placeholder: (context, _) => Container(
+          width: 240,
+          height: 160,
+          alignment: Alignment.center,
+          color: ChatV1Theme.bg(context),
+          child: const SizedBox(
+            width: 22,
+            height: 22,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+        ),
       );
     }
 

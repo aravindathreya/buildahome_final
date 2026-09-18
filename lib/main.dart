@@ -1,8 +1,10 @@
 // Built in packages
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'Skin2/loginPage.dart';
 import 'UserDashboard.dart';
 import 'app_navigator.dart';
+import 'app_scroll_behavior.dart';
 import 'app_theme.dart';
 import 'services/app_deep_link_service.dart';
 import 'services/session_manager.dart';
@@ -12,7 +14,11 @@ export 'app_navigator.dart';
 final UserDashboardNavigatorObserver globalNavigatorObserver =
     UserDashboardNavigatorObserver();
 
-void main() => runApp(App());
+void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+  GestureBinding.instance.resamplingEnabled = true;
+  runApp(App());
+}
 
 class App extends StatefulWidget {
   final fontName = 'Mulish-Regular';
@@ -27,7 +33,11 @@ class _AppState extends State<App> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      SessionManager.instance.validateSessionIfLoggedIn(force: true);
+      // Let Home start its own authenticated calls first; this probe only
+      // exists to catch a revoked token on a cold restore.
+      Future<void>.delayed(const Duration(seconds: 2), () {
+        SessionManager.instance.validateSessionIfLoggedIn(force: true);
+      });
       AppDeepLinkService.instance.start();
     });
   }
@@ -55,14 +65,10 @@ class _AppState extends State<App> with WidgetsBindingObserver {
       debugShowCheckedModeBanner: false,
       theme: AppTheme.getLightTheme(),
       themeMode: ThemeMode.light,
+      scrollBehavior: const AppScrollBehavior(),
       navigatorKey: globalNavigatorKey,
       scaffoldMessengerKey: globalScaffoldMessengerKey,
       navigatorObservers: [globalNavigatorObserver],
-      builder: (context, child) {
-        return AppTapGuard(
-          child: child ?? const SizedBox.shrink(),
-        );
-      },
       home: LoginScreenNew(),
     );
   }

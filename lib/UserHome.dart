@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -57,6 +59,7 @@ class _HomeState extends State<Home> {
       projectId = await DataProvider().ensureClientProjectSelected();
     }
 
+    // Cache-first: paints the right shell immediately when generation is known.
     await ClientGenerationService.instance.ensureLoaded(projectId: projectId);
     if (!mounted) return;
     setState(() {
@@ -64,7 +67,7 @@ class _HomeState extends State<Home> {
           ClientGenerationService.instance.shouldUseLegacyProjectUi;
       _resolving = false;
     });
-    await AppDeepLinkService.instance.onAppReady();
+    unawaited(AppDeepLinkService.instance.onAppReady());
   }
 
   @override

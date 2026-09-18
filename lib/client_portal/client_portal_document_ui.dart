@@ -60,110 +60,324 @@ ClientPortalCategoryVisual categoryVisualFor({
   String? journeyKey,
   String? categoryId,
   String? label,
+  String? iconName,
 }) {
-  final key = (journeyKey ?? categoryId ?? label ?? '').toLowerCase();
+  final blob = [
+    journeyKey,
+    categoryId,
+    label,
+    iconName,
+  ].whereType<String>().join(' ').toLowerCase();
 
-  if (key.contains('office_documents')) {
-    return const ClientPortalCategoryVisual(
-      icon: Icons.folder_shared_outlined,
-      subtitle: 'Office project library',
-      iconBg: Color(0xFFEEF2FF),
-      iconFg: Color(0xFF4338CA),
-    );
+  ClientPortalCategoryVisual? fromKeywords() {
+    if (blob.contains('office_documents')) {
+      return const ClientPortalCategoryVisual(
+        icon: Icons.folder_shared_outlined,
+        subtitle: 'Office project library',
+        iconBg: Color(0xFFEEF2FF),
+        iconFg: Color(0xFF4338CA),
+      );
+    }
+    if (blob.contains('receipts_and_agreements') ||
+        (blob.contains('receipt') && blob.contains('agreement'))) {
+      return const ClientPortalCategoryVisual(
+        icon: Icons.receipt_long_outlined,
+        subtitle: 'Receipts, agreements & tax invoices',
+        iconBg: Color(0xFFECFDF5),
+        iconFg: Color(0xFF059669),
+      );
+    }
+    if (blob.contains('kyc') || blob.contains('pre_conversion')) {
+      return const ClientPortalCategoryVisual(
+        icon: Icons.badge_outlined,
+        subtitle: 'KYC and other project documents',
+        iconBg: Color(0xFFEEF2FF),
+        iconFg: Color(0xFF4338CA),
+      );
+    }
+    if (blob.contains('floor_plan')) {
+      return const ClientPortalCategoryVisual(
+        icon: Icons.architecture_outlined,
+        subtitle: 'View floor plans and elevations',
+        iconBg: Color(0xFFECFEFF),
+        iconFg: Color(0xFF0891B2),
+      );
+    }
+    if (blob.contains('architectural') || blob.contains('architecture')) {
+      return const ClientPortalCategoryVisual(
+        icon: Icons.apartment_outlined,
+        subtitle: 'Architectural drawings',
+        iconBg: Color(0xFFEEF2FF),
+        iconFg: Color(0xFF2563EB),
+      );
+    }
+    if (blob.contains('structural') || blob.contains('civil')) {
+      return const ClientPortalCategoryVisual(
+        icon: Icons.account_tree_outlined,
+        subtitle: 'Structural & civil drawings',
+        iconBg: Color(0xFFECFDF5),
+        iconFg: Color(0xFF059669),
+      );
+    }
+    if (blob.contains('electrical')) {
+      return const ClientPortalCategoryVisual(
+        icon: Icons.electrical_services_outlined,
+        subtitle: 'Electrical layouts',
+        iconBg: Color(0xFFFFF7ED),
+        iconFg: Color(0xFFEA580C),
+      );
+    }
+    if (blob.contains('plumb')) {
+      return const ClientPortalCategoryVisual(
+        icon: Icons.water_drop_outlined,
+        subtitle: 'Plumbing drawings',
+        iconBg: Color(0xFFE0F2FE),
+        iconFg: Color(0xFF0284C7),
+      );
+    }
+    if (blob.contains('landscape') || blob.contains('planting')) {
+      return const ClientPortalCategoryVisual(
+        icon: Icons.park_outlined,
+        subtitle: 'Landscape documents',
+        iconBg: Color(0xFFF0FDF4),
+        iconFg: Color(0xFF16A34A),
+      );
+    }
+    if (blob.contains('fire') || blob.contains('safety')) {
+      return const ClientPortalCategoryVisual(
+        icon: Icons.local_fire_department_outlined,
+        subtitle: 'Fire & safety documents',
+        iconBg: Color(0xFFFEE2E2),
+        iconFg: Color(0xFFDC2626),
+      );
+    }
+    if (blob.contains('interior') || blob.contains('mep')) {
+      return const ClientPortalCategoryVisual(
+        icon: Icons.weekend_outlined,
+        subtitle: 'Interior & MEP documents',
+        iconBg: Color(0xFFF3E8FF),
+        iconFg: Color(0xFF9333EA),
+      );
+    }
+    if (blob.contains('handover') || blob.contains('final document')) {
+      return const ClientPortalCategoryVisual(
+        icon: Icons.handshake_outlined,
+        subtitle: 'Handover & final documents',
+        iconBg: Color(0xFFEEF2FF),
+        iconFg: Color(0xFF4338CA),
+      );
+    }
+    if (blob.contains('cost') || blob.contains('variation')) {
+      return const ClientPortalCategoryVisual(
+        icon: Icons.request_quote_outlined,
+        subtitle: 'Cost variations',
+        iconBg: Color(0xFFFEF3C7),
+        iconFg: Color(0xFFD97706),
+      );
+    }
+    if (blob.contains('design')) {
+      return const ClientPortalCategoryVisual(
+        icon: Icons.auto_awesome_outlined,
+        subtitle: 'Vastu, elevation refs & bylaws',
+        iconBg: Color(0xFFF3E8FF),
+        iconFg: Color(0xFF9333EA),
+      );
+    }
+    if (blob.contains('gfc') || blob.contains('construction_drawings')) {
+      return const ClientPortalCategoryVisual(
+        icon: Icons.domain_outlined,
+        subtitle: 'Working drawings & elevations',
+        iconBg: Color(0xFFEEF2FF),
+        iconFg: Color(0xFF2563EB),
+      );
+    }
+    if (blob.contains('quality') || blob.contains('ndt')) {
+      return const ClientPortalCategoryVisual(
+        icon: Icons.science_outlined,
+        subtitle: 'NDT & construction test reports',
+        iconBg: Color(0xFFECFDF5),
+        iconFg: Color(0xFF059669),
+      );
+    }
+    if (blob.contains('site_record') || blob.contains('site_construction')) {
+      return const ClientPortalCategoryVisual(
+        icon: Icons.engineering_outlined,
+        subtitle: 'Site marking, conduit marking & more',
+        iconBg: Color(0xFFFFF7ED),
+        iconFg: Color(0xFFEA580C),
+      );
+    }
+    if (blob.contains('door') || blob.contains('window') || blob.contains('grill')) {
+      return const ClientPortalCategoryVisual(
+        icon: Icons.grid_view_rounded,
+        subtitle: 'Designs and details',
+        iconBg: Color(0xFFF0FDF4),
+        iconFg: Color(0xFF16A34A),
+      );
+    }
+    if (blob.contains('site_prep')) {
+      return const ClientPortalCategoryVisual(
+        icon: Icons.construction_outlined,
+        subtitle: 'Demolition & borewell questionnaire',
+        iconBg: Color(0xFFFEF3C7),
+        iconFg: Color(0xFFD97706),
+      );
+    }
+    if (blob.contains('demolition')) {
+      return const ClientPortalCategoryVisual(
+        icon: Icons.home_work_outlined,
+        subtitle: 'Demolition completion & comments',
+        iconBg: Color(0xFFFEE2E2),
+        iconFg: Color(0xFFDC2626),
+      );
+    }
+    if (blob.contains('inspection')) {
+      return const ClientPortalCategoryVisual(
+        icon: Icons.fact_check_outlined,
+        subtitle: 'Book a slot or view reports',
+        iconBg: Color(0xFFE0F2FE),
+        iconFg: Color(0xFF0284C7),
+      );
+    }
+    return null;
   }
-  if (key.contains('receipts_and_agreements')) {
-    return const ClientPortalCategoryVisual(
-      icon: Icons.receipt_long_outlined,
-      subtitle: 'Receipts, agreements & tax invoices',
-      iconBg: Color(0xFFECFDF5),
-      iconFg: Color(0xFF059669),
-    );
-  }
-  if (key.contains('kyc') || key.contains('pre_conversion')) {
-    return const ClientPortalCategoryVisual(
-      icon: Icons.badge_outlined,
-      subtitle: 'KYC and other project documents',
-      iconBg: Color(0xFFEEF2FF),
-      iconFg: Color(0xFF4338CA),
-    );
-  }
-  if (key.contains('floor_plan')) {
-    return const ClientPortalCategoryVisual(
-      icon: Icons.architecture_outlined,
-      subtitle: 'View floor plans and elevations',
-      iconBg: Color(0xFFECFEFF),
-      iconFg: Color(0xFF0891B2),
-    );
-  }
-  if (key.contains('design')) {
-    return const ClientPortalCategoryVisual(
-      icon: Icons.auto_awesome_outlined,
-      subtitle: 'Vastu, elevation refs & bylaws',
-      iconBg: Color(0xFFF3E8FF),
-      iconFg: Color(0xFF9333EA),
-    );
-  }
-  if (key.contains('gfc') || key.contains('construction_drawings')) {
-    return const ClientPortalCategoryVisual(
-      icon: Icons.domain_outlined,
-      subtitle: 'Architectural, structural & electrical',
-      iconBg: Color(0xFFEEF2FF),
-      iconFg: Color(0xFF2563EB),
-    );
-  }
-  if (key.contains('quality') || key.contains('ndt')) {
-    return const ClientPortalCategoryVisual(
-      icon: Icons.science_outlined,
-      subtitle: 'NDT & construction test reports',
-      iconBg: Color(0xFFECFDF5),
-      iconFg: Color(0xFF059669),
-    );
-  }
-  if (key.contains('site_record') || key.contains('site_construction')) {
-    return const ClientPortalCategoryVisual(
-      icon: Icons.engineering_outlined,
-      subtitle: 'Site marking, conduit marking & more',
-      iconBg: Color(0xFFFFF7ED),
-      iconFg: Color(0xFFEA580C),
-    );
-  }
-  if (key.contains('door') || key.contains('window') || key.contains('grill')) {
-    return const ClientPortalCategoryVisual(
-      icon: Icons.grid_view_rounded,
-      subtitle: 'Designs and details',
-      iconBg: Color(0xFFF0FDF4),
-      iconFg: Color(0xFF16A34A),
-    );
-  }
-  if (key.contains('site_prep')) {
-    return const ClientPortalCategoryVisual(
-      icon: Icons.construction_outlined,
-      subtitle: 'Demolition & borewell questionnaire',
-      iconBg: Color(0xFFFEF3C7),
-      iconFg: Color(0xFFD97706),
-    );
-  }
-  if (key.contains('demolition')) {
-    return const ClientPortalCategoryVisual(
-      icon: Icons.home_work_outlined,
-      subtitle: 'Demolition completion & comments',
-      iconBg: Color(0xFFFEE2E2),
-      iconFg: Color(0xFFDC2626),
-    );
-  }
-  if (key.contains('inspection')) {
-    return const ClientPortalCategoryVisual(
-      icon: Icons.fact_check_outlined,
-      subtitle: 'Book a slot or view reports',
-      iconBg: Color(0xFFE0F2FE),
-      iconFg: Color(0xFF0284C7),
+
+  final namedIcon = iconDataFromCatalogName(iconName);
+  final matched = fromKeywords();
+  if (matched != null) {
+    if (namedIcon == null) return matched;
+    return ClientPortalCategoryVisual(
+      icon: namedIcon,
+      subtitle: matched.subtitle,
+      iconBg: matched.iconBg,
+      iconFg: matched.iconFg,
     );
   }
 
-  return const ClientPortalCategoryVisual(
-    icon: Icons.folder_open_outlined,
+  return hashedCatalogVisual(
+    seed: categoryId ?? journeyKey ?? label ?? iconName ?? 'category',
     subtitle: 'View documents in this category',
-    iconBg: Color(0xFFF0F4FF),
+    iconOverride: namedIcon,
+  );
+}
+
+/// Backend `icon` / `icon_name` strings → Material icons.
+IconData? iconDataFromCatalogName(String? raw) {
+  final key = (raw ?? '').trim().toLowerCase().replaceAll('-', '_');
+  if (key.isEmpty) return null;
+  const mapped = <String, IconData>{
+    'architecture': Icons.architecture_outlined,
+    'apartment': Icons.apartment_outlined,
+    'domain': Icons.domain_outlined,
+    'account_tree': Icons.account_tree_outlined,
+    'electrical': Icons.electrical_services_outlined,
+    'electrical_services': Icons.electrical_services_outlined,
+    'plumbing': Icons.water_drop_outlined,
+    'water_drop': Icons.water_drop_outlined,
+    'park': Icons.park_outlined,
+    'landscape': Icons.park_outlined,
+    'fire': Icons.local_fire_department_outlined,
+    'local_fire_department': Icons.local_fire_department_outlined,
+    'science': Icons.science_outlined,
+    'biotech': Icons.biotech_outlined,
+    'engineering': Icons.engineering_outlined,
+    'handshake': Icons.handshake_outlined,
+    'receipt': Icons.receipt_long_outlined,
+    'receipt_long': Icons.receipt_long_outlined,
+    'folder': Icons.folder_open_outlined,
+    'folder_shared': Icons.folder_shared_outlined,
+    'description': Icons.description_outlined,
+    'home_work': Icons.home_work_outlined,
+    'weekend': Icons.weekend_outlined,
+    'request_quote': Icons.request_quote_outlined,
+  };
+  return mapped[key];
+}
+
+const List<ClientPortalCategoryVisual> kCatalogIconPalette = [
+  ClientPortalCategoryVisual(
+    icon: Icons.apartment_outlined,
+    subtitle: 'View documents in this category',
+    iconBg: Color(0xFFEEF2FF),
+    iconFg: Color(0xFF2563EB),
+  ),
+  ClientPortalCategoryVisual(
+    icon: Icons.account_tree_outlined,
+    subtitle: 'View documents in this category',
+    iconBg: Color(0xFFECFDF5),
+    iconFg: Color(0xFF059669),
+  ),
+  ClientPortalCategoryVisual(
+    icon: Icons.electrical_services_outlined,
+    subtitle: 'View documents in this category',
+    iconBg: Color(0xFFFFF7ED),
+    iconFg: Color(0xFFEA580C),
+  ),
+  ClientPortalCategoryVisual(
+    icon: Icons.water_drop_outlined,
+    subtitle: 'View documents in this category',
+    iconBg: Color(0xFFE0F2FE),
+    iconFg: Color(0xFF0284C7),
+  ),
+  ClientPortalCategoryVisual(
+    icon: Icons.park_outlined,
+    subtitle: 'View documents in this category',
+    iconBg: Color(0xFFF0FDF4),
+    iconFg: Color(0xFF16A34A),
+  ),
+  ClientPortalCategoryVisual(
+    icon: Icons.local_fire_department_outlined,
+    subtitle: 'View documents in this category',
+    iconBg: Color(0xFFFEE2E2),
+    iconFg: Color(0xFFDC2626),
+  ),
+  ClientPortalCategoryVisual(
+    icon: Icons.weekend_outlined,
+    subtitle: 'View documents in this category',
+    iconBg: Color(0xFFF3E8FF),
+    iconFg: Color(0xFF9333EA),
+  ),
+  ClientPortalCategoryVisual(
+    icon: Icons.science_outlined,
+    subtitle: 'View documents in this category',
+    iconBg: Color(0xFFECFDF5),
+    iconFg: Color(0xFF0F766E),
+  ),
+  ClientPortalCategoryVisual(
+    icon: Icons.request_quote_outlined,
+    subtitle: 'View documents in this category',
+    iconBg: Color(0xFFFEF3C7),
+    iconFg: Color(0xFFD97706),
+  ),
+  ClientPortalCategoryVisual(
+    icon: Icons.handshake_outlined,
+    subtitle: 'View documents in this category',
+    iconBg: Color(0xFFEEF2FF),
+    iconFg: Color(0xFF4338CA),
+  ),
+];
+
+int catalogVisualSeed(String value) {
+  var hash = 0;
+  for (final code in value.toLowerCase().codeUnits) {
+    hash = 0x1fffffff & (hash * 31 + code);
+  }
+  return hash;
+}
+
+/// Stable colored icon for brand-new catalog categories (no hardcoded names).
+ClientPortalCategoryVisual hashedCatalogVisual({
+  required String seed,
+  String subtitle = 'View documents in this category',
+  IconData? iconOverride,
+}) {
+  final visual =
+      kCatalogIconPalette[catalogVisualSeed(seed) % kCatalogIconPalette.length];
+  return ClientPortalCategoryVisual(
+    icon: iconOverride ?? visual.icon,
+    subtitle: subtitle,
+    iconBg: visual.iconBg,
+    iconFg: visual.iconFg,
   );
 }
 
@@ -174,7 +388,18 @@ ClientPortalCategoryVisual categoryVisualForCategory(
     journeyKey: category.clientJourneyKey,
     categoryId: category.id,
     label: category.label,
+    iconName: category.iconName,
   );
+}
+
+String catalogCategorySubtitle(WorkflowDocumentCategory category) {
+  final types = category.sections
+      .map((section) => section.label.trim())
+      .where((label) => label.isNotEmpty)
+      .take(3)
+      .toList();
+  if (types.isNotEmpty) return types.join(', ');
+  return categoryVisualForCategory(category).subtitle;
 }
 
 ClientPortalCategoryVisual sectionVisualFor(WorkflowDocumentSection section) {
@@ -440,10 +665,23 @@ class ClientPortalStatusBadge extends StatelessWidget {
   static ClientPortalStatusBadgeKind fromStatus(String? status, {required bool isLatest}) {
     final normalized = status?.trim().toLowerCase() ?? '';
     if (normalized == 'verified') return ClientPortalStatusBadgeKind.verified;
-    if (normalized == 'superseded') return ClientPortalStatusBadgeKind.superseded;
-    if (normalized == 'latest' || isLatest) return ClientPortalStatusBadgeKind.latest;
-    if (normalized == 'pending') return ClientPortalStatusBadgeKind.pending;
+    if (normalized == 'superseded' || normalized == 'older') {
+      return ClientPortalStatusBadgeKind.superseded;
+    }
+    if (normalized == 'pending' ||
+        normalized == 'missing' ||
+        normalized == 'inactive' ||
+        normalized == 'required' ||
+        normalized == 'mandatory') {
+      return ClientPortalStatusBadgeKind.pending;
+    }
     if (normalized == 'optional') return ClientPortalStatusBadgeKind.optional;
+    if (normalized == 'latest' ||
+        normalized == 'uploaded' ||
+        normalized == 'available' ||
+        isLatest) {
+      return ClientPortalStatusBadgeKind.latest;
+    }
     return isLatest
         ? ClientPortalStatusBadgeKind.latest
         : ClientPortalStatusBadgeKind.superseded;
@@ -815,7 +1053,10 @@ class ClientPortalDocumentRow extends StatelessWidget {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  if (document.isLatest || document.isVerifiedStatus)
+                  if (document.isLatest ||
+                      document.isVerifiedStatus ||
+                      (document.status?.trim().isNotEmpty == true) ||
+                      !document.hasUrl)
                     ClientPortalStatusBadge(kind: badgeKind),
                   const SizedBox(height: 4),
                   IconButton(
@@ -1117,7 +1358,7 @@ List<Widget> buildDocumentCategoryCards({
       child: ClientPortalCategoryCard(
         icon: visual.icon,
         title: category.label,
-        subtitle: visual.subtitle,
+        subtitle: catalogCategorySubtitle(category),
         badgeCount: workflowDocCountForCategory(category),
         iconBg: visual.iconBg,
         iconFg: visual.iconFg,

@@ -1341,7 +1341,8 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
         final msg = _messages[msgIndex];
         final showAuthor = msgIndex == 0 ||
             _messages[msgIndex - 1].authorId != msg.authorId;
-        return Cv1MessageBubble(
+        return RepaintBoundary(
+          child: Cv1MessageBubble(
           message: msg,
           showAuthor: showAuthor,
           highlighted: _highlightMessageId == msg.id,
@@ -1354,6 +1355,7 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
           onReactionTap: msg.isDeleted
               ? null
               : (emoji) => _reactToMessage(msg, emoji),
+        ),
         );
       },
     );
