@@ -13,14 +13,7 @@ import '../services/location_service.dart';
 import '../services/multi_material_site_proof_service.dart';
 import '../widgets/themed_scaffold.dart';
 
-enum _WizardPhase {
-  select,
-  materialDetail,
-  measurement,
-  vehicle,
-  review,
-  success,
-}
+enum _WizardPhase { select, evidence, success }
 
 class _LocalMedia {
   final File file;
@@ -46,7 +39,9 @@ class _MaterialDraft {
   _MaterialDraft({required this.materialKey});
 }
 
-/// Multi-material site-proof wizard (separate from single-material flow).
+/// Multi-material site-proof:
+/// 1) Select materials + quantity on each card
+/// 2) Per-material photo/video, then shared photo/video/measurement/comments
 class MultiMaterialSiteProofScreen extends StatefulWidget {
   final String indentId;
   final String itemRunId;
@@ -79,21 +74,20 @@ class _MultiMaterialSiteProofScreenState
   final _driverPhoneController = TextEditingController();
   final _vehicleCommentController = TextEditingController();
   final _siteCommentController = TextEditingController();
-  final _materialCommentController = TextEditingController();
 
   MultiMaterialSiteProofSession? _session;
   final Map<String, _MaterialDraft> _drafts = {};
   List<String> _selectedOrder = [];
-  int _materialIndex = 0;
   _WizardPhase _phase = _WizardPhase.select;
   String _vehicleType = 'Truck';
+  final List<_LocalMedia> _commonPhotos = [];
+  final List<_LocalMedia> _commonVideos = [];
   final List<_LocalMedia> _vehiclePhotos = [];
-  final List<_LocalMedia> _measurementPhotos = [];
 
   bool _loading = true;
   bool _busy = false;
   String? _error;
-  String? _materialValidation;
+  String? _selectValidation;
 
   bool _checkingLocation = true;
   bool _onSite = false;
@@ -129,7 +123,6 @@ class _MultiMaterialSiteProofScreenState
     _driverPhoneController.dispose();
     _vehicleCommentController.dispose();
     _siteCommentController.dispose();
-    _materialCommentController.dispose();
     super.dispose();
   }
 
@@ -142,10 +135,8 @@ class _MultiMaterialSiteProofScreenState
   String get _subtitle {
     final po = widget.approvedPo;
     final parts = <String>[];
-    final poNo = (po?.displayPoNumber() ??
-            _session?.poNumber ??
-            '')
-        .trim();
+    final poNo =
+        (po?.displayPoNumber() ?? _session?.poNumber ?? '').trim();
     if (poNo.isNotEmpty) parts.add(poNo);
     final project = (po?.projectName ?? _session?.projectName ?? '').trim();
     if (project.isNotEmpty) parts.add(project);
@@ -156,13 +147,24 @@ class _MultiMaterialSiteProofScreenState
 
   List<MultiMaterialLine> get _materials => _session?.materials ?? const [];
 
+  /// Materials that still have remaining quantity (partial deliveries).
+  List<MultiMaterialLine> get _materialsWithRemaining {
+    return _materials.where((m) {
+      final remaining = m.remainingAsNumber;
+      return remaining == null || remaining > 0.0001;
+    }).toList();
+  }
+
   List<MultiMaterialLine> get _filteredMaterials {
     final q = _searchController.text.trim().toLowerCase();
-    if (q.isEmpty) return _materials;
-    return _materials
-        .where((m) =>
-            m.material.toLowerCase().contains(q) ||
-            m.unit.toLowerCase().contains(q))
+    final source = _materialsWithRemaining;
+    if (q.isEmpty) return source;
+    return source
+        .where(
+          (m) =>
+              m.material.toLowerCase().contains(q) ||
+              m.unit.toLowerCase().contains(q),
+        )
         .toList();
   }
 
@@ -180,10 +182,7 @@ class _MultiMaterialSiteProofScreenState
   }
 
   _MaterialDraft _draftFor(String key) {
-    return _drafts.putIfAbsent(
-      key,
-      () => _MaterialDraft(materialKey: key),
-    );
+    return _drafts.putIfAbsent(key, () => _MaterialDraft(materialKey: key));
   }
 
   Future<void> _bootstrap() async {
@@ -197,6 +196,15 @@ class _MultiMaterialSiteProofScreenState
         itemRunId: widget.itemRunId.isEmpty ? null : widget.itemRunId,
       );
       if (!mounted) return;
+      if (session.itemRunId <= 0) {
+        setState(() {
+          _loading = false;
+          _error =
+              'No open site-proof delivery for remaining materials. '
+              'Backend must return a new/open item_run_id when quantities remain.';
+        });
+        return;
+      }
       _applySession(session);
       setState(() => _loading = false);
       await _refreshLocation();
@@ -257,7 +265,6 @@ class _MultiMaterialSiteProofScreenState
     final site = session.siteLocation;
     final available = session.siteLocationAvailable && site != null;
     if (!available) {
-      // Backend did not provide site coords — do not hard-block the wizard.
       setState(() {
         _checkingLocation = false;
         _siteConfigured = false;
@@ -371,14 +378,34 @@ class _MultiMaterialSiteProofScreenState
     final selected = value ?? !draft.selected;
     setState(() {
       draft.selected = selected;
+      _selectValidation = null;
       if (selected) {
         if (!_selectedOrder.contains(line.materialKey)) {
           _selectedOrder.add(line.materialKey);
+        }
+        if (draft.quantityReceivedToday.trim().isEmpty) {
+          draft.quantityReceivedToday = '0';
         }
       } else {
         _selectedOrder.remove(line.materialKey);
       }
     });
+  }
+
+  String? _validateQuantity(MultiMaterialLine line, _MaterialDraft draft) {
+    final qtyText = draft.quantityReceivedToday.trim();
+    final qty = double.tryParse(qtyText.replaceAll(',', ''));
+    if (qtyText.isEmpty || qty == null) {
+      return 'Enter quantity for ${line.material}.';
+    }
+    if (qty <= 0) {
+      return 'Quantity for ${line.material} must be greater than zero.';
+    }
+    final remaining = line.remainingAsNumber;
+    if (remaining != null && qty > remaining + 0.0001) {
+      return '${line.material}: cannot exceed remaining (${line.remainingQuantity} ${line.unit}).';
+    }
+    return null;
   }
 
   Future<void> _continueFromSelect() async {
@@ -387,119 +414,67 @@ class _MultiMaterialSiteProofScreenState
       return;
     }
     if (_selectedOrder.isEmpty) {
-      _snack('Select at least one material.', error: true);
+      setState(() => _selectValidation = 'Select at least one material.');
       return;
     }
+    for (final line in _selectedMaterials) {
+      final err = _validateQuantity(line, _draftFor(line.materialKey));
+      if (err != null) {
+        setState(() => _selectValidation = err);
+        return;
+      }
+    }
     setState(() {
-      _materialIndex = 0;
-      _phase = _WizardPhase.materialDetail;
-      _materialValidation = null;
-      _loadMaterialEditors();
+      _selectValidation = null;
+      _phase = _WizardPhase.evidence;
     });
   }
 
-  void _loadMaterialEditors() {
-    final materials = _selectedMaterials;
-    if (_materialIndex < 0 || _materialIndex >= materials.length) return;
-    final line = materials[_materialIndex];
-    final draft = _draftFor(line.materialKey);
-    if (draft.quantityReceivedToday.isEmpty &&
-        line.quantityReceivedToday.isNotEmpty) {
-      draft.quantityReceivedToday = line.quantityReceivedToday;
-    }
-    _materialCommentController.text = draft.comment;
-  }
-
-  String? _validateMaterialDraft(MultiMaterialLine line, _MaterialDraft draft) {
-    final qtyText = draft.quantityReceivedToday.trim();
-    final qty = double.tryParse(qtyText.replaceAll(',', ''));
-    if (qtyText.isEmpty || qty == null) {
-      return 'Enter quantity received today.';
-    }
-    if (qty <= 0) {
-      return 'Quantity must be greater than zero.';
-    }
-    final remaining = line.remainingAsNumber;
-    if (remaining != null && qty > remaining + 0.0001) {
-      return 'Quantity cannot exceed remaining (${line.remainingQuantity} ${line.unit}).';
-    }
-    final minPhotos = line.effectiveMinPhotos;
-    if (draft.photos.length < minPhotos) {
-      return minPhotos == 1
-          ? 'Add at least one photo for this material.'
-          : 'Add at least $minPhotos photos for this material.';
-    }
-    if (line.requireVideo && draft.videos.isEmpty) {
-      return 'Add a video for this material.';
-    }
-    if (draft.photos.length > line.effectiveMaxPhotos) {
-      return 'You can add at most ${line.effectiveMaxPhotos} photos.';
-    }
-    return null;
-  }
-
-  Future<void> _saveAndNextMaterial() async {
-    final materials = _selectedMaterials;
-    if (_materialIndex >= materials.length) return;
-    final line = materials[_materialIndex];
-    final draft = _draftFor(line.materialKey);
-    draft.comment = _materialCommentController.text.trim();
-
-    final validation = _validateMaterialDraft(line, draft);
-    if (validation != null) {
-      setState(() => _materialValidation = validation);
+  Future<void> _submitAll() async {
+    if (_vehicleNumberController.text.trim().isEmpty) {
+      _snack('Vehicle number is required.', error: true);
       return;
     }
 
-    setState(() {
-      _busy = true;
-      _materialValidation = null;
-    });
-    try {
-      await _service.saveMaterial(
-        itemRunId: _itemRunId,
-        materialKey: line.materialKey,
-        quantityReceivedToday: draft.quantityReceivedToday.trim(),
-        comment: draft.comment,
+    final hasAnyPhoto = _selectedMaterials.any(
+          (line) => _draftFor(line.materialKey).photos.isNotEmpty,
+        ) ||
+        _commonPhotos.isNotEmpty ||
+        _vehiclePhotos.isNotEmpty;
+    if (!hasAnyPhoto) {
+      _snack(
+        'Add at least one photo (on a material or below).',
+        error: true,
       );
-
-      final pendingFiles = <File>[
-        ...draft.photos.map((p) => p.file),
-        ...draft.videos.map((v) => v.file),
-      ];
-      if (pendingFiles.isNotEmpty) {
-        await _service.uploadMaterialFiles(
-          itemRunId: _itemRunId,
-          materialKey: line.materialKey,
-          files: pendingFiles,
-        );
-      }
-
-      draft.savedToServer = true;
-      if (!mounted) return;
-
-      if (_materialIndex < materials.length - 1) {
-        setState(() {
-          _busy = false;
-          _materialIndex += 1;
-          _loadMaterialEditors();
-        });
-      } else {
-        setState(() {
-          _busy = false;
-          _phase = _WizardPhase.measurement;
-        });
-      }
-    } catch (e) {
-      if (!mounted) return;
-      setState(() => _busy = false);
-      _snack(e.toString().replaceFirst('Exception: ', ''), error: true);
+      return;
     }
-  }
 
-  Future<void> _continueFromMeasurement() async {
     setState(() => _busy = true);
     try {
+      // 1) Save each material + its media
+      for (final line in _selectedMaterials) {
+        final draft = _draftFor(line.materialKey);
+        await _service.saveMaterial(
+          itemRunId: _itemRunId,
+          materialKey: line.materialKey,
+          quantityReceivedToday: draft.quantityReceivedToday.trim(),
+          comment: draft.comment,
+        );
+        final materialFiles = <File>[
+          ...draft.photos.map((p) => p.file),
+          ...draft.videos.map((v) => v.file),
+        ];
+        if (materialFiles.isNotEmpty) {
+          await _service.uploadMaterialFiles(
+            itemRunId: _itemRunId,
+            materialKey: line.materialKey,
+            files: materialFiles,
+          );
+        }
+        draft.savedToServer = true;
+      }
+
+      // 2) Delivery-level common fields
       final fields = MultiMaterialCommonFields(
         measurement: _measurementController.text.trim(),
         measurementUnit: _measurementUnitController.text.trim(),
@@ -511,58 +486,21 @@ class _MultiMaterialSiteProofScreenState
         vehicleComment: _vehicleCommentController.text.trim(),
       );
       await _service.saveCommon(itemRunId: _itemRunId, fields: fields);
-      if (!mounted) return;
-      setState(() {
-        _busy = false;
-        _phase = _WizardPhase.vehicle;
-      });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() => _busy = false);
-      _snack(e.toString().replaceFirst('Exception: ', ''), error: true);
-    }
-  }
 
-  Future<void> _continueFromVehicle() async {
-    final vehicleNo = _vehicleNumberController.text.trim();
-    if (vehicleNo.isEmpty) {
-      _snack('Vehicle number is required.', error: true);
-      return;
-    }
-    setState(() => _busy = true);
-    try {
-      final fields = MultiMaterialCommonFields(
-        measurement: _measurementController.text.trim(),
-        measurementUnit: _measurementUnitController.text.trim(),
-        siteComment: _siteCommentController.text.trim(),
-        vehicleNumber: vehicleNo,
-        vehicleType: _vehicleType,
-        driverName: _driverNameController.text.trim(),
-        driverPhone: _driverPhoneController.text.trim(),
-        vehicleComment: _vehicleCommentController.text.trim(),
-      );
-      await _service.saveCommon(itemRunId: _itemRunId, fields: fields);
-      if (_vehiclePhotos.isNotEmpty) {
+      // 3) Common / vehicle media (attach to vehicle upload endpoint)
+      final commonFiles = <File>[
+        ..._commonPhotos.map((p) => p.file),
+        ..._commonVideos.map((v) => v.file),
+        ..._vehiclePhotos.map((p) => p.file),
+      ];
+      if (commonFiles.isNotEmpty) {
         await _service.uploadVehicleFiles(
           itemRunId: _itemRunId,
-          files: _vehiclePhotos.map((p) => p.file).toList(),
+          files: commonFiles,
         );
       }
-      if (!mounted) return;
-      setState(() {
-        _busy = false;
-        _phase = _WizardPhase.review;
-      });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() => _busy = false);
-      _snack(e.toString().replaceFirst('Exception: ', ''), error: true);
-    }
-  }
 
-  Future<void> _submit() async {
-    setState(() => _busy = true);
-    try {
+      // 4) Submit
       final result = await _service.submit(itemRunId: _itemRunId);
       await widget.onChanged();
       if (!mounted) return;
@@ -627,55 +565,12 @@ class _MultiMaterialSiteProofScreenState
       case _WizardPhase.select:
         Navigator.of(context).maybePop();
         break;
-      case _WizardPhase.materialDetail:
-        if (_materialIndex > 0) {
-          setState(() {
-            _materialIndex -= 1;
-            _materialValidation = null;
-            _loadMaterialEditors();
-          });
-        } else {
-          setState(() => _phase = _WizardPhase.select);
-        }
-        break;
-      case _WizardPhase.measurement:
-        setState(() {
-          _phase = _WizardPhase.materialDetail;
-          _materialIndex = _selectedMaterials.length - 1;
-          _loadMaterialEditors();
-        });
-        break;
-      case _WizardPhase.vehicle:
-        setState(() => _phase = _WizardPhase.measurement);
-        break;
-      case _WizardPhase.review:
-        setState(() => _phase = _WizardPhase.vehicle);
+      case _WizardPhase.evidence:
+        setState(() => _phase = _WizardPhase.select);
         break;
       case _WizardPhase.success:
         Navigator.of(context).pop();
         break;
-    }
-  }
-
-  int get _totalWizardSteps {
-    // materials N + measurement + vehicle + review
-    final n = _selectedOrder.isEmpty ? 1 : _selectedOrder.length;
-    return n + 3;
-  }
-
-  int get _currentWizardStep {
-    switch (_phase) {
-      case _WizardPhase.select:
-        return 0;
-      case _WizardPhase.materialDetail:
-        return _materialIndex + 1;
-      case _WizardPhase.measurement:
-        return _selectedOrder.length + 1;
-      case _WizardPhase.vehicle:
-        return _selectedOrder.length + 2;
-      case _WizardPhase.review:
-      case _WizardPhase.success:
-        return _selectedOrder.length + 3;
     }
   }
 
@@ -700,15 +595,13 @@ class _MultiMaterialSiteProofScreenState
         onPressed: _busy ? null : _goBack,
       ),
       actions: [
-        if (_phase != _WizardPhase.select &&
-            _phase != _WizardPhase.success &&
-            _selectedOrder.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.only(right: 12),
+        if (_phase == _WizardPhase.evidence)
+          const Padding(
+            padding: EdgeInsets.only(right: 12),
             child: Center(
               child: Text(
-                '${_currentWizardStep} of $_totalWizardSteps',
-                style: const TextStyle(
+                '2 of 2',
+                style: TextStyle(
                   fontWeight: FontWeight.w700,
                   fontSize: 13,
                   color: AppTheme.mutedGrey,
@@ -742,18 +635,14 @@ class _MultiMaterialSiteProofScreenState
     switch (_phase) {
       case _WizardPhase.select:
         return _buildSelectPhase();
-      case _WizardPhase.materialDetail:
-        return _buildMaterialDetailPhase();
-      case _WizardPhase.measurement:
-        return _buildMeasurementPhase();
-      case _WizardPhase.vehicle:
-        return _buildVehiclePhase();
-      case _WizardPhase.review:
-        return _buildReviewPhase();
+      case _WizardPhase.evidence:
+        return _buildEvidencePhase();
       case _WizardPhase.success:
         return _buildSuccessPhase();
     }
   }
+
+  // ─── STEP 1: select + quantity ───────────────────────────────────────────
 
   Widget _buildSelectPhase() {
     final selectedCount = _selectedOrder.length;
@@ -792,7 +681,7 @@ class _MultiMaterialSiteProofScreenState
               Row(
                 children: [
                   Text(
-                    'Materials (${_materials.length})',
+                    'Materials (${_materialsWithRemaining.length})',
                     style: const TextStyle(
                       fontSize: 17,
                       fontWeight: FontWeight.w800,
@@ -809,27 +698,35 @@ class _MultiMaterialSiteProofScreenState
                   ),
                 ],
               ),
+              const SizedBox(height: 6),
+              const Text(
+                'Tick materials and enter quantity received on each card.',
+                style: TextStyle(
+                  color: AppTheme.mutedGrey,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 13,
+                ),
+              ),
               const SizedBox(height: 10),
               TextField(
                 controller: _searchController,
                 onChanged: (_) => setState(() {}),
-                decoration: InputDecoration(
-                  hintText: 'Search materials',
+                decoration: _inputDecoration('Search materials').copyWith(
                   prefixIcon: const Icon(Icons.search),
-                  filled: true,
-                  fillColor: Colors.white,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: AppTheme.border),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: AppTheme.border),
-                  ),
                 ),
               ),
               const SizedBox(height: 12),
-              ..._filteredMaterials.map(_buildMaterialSelectTile),
+              ..._filteredMaterials.map(_buildSelectCard),
+              if (_selectValidation != null) ...[
+                const SizedBox(height: 8),
+                Text(
+                  _selectValidation!,
+                  style: const TextStyle(
+                    color: Color(0xFFB91C1C),
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
             ],
           ),
         ),
@@ -850,7 +747,7 @@ class _MultiMaterialSiteProofScreenState
               child: Text(
                 selectedCount == 0
                     ? 'Select materials to continue'
-                    : 'Continue ($selectedCount material${selectedCount == 1 ? '' : 's'}) →',
+                    : 'Continue ($selectedCount) →',
                 style: const TextStyle(
                   fontWeight: FontWeight.w800,
                   fontSize: 16,
@@ -863,140 +760,73 @@ class _MultiMaterialSiteProofScreenState
     );
   }
 
-  Widget _buildMaterialSelectTile(MultiMaterialLine line) {
+  Widget _buildSelectCard(MultiMaterialLine line) {
     final draft = _draftFor(line.materialKey);
     final selected = draft.selected;
+    final remainingAfter =
+        selected ? _remainingAfterThis(line, draft.quantityReceivedToday) : null;
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
-      child: Material(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        child: InkWell(
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(16),
-          onTap: () => _toggleMaterial(line, !selected),
-          child: Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: selected
-                    ? const Color(0xFF93C5FD)
-                    : AppTheme.border,
-                width: selected ? 1.5 : 1,
-              ),
-              color: selected ? const Color(0xFFEFF6FF) : Colors.white,
-            ),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Checkbox(
-                  value: selected,
-                  onChanged: (v) => _toggleMaterial(line, v),
-                ),
-                if ((line.thumbnailUrl ?? '').isNotEmpty) ...[
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: Image.network(
-                      line.thumbnailUrl!,
-                      width: 48,
-                      height: 48,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => _thumbPlaceholder(),
+          border: Border.all(
+            color: selected ? const Color(0xFF93C5FD) : AppTheme.border,
+            width: selected ? 1.5 : 1,
+          ),
+          color: selected ? const Color(0xFFEFF6FF) : Colors.white,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            InkWell(
+              onTap: () => _toggleMaterial(line, !selected),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Checkbox(
+                    value: selected,
+                    onChanged: (v) => _toggleMaterial(line, v),
+                  ),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          line.material,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w800,
+                            fontSize: 16,
+                            color: AppTheme.navy,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Ordered: ${line.orderedQuantity} ${line.unit}'.trim(),
+                          style: const TextStyle(
+                            color: AppTheme.mutedGrey,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 13,
+                          ),
+                        ),
+                        Text(
+                          'Received: ${line.previouslyReceivedQuantity}  ·  Remaining: ${line.remainingQuantity}',
+                          style: const TextStyle(
+                            color: AppTheme.mutedGrey,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  const SizedBox(width: 10),
-                ] else ...[
-                  _thumbPlaceholder(),
-                  const SizedBox(width: 10),
                 ],
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        line.material,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w800,
-                          fontSize: 16,
-                          color: AppTheme.navy,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        'Ordered: ${line.orderedQuantity} ${line.unit}'.trim(),
-                        style: const TextStyle(
-                          color: AppTheme.mutedGrey,
-                          fontWeight: FontWeight.w600,
-                          fontSize: 13,
-                        ),
-                      ),
-                      Text(
-                        'Received: ${line.previouslyReceivedQuantity}  ·  Remaining: ${line.remainingQuantity}',
-                        style: const TextStyle(
-                          color: AppTheme.mutedGrey,
-                          fontWeight: FontWeight.w600,
-                          fontSize: 13,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _thumbPlaceholder() {
-    return Container(
-      width: 48,
-      height: 48,
-      decoration: BoxDecoration(
-        color: const Color(0xFFF1F5F9),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: const Icon(Icons.inventory_2_outlined, color: AppTheme.mutedGrey),
-    );
-  }
-
-  Widget _buildMaterialDetailPhase() {
-    final materials = _selectedMaterials;
-    if (materials.isEmpty) {
-      return const Center(child: Text('No materials selected.'));
-    }
-    final line = materials[_materialIndex];
-    final draft = _draftFor(line.materialKey);
-    final remainingAfter =
-        _remainingAfterThis(line, draft.quantityReceivedToday);
-    final qty = double.tryParse(
-          draft.quantityReceivedToday.trim().replaceAll(',', ''),
-        ) ??
-        0;
-    final remaining = line.remainingAsNumber;
-    final fullyReceived =
-        remaining != null && qty > 0 && (remaining - qty).abs() < 0.0001;
-
-    return Column(
-      children: [
-        Expanded(
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
-            children: [
-              Align(
-                alignment: Alignment.centerRight,
-                child: Text(
-                  '${_materialIndex + 1} of ${materials.length}',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w700,
-                    color: AppTheme.mutedGrey,
-                  ),
-                ),
               ),
-              const SizedBox(height: 8),
-              _MaterialSummaryCard(line: line),
-              const SizedBox(height: 16),
+            ),
+            if (selected) ...[
+              const SizedBox(height: 12),
               const Text(
                 'Quantity received today *',
                 style: TextStyle(
@@ -1013,155 +843,93 @@ class _MultiMaterialSiteProofScreenState
                 onChanged: (next) {
                   setState(() {
                     draft.quantityReceivedToday = next;
-                    _materialValidation = null;
+                    _selectValidation = null;
                   });
                 },
               ),
               if (remainingAfter != null) ...[
-                const SizedBox(height: 10),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    _Pill(
-                      label: 'Remaining after this: $remainingAfter',
-                      color: const Color(0xFF065F46),
-                      bg: const Color(0xFFECFDF5),
-                    ),
-                    if (fullyReceived)
-                      const _Pill(
-                        label: 'Fully received',
-                        color: Color(0xFF065F46),
-                        bg: Color(0xFFECFDF5),
-                      ),
-                  ],
-                ),
-              ],
-              if (_materialValidation != null) ...[
-                const SizedBox(height: 10),
+                const SizedBox(height: 8),
                 Text(
-                  _materialValidation!,
+                  'Remaining after this: $remainingAfter',
                   style: const TextStyle(
-                    color: Color(0xFFB91C1C),
+                    color: Color(0xFF065F46),
                     fontWeight: FontWeight.w700,
+                    fontSize: 13,
                   ),
                 ),
               ],
-              const SizedBox(height: 20),
-              _MediaSection(
-                title: 'Photos (Max ${line.effectiveMaxPhotos}) *',
-                items: draft.photos,
-                addLabel: 'Add photo',
-                onAdd: () async {
-                  if (draft.photos.length >= line.effectiveMaxPhotos) {
-                    _snack(
-                      'Max ${line.effectiveMaxPhotos} photos allowed.',
-                      error: true,
-                    );
-                    return;
-                  }
-                  final media = await _capturePhoto();
-                  if (media == null || !mounted) return;
-                  setState(() {
-                    draft.photos.add(media);
-                    _materialValidation = null;
-                  });
-                },
-                onRemove: (i) => setState(() => draft.photos.removeAt(i)),
-              ),
-              const SizedBox(height: 16),
-              _MediaSection(
-                title: line.requireVideo ? 'Video *' : 'Video (Optional)',
-                items: draft.videos,
-                addLabel: 'Add video',
-                maxItems: 1,
-                onAdd: () async {
-                  if (draft.videos.isNotEmpty) {
-                    _snack('Only one video per material.', error: true);
-                    return;
-                  }
-                  final media = await _recordVideo();
-                  if (media == null || !mounted) return;
-                  setState(() {
-                    draft.videos.add(media);
-                    _materialValidation = null;
-                  });
-                },
-                onRemove: (i) => setState(() => draft.videos.removeAt(i)),
-              ),
-              const SizedBox(height: 16),
-              const Text(
-                'Comment (Optional)',
-                style: TextStyle(
-                  fontWeight: FontWeight.w700,
-                  color: AppTheme.navy,
-                ),
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: _materialCommentController,
-                maxLines: 3,
-                decoration: _inputDecoration('Enter comment...'),
-              ),
             ],
-          ),
+          ],
         ),
-        _BottomBar(
-          child: Row(
-            children: [
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: _busy ? null : _goBack,
-                  style: OutlinedButton.styleFrom(
-                    minimumSize: const Size.fromHeight(48),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                  child: const Text('Back'),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                flex: 2,
-                child: ElevatedButton(
-                  onPressed: _busy ? null : _saveAndNextMaterial,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppTheme.accentBlue,
-                    foregroundColor: Colors.white,
-                    minimumSize: const Size.fromHeight(48),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                  child: Text(
-                    _materialIndex < materials.length - 1
-                        ? 'Save & Next →'
-                        : 'Save & Continue →',
-                    style: const TextStyle(fontWeight: FontWeight.w800),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
+      ),
     );
   }
 
-  Widget _buildMeasurementPhase() {
+  // ─── STEP 2: per-material media + shared fields ──────────────────────────
+
+  Widget _buildEvidencePhase() {
+    final materials = _selectedMaterials;
     return Column(
       children: [
         Expanded(
           child: ListView(
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
             children: [
-              const _SectionHeader(
-                icon: Icons.straighten,
-                title: 'Site Measurement',
-                subtitle: 'Capture measurement details (if required)',
+              const Text(
+                'Evidence & delivery details',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                  color: AppTheme.navy,
+                ),
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                'Add photo/video next to each material if needed. Scroll down for delivery photo, video, measurement and comments.',
+                style: TextStyle(
+                  color: AppTheme.mutedGrey,
+                  fontWeight: FontWeight.w600,
+                  height: 1.35,
+                ),
               ),
               const SizedBox(height: 16),
+              ...materials.map(_buildMaterialEvidenceCard),
+              const SizedBox(height: 8),
+              const Divider(height: 32),
+              const Text(
+                'Delivery proof (optional extras)',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                  color: AppTheme.navy,
+                ),
+              ),
+              const SizedBox(height: 12),
+              _MediaRow(
+                title: 'Add photo',
+                items: _commonPhotos,
+                addLabel: 'Add photo',
+                onAdd: () async {
+                  final media = await _capturePhoto();
+                  if (media == null || !mounted) return;
+                  setState(() => _commonPhotos.add(media));
+                },
+                onRemove: (i) => setState(() => _commonPhotos.removeAt(i)),
+              ),
+              const SizedBox(height: 14),
+              _MediaRow(
+                title: 'Add video',
+                items: _commonVideos,
+                addLabel: 'Add video',
+                maxItems: 2,
+                onAdd: () async {
+                  final media = await _recordVideo();
+                  if (media == null || !mounted) return;
+                  setState(() => _commonVideos.add(media));
+                },
+                onRemove: (i) => setState(() => _commonVideos.removeAt(i)),
+              ),
+              const SizedBox(height: 20),
               const Text(
                 'Measurement (Optional)',
                 style: TextStyle(fontWeight: FontWeight.w700),
@@ -1171,92 +939,21 @@ class _MultiMaterialSiteProofScreenState
                 controller: _measurementController,
                 decoration: _inputDecoration('e.g. Area levelled'),
               ),
-              const SizedBox(height: 12),
-              const Text(
-                'Unit',
-                style: TextStyle(fontWeight: FontWeight.w700),
-              ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 10),
               TextField(
                 controller: _measurementUnitController,
-                decoration: _inputDecoration('Sq. ft'),
+                decoration: _inputDecoration('Unit (e.g. Sq. ft)'),
               ),
-              const SizedBox(height: 16),
-              _MediaSection(
-                title: 'Measurement Photo (Optional)',
-                items: _measurementPhotos,
-                addLabel: 'Add photo',
-                maxItems: 3,
-                onAdd: () async {
-                  final media = await _capturePhoto();
-                  if (media == null || !mounted) return;
-                  setState(() => _measurementPhotos.add(media));
-                },
-                onRemove: (i) =>
-                    setState(() => _measurementPhotos.removeAt(i)),
-              ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 20),
               const Text(
-                'Comment (Optional)',
-                style: TextStyle(fontWeight: FontWeight.w700),
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: _siteCommentController,
-                maxLines: 3,
-                decoration: _inputDecoration('Comment'),
-              ),
-            ],
-          ),
-        ),
-        _BottomBar(
-          child: Row(
-            children: [
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: _busy ? null : _goBack,
-                  style: OutlinedButton.styleFrom(
-                    minimumSize: const Size.fromHeight(48),
-                  ),
-                  child: const Text('Back'),
+                'Vehicle details',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                  color: AppTheme.navy,
                 ),
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                flex: 2,
-                child: ElevatedButton(
-                  onPressed: _busy ? null : _continueFromMeasurement,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppTheme.accentBlue,
-                    foregroundColor: Colors.white,
-                    minimumSize: const Size.fromHeight(48),
-                  ),
-                  child: const Text(
-                    'Continue →',
-                    style: TextStyle(fontWeight: FontWeight.w800),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildVehiclePhase() {
-    return Column(
-      children: [
-        Expanded(
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
-            children: [
-              const _SectionHeader(
-                icon: Icons.local_shipping_outlined,
-                title: 'Vehicle Information',
-                subtitle: 'Enter the vehicle details for this delivery',
-              ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 10),
               const Text(
                 'Vehicle number *',
                 style: TextStyle(fontWeight: FontWeight.w700),
@@ -1267,50 +964,33 @@ class _MultiMaterialSiteProofScreenState
                 textCapitalization: TextCapitalization.characters,
                 decoration: _inputDecoration('KA 01 AB 1234'),
               ),
-              const SizedBox(height: 12),
-              const Text(
-                'Vehicle type',
-                style: TextStyle(fontWeight: FontWeight.w700),
-              ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 10),
               DropdownButtonFormField<String>(
                 value: _vehicleTypes.contains(_vehicleType)
                     ? _vehicleType
                     : _vehicleTypes.first,
                 items: _vehicleTypes
-                    .map(
-                      (t) => DropdownMenuItem(value: t, child: Text(t)),
-                    )
+                    .map((t) => DropdownMenuItem(value: t, child: Text(t)))
                     .toList(),
                 onChanged: (v) {
                   if (v == null) return;
                   setState(() => _vehicleType = v);
                 },
-                decoration: _inputDecoration(null),
+                decoration: _inputDecoration('Vehicle type'),
               ),
-              const SizedBox(height: 12),
-              const Text(
-                'Driver name',
-                style: TextStyle(fontWeight: FontWeight.w700),
-              ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 10),
               TextField(
                 controller: _driverNameController,
                 decoration: _inputDecoration('Driver name'),
               ),
-              const SizedBox(height: 12),
-              const Text(
-                'Driver phone number',
-                style: TextStyle(fontWeight: FontWeight.w700),
-              ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 10),
               TextField(
                 controller: _driverPhoneController,
                 keyboardType: TextInputType.phone,
-                decoration: _inputDecoration('Phone number'),
+                decoration: _inputDecoration('Driver phone'),
               ),
-              const SizedBox(height: 16),
-              _MediaSection(
+              const SizedBox(height: 12),
+              _MediaRow(
                 title: 'Vehicle photo (Optional)',
                 items: _vehiclePhotos,
                 addLabel: 'Add photo',
@@ -1322,144 +1002,26 @@ class _MultiMaterialSiteProofScreenState
                 },
                 onRemove: (i) => setState(() => _vehiclePhotos.removeAt(i)),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 20),
               const Text(
-                'Comment (Optional)',
-                style: TextStyle(fontWeight: FontWeight.w700),
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: _vehicleCommentController,
-                maxLines: 3,
-                decoration: _inputDecoration('Comment'),
-              ),
-            ],
-          ),
-        ),
-        _BottomBar(
-          child: Row(
-            children: [
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: _busy ? null : _goBack,
-                  style: OutlinedButton.styleFrom(
-                    minimumSize: const Size.fromHeight(48),
-                  ),
-                  child: const Text('Back'),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                flex: 2,
-                child: ElevatedButton(
-                  onPressed: _busy ? null : _continueFromVehicle,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppTheme.accentBlue,
-                    foregroundColor: Colors.white,
-                    minimumSize: const Size.fromHeight(48),
-                  ),
-                  child: const Text(
-                    'Continue →',
-                    style: TextStyle(fontWeight: FontWeight.w800),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildReviewPhase() {
-    final materials = _selectedMaterials;
-    final commentCount = [
-      if (_siteCommentController.text.trim().isNotEmpty) 1,
-      if (_vehicleCommentController.text.trim().isNotEmpty) 1,
-      ...materials.map((m) {
-        final c = _draftFor(m.materialKey).comment.trim();
-        return c.isNotEmpty ? 1 : 0;
-      }),
-    ].fold<int>(0, (a, b) => a + b);
-
-    return Column(
-      children: [
-        Expanded(
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
-            children: [
-              const Text(
-                'Review & Submit',
+                'Comments',
                 style: TextStyle(
-                  fontSize: 20,
+                  fontSize: 16,
                   fontWeight: FontWeight.w800,
                   color: AppTheme.navy,
                 ),
               ),
-              const SizedBox(height: 16),
-              _ReviewCard(
-                title: 'Materials (${materials.length} items)',
-                onEdit: () => setState(() {
-                  _phase = _WizardPhase.materialDetail;
-                  _materialIndex = 0;
-                  _loadMaterialEditors();
-                }),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: materials.map((line) {
-                    final draft = _draftFor(line.materialKey);
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: 8),
-                      child: Text(
-                        '✓ ${line.material}\n'
-                        '  ${draft.quantityReceivedToday} / ${line.orderedQuantity} ${line.unit}\n'
-                        '  ${draft.photos.length} photos · ${draft.videos.length} video',
-                        style: const TextStyle(
-                          height: 1.4,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    );
-                  }).toList(),
-                ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _siteCommentController,
+                maxLines: 3,
+                decoration: _inputDecoration('Site / delivery comment'),
               ),
-              _ReviewCard(
-                title: 'Measurement',
-                onEdit: () =>
-                    setState(() => _phase = _WizardPhase.measurement),
-                child: Text(
-                  _measurementController.text.trim().isEmpty
-                      ? 'Not provided'
-                      : '${_measurementController.text.trim()}'
-                          '${_measurementUnitController.text.trim().isEmpty ? '' : ' (${_measurementUnitController.text.trim()})'}',
-                  style: const TextStyle(fontWeight: FontWeight.w600),
-                ),
-              ),
-              _ReviewCard(
-                title: 'Vehicle Details',
-                onEdit: () => setState(() => _phase = _WizardPhase.vehicle),
-                child: Text(
-                  [
-                    _vehicleNumberController.text.trim(),
-                    _vehicleType,
-                    if (_driverNameController.text.trim().isNotEmpty)
-                      'Driver: ${_driverNameController.text.trim()}',
-                  ].where((e) => e.isNotEmpty).join('\n'),
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w600,
-                    height: 1.4,
-                  ),
-                ),
-              ),
-              _ReviewCard(
-                title: 'Additional Comments',
-                onEdit: null,
-                child: Text(
-                  commentCount == 0
-                      ? 'No comments'
-                      : '$commentCount comment${commentCount == 1 ? '' : 's'} added',
-                  style: const TextStyle(fontWeight: FontWeight.w600),
-                ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: _vehicleCommentController,
+                maxLines: 2,
+                decoration: _inputDecoration('Vehicle comment (optional)'),
               ),
             ],
           ),
@@ -1480,7 +1042,7 @@ class _MultiMaterialSiteProofScreenState
               Expanded(
                 flex: 2,
                 child: ElevatedButton.icon(
-                  onPressed: _busy ? null : _submit,
+                  onPressed: _busy ? null : _submitAll,
                   icon: const Icon(Icons.check_circle_outline),
                   label: const Text(
                     'Submit Proof',
@@ -1500,6 +1062,90 @@ class _MultiMaterialSiteProofScreenState
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildMaterialEvidenceCard(MultiMaterialLine line) {
+    final draft = _draftFor(line.materialKey);
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppTheme.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      line.material,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 16,
+                        color: AppTheme.navy,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '${draft.quantityReceivedToday} / ${line.orderedQuantity} ${line.unit}'
+                          .trim(),
+                      style: const TextStyle(
+                        color: AppTheme.mutedGrey,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          _MediaRow(
+            title: 'Photos (optional)',
+            items: draft.photos,
+            addLabel: 'Photo',
+            maxItems: line.effectiveMaxPhotos,
+            onAdd: () async {
+              if (draft.photos.length >= line.effectiveMaxPhotos) {
+                _snack(
+                  'Max ${line.effectiveMaxPhotos} photos for ${line.material}.',
+                  error: true,
+                );
+                return;
+              }
+              final media = await _capturePhoto();
+              if (media == null || !mounted) return;
+              setState(() => draft.photos.add(media));
+            },
+            onRemove: (i) => setState(() => draft.photos.removeAt(i)),
+          ),
+          const SizedBox(height: 10),
+          _MediaRow(
+            title: 'Video (optional)',
+            items: draft.videos,
+            addLabel: 'Video',
+            maxItems: 1,
+            onAdd: () async {
+              if (draft.videos.isNotEmpty) {
+                _snack('Only one video per material.', error: true);
+                return;
+              }
+              final media = await _recordVideo();
+              if (media == null || !mounted) return;
+              setState(() => draft.videos.add(media));
+            },
+            onRemove: (i) => setState(() => draft.videos.removeAt(i)),
+          ),
+        ],
+      ),
     );
   }
 
@@ -1555,7 +1201,7 @@ class _MultiMaterialSiteProofScreenState
                 border: Border.all(color: const Color(0xFFFDE68A)),
               ),
               child: const Text(
-                'Some material quantities are still pending. Another delivery / site-proof cycle may be required.',
+                'Some material quantities are still pending. You can submit another delivery for the remaining amounts.',
                 style: TextStyle(
                   color: Color(0xFF92400E),
                   fontWeight: FontWeight.w700,
@@ -1595,27 +1241,104 @@ class _MultiMaterialSiteProofScreenState
             ),
           ),
           const Spacer(),
+          if (remaining) ...[
+            SizedBox(
+              width: double.infinity,
+              height: 52,
+              child: ElevatedButton(
+                onPressed: _busy ? null : _startAnotherRemainingDelivery,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.accentBlue,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                ),
+                child: const Text(
+                  'Add remaining materials',
+                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+          ],
           SizedBox(
             width: double.infinity,
             height: 52,
-            child: ElevatedButton(
-              onPressed: () => Navigator.of(context).pop(),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.accentBlue,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
-                ),
-              ),
-              child: const Text(
-                'Back to Home',
-                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
-              ),
-            ),
+            child: remaining
+                ? OutlinedButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    style: OutlinedButton.styleFrom(
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                    ),
+                    child: const Text(
+                      'Back to Home',
+                      style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+                    ),
+                  )
+                : ElevatedButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppTheme.accentBlue,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                    ),
+                    child: const Text(
+                      'Back to Home',
+                      style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+                    ),
+                  ),
           ),
         ],
       ),
     );
+  }
+
+  Future<void> _startAnotherRemainingDelivery() async {
+    setState(() {
+      _busy = true;
+      _submitResult = null;
+      _selectedOrder = [];
+      _drafts.clear();
+      _commonPhotos.clear();
+      _commonVideos.clear();
+      _vehiclePhotos.clear();
+      _measurementController.clear();
+      _vehicleNumberController.clear();
+      _driverNameController.clear();
+      _driverPhoneController.clear();
+      _vehicleCommentController.clear();
+      _siteCommentController.clear();
+    });
+    try {
+      final session = await _service.fetchSession(
+        indentId: widget.indentId,
+        itemRunId: _itemRunId.isEmpty ? null : _itemRunId,
+      );
+      if (!mounted) return;
+      _applySession(session);
+      final stillOutstanding = session.materials.any((m) {
+        final remaining = m.remainingAsNumber;
+        return remaining == null || remaining > 0.0001;
+      });
+      if (!stillOutstanding) {
+        setState(() => _busy = false);
+        _snack('All materials are fully received.');
+        return;
+      }
+      setState(() {
+        _busy = false;
+        _phase = _WizardPhase.select;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _busy = false);
+      _snack(e.toString().replaceFirst('Exception: ', ''), error: true);
+    }
   }
 
   InputDecoration _inputDecoration(String? hint) {
@@ -1639,6 +1362,8 @@ class _MultiMaterialSiteProofScreenState
   }
 }
 
+// ─── shared widgets ──────────────────────────────────────────────────────────
+
 class _ErrorPane extends StatelessWidget {
   final String message;
   final VoidCallback onRetry;
@@ -1659,10 +1384,7 @@ class _ErrorPane extends StatelessWidget {
               style: const TextStyle(fontWeight: FontWeight.w600),
             ),
             const SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: onRetry,
-              child: const Text('Retry'),
-            ),
+            ElevatedButton(onPressed: onRetry, child: const Text('Retry')),
           ],
         ),
       ),
@@ -1818,91 +1540,6 @@ class _GpsBanner extends StatelessWidget {
   }
 }
 
-class _MaterialSummaryCard extends StatelessWidget {
-  final MultiMaterialLine line;
-
-  const _MaterialSummaryCard({required this.line});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppTheme.border),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            line.material,
-            style: const TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w800,
-              color: AppTheme.navy,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'Unit: ${line.unit}',
-            style: const TextStyle(
-              color: AppTheme.mutedGrey,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              _Stat('Ordered', '${line.orderedQuantity} ${line.unit}'),
-              _Stat(
-                'Already received',
-                '${line.previouslyReceivedQuantity} ${line.unit}',
-              ),
-              _Stat('Remaining', '${line.remainingQuantity} ${line.unit}'),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _Stat extends StatelessWidget {
-  final String label;
-  final String value;
-
-  const _Stat(this.label, this.value);
-
-  @override
-  Widget build(BuildContext context) {
-    return Expanded(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            label,
-            style: const TextStyle(
-              fontSize: 11,
-              color: AppTheme.mutedGrey,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            value.trim(),
-            style: const TextStyle(
-              fontWeight: FontWeight.w800,
-              fontSize: 13,
-              color: AppTheme.navy,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _QuantityStepper extends StatefulWidget {
   final String valueText;
   final String unit;
@@ -1958,10 +1595,7 @@ class _QuantityStepperState extends State<_QuantityStepper> {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        _RoundIconButton(
-          icon: Icons.remove,
-          onPressed: () => _bump(-1),
-        ),
+        _RoundIconButton(icon: Icons.remove, onPressed: () => _bump(-1)),
         Expanded(
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -1986,10 +1620,7 @@ class _QuantityStepperState extends State<_QuantityStepper> {
             ),
           ),
         ),
-        _RoundIconButton(
-          icon: Icons.add,
-          onPressed: () => _bump(1),
-        ),
+        _RoundIconButton(icon: Icons.add, onPressed: () => _bump(1)),
       ],
     );
   }
@@ -2020,38 +1651,7 @@ class _RoundIconButton extends StatelessWidget {
   }
 }
 
-class _Pill extends StatelessWidget {
-  final String label;
-  final Color color;
-  final Color bg;
-
-  const _Pill({
-    required this.label,
-    required this.color,
-    required this.bg,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          color: color,
-          fontWeight: FontWeight.w700,
-          fontSize: 12.5,
-        ),
-      ),
-    );
-  }
-}
-
-class _MediaSection extends StatelessWidget {
+class _MediaRow extends StatelessWidget {
   final String title;
   final List<_LocalMedia> items;
   final String addLabel;
@@ -2059,7 +1659,7 @@ class _MediaSection extends StatelessWidget {
   final ValueChanged<int> onRemove;
   final int? maxItems;
 
-  const _MediaSection({
+  const _MediaRow({
     required this.title,
     required this.items,
     required this.addLabel,
@@ -2079,11 +1679,12 @@ class _MediaSection extends StatelessWidget {
           style: const TextStyle(
             fontWeight: FontWeight.w700,
             color: AppTheme.navy,
+            fontSize: 13,
           ),
         ),
         const SizedBox(height: 8),
         SizedBox(
-          height: 88,
+          height: 80,
           child: ListView(
             scrollDirection: Axis.horizontal,
             children: [
@@ -2097,19 +1698,19 @@ class _MediaSection extends StatelessWidget {
                         borderRadius: BorderRadius.circular(12),
                         child: item.isVideo
                             ? Container(
-                                width: 88,
-                                height: 88,
+                                width: 80,
+                                height: 80,
                                 color: const Color(0xFF0F172A),
                                 child: const Icon(
                                   Icons.play_circle_fill,
                                   color: Colors.white,
-                                  size: 36,
+                                  size: 32,
                                 ),
                               )
                             : Image.file(
                                 item.file,
-                                width: 88,
-                                height: 88,
+                                width: 80,
+                                height: 80,
                                 fit: BoxFit.cover,
                               ),
                       ),
@@ -2141,21 +1742,18 @@ class _MediaSection extends StatelessWidget {
                   onTap: onAdd,
                   borderRadius: BorderRadius.circular(12),
                   child: Container(
-                    width: 88,
-                    height: 88,
+                    width: 80,
+                    height: 80,
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: AppTheme.accentBlue,
-                        style: BorderStyle.solid,
-                      ),
+                      border: Border.all(color: AppTheme.accentBlue),
                       color: const Color(0xFFEFF6FF),
                     ),
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         const Icon(Icons.add, color: AppTheme.accentBlue),
-                        const SizedBox(height: 4),
+                        const SizedBox(height: 2),
                         Text(
                           addLabel,
                           textAlign: TextAlign.center,
@@ -2173,112 +1771,6 @@ class _MediaSection extends StatelessWidget {
           ),
         ),
       ],
-    );
-  }
-}
-
-class _SectionHeader extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String subtitle;
-
-  const _SectionHeader({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Container(
-          width: 44,
-          height: 44,
-          decoration: BoxDecoration(
-            color: const Color(0xFFEFF6FF),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Icon(icon, color: AppTheme.accentBlue),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                title,
-                style: const TextStyle(
-                  fontSize: 17,
-                  fontWeight: FontWeight.w800,
-                  color: AppTheme.navy,
-                ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                subtitle,
-                style: const TextStyle(
-                  color: AppTheme.mutedGrey,
-                  fontWeight: FontWeight.w600,
-                  height: 1.3,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _ReviewCard extends StatelessWidget {
-  final String title;
-  final Widget child;
-  final VoidCallback? onEdit;
-
-  const _ReviewCard({
-    required this.title,
-    required this.child,
-    required this.onEdit,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppTheme.border),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  title,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w800,
-                    fontSize: 15,
-                  ),
-                ),
-              ),
-              if (onEdit != null)
-                TextButton(
-                  onPressed: onEdit,
-                  child: const Text('Edit'),
-                ),
-            ],
-          ),
-          const SizedBox(height: 6),
-          child,
-        ],
-      ),
     );
   }
 }

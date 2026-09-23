@@ -22,6 +22,7 @@ import 'NotesAndComments.dart';
 import 'TasksScreen.dart';
 import 'indents_screen.dart';
 import 'indent_proof.dart';
+import 'models/approved_po.dart';
 import 'services/api_base.dart';
 import 'services/api_http.dart';
 import 'services/approved_po_service.dart';
@@ -959,6 +960,84 @@ Future<void> openIndentSiteProofForIndent(
         backgroundColor: Colors.red,
       ),
     );
+    return;
+  }
+
+  // Multi-material may need another delivery cycle after a partial submit.
+  // Prefer opening the multi wizard even if the prior workflow task completed.
+  ApprovedPo? approvedPo;
+  try {
+    approvedPo = await ApprovedPoService().fetchDetail(int.parse(trimmed));
+  } catch (_) {
+    approvedPo = null;
+  }
+
+  if (approvedPo != null && approvedPo.usesMultiMaterialSiteProof) {
+    if (!approvedPo.hasOutstandingSiteProofMaterials) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'All materials for this PO are fully received. No remaining quantity to submit.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    var task = await findIndentSiteProofTask(
+      indentId: trimmed,
+      projectId: projectId,
+      fetchIfMissing: true,
+    );
+    task ??= await findIndentSiteProofTask(
+      indentId: trimmed,
+      projectId: projectId,
+      fetchIfMissing: true,
+      includeCompleted: true,
+    );
+
+    final resolvedTask = task ??
+        <String, dynamic>{
+          'indent_id': trimmed,
+          if ((projectId ?? '').trim().isNotEmpty) 'project_id': projectId,
+        };
+
+    // Partial multi deliveries should not be blocked by a completed prior cycle.
+    if (task != null &&
+        !isTaskCompletedStatus(task) &&
+        (isWorkflowDelayGated(task) || !canUpdateWorkflowTask(task))) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(workflowDelayBlockedMessage(task)),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    // Do NOT reuse a completed item_run for the next remaining delivery.
+    // Backend must open/return a new (or still-open) run via GET multi_material.
+    final priorRunId = task == null
+        ? ''
+        : _resolvedWorkflowItemRunIdFromTask(resolvedTask);
+    final usePriorRunId =
+        priorRunId.isNotEmpty && !isTaskCompletedStatus(resolvedTask);
+
+    if (!context.mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => MultiMaterialSiteProofScreen(
+          indentId: trimmed,
+          itemRunId: usePriorRunId ? priorRunId : '',
+          task: resolvedTask,
+          approvedPo: approvedPo,
+          onChanged: onRefresh ?? () async {},
+        ),
+      ),
+    );
+    if (onRefresh != null) await onRefresh();
     return;
   }
 
