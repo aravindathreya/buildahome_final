@@ -2504,7 +2504,8 @@ class ViewOpenIndentsTabState extends State<ViewOpenIndentsTab> {
                                     SizedBox(height: 16),
                                     _buildInfoRow(
                                       Icons.comment_outlined,
-                                      'Site Engineer comment',
+                                      indentCreationCommentHeading(
+                                          indents[Index]),
                                       indentCreationComment(indents[Index]),
                                     ),
                                   ],

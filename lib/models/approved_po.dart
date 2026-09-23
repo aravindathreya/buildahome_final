@@ -22,6 +22,10 @@ class ApprovedPo {
   final int? createdByUserId;
   final String comments;
   final List<ApprovedPoMaterialLine> materials;
+  /// Backend flow hint: `"single"` or `"multi"`. Empty when omitted.
+  final String siteProofFlow;
+  /// Count of materials on the PO. Falls back to [materials].length when 0.
+  final int materialCount;
 
   const ApprovedPo({
     required this.indentId,
@@ -44,6 +48,8 @@ class ApprovedPo {
     this.createdByUserId,
     this.comments = '',
     this.materials = const [],
+    this.siteProofFlow = '',
+    this.materialCount = 0,
   });
 
   factory ApprovedPo.fromJson(Map<String, dynamic> json) {
@@ -91,7 +97,23 @@ class ApprovedPo {
           : _asInt(json['created_by_user_id']),
       comments: _asString(json['comments']),
       materials: materials,
+      siteProofFlow: _asString(json['site_proof_flow']),
+      materialCount: _asInt(json['material_count']),
     );
+  }
+
+  /// Effective material count for flow decisions.
+  int get effectiveMaterialCount =>
+      materialCount > 0 ? materialCount : materials.length;
+
+  /// Multi-material site-proof path when backend says multi or count > 1.
+  /// Explicit `site_proof_flow: "single"` or count ≤ 1 keeps the legacy flow.
+  bool get usesMultiMaterialSiteProof {
+    final flow = siteProofFlow.trim().toLowerCase();
+    final count = effectiveMaterialCount;
+    if (flow == 'single' || count <= 1) return false;
+    if (flow == 'multi' || count > 1) return true;
+    return false;
   }
 
   String displayPoNumber() {

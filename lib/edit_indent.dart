@@ -68,6 +68,18 @@ bool indentCreatedBySiteEngineer(dynamic indent) {
   return false;
 }
 
+String indentCreationCommentHeading(dynamic indent) {
+  return indentCreatedBySiteEngineer(indent)
+      ? 'Site Engineer comment'
+      : 'PC/APC comment';
+}
+
+String indentCreationCommentHint(dynamic indent) {
+  return indentCreatedBySiteEngineer(indent)
+      ? 'No Site Engineer comment added during creation'
+      : 'No PC/APC comment added during creation';
+}
+
 bool _isSiteEngineerRole(String? role) {
   final normalized = role?.trim().toLowerCase().replaceAll('-', ' ') ?? '';
   return normalized == 'site engineer';
@@ -210,6 +222,7 @@ class EditIndentState extends State<EditIndent> {
     required TextEditingController controller,
     required String hintText,
     bool readOnly = false,
+    bool compact = false,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -224,9 +237,14 @@ class EditIndentState extends State<EditIndent> {
             readOnly: readOnly,
             keyboardType: TextInputType.multiline,
             textCapitalization: TextCapitalization.sentences,
-            maxLines: 4,
+            minLines: compact ? 1 : null,
+            maxLines: compact ? (readOnly ? 6 : 8) : 4,
             style: const TextStyle(fontSize: 18),
             decoration: InputDecoration(
+              isDense: compact,
+              contentPadding: compact
+                  ? const EdgeInsets.symmetric(horizontal: 12, vertical: 10)
+                  : null,
               focusColor: Colors.black,
               floatingLabelBehavior: FloatingLabelBehavior.never,
               errorBorder: OutlineInputBorder(
@@ -359,18 +377,21 @@ class EditIndentState extends State<EditIndent> {
           heading: 'Purpose',
           controller: purposeTextController,
           hintText: 'Purpose for indent',
+          compact: true,
         ),
         _headedTextField(
-          heading: 'Site Engineer comment',
+          heading: indentCreationCommentHeading(indent),
           controller: commentTextController,
-          hintText: 'No Site Engineer comment added during creation',
+          hintText: indentCreationCommentHint(indent),
           readOnly: true,
+          compact: true,
         ),
         if (_createdBySiteEngineer)
           _headedTextField(
-            heading: 'PC/APC comment',
+            heading: 'PC/APC review comment',
             controller: pcApcCommentTextController,
-            hintText: 'Add a PC/APC comment',
+            hintText: 'Add a PC/APC review comment',
+            compact: true,
           ),
         InkWell(
           child: Container(

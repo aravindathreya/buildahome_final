@@ -219,7 +219,8 @@ class ViewIndentsState extends State<ViewIndents> {
                                     width: 100,
                                     margin: EdgeInsets.only(bottom: 15),
                                     child: Text(
-                                      'Site Engineer comment',
+                                      indentCreationCommentHeading(
+                                          indents[Index]),
                                       style: TextStyle(fontSize: 15),
                                     ),
                                   ),

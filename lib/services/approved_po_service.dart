@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/approved_po.dart';
+import 'api_base.dart';
 import 'api_http.dart';
 import 'session_manager.dart';
 
@@ -12,10 +13,8 @@ class ApprovedPoService {
   static final ApprovedPoService instance = ApprovedPoService._();
   factory ApprovedPoService() => instance;
 
-  static const List<String> baseUrls = [
-    'https://office.buildahome.in',
-    'https://app.buildahome.in',
-  ];
+  /// Same production host as site-proof / workflow APIs.
+  static const String baseUrl = kProductionApiBaseUrl;
 
   Future<ApprovedPoListResult> fetchList({
     String? projectId,
@@ -83,7 +82,18 @@ class ApprovedPoService {
     if (itemRaw is! Map) {
       throw const ApprovedPoException('Approved PO not found', statusCode: 404);
     }
-    return ApprovedPo.fromJson(Map<String, dynamic>.from(itemRaw));
+    // Merge top-level flow hints when the API returns them beside `item`.
+    final merged = Map<String, dynamic>.from(itemRaw);
+    for (final key in const [
+      'site_proof_flow',
+      'material_count',
+      'materials',
+    ]) {
+      if (!merged.containsKey(key) && body.containsKey(key)) {
+        merged[key] = body[key];
+      }
+    }
+    return ApprovedPo.fromJson(merged);
   }
 
   Future<Map<String, dynamic>> _getJson({
@@ -100,58 +110,56 @@ class ApprovedPoService {
     int? lastStatus;
     String? lastMessage;
 
-    for (final base in baseUrls) {
-      for (final prefix in const ['API', 'api']) {
-        final uri = Uri.parse('$base/$prefix/$pathSuffix')
-            .replace(queryParameters: query);
+    for (final prefix in const ['API', 'api']) {
+      final uri = Uri.parse('$baseUrl/$prefix/$pathSuffix')
+          .replace(queryParameters: query);
+      try {
+        final res = await ApiHttp.get(uri, headers: headers)
+            .timeout(const Duration(seconds: 25));
+        lastStatus = res.statusCode;
+
+        Map<String, dynamic>? decoded;
         try {
-          final res = await ApiHttp.get(uri, headers: headers)
-              .timeout(const Duration(seconds: 25));
-          lastStatus = res.statusCode;
-
-          Map<String, dynamic>? decoded;
-          try {
-            final raw = jsonDecode(res.body);
-            if (raw is Map) {
-              decoded = Map<String, dynamic>.from(raw);
-            }
-          } catch (_) {}
-
-          if (res.statusCode == 401 || res.statusCode == 403) {
-            lastMessage = _messageFromBody(decoded) ??
-                (res.statusCode == 401
-                    ? 'Invalid api token'
-                    : 'You do not have permission');
-            continue;
+          final raw = jsonDecode(res.body);
+          if (raw is Map) {
+            decoded = Map<String, dynamic>.from(raw);
           }
+        } catch (_) {}
 
-          if (res.statusCode == 404) {
-            throw ApprovedPoException(
-              _messageFromBody(decoded) ?? 'Approved PO not found',
-              statusCode: 404,
-            );
-          }
-
-          if (res.statusCode != 200 || decoded == null) {
-            lastMessage = _messageFromBody(decoded) ??
-                'Could not load approved POs (${res.statusCode})';
-            continue;
-          }
-
-          if (_truthy(decoded['success']) == false) {
-            lastMessage =
-                _messageFromBody(decoded) ?? 'Could not load approved POs';
-            continue;
-          }
-
-          return decoded;
-        } on SessionInvalidatedException {
-          rethrow;
-        } on ApprovedPoException {
-          rethrow;
-        } catch (e) {
-          lastMessage = e.toString().replaceFirst('Exception: ', '');
+        if (res.statusCode == 401 || res.statusCode == 403) {
+          lastMessage = _messageFromBody(decoded) ??
+              (res.statusCode == 401
+                  ? 'Invalid api token'
+                  : 'You do not have permission');
+          continue;
         }
+
+        if (res.statusCode == 404) {
+          throw ApprovedPoException(
+            _messageFromBody(decoded) ?? 'Approved PO not found',
+            statusCode: 404,
+          );
+        }
+
+        if (res.statusCode != 200 || decoded == null) {
+          lastMessage = _messageFromBody(decoded) ??
+              'Could not load approved POs (${res.statusCode})';
+          continue;
+        }
+
+        if (_truthy(decoded['success']) == false) {
+          lastMessage =
+              _messageFromBody(decoded) ?? 'Could not load approved POs';
+          continue;
+        }
+
+        return decoded;
+      } on SessionInvalidatedException {
+        rethrow;
+      } on ApprovedPoException {
+        rethrow;
+      } catch (e) {
+        lastMessage = e.toString().replaceFirst('Exception: ', '');
       }
     }
 

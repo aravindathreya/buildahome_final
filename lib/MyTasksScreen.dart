@@ -22,12 +22,15 @@ import 'NotesAndComments.dart';
 import 'TasksScreen.dart';
 import 'indents_screen.dart';
 import 'indent_proof.dart';
+import 'services/api_base.dart';
 import 'services/api_http.dart';
+import 'services/approved_po_service.dart';
 import 'services/data_provider.dart';
 import 'services/mobile_live_test_auto_runner.dart';
 import 'services/mobile_live_test_autoplay.dart';
 import 'services/mobile_live_test_access.dart';
 import 'services/mobile_live_test_workflow.dart';
+import 'site_proof_multi/multi_material_site_proof_screen.dart';
 import 'widgets/searchable_select.dart';
 import 'services/session_manager.dart';
 import 'widgets/dashboard_chrome.dart';
@@ -37,7 +40,7 @@ import 'widgets/themed_scaffold.dart';
 import 'widgets/skeleton_loader.dart';
 import 'SlotsScreen.dart';
 
-const String _workflowApiBaseUrl = 'https://office.buildahome.in';
+const String _workflowApiBaseUrl = kProductionApiBaseUrl;
 const Color _premiumBackground = Color(0xFFF7F8FB);
 const Color _premiumSurface = Colors.white;
 const Color _premiumInk = Color(0xFF1B254B);
@@ -286,6 +289,18 @@ _IndentPoSiteProofKind? indentPoSiteProofKind(String? id) {
       return null;
   }
 }
+
+bool indentPoTextAllowsMedia(Map<String, dynamic> action) {
+  if (indentPoSiteProofKind(action['id']?.toString()) !=
+      _IndentPoSiteProofKind.text) {
+    return false;
+  }
+  if (action['allow_file_upload'] == false) return false;
+  if (action['media_optional'] == true) return true;
+  final formats = action['allowed_formats'];
+  return formats is List && formats.isNotEmpty;
+}
+
 
 Map<String, dynamic>? findDelayTimerAction(List<Map<String, dynamic>> actions) {
   for (final action in actions) {
@@ -977,6 +992,15 @@ Future<void> openIndentSiteProofForIndent(
     return;
   }
 
+  // Branch: multi-material uses new APIs/UI; single keeps legacy flow.
+  final openedMulti = await _tryOpenMultiMaterialSiteProofIfNeeded(
+    context: context,
+    task: task,
+    indentId: trimmed,
+    onRefresh: onRefresh,
+  );
+  if (openedMulti) return;
+
   await Navigator.of(context).push(
     MaterialPageRoute(
       builder: (_) => _IndentSiteProofScreen(
@@ -986,6 +1010,42 @@ Future<void> openIndentSiteProofForIndent(
     ),
   );
   if (onRefresh != null) await onRefresh();
+}
+
+/// Returns true when the multi-material wizard was opened.
+Future<bool> _tryOpenMultiMaterialSiteProofIfNeeded({
+  required BuildContext context,
+  required Map<String, dynamic> task,
+  required String indentId,
+  Future<void> Function()? onRefresh,
+}) async {
+  try {
+    final po = await ApprovedPoService().fetchDetail(int.parse(indentId));
+    if (!po.usesMultiMaterialSiteProof) return false;
+
+    final itemRunId = _resolvedWorkflowItemRunIdFromTask(task);
+    if (!context.mounted) return true;
+
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => MultiMaterialSiteProofScreen(
+          indentId: indentId,
+          itemRunId: itemRunId,
+          task: task,
+          approvedPo: po,
+          onChanged: onRefresh ?? () async {},
+        ),
+      ),
+    );
+    if (onRefresh != null) await onRefresh();
+    return true;
+  } catch (e) {
+    print(
+      '[SiteProof] multi-material branch check failed indent=$indentId '
+      'error=$e — falling back to single-material flow',
+    );
+    return false;
+  }
 }
 
 bool indentPoSiteProofStepDone(
@@ -2417,6 +2477,23 @@ class _TaskCardState extends State<_TaskCard> {
         ),
       );
       return;
+    }
+
+    final indentId = indentProofIndentId(_task)?.trim() ??
+        _task['indent_id']?.toString().trim() ??
+        '';
+    if (indentId.isNotEmpty) {
+      final openedMulti = await _tryOpenMultiMaterialSiteProofIfNeeded(
+        context: context,
+        task: _task,
+        indentId: indentId,
+        onRefresh: _handleWorkflowActionCompleted,
+      );
+      if (openedMulti) {
+        if (!mounted) return;
+        await _handleWorkflowActionCompleted();
+        return;
+      }
     }
 
     await Navigator.of(context).push(
@@ -6006,6 +6083,18 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
       return;
     }
     if (isIndentPoSiteProofActionId(uploadAction['id']?.toString())) {
+      final indentId = indentProofIndentId(task)?.trim() ??
+          task['indent_id']?.toString().trim() ??
+          '';
+      if (indentId.isNotEmpty) {
+        final openedMulti = await _tryOpenMultiMaterialSiteProofIfNeeded(
+          context: context,
+          task: task,
+          indentId: indentId,
+          onRefresh: widget.onActionCompleted,
+        );
+        if (openedMulti) return;
+      }
       final result = await _presentIndentPoSiteProofAction(
         context: context,
         task: task,
@@ -13730,7 +13819,10 @@ bool _indentPoStepDone(
   }
   final kind = indentPoSiteProofKind(action['id']?.toString());
   if (kind == _IndentPoSiteProofKind.text) {
-    return _indentPoSavedText(task, action).isNotEmpty;
+    final hasText = _indentPoSavedText(task, action).isNotEmpty;
+    if (!hasText) return false;
+    // Media on quantity/measurement/vehicle is optional.
+    return true;
   }
   return _indentPoSavedFiles(task, action).isNotEmpty;
 }
@@ -13742,12 +13834,24 @@ String? _indentPoStepPreview(
   final kind = indentPoSiteProofKind(action['id']?.toString());
   if (kind == _IndentPoSiteProofKind.text) {
     final text = _indentPoSavedText(task, action);
-    return text.isEmpty ? null : text;
+    final files = _indentPoSavedFiles(task, action);
+    if (text.isEmpty && files.isEmpty) return null;
+    if (files.isEmpty) return text.isEmpty ? null : text;
+    final mediaBit = files.length == 1
+        ? '1 media file'
+        : '${files.length} media files';
+    if (text.isEmpty) return mediaBit;
+    final short = text.length > 40 ? '${text.substring(0, 40)}…' : text;
+    return '$short · $mediaBit';
   }
   final files = _indentPoSavedFiles(task, action);
   if (files.isEmpty) return null;
-  if (kind == _IndentPoSiteProofKind.video) return 'Video uploaded';
-  if (kind == _IndentPoSiteProofKind.image) return 'Photo uploaded';
+  if (kind == _IndentPoSiteProofKind.video) {
+    return files.length == 1 ? 'Video uploaded' : '${files.length} videos uploaded';
+  }
+  if (kind == _IndentPoSiteProofKind.image) {
+    return files.length == 1 ? 'Photo uploaded' : '${files.length} photos uploaded';
+  }
   return files.length == 1 ? '1 file uploaded' : '${files.length} files uploaded';
 }
 
@@ -13995,7 +14099,7 @@ Future<_IndentPoSiteProofSubmitResult> _presentIndentPoSiteProofAction({
   final maxVideoSizeMb = _intValue(action['max_video_size_mb']) ?? 50;
   final icon = _indentPoStepIcon(action);
 
-  _SelectedUploadFile? selectedFile;
+  final List<_SelectedUploadFile> selectedFiles = [];
   var isSubmitting = false;
   var isCheckingLocation = true;
   String? nearSiteError;
@@ -14031,7 +14135,7 @@ Future<_IndentPoSiteProofSubmitResult> _presentIndentPoSiteProofAction({
       nearSiteError == null &&
       deviceLatitude != null) {
     final captured = await _pickWorkflowCameraFile();
-    if (captured != null) selectedFile = captured;
+    if (captured != null) selectedFiles.add(captured);
   }
 
   await showModalBottomSheet<void>(
@@ -14059,13 +14163,47 @@ Future<_IndentPoSiteProofSubmitResult> _presentIndentPoSiteProofAction({
             });
           }
 
+          final allowsMedia = indentPoTextAllowsMedia(action);
+          final maxFiles = _intValue(action['max_files']) ?? 12;
+
           Future<void> capturePhoto() async {
+            if (selectedFiles.length >= maxFiles) {
+              await _showWorkflowUploadAlert(
+                context,
+                message: 'You can add at most $maxFiles media files.',
+              );
+              return;
+            }
             final captured = await _pickWorkflowCameraFile();
             if (captured == null || !sheetContext.mounted) return;
-            setSheetState(() => selectedFile = captured);
+            setSheetState(() => selectedFiles.add(captured));
+          }
+
+          Future<void> addGalleryPhoto() async {
+            if (selectedFiles.length >= maxFiles) {
+              await _showWorkflowUploadAlert(
+                context,
+                message: 'You can add at most $maxFiles media files.',
+              );
+              return;
+            }
+            final picked = await _pickWorkflowGalleryFile(
+              allowedFormats: uploadSources.imageFormats.isNotEmpty
+                  ? uploadSources.imageFormats
+                  : List<String>.from(_indentPoImageFormats),
+            );
+            if (picked == null || !sheetContext.mounted) return;
+            setSheetState(() => selectedFiles.add(picked));
           }
 
           Future<void> recordVideo() async {
+            if (selectedFiles.length >= maxFiles) {
+              await _showWorkflowUploadAlert(
+                context,
+                message: 'You can add at most $maxFiles media files.',
+              );
+              return;
+            }
             final recorded = await _recordWorkflowVideoFile(
               context: context,
               videoFormats: videoFormats,
@@ -14073,7 +14211,7 @@ Future<_IndentPoSiteProofSubmitResult> _presentIndentPoSiteProofAction({
               maxSizeMb: maxVideoSizeMb,
             );
             if (recorded == null || !sheetContext.mounted) return;
-            setSheetState(() => selectedFile = recorded);
+            setSheetState(() => selectedFiles.add(recorded));
           }
 
           Future<void> submit() async {
@@ -14089,14 +14227,14 @@ Future<_IndentPoSiteProofSubmitResult> _presentIndentPoSiteProofAction({
               );
               return;
             }
-            if (kind == _IndentPoSiteProofKind.video && selectedFile == null) {
+            if (kind == _IndentPoSiteProofKind.video && selectedFiles.isEmpty) {
               await _showWorkflowUploadAlert(
                 context,
                 message: 'Please record a video.',
               );
               return;
             }
-            if (kind == _IndentPoSiteProofKind.image && selectedFile == null) {
+            if (kind == _IndentPoSiteProofKind.image && selectedFiles.isEmpty) {
               await _showWorkflowUploadAlert(
                 context,
                 message: 'Please take a live photo.',
@@ -14108,7 +14246,9 @@ Future<_IndentPoSiteProofSubmitResult> _presentIndentPoSiteProofAction({
             try {
               _NearSiteCheckResult nearSiteResult =
                   const _NearSiteCheckResult(ok: true);
-              if (requireNearSite || kind != _IndentPoSiteProofKind.text) {
+              if (requireNearSite ||
+                  kind != _IndentPoSiteProofKind.text ||
+                  selectedFiles.isNotEmpty) {
                 nearSiteResult = await checkNearSite();
                 if (!sheetContext.mounted) return;
                 setSheetState(() => applyNearSite(nearSiteResult));
@@ -14135,7 +14275,10 @@ Future<_IndentPoSiteProofSubmitResult> _presentIndentPoSiteProofAction({
                 return;
               }
 
-              if (kind == _IndentPoSiteProofKind.text && !requireNearSite) {
+              final hasMedia = selectedFiles.isNotEmpty;
+              if (kind == _IndentPoSiteProofKind.text &&
+                  !requireNearSite &&
+                  !hasMedia) {
                 final message = await _submitIndentPoWorkflowTextUpload(
                   itemRunId: itemRunId,
                   action: action,
@@ -14172,18 +14315,19 @@ Future<_IndentPoSiteProofSubmitResult> _presentIndentPoSiteProofAction({
                 request.fields['upload_comment'] = value;
                 request.fields['comment'] = value;
               }
-              if (kind == _IndentPoSiteProofKind.image && selectedFile != null) {
+              if (kind == _IndentPoSiteProofKind.image && selectedFiles.isNotEmpty) {
                 request.fields['live_image_only'] = 'true';
-                if (selectedFile!.capturedAt != null) {
+                final first = selectedFiles.first;
+                if (first.capturedAt != null) {
                   request.fields['captured_at'] =
-                      selectedFile!.capturedAt!.toIso8601String();
+                      first.capturedAt!.toIso8601String();
                 }
               }
-              if (selectedFile != null) {
-                request.files.add(
-                  await _workflowUploadMultipartFile(selectedFile!),
-                );
-                _appendWorkflowVideoDurationField(request, [selectedFile!]);
+              for (final file in selectedFiles) {
+                request.files.add(await _workflowUploadMultipartFile(file));
+              }
+              if (selectedFiles.isNotEmpty) {
+                _appendWorkflowVideoDurationField(request, selectedFiles);
               }
 
               final streamedResponse =
@@ -14287,6 +14431,45 @@ Future<_IndentPoSiteProofSubmitResult> _presentIndentPoSiteProofAction({
                     hintText: placeholder.isNotEmpty ? placeholder : null,
                     maxLines: 3,
                   ),
+                  if (allowsMedia) ...[
+                    const SizedBox(height: 12),
+                    const _ActionMetaText(
+                      label: 'Photos & videos',
+                      value:
+                          'Optional. Add one or more photos and videos for this step.',
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: canSubmit ? capturePhoto : null,
+                            icon: const Icon(Icons.photo_camera_outlined),
+                            label: const Text('Photo'),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: canSubmit ? recordVideo : null,
+                            icon: const Icon(Icons.videocam_outlined),
+                            label: const Text('Video'),
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (uploadSources.allowGallery) ...[
+                      const SizedBox(height: 8),
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          onPressed: canSubmit ? addGalleryPhoto : null,
+                          icon: const Icon(Icons.photo_library_outlined),
+                          label: const Text('Add from gallery'),
+                        ),
+                      ),
+                    ],
+                  ],
                 ],
                 if (kind == _IndentPoSiteProofKind.video) ...[
                   const SizedBox(height: 14),
@@ -14296,7 +14479,9 @@ Future<_IndentPoSiteProofSubmitResult> _presentIndentPoSiteProofAction({
                       onPressed: canSubmit ? recordVideo : null,
                       icon: const Icon(Icons.videocam_outlined),
                       label: Text(
-                        selectedFile == null ? 'Record video' : 'Retake video',
+                        selectedFiles.isEmpty
+                            ? 'Record video'
+                            : 'Add another video',
                       ),
                     ),
                   ),
@@ -14309,18 +14494,22 @@ Future<_IndentPoSiteProofSubmitResult> _presentIndentPoSiteProofAction({
                       onPressed: canSubmit ? capturePhoto : null,
                       icon: const Icon(Icons.photo_camera_outlined),
                       label: Text(
-                        selectedFile == null ? 'Take photo' : 'Retake photo',
+                        selectedFiles.isEmpty
+                            ? 'Take photo'
+                            : 'Add another photo',
                       ),
                     ),
                   ),
                 ],
-                if (selectedFile != null) ...[
+                if (selectedFiles.isNotEmpty) ...[
                   const SizedBox(height: 12),
                   _SelectedUploadFilesPreview(
-                    files: [selectedFile!],
+                    files: selectedFiles,
                     onRemove: isSubmitting
                         ? null
-                        : (_) => setSheetState(() => selectedFile = null),
+                        : (index) => setSheetState(
+                              () => selectedFiles.removeAt(index),
+                            ),
                   ),
                 ],
                 const SizedBox(height: 20),
