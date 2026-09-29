@@ -10,6 +10,8 @@ class MultiMaterialSiteProofSession {
   final int materialCount;
   final List<MultiMaterialLine> materials;
   final MultiMaterialCommonFields common;
+  final List<MultiMaterialRemoteMedia> deliveryMedia;
+  final List<MultiMaterialRemoteMedia> vehicleMedia;
   final MultiMaterialSiteLocation? siteLocation;
   final int nearSiteRadiusMeters;
   final bool siteLocationAvailable;
@@ -25,6 +27,8 @@ class MultiMaterialSiteProofSession {
     required this.materialCount,
     required this.materials,
     required this.common,
+    this.deliveryMedia = const [],
+    this.vehicleMedia = const [],
     this.siteLocation,
     this.nearSiteRadiusMeters = 500,
     this.siteLocationAvailable = false,
@@ -82,6 +86,14 @@ class MultiMaterialSiteProofSession {
       }(),
       materials: materials,
       common: common,
+      deliveryMedia: MultiMaterialRemoteMedia.listFrom(
+        json['delivery_media'] ??
+            json['common_media'] ??
+            json['delivery_files'],
+      ),
+      vehicleMedia: MultiMaterialRemoteMedia.listFrom(
+        json['vehicle_media'] ?? json['vehicle_files'],
+      ),
       siteLocation: site,
       nearSiteRadiusMeters: () {
         final radius = _asInt(json['near_site_radius_meters']);
@@ -95,6 +107,8 @@ class MultiMaterialSiteProofSession {
   MultiMaterialSiteProofSession copyWith({
     List<MultiMaterialLine>? materials,
     MultiMaterialCommonFields? common,
+    List<MultiMaterialRemoteMedia>? deliveryMedia,
+    List<MultiMaterialRemoteMedia>? vehicleMedia,
   }) {
     return MultiMaterialSiteProofSession(
       indentId: indentId,
@@ -106,11 +120,62 @@ class MultiMaterialSiteProofSession {
       materialCount: materialCount,
       materials: materials ?? this.materials,
       common: common ?? this.common,
+      deliveryMedia: deliveryMedia ?? this.deliveryMedia,
+      vehicleMedia: vehicleMedia ?? this.vehicleMedia,
       siteLocation: siteLocation,
       nearSiteRadiusMeters: nearSiteRadiusMeters,
       siteLocationAvailable: siteLocationAvailable,
       raw: raw,
     );
+  }
+}
+
+class MultiMaterialRemoteMedia {
+  final String id;
+  final String type; // photo | video
+  final String url;
+
+  const MultiMaterialRemoteMedia({
+    required this.id,
+    required this.type,
+    required this.url,
+  });
+
+  bool get isVideo => type.toLowerCase().contains('video');
+
+  factory MultiMaterialRemoteMedia.fromJson(Map<String, dynamic> json) {
+    final type = _asString(
+      json['type'] ?? json['media_type'] ?? json['kind'] ?? json['file_type'],
+    ).toLowerCase();
+    final url = _asString(
+      json['url'] ?? json['file_url'] ?? json['path'] ?? json['src'],
+    );
+    final name = _asString(json['filename'] ?? json['name'] ?? url);
+    final inferredVideo = type.contains('video') ||
+        name.toLowerCase().endsWith('.mp4') ||
+        name.toLowerCase().endsWith('.mov') ||
+        name.toLowerCase().endsWith('.webm');
+    return MultiMaterialRemoteMedia(
+      id: _asString(json['id'] ?? json['file_id'] ?? url),
+      type: inferredVideo ? 'video' : (type.isEmpty ? 'photo' : type),
+      url: url,
+    );
+  }
+
+  static List<MultiMaterialRemoteMedia> listFrom(dynamic raw) {
+    if (raw is! List) return const [];
+    final out = <MultiMaterialRemoteMedia>[];
+    for (final row in raw) {
+      if (row is Map) {
+        final item = MultiMaterialRemoteMedia.fromJson(
+          Map<String, dynamic>.from(row),
+        );
+        if (item.url.isNotEmpty) out.add(item);
+      } else if (row is String && row.trim().isNotEmpty) {
+        out.add(MultiMaterialRemoteMedia(id: row, type: 'photo', url: row));
+      }
+    }
+    return out;
   }
 }
 
@@ -365,6 +430,7 @@ class MultiMaterialSubmitResult {
   final int itemRunId;
   final String deliveryId;
   final bool hasRemainingMaterials;
+  final bool taskCompleted;
   final Map<String, dynamic>? review;
   final Map<String, dynamic> raw;
 
@@ -375,6 +441,7 @@ class MultiMaterialSubmitResult {
     required this.itemRunId,
     required this.deliveryId,
     required this.hasRemainingMaterials,
+    this.taskCompleted = false,
     this.review,
     this.raw = const {},
   });
@@ -388,6 +455,9 @@ class MultiMaterialSubmitResult {
       itemRunId: _asInt(json['item_run_id']),
       deliveryId: _asString(json['delivery_id']),
       hasRemainingMaterials: _truthy(json['has_remaining_materials']),
+      taskCompleted: _truthy(
+        json['task_completed'] ?? json['workflow_task_completed'],
+      ),
       review: reviewRaw is Map
           ? Map<String, dynamic>.from(reviewRaw)
           : null,

@@ -23,6 +23,7 @@ class MultiMaterialSiteProofService {
   Future<MultiMaterialSiteProofSession> fetchSession({
     required String indentId,
     String? itemRunId,
+    String? vendorId,
   }) async {
     final auth = await _authParams();
     final query = <String, String>{
@@ -30,6 +31,7 @@ class MultiMaterialSiteProofService {
       if (auth.userId.isNotEmpty) 'user_id': auth.userId,
       if ((itemRunId ?? '').trim().isNotEmpty)
         'item_run_id': itemRunId!.trim(),
+      if ((vendorId ?? '').trim().isNotEmpty) 'vendor_id': vendorId!.trim(),
     };
 
     final body = await _getJson(
@@ -72,6 +74,7 @@ class MultiMaterialSiteProofService {
     required String itemRunId,
     required String materialKey,
     required List<File> files,
+    List<String> capturedAts = const [],
   }) async {
     if (files.isEmpty) {
       return const {'success': true, 'message': 'No files to upload'};
@@ -81,6 +84,7 @@ class MultiMaterialSiteProofService {
           'site_proof/multi_material/${itemRunId.trim()}/material/upload',
       fields: {
         'material_key': materialKey,
+        if (capturedAts.isNotEmpty) 'captured_at': capturedAts.join(','),
       },
       files: files,
     );
@@ -96,9 +100,28 @@ class MultiMaterialSiteProofService {
     );
   }
 
+  Future<Map<String, dynamic>> uploadCommonFiles({
+    required String itemRunId,
+    required List<File> files,
+    List<String> capturedAts = const [],
+  }) async {
+    if (files.isEmpty) {
+      return const {'success': true, 'message': 'No files to upload'};
+    }
+    return _postMultipart(
+      pathSuffix:
+          'site_proof/multi_material/${itemRunId.trim()}/common/upload',
+      fields: {
+        if (capturedAts.isNotEmpty) 'captured_at': capturedAts.join(','),
+      },
+      files: files,
+    );
+  }
+
   Future<Map<String, dynamic>> uploadVehicleFiles({
     required String itemRunId,
     required List<File> files,
+    List<String> capturedAts = const [],
   }) async {
     if (files.isEmpty) {
       return const {'success': true, 'message': 'No files to upload'};
@@ -106,7 +129,9 @@ class MultiMaterialSiteProofService {
     return _postMultipart(
       pathSuffix:
           'site_proof/multi_material/${itemRunId.trim()}/vehicle/upload',
-      fields: const {},
+      fields: {
+        if (capturedAts.isNotEmpty) 'captured_at': capturedAts.join(','),
+      },
       files: files,
     );
   }

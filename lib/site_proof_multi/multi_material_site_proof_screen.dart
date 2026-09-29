@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -10,6 +11,7 @@ import '../app_theme.dart';
 import '../models/approved_po.dart';
 import '../models/multi_material_site_proof.dart';
 import '../services/location_service.dart';
+import '../services/capture_time.dart';
 import '../services/multi_material_site_proof_service.dart';
 import '../widgets/themed_scaffold.dart';
 
@@ -41,13 +43,14 @@ class _MaterialDraft {
 
 /// Multi-material site-proof:
 /// 1) Select materials + quantity on each card
-/// 2) Per-material photo/video, then shared photo/video/measurement/comments
+/// 2) Delivery proof (photo + video + measurement) + vehicle (Indian plate + media)
 class MultiMaterialSiteProofScreen extends StatefulWidget {
   final String indentId;
   final String itemRunId;
   final Map<String, dynamic> task;
   final ApprovedPo? approvedPo;
   final Future<void> Function() onChanged;
+  final Future<void> Function(String taskId)? onTaskFinished;
 
   const MultiMaterialSiteProofScreen({
     super.key,
@@ -56,6 +59,7 @@ class MultiMaterialSiteProofScreen extends StatefulWidget {
     required this.task,
     required this.onChanged,
     this.approvedPo,
+    this.onTaskFinished,
   });
 
   @override
@@ -83,7 +87,13 @@ class _MultiMaterialSiteProofScreenState
   final List<_LocalMedia> _commonPhotos = [];
   final List<_LocalMedia> _commonVideos = [];
   final List<_LocalMedia> _vehiclePhotos = [];
+  final List<_LocalMedia> _vehicleVideos = [];
+  final List<MultiMaterialRemoteMedia> _remoteDeliveryMedia = [];
+  final List<MultiMaterialRemoteMedia> _remoteVehicleMedia = [];
 
+  Timer? _commonAutosaveTimer;
+  bool _autosaving = false;
+  bool _applyingSession = false;
   bool _loading = true;
   bool _busy = false;
   String? _error;
@@ -110,11 +120,26 @@ class _MultiMaterialSiteProofScreenState
   @override
   void initState() {
     super.initState();
+    _measurementController.addListener(_scheduleCommonAutosave);
+    _measurementUnitController.addListener(_scheduleCommonAutosave);
+    _vehicleNumberController.addListener(_scheduleCommonAutosave);
+    _driverNameController.addListener(_scheduleCommonAutosave);
+    _driverPhoneController.addListener(_scheduleCommonAutosave);
+    _vehicleCommentController.addListener(_scheduleCommonAutosave);
+    _siteCommentController.addListener(_scheduleCommonAutosave);
     _bootstrap();
   }
 
   @override
   void dispose() {
+    _commonAutosaveTimer?.cancel();
+    _measurementController.removeListener(_scheduleCommonAutosave);
+    _measurementUnitController.removeListener(_scheduleCommonAutosave);
+    _vehicleNumberController.removeListener(_scheduleCommonAutosave);
+    _driverNameController.removeListener(_scheduleCommonAutosave);
+    _driverPhoneController.removeListener(_scheduleCommonAutosave);
+    _vehicleCommentController.removeListener(_scheduleCommonAutosave);
+    _siteCommentController.removeListener(_scheduleCommonAutosave);
     _searchController.dispose();
     _measurementController.dispose();
     _measurementUnitController.dispose();
@@ -130,6 +155,29 @@ class _MultiMaterialSiteProofScreenState
     final fromSession = _session?.itemRunId.toString() ?? '';
     if (fromSession.isNotEmpty && fromSession != '0') return fromSession;
     return widget.itemRunId.trim();
+  }
+
+  /// Vendor scoped to the opened task (spawn_meta / task fields).
+  String? get _vendorId {
+    final direct = widget.task['vendor_id']?.toString().trim() ?? '';
+    if (direct.isNotEmpty) return direct;
+    final meta = widget.task['spawn_meta'];
+    if (meta is Map) {
+      final v = meta['vendor_id']?.toString().trim() ?? '';
+      if (v.isNotEmpty) return v;
+    }
+    final nested = widget.task['workflow_item_result'];
+    if (nested is Map && nested['spawn_meta'] is Map) {
+      final v =
+          (nested['spawn_meta'] as Map)['vendor_id']?.toString().trim() ?? '';
+      if (v.isNotEmpty) return v;
+    }
+    final ctx = widget.task['context'] ?? widget.task['context_json'];
+    if (ctx is Map) {
+      final v = ctx['vendor_id']?.toString().trim() ?? '';
+      if (v.isNotEmpty) return v;
+    }
+    return null;
   }
 
   String get _subtitle {
@@ -194,6 +242,7 @@ class _MultiMaterialSiteProofScreenState
       final session = await _service.fetchSession(
         indentId: widget.indentId,
         itemRunId: widget.itemRunId.isEmpty ? null : widget.itemRunId,
+        vendorId: _vendorId,
       );
       if (!mounted) return;
       if (session.itemRunId <= 0) {
@@ -218,6 +267,7 @@ class _MultiMaterialSiteProofScreenState
   }
 
   void _applySession(MultiMaterialSiteProofSession session) {
+    _applyingSession = true;
     _session = session;
     _radiusMeters = session.nearSiteRadiusMeters;
     _measurementController.text = session.common.measurement;
@@ -233,6 +283,13 @@ class _MultiMaterialSiteProofScreenState
       _vehicleType = session.common.vehicleType.trim();
     }
 
+    _remoteDeliveryMedia
+      ..clear()
+      ..addAll(session.deliveryMedia);
+    _remoteVehicleMedia
+      ..clear()
+      ..addAll(session.vehicleMedia);
+
     _selectedOrder = [];
     for (final line in session.materials) {
       final draft = _draftFor(line.materialKey);
@@ -242,6 +299,80 @@ class _MultiMaterialSiteProofScreenState
       draft.savedToServer =
           line.completed || line.quantityReceivedToday.trim().isNotEmpty;
       if (draft.selected) _selectedOrder.add(line.materialKey);
+    }
+
+    // Auto-select when only one outstanding material (normal 1-line POs).
+    final outstanding = session.materials.where((m) {
+      final remaining = m.remainingAsNumber;
+      if (remaining != null && remaining <= 0.0001) return false;
+      return !m.completed;
+    }).toList();
+    if (_selectedOrder.isEmpty && outstanding.length == 1) {
+      final line = outstanding.first;
+      final draft = _draftFor(line.materialKey);
+      draft.selected = true;
+      if (draft.quantityReceivedToday.trim().isEmpty) {
+        draft.quantityReceivedToday = '';
+      }
+      _selectedOrder = [line.materialKey];
+    } else if (_selectedOrder.isEmpty && session.materials.length == 1) {
+      final line = session.materials.first;
+      final draft = _draftFor(line.materialKey);
+      draft.selected = true;
+      _selectedOrder = [line.materialKey];
+    }
+    _applyingSession = false;
+  }
+
+  void _scheduleCommonAutosave() {
+    if (_applyingSession) return;
+    if (_phase != _WizardPhase.evidence || _busy || _loading) return;
+    if (_itemRunId.isEmpty) return;
+    _commonAutosaveTimer?.cancel();
+    _commonAutosaveTimer = Timer(const Duration(milliseconds: 900), () {
+      unawaited(_autosaveCommonFields());
+    });
+  }
+
+  Future<void> _autosaveCommonFields() async {
+    if (_busy || _autosaving || _itemRunId.isEmpty) return;
+    _autosaving = true;
+    try {
+      final fields = MultiMaterialCommonFields(
+        measurement: _measurementController.text.trim(),
+        measurementUnit: _measurementUnitController.text.trim(),
+        siteComment: _siteCommentController.text.trim(),
+        vehicleNumber: _normalizeIndianVehicleNumber(
+          _vehicleNumberController.text,
+        ),
+        vehicleType: _vehicleType,
+        driverName: _driverNameController.text.trim(),
+        driverPhone: _driverPhoneController.text.trim(),
+        vehicleComment: _vehicleCommentController.text.trim(),
+      );
+      await _service.saveCommon(itemRunId: _itemRunId, fields: fields);
+    } catch (_) {
+      // Soft fail — user can still submit later.
+    } finally {
+      _autosaving = false;
+    }
+  }
+
+  Future<void> _autosaveSelectedMaterials() async {
+    if (_itemRunId.isEmpty) return;
+    for (final line in _selectedMaterials) {
+      final draft = _draftFor(line.materialKey);
+      final err = _validateQuantity(line, draft);
+      if (err != null) continue;
+      try {
+        await _service.saveMaterial(
+          itemRunId: _itemRunId,
+          materialKey: line.materialKey,
+          quantityReceivedToday: draft.quantityReceivedToday.trim(),
+          comment: draft.comment,
+        );
+        draft.savedToServer = true;
+      } catch (_) {}
     }
   }
 
@@ -426,32 +557,89 @@ class _MultiMaterialSiteProofScreenState
     }
     setState(() {
       _selectValidation = null;
-      _phase = _WizardPhase.evidence;
+      _busy = true;
     });
+    try {
+      await _autosaveSelectedMaterials();
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+        _phase = _WizardPhase.evidence;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _busy = false);
+      _snack(e.toString().replaceFirst('Exception: ', ''), error: true);
+    }
+  }
+
+  /// Indian RTO plate (KA 01 AB 1234 / KA01AB1234) or BH series (22BH1234AA).
+  static final RegExp _indianVehicleNumberPattern = RegExp(
+    r'^(?:'
+    r'[A-Z]{2}[0-9]{1,2}[A-Z]{1,3}[0-9]{4}'
+    r'|'
+    r'[0-9]{2}BH[0-9]{4}[A-Z]{1,2}'
+    r')$',
+  );
+
+  String _normalizeIndianVehicleNumber(String raw) {
+    return raw.trim().toUpperCase().replaceAll(RegExp(r'[\s\-./]'), '');
+  }
+
+  bool _isValidIndianVehicleNumber(String raw) {
+    final normalized = _normalizeIndianVehicleNumber(raw);
+    if (normalized.isEmpty) return false;
+    return _indianVehicleNumberPattern.hasMatch(normalized);
   }
 
   Future<void> _submitAll() async {
-    if (_vehicleNumberController.text.trim().isEmpty) {
-      _snack('Vehicle number is required.', error: true);
+    final hasDeliveryPhoto = _commonPhotos.isNotEmpty ||
+        _remoteDeliveryMedia.any((m) => !m.isVideo);
+    final hasDeliveryVideo = _commonVideos.isNotEmpty ||
+        _remoteDeliveryMedia.any((m) => m.isVideo);
+    if (!hasDeliveryPhoto) {
+      _snack('Add at least 1 delivery photo.', error: true);
+      return;
+    }
+    if (!hasDeliveryVideo) {
+      _snack('Add at least 1 delivery video.', error: true);
+      return;
+    }
+    if (_measurementController.text.trim().isEmpty) {
+      _snack('Measurement is required.', error: true);
       return;
     }
 
-    final hasAnyPhoto = _selectedMaterials.any(
-          (line) => _draftFor(line.materialKey).photos.isNotEmpty,
-        ) ||
-        _commonPhotos.isNotEmpty ||
-        _vehiclePhotos.isNotEmpty;
-    if (!hasAnyPhoto) {
+    final vehicleRaw = _vehicleNumberController.text.trim();
+    if (vehicleRaw.isEmpty) {
+      _snack('Vehicle number is required.', error: true);
+      return;
+    }
+    if (!_isValidIndianVehicleNumber(vehicleRaw)) {
       _snack(
-        'Add at least one photo (on a material or below).',
+        'Enter a valid Indian vehicle number (e.g. KA 01 AB 1234).',
         error: true,
       );
       return;
     }
+    final hasVehiclePhoto = _vehiclePhotos.isNotEmpty ||
+        _remoteVehicleMedia.any((m) => !m.isVideo);
+    final hasVehicleVideo = _vehicleVideos.isNotEmpty ||
+        _remoteVehicleMedia.any((m) => m.isVideo);
+    if (!hasVehiclePhoto) {
+      _snack('Add at least 1 vehicle photo.', error: true);
+      return;
+    }
+    if (!hasVehicleVideo) {
+      _snack('Add at least 1 vehicle video.', error: true);
+      return;
+    }
+
+    final normalizedVehicle = _normalizeIndianVehicleNumber(vehicleRaw);
 
     setState(() => _busy = true);
     try {
-      // 1) Save each material + its media
+      // 1) Save each material quantity only (no per-material media)
       for (final line in _selectedMaterials) {
         final draft = _draftFor(line.materialKey);
         await _service.saveMaterial(
@@ -460,17 +648,6 @@ class _MultiMaterialSiteProofScreenState
           quantityReceivedToday: draft.quantityReceivedToday.trim(),
           comment: draft.comment,
         );
-        final materialFiles = <File>[
-          ...draft.photos.map((p) => p.file),
-          ...draft.videos.map((v) => v.file),
-        ];
-        if (materialFiles.isNotEmpty) {
-          await _service.uploadMaterialFiles(
-            itemRunId: _itemRunId,
-            materialKey: line.materialKey,
-            files: materialFiles,
-          );
-        }
         draft.savedToServer = true;
       }
 
@@ -479,7 +656,7 @@ class _MultiMaterialSiteProofScreenState
         measurement: _measurementController.text.trim(),
         measurementUnit: _measurementUnitController.text.trim(),
         siteComment: _siteCommentController.text.trim(),
-        vehicleNumber: _vehicleNumberController.text.trim(),
+        vehicleNumber: normalizedVehicle,
         vehicleType: _vehicleType,
         driverName: _driverNameController.text.trim(),
         driverPhone: _driverPhoneController.text.trim(),
@@ -487,32 +664,139 @@ class _MultiMaterialSiteProofScreenState
       );
       await _service.saveCommon(itemRunId: _itemRunId, fields: fields);
 
-      // 3) Common / vehicle media (attach to vehicle upload endpoint)
-      final commonFiles = <File>[
-        ..._commonPhotos.map((p) => p.file),
-        ..._commonVideos.map((v) => v.file),
-        ..._vehiclePhotos.map((p) => p.file),
+      // 3) Delivery proof media
+      final deliveryMedia = <_LocalMedia>[
+        ..._commonPhotos,
+        ..._commonVideos,
       ];
-      if (commonFiles.isNotEmpty) {
-        await _service.uploadVehicleFiles(
+      if (deliveryMedia.isNotEmpty) {
+        await _service.uploadCommonFiles(
           itemRunId: _itemRunId,
-          files: commonFiles,
+          files: deliveryMedia.map((m) => m.file).toList(),
+          capturedAts: deliveryMedia
+              .map((m) => m.capturedAt)
+              .whereType<DateTime>()
+              .map(CaptureTime.toOffsetIso)
+              .toList(),
         );
       }
 
-      // 4) Submit
+      // 4) Vehicle media
+      final vehicleMedia = <_LocalMedia>[
+        ..._vehiclePhotos,
+        ..._vehicleVideos,
+      ];
+      if (vehicleMedia.isNotEmpty) {
+        await _service.uploadVehicleFiles(
+          itemRunId: _itemRunId,
+          files: vehicleMedia.map((m) => m.file).toList(),
+          capturedAts: vehicleMedia
+              .map((m) => m.capturedAt)
+              .whereType<DateTime>()
+              .map(CaptureTime.toOffsetIso)
+              .toList(),
+        );
+      }
+
+      // 5) Submit
       final result = await _service.submit(itemRunId: _itemRunId);
       await widget.onChanged();
       if (!mounted) return;
       setState(() {
         _busy = false;
         _submitResult = result;
-        _phase = _WizardPhase.success;
       });
+      await _showSubmitConfirmationAndExit(result);
     } catch (e) {
       if (!mounted) return;
       setState(() => _busy = false);
       _snack(e.toString().replaceFirst('Exception: ', ''), error: true);
+    }
+  }
+
+  Future<void> _showSubmitConfirmationAndExit(
+    MultiMaterialSubmitResult result,
+  ) async {
+    final remaining = result.hasRemainingMaterials;
+    // Partial delivery keeps the task open for the next cycle.
+    final markFinished = !remaining;
+    final title = remaining ? 'Delivery submitted' : 'Task completed';
+    final body = result.message.trim().isNotEmpty
+        ? result.message.trim()
+        : (remaining
+            ? 'Site proof for this delivery was submitted successfully. '
+                'This PO is partially completed — you can upload another '
+                'delivery for remaining materials.'
+            : 'Site proof submitted successfully. This task is completed.');
+
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(title),
+        content: Text(body),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+    if (markFinished) {
+      final taskId = widget.task['id']?.toString().trim() ?? '';
+      if (taskId.isNotEmpty) {
+        await widget.onTaskFinished?.call(taskId);
+      }
+    }
+    if (!mounted) return;
+    Navigator.of(context).pop(true);
+  }
+
+  Future<void> _uploadDeliveryMediaNow(List<_LocalMedia> mediaItems) async {
+    if (mediaItems.isEmpty || _itemRunId.isEmpty) return;
+    final files = mediaItems.map((m) => m.file).toList();
+    final capturedAts = mediaItems
+        .map((m) => m.capturedAt)
+        .whereType<DateTime>()
+        .map(CaptureTime.toOffsetIso)
+        .toList();
+    try {
+      await _service.uploadCommonFiles(
+        itemRunId: _itemRunId,
+        files: files,
+        capturedAts: capturedAts,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      _snack(
+        'Could not autosave delivery media: ${e.toString().replaceFirst('Exception: ', '')}',
+        error: true,
+      );
+    }
+  }
+
+  Future<void> _uploadVehicleMediaNow(List<_LocalMedia> mediaItems) async {
+    if (mediaItems.isEmpty || _itemRunId.isEmpty) return;
+    final files = mediaItems.map((m) => m.file).toList();
+    final capturedAts = mediaItems
+        .map((m) => m.capturedAt)
+        .whereType<DateTime>()
+        .map(CaptureTime.toOffsetIso)
+        .toList();
+    try {
+      await _service.uploadVehicleFiles(
+        itemRunId: _itemRunId,
+        files: files,
+        capturedAts: capturedAts,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      _snack(
+        'Could not autosave vehicle media: ${e.toString().replaceFirst('Exception: ', '')}',
+        error: true,
+      );
     }
   }
 
@@ -522,9 +806,8 @@ class _MultiMaterialSiteProofScreenState
       imageQuality: 88,
     );
     if (picked == null) return null;
-    final capturedAt = DateTime.now();
-    final timestamp = DateFormat('yyyyMMdd_HHmmss').format(capturedAt);
-    final stampedName = 'live_$timestamp.jpg';
+    final capturedAt = CaptureTime.nowLocal();
+    final stampedName = CaptureTime.stampFilename(isVideo: false, at: capturedAt);
     final stampedPath =
         '${Directory.systemTemp.path}${Platform.pathSeparator}$stampedName';
     final copied = await File(picked.path).copy(stampedPath);
@@ -541,12 +824,12 @@ class _MultiMaterialSiteProofScreenState
       maxDuration: const Duration(seconds: 60),
     );
     if (picked == null) return null;
-    final timestamp = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
-    final name = 'video_$timestamp.mp4';
+    final capturedAt = CaptureTime.nowLocal();
+    final name = CaptureTime.stampFilename(isVideo: true, at: capturedAt);
     final path =
         '${Directory.systemTemp.path}${Platform.pathSeparator}$name';
     final copied = await File(picked.path).copy(path);
-    return _LocalMedia(file: copied, isVideo: true);
+    return _LocalMedia(file: copied, isVideo: true, capturedAt: capturedAt);
   }
 
   void _snack(String message, {bool error = false}) {
@@ -716,7 +999,33 @@ class _MultiMaterialSiteProofScreenState
                 ),
               ),
               const SizedBox(height: 12),
-              ..._filteredMaterials.map(_buildSelectCard),
+              if (_materialsWithRemaining.isEmpty) ...[
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: AppTheme.border),
+                  ),
+                  child: Text(
+                    _materials.isEmpty
+                        ? 'No materials found for this vendor/PO.'
+                        : 'No remaining quantity for this vendor/batch. '
+                            'Ordered/received totals below are scoped to this '
+                            'task only (not sibling vendors).',
+                    style: const TextStyle(
+                      color: AppTheme.mutedGrey,
+                      fontWeight: FontWeight.w600,
+                      height: 1.35,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                ..._materials.map(_buildSelectCard),
+              ] else ...[
+                ..._filteredMaterials.map(_buildSelectCard),
+              ],
               if (_selectValidation != null) ...[
                 const SizedBox(height: 8),
                 Text(
@@ -865,7 +1174,7 @@ class _MultiMaterialSiteProofScreenState
     );
   }
 
-  // ─── STEP 2: per-material media + shared fields ──────────────────────────
+  // ─── STEP 2: selected materials summary + delivery + vehicle ─────────────
 
   Widget _buildEvidencePhase() {
     final materials = _selectedMaterials;
@@ -885,7 +1194,7 @@ class _MultiMaterialSiteProofScreenState
               ),
               const SizedBox(height: 4),
               const Text(
-                'Add photo/video next to each material if needed. Scroll down for delivery photo, video, measurement and comments.',
+                'Delivery proof needs at least 1 photo and 1 video, measurement, and vehicle details with photo and video. Per-material photos are not required.',
                 style: TextStyle(
                   color: AppTheme.mutedGrey,
                   fontWeight: FontWeight.w600,
@@ -893,45 +1202,70 @@ class _MultiMaterialSiteProofScreenState
                 ),
               ),
               const SizedBox(height: 16),
-              ...materials.map(_buildMaterialEvidenceCard),
-              const SizedBox(height: 8),
-              const Divider(height: 32),
               const Text(
-                'Delivery proof (optional extras)',
+                'Selected materials',
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w800,
                   color: AppTheme.navy,
                 ),
               ),
+              const SizedBox(height: 10),
+              ...materials.map(_buildMaterialEvidenceCard),
+              const SizedBox(height: 8),
+              const Divider(height: 32),
+              const Text(
+                'Delivery proof *',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                  color: AppTheme.navy,
+                ),
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                'Minimum 1 photo and 1 video required',
+                style: TextStyle(
+                  color: AppTheme.mutedGrey,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
               const SizedBox(height: 12),
               _MediaRow(
-                title: 'Add photo',
+                title: 'Delivery photo *',
                 items: _commonPhotos,
+                remoteItems: _remoteDeliveryMedia
+                    .where((m) => !m.isVideo)
+                    .toList(),
                 addLabel: 'Add photo',
                 onAdd: () async {
                   final media = await _capturePhoto();
                   if (media == null || !mounted) return;
                   setState(() => _commonPhotos.add(media));
+                  unawaited(_uploadDeliveryMediaNow([media]));
                 },
                 onRemove: (i) => setState(() => _commonPhotos.removeAt(i)),
               ),
               const SizedBox(height: 14),
               _MediaRow(
-                title: 'Add video',
+                title: 'Delivery video *',
                 items: _commonVideos,
+                remoteItems: _remoteDeliveryMedia
+                    .where((m) => m.isVideo)
+                    .toList(),
                 addLabel: 'Add video',
                 maxItems: 2,
                 onAdd: () async {
                   final media = await _recordVideo();
                   if (media == null || !mounted) return;
                   setState(() => _commonVideos.add(media));
+                  unawaited(_uploadDeliveryMediaNow([media]));
                 },
                 onRemove: (i) => setState(() => _commonVideos.removeAt(i)),
               ),
               const SizedBox(height: 20),
               const Text(
-                'Measurement (Optional)',
+                'Measurement *',
                 style: TextStyle(fontWeight: FontWeight.w700),
               ),
               const SizedBox(height: 8),
@@ -964,6 +1298,15 @@ class _MultiMaterialSiteProofScreenState
                 textCapitalization: TextCapitalization.characters,
                 decoration: _inputDecoration('KA 01 AB 1234'),
               ),
+              const SizedBox(height: 4),
+              const Text(
+                'Indian standard format (spaces/hyphens optional). Example: KA01AB1234 or 22BH1234AA',
+                style: TextStyle(
+                  color: AppTheme.mutedGrey,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
               const SizedBox(height: 10),
               DropdownButtonFormField<String>(
                 value: _vehicleTypes.contains(_vehicleType)
@@ -975,6 +1318,7 @@ class _MultiMaterialSiteProofScreenState
                 onChanged: (v) {
                   if (v == null) return;
                   setState(() => _vehicleType = v);
+                  _scheduleCommonAutosave();
                 },
                 decoration: _inputDecoration('Vehicle type'),
               ),
@@ -991,16 +1335,37 @@ class _MultiMaterialSiteProofScreenState
               ),
               const SizedBox(height: 12),
               _MediaRow(
-                title: 'Vehicle photo (Optional)',
+                title: 'Vehicle photo *',
                 items: _vehiclePhotos,
+                remoteItems: _remoteVehicleMedia
+                    .where((m) => !m.isVideo)
+                    .toList(),
                 addLabel: 'Add photo',
                 maxItems: 3,
                 onAdd: () async {
                   final media = await _capturePhoto();
                   if (media == null || !mounted) return;
                   setState(() => _vehiclePhotos.add(media));
+                  unawaited(_uploadVehicleMediaNow([media]));
                 },
                 onRemove: (i) => setState(() => _vehiclePhotos.removeAt(i)),
+              ),
+              const SizedBox(height: 14),
+              _MediaRow(
+                title: 'Vehicle video *',
+                items: _vehicleVideos,
+                remoteItems: _remoteVehicleMedia
+                    .where((m) => m.isVideo)
+                    .toList(),
+                addLabel: 'Add video',
+                maxItems: 2,
+                onAdd: () async {
+                  final media = await _recordVideo();
+                  if (media == null || !mounted) return;
+                  setState(() => _vehicleVideos.add(media));
+                  unawaited(_uploadVehicleMediaNow([media]));
+                },
+                onRemove: (i) => setState(() => _vehicleVideos.removeAt(i)),
               ),
               const SizedBox(height: 20),
               const Text(
@@ -1076,73 +1441,31 @@ class _MultiMaterialSiteProofScreenState
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: AppTheme.border),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      line.material,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w800,
-                        fontSize: 16,
-                        color: AppTheme.navy,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      '${draft.quantityReceivedToday} / ${line.orderedQuantity} ${line.unit}'
-                          .trim(),
-                      style: const TextStyle(
-                        color: AppTheme.mutedGrey,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  line.material,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 16,
+                    color: AppTheme.navy,
+                  ),
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          _MediaRow(
-            title: 'Photos (optional)',
-            items: draft.photos,
-            addLabel: 'Photo',
-            maxItems: line.effectiveMaxPhotos,
-            onAdd: () async {
-              if (draft.photos.length >= line.effectiveMaxPhotos) {
-                _snack(
-                  'Max ${line.effectiveMaxPhotos} photos for ${line.material}.',
-                  error: true,
-                );
-                return;
-              }
-              final media = await _capturePhoto();
-              if (media == null || !mounted) return;
-              setState(() => draft.photos.add(media));
-            },
-            onRemove: (i) => setState(() => draft.photos.removeAt(i)),
-          ),
-          const SizedBox(height: 10),
-          _MediaRow(
-            title: 'Video (optional)',
-            items: draft.videos,
-            addLabel: 'Video',
-            maxItems: 1,
-            onAdd: () async {
-              if (draft.videos.isNotEmpty) {
-                _snack('Only one video per material.', error: true);
-                return;
-              }
-              final media = await _recordVideo();
-              if (media == null || !mounted) return;
-              setState(() => draft.videos.add(media));
-            },
-            onRemove: (i) => setState(() => draft.videos.removeAt(i)),
+                const SizedBox(height: 2),
+                Text(
+                  '${draft.quantityReceivedToday} / ${line.orderedQuantity} ${line.unit}'
+                      .trim(),
+                  style: const TextStyle(
+                    color: AppTheme.mutedGrey,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -1307,7 +1630,11 @@ class _MultiMaterialSiteProofScreenState
       _commonPhotos.clear();
       _commonVideos.clear();
       _vehiclePhotos.clear();
+      _vehicleVideos.clear();
+      _remoteDeliveryMedia.clear();
+      _remoteVehicleMedia.clear();
       _measurementController.clear();
+      _measurementUnitController.clear();
       _vehicleNumberController.clear();
       _driverNameController.clear();
       _driverPhoneController.clear();
@@ -1318,6 +1645,7 @@ class _MultiMaterialSiteProofScreenState
       final session = await _service.fetchSession(
         indentId: widget.indentId,
         itemRunId: _itemRunId.isEmpty ? null : _itemRunId,
+        vendorId: _vendorId,
       );
       if (!mounted) return;
       _applySession(session);
@@ -1654,6 +1982,7 @@ class _RoundIconButton extends StatelessWidget {
 class _MediaRow extends StatelessWidget {
   final String title;
   final List<_LocalMedia> items;
+  final List<MultiMaterialRemoteMedia> remoteItems;
   final String addLabel;
   final Future<void> Function() onAdd;
   final ValueChanged<int> onRemove;
@@ -1665,12 +1994,14 @@ class _MediaRow extends StatelessWidget {
     required this.addLabel,
     required this.onAdd,
     required this.onRemove,
+    this.remoteItems = const [],
     this.maxItems,
   });
 
   @override
   Widget build(BuildContext context) {
-    final canAdd = maxItems == null || items.length < maxItems!;
+    final totalCount = items.length + remoteItems.length;
+    final canAdd = maxItems == null || totalCount < maxItems!;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1688,6 +2019,77 @@ class _MediaRow extends StatelessWidget {
           child: ListView(
             scrollDirection: Axis.horizontal,
             children: [
+              ...remoteItems.map((remote) {
+                return Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: remote.isVideo
+                        ? Container(
+                            width: 80,
+                            height: 80,
+                            color: const Color(0xFF0F172A),
+                            child: const Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  Icons.play_circle_fill,
+                                  color: Colors.white,
+                                  size: 28,
+                                ),
+                                SizedBox(height: 4),
+                                Text(
+                                  'Saved',
+                                  style: TextStyle(
+                                    color: Colors.white70,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          )
+                        : Stack(
+                            children: [
+                              Image.network(
+                                remote.url,
+                                width: 80,
+                                height: 80,
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, __, ___) => Container(
+                                  width: 80,
+                                  height: 80,
+                                  color: const Color(0xFFE5E7EB),
+                                  child: const Icon(Icons.image),
+                                ),
+                              ),
+                              Positioned(
+                                bottom: 4,
+                                left: 4,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 4,
+                                    vertical: 2,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: Colors.black54,
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: const Text(
+                                    'Saved',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 9,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                  ),
+                );
+              }),
               ...List.generate(items.length, (index) {
                 final item = items[index];
                 return Padding(
@@ -1774,3 +2176,4 @@ class _MediaRow extends StatelessWidget {
     );
   }
 }
+

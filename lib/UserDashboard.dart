@@ -35,6 +35,7 @@ import 'mobile_live_test_screen.dart';
 import 'main.dart';
 import 'MyTasksScreen.dart';
 import 'task_display_title.dart';
+import 'indent_task_material.dart';
 import 'ProjectTimelineScreen.dart';
 import 'SalesSopCardsScreen.dart';
 import 'SlotsScreen.dart';
@@ -908,6 +909,7 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
   var username = ' ';
   var updatePostedOnDate = " ";
   String? completed;
+  double docDelayDays = 0;
   dynamic updateResponseBody;
   var blocked = false;
   var bolckReason = '';
@@ -1058,6 +1060,7 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
       // Load client project data from provider
       location = nextLocation;
       completed = nextCompletion;
+      docDelayDays = dataProvider.clientDocDelayDays;
       blocked = nextBlocked;
       bolckReason = nextBlockReason;
       username = loadedUsername;
@@ -2024,6 +2027,7 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
     return ModernTaskCard(
       title: _dashboardPendingTaskTitle(task),
       projectName: _isClientUser ? null : task['project_name']?.toString(),
+      materialLabel: indentTaskMaterialLabel(task),
       assigneeName: _isClientUser
           ? null
           : (assigneeText.isEmpty ? null : assigneeText),
@@ -3703,6 +3707,18 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
                                   height: 1.2,
                                 ),
                               ),
+                              if (docDelayDays > 0) ...[
+                                const SizedBox(height: 4),
+                                Text(
+                                  '+${docDelayDays % 1 == 0 ? docDelayDays.toInt() : docDelayDays} schedule days (DOC)',
+                                  style: TextStyle(
+                                    color: Colors.white.withValues(alpha: 0.75),
+                                    fontSize: 11.5,
+                                    fontWeight: FontWeight.w500,
+                                    height: 1.2,
+                                  ),
+                                ),
+                              ],
                               const SizedBox(height: 8),
                               InkWell(
                                 onTap: location.isEmpty

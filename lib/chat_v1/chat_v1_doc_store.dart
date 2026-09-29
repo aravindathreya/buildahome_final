@@ -33,6 +33,16 @@ class ChatV1DocStore {
     return doc;
   }
 
+  Future<List<Map<String, dynamic>>> listMainCriticalActivities(
+    String salesSopId, {
+    bool incompleteOnly = true,
+  }) {
+    return _api.listMainCriticalActivities(
+      salesSopId,
+      incompleteOnly: incompleteOnly,
+    );
+  }
+
   Future<ChatV1DocRequest> create({
     required String salesSopId,
     required String description,
@@ -40,6 +50,10 @@ class ChatV1DocStore {
     String notes = '',
     String? pdfName,
     List<int>? pdfBytes,
+    bool causesDelay = false,
+    String? delayActivityId,
+    String? delayActivityLabel,
+    int? delayDays,
   }) async {
     String? pdfUrl;
     var resolvedName = pdfName;
@@ -62,6 +76,10 @@ class ChatV1DocStore {
       notes: notes,
       pdfName: resolvedName,
       pdfUrl: pdfUrl,
+      causesDelay: causesDelay,
+      delayActivityId: delayActivityId,
+      delayActivityLabel: delayActivityLabel,
+      delayDays: delayDays,
     );
     return ChatV1DocRequest.fromJson(raw);
   }

@@ -11,22 +11,19 @@ String resolvedWorkflowItemRunIdFromTask(Map<String, dynamic> task) {
   return '';
 }
 
-/// Flow decision from approved PO (or equivalent) fields.
+/// Flow decision for Approved PO / site-proof tasks.
 ///
-/// Single path when `site_proof_flow == "single"` OR `material_count <= 1`.
-/// Multi path when `site_proof_flow == "multi"` OR `material_count > 1`.
+/// Backend treats **all** Approved POs as the new partial flow
+/// (`site_proof_flow: "multi"`), including 1-material indents.
+/// Only an explicit `"single"` keeps the legacy screens.
 bool shouldUseMultiMaterialSiteProof({
   String? siteProofFlow,
   int? materialCount,
   int materialsLength = 0,
 }) {
   final flow = (siteProofFlow ?? '').trim().toLowerCase();
-  final count = (materialCount != null && materialCount > 0)
-      ? materialCount
-      : materialsLength;
-  if (flow == 'single' || count <= 1) return false;
-  if (flow == 'multi' || count > 1) return true;
-  return false;
+  if (flow == 'single') return false;
+  return true;
 }
 
 bool approvedPoUsesMultiMaterialSiteProof(ApprovedPo po) =>

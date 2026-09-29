@@ -588,6 +588,10 @@ class ChatV1DocRequest {
   final bool canApprove;
   final int messageCount;
   final List<ChatV1DocMessage> messages;
+  final bool causesDelay;
+  final String? delayActivityId;
+  final String? delayActivityLabel;
+  final int? delayDays;
 
   const ChatV1DocRequest({
     required this.id,
@@ -605,6 +609,10 @@ class ChatV1DocRequest {
     this.canApprove = false,
     this.messageCount = 0,
     this.messages = const [],
+    this.causesDelay = false,
+    this.delayActivityId,
+    this.delayActivityLabel,
+    this.delayDays,
   });
 
   String get statusLabel {
@@ -630,6 +638,10 @@ class ChatV1DocRequest {
     bool? canApprove,
     int? messageCount,
     List<ChatV1DocMessage>? messages,
+    bool? causesDelay,
+    String? delayActivityId,
+    String? delayActivityLabel,
+    int? delayDays,
   }) {
     return ChatV1DocRequest(
       id: id,
@@ -647,6 +659,10 @@ class ChatV1DocRequest {
       canApprove: canApprove ?? this.canApprove,
       messageCount: messageCount ?? this.messageCount,
       messages: messages ?? this.messages,
+      causesDelay: causesDelay ?? this.causesDelay,
+      delayActivityId: delayActivityId ?? this.delayActivityId,
+      delayActivityLabel: delayActivityLabel ?? this.delayActivityLabel,
+      delayDays: delayDays ?? this.delayDays,
     );
   }
 
@@ -695,6 +711,19 @@ class ChatV1DocRequest {
       messageCount = int.tryParse(countRaw.toString()) ?? msgs.length;
     }
 
+    final delayMeta = raw['delay_meta'] is Map
+        ? Map<String, dynamic>.from(raw['delay_meta'] as Map)
+        : <String, dynamic>{};
+    final causesDelay = raw['causes_delay'] == true ||
+        delayMeta['causes_delay'] == true;
+    int? delayDays;
+    final delayDaysRaw = raw['delay_days'] ?? delayMeta['delay_days'];
+    if (delayDaysRaw is num) {
+      delayDays = delayDaysRaw.toInt();
+    } else if (delayDaysRaw != null) {
+      delayDays = int.tryParse(delayDaysRaw.toString());
+    }
+
     return ChatV1DocRequest(
       id: (raw['id'] ?? '').toString(),
       salesSopId: raw['sales_sop_id']?.toString(),
@@ -718,6 +747,14 @@ class ChatV1DocRequest {
       canApprove: raw['can_approve'] == true,
       messageCount: messageCount,
       messages: msgs,
+      causesDelay: causesDelay,
+      delayActivityId: (raw['delay_activity_id'] ??
+              delayMeta['delay_activity_id'])
+          ?.toString(),
+      delayActivityLabel: (raw['delay_activity_label'] ??
+              delayMeta['delay_activity_label'])
+          ?.toString(),
+      delayDays: delayDays,
     );
   }
 }

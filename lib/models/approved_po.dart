@@ -26,6 +26,15 @@ class ApprovedPo {
   final String siteProofFlow;
   /// Count of materials on the PO. Falls back to [materials].length when 0.
   final int materialCount;
+  /// `none` | `partial` | `complete` from list/detail API.
+  final String receiptStatus;
+  final String receiptLabel;
+  final bool isPartial;
+  final bool isComplete;
+  /// Server flag: remaining across ALL submitted deliveries (incl. pending review).
+  final bool? hasOutstandingSiteProof;
+  /// Received Material ID (alphanumeric) - same value as web Enter material / details.
+  final String receivedMaterialId;
 
   const ApprovedPo({
     required this.indentId,
@@ -50,6 +59,12 @@ class ApprovedPo {
     this.materials = const [],
     this.siteProofFlow = '',
     this.materialCount = 0,
+    this.receiptStatus = '',
+    this.receiptLabel = '',
+    this.isPartial = false,
+    this.isComplete = false,
+    this.hasOutstandingSiteProof,
+    this.receivedMaterialId = '',
   });
 
   factory ApprovedPo.fromJson(Map<String, dynamic> json) {
@@ -99,6 +114,20 @@ class ApprovedPo {
       materials: materials,
       siteProofFlow: _asString(json['site_proof_flow']),
       materialCount: _asInt(json['material_count']),
+      receiptStatus: _asString(json['receipt_status']).toLowerCase(),
+      receiptLabel: _asString(json['receipt_label']),
+      isPartial: _truthy(json['is_partial']) ||
+          _asString(json['receipt_status']).toLowerCase() == 'partial',
+      isComplete: _truthy(json['is_complete']) ||
+          _asString(json['receipt_status']).toLowerCase() == 'complete',
+      hasOutstandingSiteProof: json.containsKey('has_outstanding_site_proof')
+          ? _truthy(json['has_outstanding_site_proof'])
+          : null,
+      receivedMaterialId: _asString(
+        json['received_material_id'] ??
+            json['received_material_uid'] ??
+            json['material_id'],
+      ),
     );
   }
 
@@ -106,14 +135,23 @@ class ApprovedPo {
   int get effectiveMaterialCount =>
       materialCount > 0 ? materialCount : materials.length;
 
-  /// Multi-material site-proof path when backend says multi or count > 1.
-  /// Explicit `site_proof_flow: "single"` or count ≤ 1 keeps the legacy flow.
+  /// New partial / multi-material site-proof UI for Approved POs.
+  ///
+  /// Backend now sends `site_proof_flow: "multi"` for **all** Approved POs
+  /// (including normal 1-material indents). Only an explicit `"single"` keeps
+  /// the legacy flat upload screens. Do **not** gate on material count.
   bool get usesMultiMaterialSiteProof {
     final flow = siteProofFlow.trim().toLowerCase();
-    final count = effectiveMaterialCount;
-    if (flow == 'single' || count <= 1) return false;
-    if (flow == 'multi' || count > 1) return true;
-    return false;
+    if (flow == 'single') return false;
+    return true;
+  }
+
+  /// True when another multi-material delivery/site-proof cycle may still be needed.
+  bool get hasOutstandingSiteProofMaterials {
+    if (!usesMultiMaterialSiteProof) return false;
+    if (hasOutstandingSiteProof != null) return hasOutstandingSiteProof!;
+    if (materials.isEmpty) return true;
+    return materials.any((m) => m.hasOutstandingQuantity);
   }
 
   String displayPoNumber() {
@@ -169,19 +207,39 @@ class ApprovedPoMaterialLine {
   final String material;
   final String quantity;
   final String unit;
+  final String previouslyReceivedQuantity;
+  final String remainingQuantity;
 
   const ApprovedPoMaterialLine({
     required this.material,
     required this.quantity,
     required this.unit,
+    this.previouslyReceivedQuantity = '',
+    this.remainingQuantity = '',
   });
 
   factory ApprovedPoMaterialLine.fromJson(Map<String, dynamic> json) {
     return ApprovedPoMaterialLine(
       material: _asString(json['material']),
-      quantity: _asString(json['quantity']),
+      quantity: _asString(json['quantity'] ?? json['ordered_quantity']),
       unit: _asString(json['unit']),
+      previouslyReceivedQuantity: _asString(
+        json['previously_received_quantity'] ??
+            json['already_received'] ??
+            json['received_quantity'],
+      ),
+      remainingQuantity: _asString(
+        json['remaining_quantity'] ?? json['remaining'],
+      ),
     );
+  }
+
+  /// True when this line still has quantity left to receive.
+  /// If remaining is omitted, treat as outstanding so another delivery is allowed.
+  bool get hasOutstandingQuantity {
+    final remaining = _asDouble(remainingQuantity);
+    if (remaining != null) return remaining > 0.0001;
+    return true;
   }
 }
 
@@ -260,6 +318,14 @@ int _asInt(dynamic value) {
   if (value is int) return value;
   if (value is num) return value.toInt();
   return int.tryParse(value?.toString() ?? '') ?? 0;
+}
+
+double? _asDouble(dynamic value) {
+  if (value == null) return null;
+  if (value is num) return value.toDouble();
+  final text = value.toString().trim().replaceAll(',', '');
+  if (text.isEmpty) return null;
+  return double.tryParse(text);
 }
 
 bool _truthy(dynamic value) {

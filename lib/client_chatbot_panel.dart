@@ -1,6 +1,7 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
-
+import 'models/workflow_document.dart';
+import 'widgets/workflow_document_viewer.dart';
 import 'FullScreenImage.dart';
 import 'models/mobile_chatbot.dart';
 import 'services/mobile_chatbot_service.dart';
@@ -410,11 +411,36 @@ class _StageCard extends StatelessWidget {
 
   final MobileChatbotStage stage;
 
+  Future<void> _openDocument(
+    BuildContext context, {
+    required String url,
+    required String title,
+  }) async {
+    final trimmed = url.trim();
+    if (trimmed.isEmpty) return;
+
+    final doc = WorkflowDocumentUpload(
+      id: 'chatbot-${trimmed.hashCode}',
+      documentKey: 'chatbot_attachment',
+      name: title.trim().isEmpty ? 'Document' : title.trim(),
+      url: trimmed,
+      contentType: 'application/pdf',
+      isLatest: true,
+    );
+
+    await openWorkflowDocument(
+      context,
+      doc,
+      clientMode: true,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final images = stage.images
         .where((image) => image.isVisual && image.url.isNotEmpty)
         .toList();
+    final documents = stage.documents;
     final urls = images.map((image) => image.url).toList();
     final tracker = stage.tracker;
     final percent = tracker.percent;
@@ -526,6 +552,87 @@ class _StageCard extends StatelessWidget {
                 },
               ),
             ),
+          ],
+          if (documents.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            for (final doc in documents)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Material(
+                  color: const Color(0xFFF5F7FA),
+                  borderRadius: BorderRadius.circular(12),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(12),
+                    onTap: () => _openDocument(
+                      context,
+                      url: doc.url,
+                      title: doc.caption.isNotEmpty
+                          ? doc.caption
+                          : (stage.name.isNotEmpty ? stage.name : 'Document'),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 12,
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 40,
+                            height: 40,
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(
+                                color: const Color(0xFFD7DEE8),
+                              ),
+                            ),
+                            child: const Icon(
+                              Icons.picture_as_pdf_rounded,
+                              color: Color(0xFFC62828),
+                              size: 22,
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  doc.caption.isNotEmpty
+                                      ? doc.caption
+                                      : (stage.name.isNotEmpty
+                                          ? stage.name
+                                          : 'Document'),
+                                  style: const TextStyle(
+                                    color: Color(0xFF1B254B),
+                                    fontSize: 13.5,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                const Text(
+                                  'Tap to view in app',
+                                  style: TextStyle(
+                                    color: Color(0xFF8A94A6),
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const Icon(
+                            Icons.chevron_right_rounded,
+                            size: 18,
+                            color: Color(0xFF8A94A6),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
           ],
         ],
       ),

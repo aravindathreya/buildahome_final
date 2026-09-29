@@ -603,6 +603,19 @@ class ChatV1Api {
     return _asMapList(data, keys: const ['docs', 'items', 'results']);
   }
 
+  Future<List<Map<String, dynamic>>> listMainCriticalActivities(
+    String salesSopId, {
+    bool incompleteOnly = true,
+  }) async {
+    final data = await get(
+      '$chatPrefix/sales-sop/$salesSopId/main-critical-activities',
+      query: {
+        'incomplete_only': incompleteOnly ? '1' : '0',
+      },
+    );
+    return _asMapList(data, keys: const ['activities', 'items', 'results']);
+  }
+
   Future<Map<String, dynamic>> createDoc(
     String salesSopId, {
     required String description,
@@ -610,6 +623,10 @@ class ChatV1Api {
     String? notes,
     String? pdfName,
     String? pdfUrl,
+    bool causesDelay = false,
+    String? delayActivityId,
+    String? delayActivityLabel,
+    int? delayDays,
   }) async {
     final data = await post(
       '$chatPrefix/sales-sop/$salesSopId/docs',
@@ -619,6 +636,16 @@ class ChatV1Api {
         if (notes != null && notes.isNotEmpty) 'notes': notes,
         if (pdfName != null && pdfName.isNotEmpty) 'pdf_name': pdfName,
         if (pdfUrl != null && pdfUrl.isNotEmpty) 'pdf_url': pdfUrl,
+        'causes_delay': causesDelay,
+        if (causesDelay &&
+            delayActivityId != null &&
+            delayActivityId.isNotEmpty)
+          'delay_activity_id': delayActivityId,
+        if (causesDelay &&
+            delayActivityLabel != null &&
+            delayActivityLabel.isNotEmpty)
+          'delay_activity_label': delayActivityLabel,
+        if (causesDelay && delayDays != null) 'delay_days': delayDays,
       },
     );
     if (data is Map) {

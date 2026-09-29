@@ -35,6 +35,7 @@ import 'stock_report.dart';
 import 'TasksScreen.dart';
 import 'MyTasksScreen.dart';
 import 'task_display_title.dart';
+import 'indent_task_material.dart';
 import 'mobile_live_test_screen.dart';
 import 'services/mobile_live_test_access.dart';
 import 'NavMenu.dart';
@@ -3085,9 +3086,12 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
       }
     }
 
+    final materialLabel = indentTaskMaterialLabel(task);
+
     return ModernTaskCard(
       title: title,
       projectName: projectName,
+      materialLabel: materialLabel,
       assigneeName: assignedToName,
       dateLabel: dateLabel,
       status: status,

@@ -351,7 +351,15 @@ class IndentProofTabState extends State<IndentProofTab> {
           mounted) {
         _openedInitial = true;
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) _openDetail(initialId);
+          if (!mounted) return;
+          Map<String, dynamic>? match;
+          for (final row in _items) {
+            if ((_display(row, ['indent_id', 'id']) ?? '') == initialId) {
+              match = row;
+              break;
+            }
+          }
+          _openDetail(match ?? {'id': initialId, 'indent_id': initialId});
         });
       }
     } catch (e) {
@@ -364,10 +372,50 @@ class IndentProofTabState extends State<IndentProofTab> {
     }
   }
 
-  Future<void> _openDetail(String indentId) async {
+  Future<void> _openDetail(Map<String, dynamic> item) async {
+    final indentId = _display(item, ['indent_id', 'id']) ?? '';
+    if (indentId.isEmpty) return;
+    final proof = _proofMap(item);
+    Map<String, dynamic> pending = {};
+    final rawPending = item['pending_delivery'] ?? proof['pending_delivery'];
+    if (rawPending is Map) {
+      pending = Map<String, dynamic>.from(rawPending);
+    }
+    String? pick(List<String> keys, [Map<String, dynamic>? extra]) {
+      final fromItem = _display(item, keys);
+      if (fromItem != null && fromItem.trim().isNotEmpty) return fromItem.trim();
+      final fromProof = _display(proof, keys);
+      if (fromProof != null && fromProof.trim().isNotEmpty) return fromProof.trim();
+      if (extra != null) {
+        final fromExtra = _display(extra, keys);
+        if (fromExtra != null && fromExtra.trim().isNotEmpty) return fromExtra.trim();
+      }
+      return null;
+    }
+
+    final vendorId = pick(['vendor_id'], pending);
+    final deliveryId = pick(
+          ['review_delivery_id', 'delivery_id', 'last_delivery_id'],
+          pending,
+        ) ??
+        (pending['id']?.toString().trim().isNotEmpty == true
+            ? pending['id'].toString().trim()
+            : null);
+    final itemRunId = pick([
+      'review_item_run_id',
+      'workflow_item_run_id',
+      'item_run_id',
+    ], pending);
+
     await Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => IndentProofDetailScreen(indentId: indentId),
+        builder: (_) => IndentProofDetailScreen(
+          indentId: indentId,
+          forReview: true,
+          vendorId: vendorId,
+          deliveryId: deliveryId,
+          itemRunId: itemRunId,
+        ),
       ),
     );
     if (mounted) await reload();
@@ -405,7 +453,7 @@ class IndentProofTabState extends State<IndentProofTab> {
                           icon: Icons.fact_check_outlined,
                           title: 'No indent proofs',
                           message: _pager.search.trim().isEmpty
-                              ? 'Approved site-proof indents assigned to you will appear here.'
+                              ? 'Indents with pending PC/APC review or outstanding/partial delivery proof will appear here.'
                               : 'No indent proofs for this project.',
                         )
                       : RefreshIndicator(
@@ -429,7 +477,7 @@ class IndentProofTabState extends State<IndentProofTab> {
                                 item: item,
                                 onTap: indentId.isEmpty
                                     ? null
-                                    : () => _openDetail(indentId),
+                                    : () => _openDetail(item),
                               );
                             },
                           ),
@@ -442,10 +490,20 @@ class IndentProofTabState extends State<IndentProofTab> {
 
 class IndentProofDetailScreen extends StatefulWidget {
   final String indentId;
+  /// When true, fetch pending under-review batch (for_review=1) and allow qty decrease.
+  final bool forReview;
+  /// Scope review to this vendor / delivery / item_run (split-vendor cards).
+  final String? vendorId;
+  final String? deliveryId;
+  final String? itemRunId;
 
   const IndentProofDetailScreen({
     Key? key,
     required this.indentId,
+    this.forReview = false,
+    this.vendorId,
+    this.deliveryId,
+    this.itemRunId,
   }) : super(key: key);
 
   @override
@@ -468,6 +526,8 @@ class _IndentProofDetailScreenState extends State<IndentProofDetailScreen> {
   String? _siteComment;
   String _originalQuantity = '';
   String _originalMeasurement = '';
+  String _reviewDeliveryId = '';
+  final List<_ReviewMaterialQty> _reviewMaterials = [];
 
   bool get _isProofApproved {
     final proof = _proofMap(_detail);
@@ -478,6 +538,19 @@ class _IndentProofDetailScreenState extends State<IndentProofDetailScreen> {
         _indentProofTruthy(proof['proof_approved']) ||
         _indentProofTruthy(_detail['proof_approved'])) {
       return true;
+    }
+    // Open review for THIS delivery/vendor is never "approved" just because a
+    // sibling vendor's review completed on the same indent.
+    if (widget.forReview) {
+      final pending = proof['pending_delivery'] ?? _detail['pending_delivery'];
+      final hasPending = pending is Map && pending.isNotEmpty;
+      final hasPendingList = (_detail['pending_deliveries'] is List &&
+              (_detail['pending_deliveries'] as List).isNotEmpty) ||
+          (proof['pending_deliveries'] is List &&
+              (proof['pending_deliveries'] as List).isNotEmpty);
+      if (hasPending || hasPendingList) {
+        return false;
+      }
     }
     final status = (
           _display(proof, [
@@ -522,6 +595,9 @@ class _IndentProofDetailScreenState extends State<IndentProofDetailScreen> {
     _vehicleController.dispose();
     _weightController.dispose();
     _reviewCommentController.dispose();
+    for (final m in _reviewMaterials) {
+      m.controller.dispose();
+    }
     super.dispose();
   }
 
@@ -533,7 +609,13 @@ class _IndentProofDetailScreenState extends State<IndentProofDetailScreen> {
       _error = null;
     });
     try {
-      final detail = await _fetchIndentProofDetail(widget.indentId);
+      final detail = await _fetchIndentProofDetail(
+        widget.indentId,
+        forReview: widget.forReview,
+        vendorId: widget.vendorId,
+        deliveryId: widget.deliveryId,
+        itemRunId: widget.itemRunId,
+      );
       if (!mounted) return;
       _applyDetail(detail);
     } catch (e) {
@@ -547,36 +629,113 @@ class _IndentProofDetailScreenState extends State<IndentProofDetailScreen> {
 
   void _applyDetail(Map<String, dynamic> detail) {
     final proof = _proofMap(detail);
-    _quantityController.text = _display(proof, [
-          'quantity',
-          'proof_quantity',
-          'site_quantity',
-        ]) ??
-        _display(detail, ['proof_quantity', 'site_quantity']) ??
-        '';
-    _measurementController.text = _display(proof, [
-          'measurement',
-          'proof_measurement',
-        ]) ??
-        '';
-    _vehicleController.text = _display(proof, [
-          'vehicle_number',
-          'vehicle',
-          'vehicle_no',
-        ]) ??
-        '';
-    _weightController.text = _display(proof, [
-          'weight',
-          'proof_weight',
-        ]) ??
-        '';
+    for (final m in _reviewMaterials) {
+      m.controller.dispose();
+    }
+    _reviewMaterials.clear();
+    _reviewDeliveryId = (
+          _display(detail, ['review_delivery_id']) ??
+          _display(proof, ['review_delivery_id']) ??
+          ''
+        )
+            .trim();
+    final pending = detail['pending_delivery'] is Map
+        ? Map<String, dynamic>.from(detail['pending_delivery'] as Map)
+        : (proof['pending_delivery'] is Map
+            ? Map<String, dynamic>.from(proof['pending_delivery'] as Map)
+            : <String, dynamic>{});
+    if (_reviewDeliveryId.isEmpty) {
+      _reviewDeliveryId = pending['id']?.toString().trim() ?? '';
+    }
+    final reviewMats = <Map<String, dynamic>>[];
+    final rawReview = detail['review_materials'] ??
+        proof['review_materials'] ??
+        pending['materials'];
+    if (rawReview is List) {
+      for (final row in rawReview) {
+        if (row is Map) {
+          reviewMats.add(Map<String, dynamic>.from(row));
+        }
+      }
+    }
+    for (final mat in reviewMats) {
+      String firstNonEmpty(List<dynamic> values) {
+        for (final v in values) {
+          final t = (v ?? '').toString().trim();
+          if (t.isNotEmpty && t.toLowerCase() != 'null') return t;
+        }
+        return '';
+      }
+      // Show the uploaded qty by default; reviewer only lowers it if needed.
+      final submitted = firstNonEmpty([
+        mat['submitted'],
+        mat['quantity_received'],
+        mat['received'],
+      ]);
+      final initial = firstNonEmpty([
+        mat['approved_qty'],
+        submitted,
+      ]);
+      final key = (mat['material_key'] ?? '').toString().trim().isNotEmpty
+          ? mat['material_key'].toString().trim()
+          : '${mat['material']}_${mat['unit']}';
+      _reviewMaterials.add(
+        _ReviewMaterialQty(
+          materialKey: key,
+          name: (mat['material'] ?? '').toString().trim(),
+          unit: (mat['unit'] ?? '').toString().trim(),
+          submitted: submitted,
+          controller: TextEditingController(text: initial),
+        ),
+      );
+    }
+    final qtyFromPending = pending['quantity_label']?.toString().trim() ?? '';
+    _quantityController.text = qtyFromPending.isNotEmpty
+        ? qtyFromPending
+        : (_display(proof, [
+              'quantity',
+              'proof_quantity',
+              'site_quantity',
+            ]) ??
+            _display(detail, ['proof_quantity', 'site_quantity']) ??
+            '');
+    // Prefer THIS pending batch fields over merged proof (sibling deliveries).
+    final pendingMeasurement = (pending['measurement'] ?? '').toString().trim();
+    final pendingVehicle = (pending['vehicle_number'] ?? '').toString().trim();
+    final pendingWeight = (pending['weight'] ?? '').toString().trim();
+    final pendingSiteComment = (pending['site_comment'] ?? '').toString().trim();
+    _measurementController.text = pendingMeasurement.isNotEmpty
+        ? pendingMeasurement
+        : (_display(proof, [
+              'measurement',
+              'proof_measurement',
+            ]) ??
+            '');
+    _vehicleController.text = pendingVehicle.isNotEmpty
+        ? pendingVehicle
+        : (_display(proof, [
+              'vehicle_number',
+              'vehicle',
+              'vehicle_no',
+            ]) ??
+            '');
+    _weightController.text = pendingWeight.isNotEmpty
+        ? pendingWeight
+        : (_display(proof, [
+              'weight',
+              'proof_weight',
+            ]) ??
+            '');
     _reviewCommentController.text = _display(proof, [
           'review_comment',
         ]) ??
         _commentFromMap(proof['comments'], 'review_comment') ??
         '';
-    _siteComment = _display(proof, ['site_comment']) ??
-        _commentFromMap(proof['comments'], 'site_comment');
+    // Site engineer comment: prefer THIS pending batch, then scoped proof.
+    _siteComment = pendingSiteComment.isNotEmpty
+        ? pendingSiteComment
+        : (_display(proof, ['site_comment']) ??
+            _commentFromMap(proof['comments'], 'site_comment'));
     _originalQuantity = _quantityController.text.trim();
     _originalMeasurement = _measurementController.text.trim();
     setState(() {
@@ -587,17 +746,38 @@ class _IndentProofDetailScreenState extends State<IndentProofDetailScreen> {
   }
 
   String? _validateReducedFields() {
-    final quantityError = _validateNotIncreased(
-      fieldLabel: 'Quantity',
-      original: _originalQuantity,
-      edited: _quantityController.text.trim(),
-    );
-    if (quantityError != null) return quantityError;
-    return _validateNotIncreased(
-      fieldLabel: 'Measurement',
-      original: _originalMeasurement,
-      edited: _measurementController.text.trim(),
-    );
+    for (final m in _reviewMaterials) {
+      final err = _validateNotIncreased(
+        fieldLabel: m.name.isEmpty ? 'Quantity' : m.name,
+        original: m.submitted,
+        edited: m.controller.text.trim(),
+      );
+      if (err != null) return err;
+      final v = double.tryParse(m.controller.text.trim().replaceAll(',', ''));
+      if (v == null) {
+        return 'Enter a valid quantity for ${m.name.isEmpty ? 'material' : m.name}';
+      }
+      if (v < 0) return 'Quantity cannot be negative';
+    }
+    if (_reviewMaterials.isEmpty) {
+      final quantityError = _validateNotIncreased(
+        fieldLabel: 'Quantity',
+        original: _originalQuantity,
+        edited: _quantityController.text.trim(),
+      );
+      if (quantityError != null) return quantityError;
+    }
+    // Measurement may be changed freely by PC/APC â€” no reduce-only rule.
+    return null;
+  }
+
+  Map<String, String> _approvedQtyPayload() {
+    final out = <String, String>{};
+    for (final m in _reviewMaterials) {
+      if (m.materialKey.isEmpty) continue;
+      out[m.materialKey] = m.controller.text.trim();
+    }
+    return out;
   }
 
   Future<void> _save({required bool approve}) async {
@@ -623,6 +803,10 @@ class _IndentProofDetailScreenState extends State<IndentProofDetailScreen> {
         weight: _weightController.text.trim(),
         reviewComment: _reviewCommentController.text.trim(),
         approve: approve,
+        deliveryId: _reviewDeliveryId,
+        vendorId: (widget.vendorId ?? '').trim(),
+        itemRunId: (widget.itemRunId ?? '').trim(),
+        approvedQuantities: _approvedQtyPayload(),
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -678,6 +862,11 @@ class _IndentProofDetailScreenState extends State<IndentProofDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final statusLabel = _display(_detail, ['status_label']) ??
+        _display(_detail, ['status', 'indent_status']) ??
+        '-';
+    final primary = AppTheme.getPrimaryColor(context);
+
     return Scaffold(
       backgroundColor: AppTheme.getBackgroundPrimary(context),
       appBar: AppBar(
@@ -702,119 +891,66 @@ class _IndentProofDetailScreenState extends State<IndentProofDetailScreen> {
                       child: ListView(
                         padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
                         children: [
+                          _compactMaterialHeader(context, statusLabel, primary),
+                          const SizedBox(height: 14),
                           _sectionCard(
                             context,
-                            title: 'Indent ${widget.indentId}',
-                            child: Column(
-                              children: [
-                                _infoRow('Indent ID', widget.indentId),
-                                _infoRow(
-                                  'Project',
-                                  _display(_detail, [
-                                        'project_name',
-                                        'project',
-                                      ]) ??
-                                      '—',
-                                ),
-                                _infoRow(
-                                  'Material',
-                                  _display(_detail, ['material', 'item']) ?? '—',
-                                ),
-                                _infoRow(
-                                  'Quantity',
-                                  _joinQuantity(
-                                    _display(_detail, ['quantity']),
-                                    _display(_detail, ['unit']),
-                                  ),
-                                ),
-                                _infoRow(
-                                  'Purpose',
-                                  _display(_detail, ['purpose', 'reason']) ??
-                                      '—',
-                                ),
-                                _infoRow(
-                                  'Status',
-                                  _display(_detail, ['status', 'indent_status']) ??
-                                      '—',
-                                ),
-                                _infoRow(
-                                  'PO',
-                                  _display(_detail, [
-                                        'po_number',
-                                        'po',
-                                        'purchase_order',
-                                        'po_id',
-                                      ]) ??
-                                      '—',
-                                ),
-                                _infoRow(
-                                  'Created by',
-                                  _display(_detail, [
-                                        'created_by_name',
-                                        'created_by',
-                                        'user_name',
-                                      ]) ??
-                                      '—',
-                                ),
-                                _infoRow(
-                                  'Timestamp',
-                                  _display(_detail, [
-                                        'timestamp',
-                                        'created_at',
-                                        'created_on',
-                                      ]) ??
-                                      '—',
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                          _sectionCard(
-                            context,
-                            title: 'Site proof',
+                            title: 'Received details',
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                _infoRow(
-                                  'Task status',
-                                  _display(_proof, [
-                                        'task_status',
-                                        'proof_status',
-                                        'workflow_status',
-                                        'status',
-                                      ]) ??
-                                      _display(_detail, [
-                                        'task_status',
-                                        'proof_status',
-                                        'workflow_status',
-                                      ]) ??
-                                      '—',
-                                ),
-                                const SizedBox(height: 12),
-                                Text(
-                                  'Received details',
-                                  style: TextStyle(
-                                    color: AppTheme.getTextPrimary(context),
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w800,
+                                if (_reviewMaterials.isNotEmpty) ...[
+                                  Text(
+                                    'Received quantity',
+                                    style: TextStyle(
+                                      color: AppTheme.getTextPrimary(context),
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w800,
+                                    ),
                                   ),
-                                ),
-                                const SizedBox(height: 8),
-                                if (_canEdit) ...[
+                                  const SizedBox(height: 8),
+                                  ..._reviewMaterials.map(_reviewQtyEditor),
+                                  const SizedBox(height: 4),
+                                  if (_canEdit)
+                                    _editField(
+                                      controller: _measurementController,
+                                      label: 'Measurement',
+                                    )
+                                  else
+                                    _infoRow(
+                                      'Measurement',
+                                      _measurementController.text.trim().isEmpty
+                                          ? '-'
+                                          : _measurementController.text.trim(),
+                                    ),
+                                  const SizedBox(height: 8),
+                                ] else if (_canEdit) ...[
                                   _editField(
                                     controller: _quantityController,
                                     label: 'Quantity',
                                     helperText: _originalQuantity.isEmpty
-                                        ? null
-                                        : 'Can only reduce from $_originalQuantity',
+                                        ? 'Lower only if less was received'
+                                        : 'Uploaded: $_originalQuantity â€” lower only if less was received',
                                   ),
                                   _editField(
                                     controller: _measurementController,
                                     label: 'Measurement',
-                                    helperText: _originalMeasurement.isEmpty
-                                        ? null
-                                        : 'Can only reduce from $_originalMeasurement',
                                   ),
+                                ] else ...[
+                                  _infoRow(
+                                    'Quantity',
+                                    _quantityController.text.trim().isEmpty
+                                        ? '-'
+                                        : _quantityController.text.trim(),
+                                  ),
+                                  _infoRow(
+                                    'Measurement',
+                                    _measurementController.text.trim().isEmpty
+                                        ? '-'
+                                        : _measurementController.text.trim(),
+                                  ),
+                                ],
+                                if (_canEdit) ...[
                                   _editField(
                                     controller: _vehicleController,
                                     label: 'Vehicle number',
@@ -825,52 +961,26 @@ class _IndentProofDetailScreenState extends State<IndentProofDetailScreen> {
                                   ),
                                 ] else ...[
                                   _infoRow(
-                                    'Quantity',
-                                    _quantityController.text.trim().isEmpty
-                                        ? '—'
-                                        : _quantityController.text.trim(),
-                                  ),
-                                  _infoRow(
-                                    'Measurement',
-                                    _measurementController.text.trim().isEmpty
-                                        ? '—'
-                                        : _measurementController.text.trim(),
-                                  ),
-                                  _infoRow(
                                     'Vehicle number',
                                     _vehicleController.text.trim().isEmpty
-                                        ? '—'
+                                        ? '-'
                                         : _vehicleController.text.trim(),
                                   ),
                                   _infoRow(
                                     'Weight',
                                     _weightController.text.trim().isEmpty
-                                        ? '—'
+                                        ? '-'
                                         : _weightController.text.trim(),
                                   ),
                                 ],
-                                const SizedBox(height: 12),
+                                const SizedBox(height: 8),
                                 _infoRow(
                                   'Site comment',
                                   (_siteComment ?? '').trim().isEmpty
-                                      ? '—'
+                                      ? '-'
                                       : _siteComment!.trim(),
                                 ),
-                                if (_canEdit) ...[
-                                  const SizedBox(height: 12),
-                                  _editField(
-                                    controller: _reviewCommentController,
-                                    label: 'Review comment',
-                                  ),
-                                ] else ...[
-                                  const SizedBox(height: 8),
-                                  _infoRow(
-                                    'Review comment',
-                                    _reviewCommentController.text.trim().isEmpty
-                                        ? '—'
-                                        : _reviewCommentController.text.trim(),
-                                  ),
-                                ],
+                                ..._pendingProofListWidgets(context),
                                 ..._proofSectionsWidgets(context, _proof),
                                 const SizedBox(height: 12),
                                 _mediaSection(
@@ -887,6 +997,22 @@ class _IndentProofDetailScreenState extends State<IndentProofDetailScreen> {
                                 ),
                               ],
                             ),
+                          ),
+                          const SizedBox(height: 14),
+                          _sectionCard(
+                            context,
+                            title: 'Review comment',
+                            child: _canEdit
+                                ? _editField(
+                                    controller: _reviewCommentController,
+                                    label: 'Your review comment',
+                                  )
+                                : _infoRow(
+                                    'Review comment',
+                                    _reviewCommentController.text.trim().isEmpty
+                                        ? '-'
+                                        : _reviewCommentController.text.trim(),
+                                  ),
                           ),
                         ],
                       ),
@@ -958,10 +1084,274 @@ class _IndentProofDetailScreenState extends State<IndentProofDetailScreen> {
     );
   }
 
+  Widget _compactMaterialHeader(
+    BuildContext context,
+    String statusLabel,
+    Color primary,
+  ) {
+    final lines = <String>[];
+    if (_reviewMaterials.isNotEmpty) {
+      for (final m in _reviewMaterials) {
+        final qty = m.controller.text.trim().isNotEmpty
+            ? m.controller.text.trim()
+            : m.submitted;
+        final unit = m.unit.isEmpty ? '' : ' ${m.unit}';
+        final name = m.name.isEmpty ? 'Material' : m.name;
+        lines.add('$name Â· $qty$unit'.trim());
+      }
+    } else {
+      final mats = _detail['upload_materials'] ??
+          _detail['materials'] ??
+          _proof['materials'];
+      if (mats is List && mats.isNotEmpty) {
+        for (final raw in mats) {
+          if (raw is! Map) continue;
+          final mat = Map<String, dynamic>.from(raw);
+          final name = (mat['material'] ?? '').toString().trim();
+          final recv = (mat['previously_received_quantity'] ??
+                  mat['received'] ??
+                  mat['submitted'] ??
+                  '')
+              .toString()
+              .trim();
+          final ordered =
+              (mat['ordered_quantity'] ?? mat['ordered'] ?? '').toString().trim();
+          final unit = (mat['unit'] ?? '').toString().trim();
+          final qty = ordered.isNotEmpty
+              ? '$recv of $ordered${unit.isEmpty ? '' : ' $unit'}'
+              : '$recv${unit.isEmpty ? '' : ' $unit'}';
+          lines.add('${name.isEmpty ? 'Material' : name} Â· $qty');
+        }
+      } else {
+        final name = _display(_detail, ['material', 'item']) ?? 'Material';
+        final qty = _joinQuantity(
+          _display(_detail, ['quantity']),
+          _display(_detail, ['unit']),
+        );
+        lines.add('$name Â· $qty');
+      }
+    }
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: primary.withValues(alpha: 0.18)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.06),
+            blurRadius: 8,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Indent #${widget.indentId}',
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                    color: AppTheme.getTextPrimary(context),
+                  ),
+                ),
+              ),
+              if (statusLabel.trim().isNotEmpty && statusLabel != '-')
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: primary.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    statusLabel,
+                    style: TextStyle(
+                      color: primary,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 11,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Divider(height: 1, color: primary.withValues(alpha: 0.12)),
+          const SizedBox(height: 10),
+          ...lines.map(
+            (line) => Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.inventory_2_outlined, size: 16, color: primary),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      line,
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        color: AppTheme.getTextPrimary(context),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _reviewQtyEditor(_ReviewMaterialQty m) {
+    final name = m.name.trim().isEmpty ? 'Material' : m.name.trim();
+    final unit = m.unit.trim();
+    final uploaded = m.submitted.trim();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            name,
+            style: TextStyle(
+              color: AppTheme.getTextPrimary(context),
+              fontSize: 14,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          if (unit.isNotEmpty) ...[
+            const SizedBox(height: 2),
+            Text(
+              'Unit: $unit',
+              style: TextStyle(
+                color: AppTheme.getTextSecondary(context),
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+          if (uploaded.isNotEmpty) ...[
+            const SizedBox(height: 2),
+            Text(
+              'Uploaded quantity: $uploaded${unit.isEmpty ? '' : ' $unit'}',
+              style: TextStyle(
+                color: AppTheme.getTextSecondary(context),
+                fontSize: 12,
+              ),
+            ),
+          ],
+          const SizedBox(height: 8),
+          _editField(
+            controller: m.controller,
+            label: 'Quantity',
+            helperText: 'Lower only if less was received',
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          ),
+        ],
+      ),
+    );
+  }
+
+
+
+  List<Widget> _pendingProofListWidgets(BuildContext context) {
+    // Review opens one delivery/batch at a time — bottom Save + Approve is enough.
+    // Do not show per-proof "Proof N" cards or "Approve Proof N" buttons.
+    if (widget.forReview ||
+        _scopedReviewDelivery(_proof, _detail) != null) {
+      return const <Widget>[];
+    }
+    final proof = _proof;
+    final raw = _detail['pending_deliveries'] ?? proof['pending_deliveries'];
+    final items = <Map<String, dynamic>>[];
+    if (raw is List) {
+      for (final row in raw) {
+        if (row is Map) items.add(Map<String, dynamic>.from(row));
+      }
+    }
+    if (items.isEmpty) {
+      final one = _detail['pending_delivery'] ?? proof['pending_delivery'];
+      if (one is Map) items.add(Map<String, dynamic>.from(one));
+    }
+    if (items.isEmpty) return const <Widget>[];
+    final primary = AppTheme.getPrimaryColor(context);
+    final widgets = <Widget>[];
+    for (var i = 0; i < items.length; i++) {
+      final p = items[i];
+      final label = (p['proof_label'] ?? p['label'] ?? ('Proof ${i + 1}')).toString();
+      final qty = (p['quantity_label'] ?? p['quantity'] ?? '').toString();
+      final when = (p['submitted_at'] ?? '').toString();
+      final did = (p['id'] ?? '').toString();
+      widgets.add(const SizedBox(height: 10));
+      widgets.add(
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: primary.withValues(alpha: 0.2)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: TextStyle(
+                  fontWeight: FontWeight.w800,
+                  color: AppTheme.getTextPrimary(context),
+                ),
+              ),
+              if (qty.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text(qty, style: TextStyle(color: AppTheme.getTextSecondary(context))),
+              ],
+              if (when.isNotEmpty) ...[
+                const SizedBox(height: 2),
+                Text(when, style: TextStyle(fontSize: 12, color: AppTheme.getTextSecondary(context))),
+              ],
+              if (_canApprove && did.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: ElevatedButton(
+                    onPressed: _saving
+                        ? null
+                        : () {
+                            _reviewDeliveryId = did;
+                            _confirmApprove();
+                          },
+                    child: Text('Approve ' + label),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      );
+    }
+    return widgets;
+  }
+
   List<Widget> _proofSectionsWidgets(
     BuildContext context,
     Map<String, dynamic> proof,
   ) {
+    // Review screens already show batch-scoped Images/Video â€” skip merged
+    // action sections that pile media from every proof on the indent.
+    if (widget.forReview &&
+        _scopedReviewDelivery(proof, _detail) != null) {
+      return const [];
+    }
     final sections = proof['sections'];
     if (sections is! List || sections.isEmpty) return const [];
 
@@ -1056,12 +1446,14 @@ class _IndentProofDetailScreenState extends State<IndentProofDetailScreen> {
     required TextEditingController controller,
     required String label,
     String? helperText,
+    TextInputType? keyboardType,
   }) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: TextField(
         controller: controller,
         enabled: !_saving,
+        keyboardType: keyboardType,
         decoration: InputDecoration(
           labelText: label,
           helperText: helperText,
@@ -1120,136 +1512,98 @@ class _IndentProofListCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final proof = _proofMap(item);
-    final project = _display(item, ['project_name', 'project']) ?? 'Indent';
-    final material = _display(item, ['material', 'item']) ?? '—';
-    final quantity = _joinQuantity(
-      _display(item, ['quantity', 'qty']),
-      _display(item, ['unit']),
-    );
-    final status = _display(item, ['status', 'indent_status']) ?? '';
-    final proofStatus = _display(proof, [
-          'task_status',
-          'proof_status',
-          'workflow_status',
-        ]) ??
-        _display(item, ['task_status', 'proof_status']) ??
-        '';
-    final indentId = _display(item, ['indent_id', 'id']) ?? '';
-    final createdBy = _display(item, [
-          'created_by_name',
-          'created_by_user',
-          'created_by',
-          'user_name',
-        ]) ??
-        '';
-    final timestamp = _display(item, [
-          'timestamp',
-          'created_at',
-          'created_on',
-        ]) ??
-        '';
     final primary = AppTheme.getPrimaryColor(context);
+    final indentId = _display(item, ['indent_id', 'id']) ?? '';
+    final proofLabel = _display(item, ['proof_label']) ?? '';
+    final project = _display(item, ['project_name', 'project']) ?? 'Project';
+    final vendor = _display(item, ['vendor_name', 'vendor']) ?? '';
+    final po = _display(item, ['po_number', 'po', 'purchase_order']) ?? '';
+    final statusLabel = _display(item, ['status_label']) ??
+        _display(item, ['status', 'indent_status']) ??
+        '';
+    final reviewChip = _display(item, ['review_status_chip']) ??
+        (_indentProofTruthy(item['has_pending_review'] ?? proof['has_pending_review'])
+            ? 'pending review'
+            : '');
+    final progressLabel = _display(item, ['delivery_progress_label']) ??
+        (_indentProofTruthy(item['is_complete'] ?? proof['upload_is_complete'])
+            ? 'Full'
+            : (_indentProofTruthy(item['is_partial'] ?? proof['upload_is_partial'])
+                ? 'Partial'
+                : 'Not received'));
+    final batchCount = int.tryParse(
+          (item['all_deliveries_count'] ??
+                  proof['all_deliveries_count'] ??
+                  item['deliveries_count'] ??
+                  proof['deliveries_count'] ??
+                  '0')
+              .toString(),
+        ) ??
+        0;
+    final submittedBy = _display(item, [
+          'latest_submitted_by_name',
+          'submitted_by_name',
+        ]) ??
+        _display(proof, ['latest_submitted_by_name', 'submitted_by_name']) ??
+        _nestedDeliveryField(item, proof, 'submitted_by_name') ??
+        '';
+    final submittedAt = _display(item, [
+          'latest_submitted_at',
+          'submitted_at',
+        ]) ??
+        _display(proof, ['latest_submitted_at', 'submitted_at']) ??
+        _nestedDeliveryField(item, proof, 'submitted_at') ??
+        '';
+    final materialLines = _listCardMaterialLines(item, proof);
 
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(20),
+      borderRadius: BorderRadius.circular(18),
       child: Container(
-        margin: const EdgeInsets.only(bottom: 18),
+        margin: const EdgeInsets.only(bottom: 14),
         decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              Theme.of(context).colorScheme.surface,
-              AppTheme.getBackgroundPrimaryLight(context),
-            ],
-          ),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: primary.withValues(alpha: 0.2),
-            width: 1.5,
-          ),
+          color: Theme.of(context).colorScheme.surface,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: primary.withValues(alpha: 0.16)),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.12),
+              color: Colors.black.withValues(alpha: 0.08),
               blurRadius: 10,
-              spreadRadius: 1,
-              offset: const Offset(0, 4),
+              offset: const Offset(0, 3),
             ),
           ],
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Container(
-              padding: const EdgeInsets.all(18),
-              decoration: BoxDecoration(
-                color: primary.withValues(alpha: 0.1),
-                borderRadius: const BorderRadius.only(
-                  topLeft: Radius.circular(20),
-                  topRight: Radius.circular(20),
-                ),
-              ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 12, 10, 10),
               child: Row(
                 children: [
                   Container(
-                    padding: const EdgeInsets.all(10),
+                    padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                      color: primary.withValues(alpha: 0.18),
-                      borderRadius: BorderRadius.circular(12),
+                      color: primary.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(10),
                     ),
-                    child: Icon(
-                      Icons.fact_check_outlined,
-                      color: primary,
-                      size: 24,
-                    ),
+                    child: Icon(Icons.fact_check_outlined, color: primary, size: 20),
                   ),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: 10),
                   Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          project,
-                          style: TextStyle(
-                            fontSize: 17,
-                            fontWeight: FontWeight.w800,
-                            color: AppTheme.getTextPrimary(context),
-                          ),
-                        ),
-                        if (createdBy.isNotEmpty) ...[
-                          const SizedBox(height: 4),
-                          Text(
-                            'Created by $createdBy',
-                            style: TextStyle(
-                              color: AppTheme.getTextSecondary(context),
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ],
-                      ],
+                    child: Text(
+                      indentId.isEmpty
+                          ? (proofLabel.isEmpty ? 'Indent' : proofLabel)
+                          : (proofLabel.isEmpty ? 'Indent #$indentId' : 'Indent #$indentId Â· $proofLabel'),
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                        color: AppTheme.getTextPrimary(context),
+                      ),
                     ),
                   ),
-                  if (indentId.isNotEmpty)
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 6,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Theme.of(context).colorScheme.surface,
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                      child: Text(
-                        '#$indentId',
-                        style: TextStyle(
-                          color: primary,
-                          fontWeight: FontWeight.w800,
-                          fontSize: 12,
-                        ),
-                      ),
-                    ),
+                  if (reviewChip.isNotEmpty) _statusChip(context, reviewChip),
+                  if (reviewChip.isEmpty && statusLabel.isNotEmpty)
+                    _statusChip(context, statusLabel),
                   Icon(
                     Icons.chevron_right_rounded,
                     color: AppTheme.getTextSecondary(context),
@@ -1257,66 +1611,63 @@ class _IndentProofListCard extends StatelessWidget {
                 ],
               ),
             ),
+            Divider(height: 1, color: primary.withValues(alpha: 0.1)),
             Padding(
-              padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
+              padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _cardInfoRow(context, Icons.build_outlined, 'Material', material),
-                  if (quantity != '—') ...[
-                    const SizedBox(height: 14),
-                    _cardInfoRow(
+                  _cardMiniRow(
+                    context,
+                    Icons.apartment_outlined,
+                    project,
+                    bold: true,
+                  ),
+                  const SizedBox(height: 10),
+                  ...materialLines.map(
+                    (line) => Padding(
+                      padding: const EdgeInsets.only(bottom: 6),
+                      child: _cardMiniRow(
+                        context,
+                        Icons.inventory_2_outlined,
+                        line,
+                      ),
+                    ),
+                  ),
+                  if (vendor.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    _cardMiniRow(context, Icons.storefront_outlined, 'Vendor: $vendor'),
+                  ],
+                  if (po.isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    _cardMiniRow(context, Icons.receipt_long_outlined, 'PO: $po'),
+                  ],
+                  if (submittedBy.isNotEmpty || submittedAt.isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    _cardMiniRow(
                       context,
-                      Icons.numbers_rounded,
-                      'Quantity',
-                      quantity,
+                      Icons.person_outline,
+                      [
+                        if (submittedBy.isNotEmpty) 'Submitted by $submittedBy',
+                        if (submittedAt.isNotEmpty) submittedAt,
+                      ].join(' Â· '),
                     ),
                   ],
-                  if (status.isNotEmpty || proofStatus.isNotEmpty) ...[
-                    const SizedBox(height: 14),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        if (status.isNotEmpty)
-                          _statusChip(context, status),
-                        if (proofStatus.isNotEmpty)
-                          _statusChip(context, proofStatus),
-                      ],
-                    ),
-                  ],
-                  if (timestamp.isNotEmpty) ...[
-                    const SizedBox(height: 14),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 6,
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      _statusChip(
+                        context,
+                        batchCount > 0
+                            ? '$progressLabel Â· $batchCount batch${batchCount == 1 ? '' : 'es'}'
+                            : progressLabel,
                       ),
-                      decoration: BoxDecoration(
-                        color: Theme.of(context).scaffoldBackgroundColor,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            Icons.access_time,
-                            size: 14,
-                            color: AppTheme.getTextSecondary(context),
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            timestamp,
-                            style: TextStyle(
-                              color: AppTheme.getTextSecondary(context),
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
+                      if (reviewChip.isNotEmpty && statusLabel.isNotEmpty)
+                        _statusChip(context, statusLabel),
+                    ],
+                  ),
                 ],
               ),
             ),
@@ -1326,47 +1677,27 @@ class _IndentProofListCard extends StatelessWidget {
     );
   }
 
-  Widget _cardInfoRow(
+  Widget _cardMiniRow(
     BuildContext context,
     IconData icon,
-    String label,
-    String value,
-  ) {
+    String text, {
+    bool bold = false,
+  }) {
     final primary = AppTheme.getPrimaryColor(context);
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: primary.withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Icon(icon, size: 18, color: primary),
-        ),
-        const SizedBox(width: 12),
+        Icon(icon, size: 16, color: primary),
+        const SizedBox(width: 8),
         Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 12,
-                  color: AppTheme.getTextSecondary(context),
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                value,
-                style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w700,
-                  color: AppTheme.getTextPrimary(context),
-                ),
-              ),
-            ],
+          child: Text(
+            text,
+            style: TextStyle(
+              fontSize: bold ? 14 : 13,
+              fontWeight: bold ? FontWeight.w700 : FontWeight.w600,
+              color: AppTheme.getTextPrimary(context),
+              height: 1.25,
+            ),
           ),
         ),
       ],
@@ -1385,31 +1716,88 @@ class _IndentProofListCard extends StatelessWidget {
         label,
         style: TextStyle(
           color: colors[1],
-          fontSize: 11.5,
-          fontWeight: FontWeight.w800,
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
         ),
       ),
     );
   }
-
-  List<Color> _statusChipColors(String label) {
-    final normalized = label.toLowerCase();
-    if (normalized.contains('approv') ||
-        normalized.contains('complete') ||
-        normalized.contains('done')) {
-      return const [Color(0xFFDCFCE7), Color(0xFF166534)];
-    }
-    if (normalized.contains('reject') || normalized.contains('fail')) {
-      return const [Color(0xFFFEE2E2), Color(0xFFB91C1C)];
-    }
-    if (normalized.contains('pending') ||
-        normalized.contains('review') ||
-        normalized.contains('open')) {
-      return const [Color(0xFFFFF7ED), Color(0xFFC2410C)];
-    }
-    return const [Color(0xFFEFF6FF), Color(0xFF1D4ED8)];
-  }
 }
+
+
+List<Color> _statusChipColors(String label) {
+  final lower = label.toLowerCase();
+  if (lower.contains('pending')) {
+    return const [Color(0xFFFEF3C7), Color(0xFF92400E)];
+  }
+  if (lower.contains('approved') || lower.contains('full') || lower.contains('complete')) {
+    return const [Color(0xFFDCFCE7), Color(0xFF166534)];
+  }
+  if (lower.contains('partial')) {
+    return const [Color(0xFFE0E7FF), Color(0xFF3730A3)];
+  }
+  if (lower.contains('reject') || lower.contains('cancel')) {
+    return const [Color(0xFFFEE2E2), Color(0xFF991B1B)];
+  }
+  return const [Color(0xFFE2E8F0), Color(0xFF334155)];
+}
+
+String? _nestedDeliveryField(
+  Map<String, dynamic> item,
+  Map<String, dynamic> proof,
+  String key,
+) {
+  for (final src in [item, proof]) {
+    for (final nestKey in const ['pending_delivery', 'last_delivery']) {
+      final nest = src[nestKey];
+      if (nest is Map) {
+        final v = nest[key]?.toString().trim() ?? '';
+        if (v.isNotEmpty) return v;
+      }
+    }
+  }
+  return null;
+}
+
+List<String> _listCardMaterialLines(
+  Map<String, dynamic> item,
+  Map<String, dynamic> proof,
+) {
+  final lines = <String>[];
+  final mats = item['upload_materials'] ??
+      proof['upload_materials'] ??
+      item['materials'] ??
+      proof['materials'];
+  if (mats is List && mats.isNotEmpty) {
+    for (final raw in mats) {
+      if (raw is! Map) continue;
+      final mat = Map<String, dynamic>.from(raw);
+      final name = (mat['material'] ?? '').toString().trim();
+      final recv = (mat['previously_received_quantity'] ??
+              mat['received'] ??
+              '0')
+          .toString()
+          .trim();
+      final ordered =
+          (mat['ordered_quantity'] ?? mat['ordered'] ?? '').toString().trim();
+      final unit = (mat['unit'] ?? '').toString().trim();
+      final qty = ordered.isNotEmpty
+          ? '$recv of $ordered${unit.isEmpty ? '' : ' $unit'}'
+          : '$recv${unit.isEmpty ? '' : ' $unit'}';
+      lines.add('${name.isEmpty ? 'Material' : name}: $qty');
+    }
+  }
+  if (lines.isEmpty) {
+    final material = _display(item, ['material', 'item']) ?? 'Material';
+    final quantity = _joinQuantity(
+      _display(item, ['quantity', 'qty']),
+      _display(item, ['unit']),
+    );
+    lines.add('$material: $quantity');
+  }
+  return lines;
+}
+
 
 class _IndentProofMessage extends StatelessWidget {
   final IconData icon;
@@ -1517,7 +1905,7 @@ Widget _infoRow(String label, String value) {
         ),
         Expanded(
           child: Text(
-            value.trim().isEmpty ? '—' : value,
+            value.trim().isEmpty ? '-' : value,
             style: const TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.w700,
@@ -1549,7 +1937,7 @@ Widget _mediaSection(
       ),
       const SizedBox(height: 8),
       if (urls.isEmpty)
-        const Text('—', style: TextStyle(fontWeight: FontWeight.w700))
+        const Text('-', style: TextStyle(fontWeight: FontWeight.w700))
       else if (isVideo)
         ...urls.map(
           (url) => ListTile(
@@ -1650,7 +2038,7 @@ String? _mediaUrlFromMap(Map<String, dynamic> map) {
 }
 
 String _joinQuantity(String? quantity, String? unit) {
-  if ((quantity ?? '').isEmpty) return '—';
+  if ((quantity ?? '').isEmpty) return '-';
   if ((unit ?? '').isEmpty) return quantity!;
   return '$quantity $unit';
 }
@@ -1681,7 +2069,53 @@ String? _commentsText(Map<String, dynamic> map) {
   return null;
 }
 
+Map<String, dynamic>? _scopedReviewDelivery(
+  Map<String, dynamic> proof,
+  Map<String, dynamic> detail,
+) {
+  final pending = detail['pending_delivery'] is Map
+      ? Map<String, dynamic>.from(detail['pending_delivery'] as Map)
+      : (proof['pending_delivery'] is Map
+          ? Map<String, dynamic>.from(proof['pending_delivery'] as Map)
+          : null);
+  if (pending != null && pending.isNotEmpty) return pending;
+
+  final wantId = (
+        detail['review_delivery_id'] ??
+        proof['review_delivery_id'] ??
+        ''
+      )
+          .toString()
+          .trim();
+  if (wantId.isEmpty) return null;
+
+  for (final key in const ['deliveries', 'pending_deliveries']) {
+    for (final source in [detail[key], proof[key]]) {
+      if (source is! List) continue;
+      for (final row in source) {
+        if (row is! Map) continue;
+        final map = Map<String, dynamic>.from(row);
+        if ((map['id'] ?? '').toString().trim() == wantId) return map;
+      }
+    }
+  }
+  return null;
+}
+
 List<String> _imageUrls(Map<String, dynamic> proof, Map<String, dynamic> detail) {
+  final scoped = _scopedReviewDelivery(proof, detail);
+  if (scoped != null) {
+    final scopedUrls = _collectMediaUrls([
+      scoped['images'],
+      scoped['photos'],
+      scoped['image'],
+      scoped['photo'],
+    ], videos: false);
+    if (scopedUrls.isNotEmpty) return scopedUrls;
+  }
+  // When a scoped delivery exists but has no images, do not fall back to
+  // all-indent media (that re-piles sibling proofs).
+  if (scoped != null) return const <String>[];
   return _collectMediaUrls([
     proof['images'],
     proof['photos'],
@@ -1694,6 +2128,16 @@ List<String> _imageUrls(Map<String, dynamic> proof, Map<String, dynamic> detail)
 }
 
 List<String> _videoUrls(Map<String, dynamic> proof, Map<String, dynamic> detail) {
+  final scoped = _scopedReviewDelivery(proof, detail);
+  if (scoped != null) {
+    final scopedUrls = _collectMediaUrls([
+      scoped['video'],
+      scoped['videos'],
+      scoped['site_video'],
+    ], videos: true);
+    if (scopedUrls.isNotEmpty) return scopedUrls;
+  }
+  if (scoped != null) return const <String>[];
   return _collectMediaUrls([
     proof['video'],
     proof['videos'],
@@ -1805,17 +2249,58 @@ dynamic _decodeBody(http.Response response) {
   }
 }
 
+String _apiFailureMessage(dynamic decoded, String fallback) {
+  if (decoded is! Map) return fallback;
+  final message = (decoded['message']?.toString() ?? '').trim();
+  final reason = (
+        decoded['reason'] ??
+        decoded['error'] ??
+        decoded['detail'] ??
+        decoded['error_message'] ??
+        ''
+      )
+          .toString()
+          .trim();
+  final bareFailure = message.isEmpty ||
+      message.toLowerCase() == 'failure' ||
+      message.toLowerCase() == 'error' ||
+      message.toLowerCase() == 'failed';
+  if (reason.isNotEmpty && bareFailure) return reason;
+  if (message.isNotEmpty &&
+      reason.isNotEmpty &&
+      message.toLowerCase() != reason.toLowerCase()) {
+    return '$message: $reason';
+  }
+  if (message.isNotEmpty && !bareFailure) return message;
+  if (reason.isNotEmpty) return reason;
+  if (message.isNotEmpty) return message;
+  return fallback;
+}
+
 void _throwIfFailed(http.Response response, dynamic decoded, String fallback) {
-  if (response.statusCode >= 200 && response.statusCode < 300) {
+  final status = response.statusCode;
+  if (status >= 200 && status < 300) {
     if (decoded is Map && decoded['success'] == false) {
-      throw Exception(decoded['message']?.toString() ?? fallback);
+      throw Exception(_apiFailureMessage(decoded, fallback));
     }
     return;
   }
-  if (decoded is Map && decoded['message'] != null) {
-    throw Exception(decoded['message'].toString());
+  if (decoded is Map) {
+    final msg = _apiFailureMessage(decoded, '$fallback (HTTP $status)');
+    // Always include status so Retry subtitle is actionable even for bare "failure".
+    if (!msg.contains('HTTP $status') && !msg.contains('($status)')) {
+      throw Exception('$msg (HTTP $status)');
+    }
+    throw Exception(msg);
   }
-  throw Exception('$fallback (${response.statusCode})');
+  final bodySnippet = response.body.trim();
+  final clipped = bodySnippet.length > 160
+      ? '${bodySnippet.substring(0, 160)}â€¦'
+      : bodySnippet;
+  if (clipped.isNotEmpty) {
+    throw Exception('$fallback (HTTP $status): $clipped');
+  }
+  throw Exception('$fallback (HTTP $status)');
 }
 
 List<Map<String, dynamic>> _asObjectList(dynamic value) {
@@ -1856,13 +2341,23 @@ Future<IndentListPageResult> _fetchIndentProofs({
   return parseIndentListResponse(decoded);
 }
 
-Future<Map<String, dynamic>> _fetchIndentProofDetail(String indentId) async {
+Future<Map<String, dynamic>> _fetchIndentProofDetail(
+  String indentId, {
+  bool forReview = false,
+  String? vendorId,
+  String? deliveryId,
+  String? itemRunId,
+}) async {
   final credentials = await _indentProofCredentials();
   final uri =
       Uri.parse('$_indentProofApiBase/API/get_indent_proof_detail').replace(
     queryParameters: {
       'user_id': credentials.userId,
       'indent_id': indentId,
+      if (forReview) 'for_review': '1',
+      if ((vendorId ?? '').trim().isNotEmpty) 'vendor_id': vendorId!.trim(),
+      if ((deliveryId ?? '').trim().isNotEmpty) 'delivery_id': deliveryId!.trim(),
+      if ((itemRunId ?? '').trim().isNotEmpty) 'item_run_id': itemRunId!.trim(),
       if (credentials.apiToken.isNotEmpty) 'api_token': credentials.apiToken,
     },
   );
@@ -1893,6 +2388,10 @@ Future<String> _updateIndentProof({
   required String weight,
   required String reviewComment,
   required bool approve,
+  String deliveryId = '',
+  String vendorId = '',
+  String itemRunId = '',
+  Map<String, String> approvedQuantities = const {},
 }) async {
   final credentials = await _indentProofCredentials();
   final body = <String, String>{
@@ -1904,6 +2403,11 @@ Future<String> _updateIndentProof({
     if (vehicleNumber.isNotEmpty) 'vehicle_number': vehicleNumber,
     if (weight.isNotEmpty) 'weight': weight,
     if (reviewComment.isNotEmpty) 'review_comment': reviewComment,
+    if (deliveryId.isNotEmpty) 'delivery_id': deliveryId,
+    if (vendorId.isNotEmpty) 'vendor_id': vendorId,
+    if (itemRunId.isNotEmpty) 'item_run_id': itemRunId,
+    if (approvedQuantities.isNotEmpty)
+      'approved_quantities': jsonEncode(approvedQuantities),
     if (approve) 'complete': '1',
     if (approve) 'approve': '1',
   };
@@ -1920,4 +2424,21 @@ Future<String> _updateIndentProof({
     return decoded['message'].toString();
   }
   return '';
+}
+
+
+class _ReviewMaterialQty {
+  final String materialKey;
+  final String name;
+  final String unit;
+  final String submitted;
+  final TextEditingController controller;
+
+  _ReviewMaterialQty({
+    required this.materialKey,
+    required this.name,
+    required this.unit,
+    required this.submitted,
+    required this.controller,
+  });
 }

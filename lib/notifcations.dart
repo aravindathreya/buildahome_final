@@ -383,6 +383,24 @@ class NotificationPageBodyState extends State<NotificationPageBody> {
       return true;
     }
 
+    if (indentId != null &&
+        (isIndentReviewApproveScreenValue(screen) ||
+            screen.contains('indents_view_open') ||
+            screen.contains('view_open_indents') ||
+            blob.contains('review and approve the indent') ||
+            (blob.contains('review') &&
+                blob.contains('approve') &&
+                blob.contains('indent') &&
+                !blob.contains('proof')))) {
+      await openIndentViewOpenScreen(
+        context,
+        indentId: indentId,
+        projectId: projectId,
+        projectName: projectName,
+      );
+      return true;
+    }
+
     if (screen.contains('payment_proof') ||
         screen.contains('upload_proof') ||
         blob.contains('upload proof') ||

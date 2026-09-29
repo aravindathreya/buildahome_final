@@ -11,6 +11,8 @@ import 'services/approved_po_service.dart';
 import 'services/session_manager.dart';
 import 'widgets/skeleton_loader.dart';
 import 'widgets/themed_scaffold.dart';
+import 'site_proof_multi/multi_material_site_proof_flow.dart';
+import 'widgets/indent_site_proof_summary_card.dart';
 import 'widgets/workflow_document_viewer.dart';
 
 class ApprovedPosScreenLayout extends StatelessWidget {
@@ -420,6 +422,19 @@ class _ApprovedPoListCard extends StatelessWidget {
                           ),
                         ),
                       ],
+                      if (item.receivedMaterialId.trim().isNotEmpty) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          'Material ID: ',
+                          style: const TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w800,
+                            color: Color(0xFF4338CA),
+                            letterSpacing: 0.2,
+                            height: 1.3,
+                          ),
+                        ),
+                      ],
                       if (metaLine.isNotEmpty) ...[
                         const SizedBox(height: 4),
                         Text(
@@ -455,6 +470,26 @@ class _ApprovedPoListCard extends StatelessWidget {
                               label: item.statusLabel,
                               bg: const Color(0xFFDCFCE7),
                               fg: const Color(0xFF166534),
+                            ),
+                          if (item.isPartial ||
+                              item.receiptStatus == 'partial')
+                            _ApprovedPoChip(
+                              label: item.receiptLabel.trim().isNotEmpty
+                                  ? item.receiptLabel.trim()
+                                  : 'Partially completed',
+                              bg: const Color(0xFFFFF7ED),
+                              fg: const Color(0xFFB45309),
+                              icon: Icons.timelapse_rounded,
+                            ),
+                          if (item.isComplete ||
+                              item.receiptStatus == 'complete')
+                            _ApprovedPoChip(
+                              label: item.receiptLabel.trim().isNotEmpty
+                                  ? item.receiptLabel.trim()
+                                  : 'Fully received',
+                              bg: const Color(0xFFECFDF5),
+                              fg: const Color(0xFF047857),
+                              icon: Icons.check_circle_outline_rounded,
                             ),
                           if (item.canViewMaskedDocument)
                             _ApprovedPoChip(
@@ -590,7 +625,14 @@ class _ApprovedPoDetailScreenState extends State<ApprovedPoDetailScreen> {
 
   Future<void> _refreshSiteProofTask(ApprovedPo item) async {
     setState(() => _siteProofTaskLoading = true);
-    final task = await findIndentSiteProofTask(
+    // Prefer an open site-proof task (remaining vendor/batch) over a completed sibling.
+    var task = await findIndentSiteProofTask(
+      indentId: item.indentId.toString(),
+      projectId: item.projectId > 0 ? item.projectId.toString() : null,
+      fetchIfMissing: true,
+      includeCompleted: false,
+    );
+    task ??= await findIndentSiteProofTask(
       indentId: item.indentId.toString(),
       projectId: item.projectId > 0 ? item.projectId.toString() : null,
       fetchIfMissing: true,
@@ -634,10 +676,24 @@ class _ApprovedPoDetailScreenState extends State<ApprovedPoDetailScreen> {
   }
 
   Future<void> _openSiteProofUpload(ApprovedPo item) async {
+    final siteTask = _siteProofTask;
+    final vendorId = siteTask == null
+        ? null
+        : indentSiteProofTaskVendorId(siteTask);
+    final runId = siteTask == null
+        ? ''
+        : resolvedWorkflowItemRunIdFromTask(
+            Map<String, dynamic>.from(siteTask),
+          );
     await openIndentSiteProofForIndent(
       context,
       indentId: item.indentId.toString(),
       projectId: item.projectId > 0 ? item.projectId.toString() : null,
+      vendorId: vendorId,
+      itemRunId: runId.isEmpty ? null : runId,
+      preferredTask: siteTask == null
+          ? null
+          : Map<String, dynamic>.from(siteTask),
       onRefresh: () async {
         await _loadDetail();
       },
@@ -648,10 +704,24 @@ class _ApprovedPoDetailScreenState extends State<ApprovedPoDetailScreen> {
   }
 
   Future<void> _openSiteProofReview(ApprovedPo item) async {
+    final siteTask = _siteProofTask;
+    final vendorId =
+        siteTask == null ? null : indentSiteProofTaskVendorId(siteTask);
+    final deliveryId =
+        siteTask == null ? null : indentProofReviewDeliveryId(siteTask);
+    final runId = siteTask == null
+        ? ''
+        : resolvedWorkflowItemRunIdFromTask(
+            Map<String, dynamic>.from(siteTask),
+          );
     await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => IndentProofDetailScreen(
           indentId: item.indentId.toString(),
+          forReview: true,
+          vendorId: vendorId,
+          deliveryId: deliveryId,
+          itemRunId: runId.isEmpty ? null : runId,
         ),
       ),
     );
@@ -683,6 +753,13 @@ class _ApprovedPoDetailScreenState extends State<ApprovedPoDetailScreen> {
   bool _shouldShowSiteProofUpload(ApprovedPo item) {
     if (_siteProofTaskLoading) return false;
     if (!_indentIsApproved(item)) return false;
+
+    // Multi-material: keep upload available until remaining qty is fully received.
+    // A prior partial delivery must NOT permanently hide "Start/Add remaining".
+    if (item.usesMultiMaterialSiteProof) {
+      return item.hasOutstandingSiteProofMaterials;
+    }
+
     final task = _siteProofTask;
     if (task == null) return false;
     if (_siteProofSubmitted(task)) return false;
@@ -692,6 +769,10 @@ class _ApprovedPoDetailScreenState extends State<ApprovedPoDetailScreen> {
   bool _shouldShowSiteProofSection(ApprovedPo item) {
     if (_siteProofTaskLoading) return false;
     if (!_indentIsApproved(item)) return false;
+    if (item.usesMultiMaterialSiteProof &&
+        item.hasOutstandingSiteProofMaterials) {
+      return true;
+    }
     if (_siteProofTask == null) return false;
     if (_shouldShowSiteProofUpload(item)) return true;
     return isIndentProofReviewerRole(_userRole);
@@ -919,6 +1000,48 @@ class _ApprovedPoHeroCard extends StatelessWidget {
                     ),
                   ),
                 ),
+              if (item.isPartial || item.receiptStatus == 'partial') ...[
+                const SizedBox(height: 6),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFF7ED),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    item.receiptLabel.trim().isNotEmpty
+                        ? item.receiptLabel.trim()
+                        : 'Partially completed',
+                    style: const TextStyle(
+                      color: Color(0xFFB45309),
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ],
+              if (item.isComplete || item.receiptStatus == 'complete') ...[
+                const SizedBox(height: 6),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFECFDF5),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    item.receiptLabel.trim().isNotEmpty
+                        ? item.receiptLabel.trim()
+                        : 'Fully received',
+                    style: const TextStyle(
+                      color: Color(0xFF047857),
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ],
               if (item.isBilled) ...[
                 const SizedBox(height: 6),
                 Container(
@@ -968,6 +1091,12 @@ class _ApprovedPoInfoTable extends StatelessWidget {
         _ApprovedPoInfoRow(Icons.comment_outlined, 'Comments', item.comments),
       if (item.indentId > 0)
         _ApprovedPoInfoRow(Icons.tag_outlined, 'Indent ID', '#${item.indentId}'),
+      if (item.receivedMaterialId.trim().isNotEmpty)
+        _ApprovedPoInfoRow(
+          Icons.qr_code_2_outlined,
+          'Material ID',
+          item.receivedMaterialId.trim(),
+        ),
     ];
 
     return Container(
@@ -1116,113 +1245,69 @@ class _ApprovedPoSiteProofCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final steps = siteProofTask != null
-        ? indentPoSiteProofActions(workflowActionsFromTask(siteProofTask!))
-        : const <Map<String, dynamic>>[];
     final doneCount = siteProofTask != null
         ? indentPoSiteProofDoneCount(siteProofTask!)
         : 0;
     final started = doneCount > 0;
 
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: ClientPortalDocTheme.cardDecoration(),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFEFF6FF),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Icon(
-                  Icons.pin_drop_outlined,
-                  color: Color(0xFF2563EB),
-                  size: 24,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      showUpload
-                          ? 'Upload site proof for approved PO'
-                          : 'Site proof',
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w800,
-                        fontSize: 14,
-                        color: AppTheme.navy,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      loadingTask
-                          ? 'Checking site-proof task…'
-                          : showUpload
-                              ? (steps.isEmpty
-                                  ? 'Complete the on-site steps in order.'
-                                  : '$doneCount of ${steps.length} steps complete. '
-                                      'Go to the project site, then finish each step.')
-                              : 'Site proof has been submitted for this indent.',
-                      style: TextStyle(
-                        color: AppTheme.getTextSecondary(context),
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.w600,
-                        height: 1.35,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
+    final itemText = item.displayMaterialLine().trim();
+    final vendor = item.vendorName.trim();
+
+    String? subtitle;
+    if (loadingTask) {
+      subtitle = 'Checking site-proof task…';
+    } else if (!showUpload) {
+      subtitle = 'Site proof has been submitted for this indent.';
+    } else if (item.usesMultiMaterialSiteProof &&
+        (item.isPartial ||
+            item.receiptStatus == 'partial' ||
+            item.hasOutstandingSiteProofMaterials)) {
+      if (item.isPartial || item.receiptStatus == 'partial') {
+        subtitle =
+            'Partially completed — submit another delivery for remaining quantities.';
+      } else {
+        subtitle =
+            'You can submit another delivery for remaining material quantities.';
+      }
+    }
+
+    final buttonLabel = !showUpload
+        ? ''
+        : (item.usesMultiMaterialSiteProof && started
+            ? 'Add remaining delivery'
+            : (started ? 'Continue site proof' : 'Start site proof'));
+
+    Widget? reviewBtn;
+    if (showReviewOption) {
+      reviewBtn = SizedBox(
+        width: double.infinity,
+        child: OutlinedButton.icon(
+          onPressed: onReview,
+          icon: const Icon(Icons.verified_outlined, size: 18),
+          label: const Text('Review site proof'),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: AppTheme.navy,
+            minimumSize: const Size.fromHeight(44),
+            side: const BorderSide(color: AppTheme.border),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
           ),
-          if (showUpload) ...[
-            const SizedBox(height: 14),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton.icon(
-                onPressed: loadingTask ? null : onUpload,
-                icon: const Icon(Icons.pin_drop_outlined, size: 18),
-                label: Text(started ? 'Continue site proof' : 'Start site proof'),
-                style: FilledButton.styleFrom(
-                  backgroundColor: AppTheme.primaryColorConst,
-                  foregroundColor: Colors.white,
-                  minimumSize: const Size.fromHeight(46),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-              ),
-            ),
-          ],
-          if (showReviewOption) ...[
-            const SizedBox(height: 10),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: onReview,
-                icon: const Icon(Icons.verified_outlined, size: 18),
-                label: const Text('Review site proof'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: AppTheme.navy,
-                  minimumSize: const Size.fromHeight(44),
-                  side: const BorderSide(color: AppTheme.border),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ],
-      ),
+        ),
+      );
+    }
+
+    return IndentSiteProofSummaryCard(
+      title: showUpload
+          ? 'Upload site proof for approved PO'
+          : 'Site proof',
+      indentId: item.indentId > 0 ? '${item.indentId}' : null,
+      itemText: itemText.isEmpty ? null : itemText,
+      vendorName: vendor.isEmpty ? null : vendor,
+      subtitle: subtitle,
+      buttonLabel: buttonLabel.isEmpty ? 'Start site proof' : buttonLabel,
+      onPressed: showUpload ? (loadingTask ? null : onUpload) : null,
+      trailingButton: reviewBtn,
     );
   }
 }

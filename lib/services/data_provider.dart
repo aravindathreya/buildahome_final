@@ -23,6 +23,8 @@ class DataProvider {
   String? clientSalesSopId;
   String? clientProjectLocation;
   String? clientProjectCompletion;
+  /// Extra construction days from approved DOCs (Main Critical timeline).
+  double clientDocDelayDays = 0;
   dynamic clientProjectUpdates;
   bool? clientProjectBlocked;
   String? clientProjectBlockReason;
@@ -1292,30 +1294,67 @@ class DataProvider {
   Future<void> _loadProjectPercentage(
       String projectId, SharedPreferences prefs) async {
     try {
+      // detail=1 returns Main Critical % + DOC extra days JSON; legacy plain string still accepted.
       var percUrl =
-          'https://office.buildahome.in/API/get_project_percentage?id=${projectId}';
+          'https://office.buildahome.in/API/get_project_percentage?id=${projectId}&detail=1';
       var percResponse = await ApiHttp.get(Uri.parse(percUrl));
       print('percentage response: ${percResponse.body}');
       if (percResponse.statusCode == 200) {
-        clientProjectCompletion = percResponse.body;
-        // Only save to SharedPreferences for Client users
-        if (currentRole == 'Client') {
-          prefs.setString('completed', percResponse.body);
+        final body = percResponse.body.trim();
+        String? percentText;
+        double docDays = 0;
+        if (body.startsWith('{')) {
+          try {
+            final decoded = jsonDecode(body);
+            if (decoded is Map) {
+              final map = Map<String, dynamic>.from(decoded);
+              final pct = map['percent'] ?? map['completed'] ?? map['value'];
+              if (pct != null) {
+                percentText = pct.toString().replaceAll('%', '').trim();
+              }
+              final rawDays = map['doc_delay_days_total'] ??
+                  map['doc_delay_days'] ??
+                  map['extra_days'];
+              docDays = double.tryParse(rawDays?.toString() ?? '') ?? 0;
+            }
+          } catch (_) {
+            percentText = null;
+          }
+        } else {
+          percentText = body.replaceAll('%', '').trim();
+        }
+        if (percentText != null && percentText.isNotEmpty) {
+          clientProjectCompletion = percentText;
+          clientDocDelayDays = docDays;
+          if (currentRole == 'Client') {
+            prefs.setString('completed', percentText);
+            prefs.setDouble('doc_delay_days', docDays);
+          }
+        } else if (currentRole == 'Client' && prefs.containsKey("completed")) {
+          clientProjectCompletion = prefs.getString('completed');
+          clientDocDelayDays = prefs.getDouble('doc_delay_days') ?? 0;
+        } else {
+          clientProjectCompletion = null;
+    clientDocDelayDays = 0;
+          clientDocDelayDays = 0;
         }
       } else if (currentRole == 'Client' && prefs.containsKey("completed")) {
-        // Only fallback to SharedPreferences for Client users
         clientProjectCompletion = prefs.getString('completed');
+        clientDocDelayDays = prefs.getDouble('doc_delay_days') ?? 0;
       } else {
-        // For non-Client users or when API fails, return null to indicate data not loaded
         clientProjectCompletion = null;
+    clientDocDelayDays = 0;
+        clientDocDelayDays = 0;
       }
     } catch (e) {
       print('Error loading project percentage: $e');
-      // Fallback to SharedPreferences for Client users on error
       if (currentRole == 'Client' && prefs.containsKey("completed")) {
         clientProjectCompletion = prefs.getString('completed');
+        clientDocDelayDays = prefs.getDouble('doc_delay_days') ?? 0;
       } else {
         clientProjectCompletion = null;
+    clientDocDelayDays = 0;
+        clientDocDelayDays = 0;
       }
     }
   }
@@ -2046,6 +2085,7 @@ class DataProvider {
     clientSalesSopId = null;
     _clearSalesSopIdCacheInMemory();
     clientProjectCompletion = null;
+    clientDocDelayDays = 0;
     clientProjectUpdates = null;
     clientProjectBlocked = null;
     clientProjectBlockReason = null;
@@ -2097,6 +2137,7 @@ class DataProvider {
     _clearSalesSopIdCacheInMemory();
     clientProjectLocation = null;
     clientProjectCompletion = null;
+    clientDocDelayDays = 0;
     clientProjectUpdates = null;
     clientProjectBlocked = null;
     clientProjectBlockReason = null;

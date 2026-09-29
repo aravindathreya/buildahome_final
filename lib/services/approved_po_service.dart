@@ -88,6 +88,10 @@ class ApprovedPoService {
       'site_proof_flow',
       'material_count',
       'materials',
+      'receipt_status',
+      'receipt_label',
+      'is_partial',
+      'is_complete',
     ]) {
       if (!merged.containsKey(key) && body.containsKey(key)) {
         merged[key] = body[key];

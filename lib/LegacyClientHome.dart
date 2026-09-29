@@ -204,6 +204,7 @@ class LegacyClientDashboardScreenState extends State<LegacyClientDashboardScreen
   var updatePostedOnDate = " ";
   var value = " ";
   String? completed;
+  double docDelayDays = 0;
   dynamic updateResponseBody;
   var blocked = false;
   var bolckReason = '';
@@ -294,6 +295,7 @@ class LegacyClientDashboardScreenState extends State<LegacyClientDashboardScreen
 
     final String nextLocation = dataProvider.clientProjectLocation ?? '';
     final String? nextCompletion = dataProvider.clientProjectCompletion;
+    final double nextDocDelay = dataProvider.clientDocDelayDays;
     final bool nextBlocked = dataProvider.clientProjectBlocked ?? false;
     final String nextBlockReason = dataProvider.clientProjectBlockReason ?? '';
     final String nextValue = dataProvider.clientProjectValue ?? '';
@@ -329,6 +331,7 @@ class LegacyClientDashboardScreenState extends State<LegacyClientDashboardScreen
       // Load client project data from provider
       location = nextLocation;
       completed = nextCompletion;
+      docDelayDays = nextDocDelay;
       blocked = nextBlocked;
       bolckReason = nextBlockReason;
       value = nextValue;
@@ -939,6 +942,17 @@ class LegacyClientDashboardScreenState extends State<LegacyClientDashboardScreen
                           fontWeight: FontWeight.w500,
                         ),
                       ),
+                      if (docDelayDays > 0) ...[
+                        SizedBox(height: 2),
+                        Text(
+                          '+' + (docDelayDays % 1 == 0 ? docDelayDays.toInt().toString() : docDelayDays.toString()) + ' schedule days (DOC)',
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            color: AppTheme.textSecondary,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
                       SizedBox(height: 4),
                       Text(
                         "$completed% Complete",

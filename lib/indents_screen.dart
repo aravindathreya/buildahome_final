@@ -25,6 +25,137 @@ const int kIndentsViewOpenTab = 1;
 const int kIndentsMyIndentsTab = 2;
 const int kIndentsIndentProofTab = 3;
 
+/// Action ids backend may send for PC/APC indent review tasks.
+const Set<String> kIndentReviewApproveActionIds = {
+  'indent_review_approve',
+  'indent_pc_approve',
+  'indent_apc_approve',
+  'review_approve_indent',
+};
+
+bool isIndentReviewApproveScreenValue(dynamic value) {
+  final normalized = value?.toString().trim().toLowerCase() ?? '';
+  if (normalized.isEmpty) return false;
+  return normalized == 'indents_view_open' ||
+      normalized == 'indent_view_open' ||
+      normalized == 'view_open_indents' ||
+      normalized == 'view_open' ||
+      normalized.contains('indents_view_open') ||
+      normalized.contains('view_open_indent');
+}
+
+bool isIndentReviewApproveActionId(String? id) {
+  final normalized = (id ?? '').trim();
+  return kIndentReviewApproveActionIds.contains(normalized);
+}
+
+/// PC/APC task: review & approve a site-engineer indent in View Open.
+bool isIndentReviewApproveTask(Map task) {
+  final title =
+      '${task['title'] ?? ''} ${task['s_title'] ?? ''} ${task['name'] ?? ''}'
+          .toLowerCase();
+  if (title.contains('site proof') || title.contains('indent proof')) {
+    return false;
+  }
+
+  final category =
+      '${task['category'] ?? ''} ${task['task_category'] ?? ''}'.toLowerCase();
+  if (category.contains('check_approve_indent')) return true;
+
+  for (final key in const [
+    'native_screen',
+    'wf_native_screen',
+    'open_tab',
+    'redirect_page',
+    'action_id',
+  ]) {
+    if (key == 'action_id') {
+      if (isIndentReviewApproveActionId(task[key]?.toString())) return true;
+      continue;
+    }
+    if (isIndentReviewApproveScreenValue(task[key])) return true;
+  }
+
+  final actions = task['workflow_actions'] ??
+      task['workflow_task_actions'] ??
+      task['actions'];
+  if (actions is List) {
+    for (final raw in actions) {
+      if (raw is! Map) continue;
+      final action = Map<String, dynamic>.from(raw);
+      if (isIndentReviewApproveActionId(action['id']?.toString())) {
+        return true;
+      }
+      for (final key in const [
+        'native_screen',
+        'wf_native_screen',
+        'open_tab',
+        'redirect_page',
+      ]) {
+        if (isIndentReviewApproveScreenValue(action[key])) return true;
+      }
+    }
+  }
+
+  if (title.contains('review and approve the indent')) return true;
+  if (title.contains('review') &&
+      title.contains('approve') &&
+      title.contains('indent') &&
+      !title.contains('proof')) {
+    return true;
+  }
+  return false;
+}
+
+Future<void> openIndentViewOpenScreen(
+  BuildContext context, {
+  required String indentId,
+  String? projectId,
+  String? projectName,
+}) {
+  return Navigator.of(context).push(
+    MaterialPageRoute(
+      builder: (_) => IndentsScreenLayout(
+        initialTab: kIndentsViewOpenTab,
+        initialIndentId: indentId,
+        initialProjectId: projectId,
+        initialProjectName: projectName,
+      ),
+    ),
+  );
+}
+
+Future<void> openIndentViewOpenFromTask(
+  BuildContext context,
+  Map task, {
+  Map<String, dynamic>? action,
+}) async {
+  final indentId = indentProofIndentId(task, action: action)?.trim() ?? '';
+  if (indentId.isEmpty) {
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Missing indent id for this review task.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+    return;
+  }
+  final projectId = (task['project_id'] ?? task['projectId'] ?? '')
+      .toString()
+      .trim();
+  final projectName = (task['project_name'] ?? task['client_name'] ?? '')
+      .toString()
+      .trim();
+  await openIndentViewOpenScreen(
+    context,
+    indentId: indentId,
+    projectId: projectId.isEmpty ? null : projectId,
+    projectName: projectName.isEmpty ? null : projectName,
+  );
+}
+
 Future<void> openIndentProofScreen(
   BuildContext context, {
   required String indentId,
@@ -180,13 +311,20 @@ class IndentsScreenState extends State<IndentsScreen> {
                 key: _viewOpenIndentsKey,
                 initialProjectId: widget.initialProjectId,
                 initialProjectName: widget.initialProjectName,
+                // Only focus/approve path — do not also feed Indent Proof.
+                initialIndentId: widget.initialTab == kIndentsViewOpenTab
+                    ? widget.initialIndentId
+                    : null,
               ),
               MyIndentsTab(
                 initialProjectId: widget.initialProjectId,
                 initialProjectName: widget.initialProjectName,
               ),
               IndentProofTab(
-                initialIndentId: widget.initialIndentId,
+                // Only auto-open proof detail when deeplink asked for proof tab.
+                initialIndentId: widget.initialTab == kIndentsIndentProofTab
+                    ? widget.initialIndentId
+                    : null,
                 initialProjectId: widget.initialProjectId,
                 initialProjectName: widget.initialProjectName,
               ),
@@ -2240,11 +2378,13 @@ class CreateIndentTabState extends State<CreateIndentTab> {
 class ViewOpenIndentsTab extends StatefulWidget {
   final String? initialProjectId;
   final String? initialProjectName;
+  final String? initialIndentId;
 
   const ViewOpenIndentsTab({
     Key? key,
     this.initialProjectId,
     this.initialProjectName,
+    this.initialIndentId,
   }) : super(key: key);
 
   @override
@@ -2262,11 +2402,15 @@ class ViewOpenIndentsTabState extends State<ViewOpenIndentsTab> {
   final _pager = IndentPagedListController();
   final _searchController = TextEditingController();
   final _scrollController = ScrollController();
+  String? _focusIndentId;
+  bool _didFocusScroll = false;
 
   @override
   void initState() {
     super.initState();
     _pager.lockedProjectId = widget.initialProjectId;
+    _focusIndentId = widget.initialIndentId?.trim();
+    if ((_focusIndentId ?? '').isEmpty) _focusIndentId = null;
     _scrollController.addListener(_onScroll);
     call();
   }
@@ -2338,11 +2482,44 @@ class ViewOpenIndentsTabState extends State<ViewOpenIndentsTab> {
       setState(() {
         _pager.acceptPage(parseIndentListResponse(decoded), reset: reset);
         indents = _pager.visible;
+        _promoteFocusedIndent();
         role = prefs.get('role');
         _loading = false;
         _pager.loadingMore = false;
       });
+      if (reset) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _scrollToFocusedIndent();
+        });
+      }
     }
+  }
+
+  void _promoteFocusedIndent() {
+    final focusId = _focusIndentId;
+    if (focusId == null || focusId.isEmpty) return;
+    final index = indents.indexWhere(
+      (row) => row is Map && row['id']?.toString().trim() == focusId,
+    );
+    if (index <= 0) return;
+    final item = indents.removeAt(index);
+    indents.insert(0, item);
+  }
+
+  void _scrollToFocusedIndent() {
+    if (_didFocusScroll) return;
+    final focusId = _focusIndentId;
+    if (focusId == null || focusId.isEmpty) return;
+    final key = GlobalObjectKey('view-open-indent-$focusId');
+    final ctx = key.currentContext;
+    if (ctx == null) return;
+    _didFocusScroll = true;
+    Scrollable.ensureVisible(
+      ctx,
+      duration: const Duration(milliseconds: 350),
+      curve: Curves.easeOutCubic,
+      alignment: 0.08,
+    );
   }
 
   @override
@@ -2391,7 +2568,18 @@ class ViewOpenIndentsTabState extends State<ViewOpenIndentsTab> {
                     if (Index >= indents.length) {
                       return const IndentListLoadMoreTile();
                     }
+                    final indentRow = indents[Index];
+                    final indentId = indentRow is Map
+                        ? indentRow['id']?.toString().trim() ?? ''
+                        : '';
+                    final isFocused =
+                        _focusIndentId != null &&
+                        _focusIndentId!.isNotEmpty &&
+                        indentId == _focusIndentId;
                     return Container(
+                        key: indentId.isEmpty
+                            ? null
+                            : GlobalObjectKey('view-open-indent-$indentId'),
                         margin: EdgeInsets.only(bottom: 20),
                         decoration: BoxDecoration(
                           gradient: LinearGradient(
@@ -2404,13 +2592,18 @@ class ViewOpenIndentsTabState extends State<ViewOpenIndentsTab> {
                           ),
                           borderRadius: BorderRadius.circular(20),
                           border: Border.all(
-                            color: AppTheme.getPrimaryColor(context).withOpacity(0.2),
-                            width: 1.5,
+                            color: isFocused
+                                ? AppTheme.accentBlue
+                                : AppTheme.getPrimaryColor(context)
+                                    .withOpacity(0.2),
+                            width: isFocused ? 2.5 : 1.5,
                           ),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withOpacity(0.15),
-                              blurRadius: 10,
+                              color: isFocused
+                                  ? AppTheme.accentBlue.withOpacity(0.25)
+                                  : Colors.black.withOpacity(0.15),
+                              blurRadius: isFocused ? 14 : 10,
                               spreadRadius: 2,
                               offset: Offset(0, 4),
                             ),
@@ -2419,6 +2612,29 @@ class ViewOpenIndentsTabState extends State<ViewOpenIndentsTab> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
+                            if (isFocused)
+                              Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                  vertical: 8,
+                                ),
+                                decoration: const BoxDecoration(
+                                  color: Color(0xFFEFF6FF),
+                                  borderRadius: BorderRadius.only(
+                                    topLeft: Radius.circular(18),
+                                    topRight: Radius.circular(18),
+                                  ),
+                                ),
+                                child: const Text(
+                                  'Review this indent',
+                                  style: TextStyle(
+                                    color: Color(0xFF1D4ED8),
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 12.5,
+                                  ),
+                                ),
+                              ),
                             // Header with project name
                             Container(
                               padding: EdgeInsets.all(20),

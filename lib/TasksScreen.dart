@@ -8,6 +8,7 @@ import 'app_theme.dart';
 import 'user_picker.dart';
 import 'services/data_provider.dart';
 import 'task_display_title.dart';
+import 'indent_task_material.dart';
 import 'widgets/modern_task_card.dart';
 
 class TasksLayout extends StatefulWidget {
@@ -1769,9 +1770,12 @@ class _ViewTasksPageState extends State<ViewTasksPage> {
     final accentIndex = int.tryParse(taskId.replaceAll(RegExp(r'[^0-9]'), '')) ??
         taskId.hashCode;
 
+    final materialLabel = indentTaskMaterialLabel(task);
+
     return ModernTaskCard(
       title: title,
       projectName: projectName,
+      materialLabel: materialLabel,
       assigneeName: assignedToName,
       dateLabel: createdAt.isNotEmpty ? _formatDateTime(createdAt) : null,
       status: status,

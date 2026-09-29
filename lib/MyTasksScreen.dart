@@ -30,12 +30,15 @@ import 'services/data_provider.dart';
 import 'services/mobile_live_test_auto_runner.dart';
 import 'services/mobile_live_test_autoplay.dart';
 import 'services/mobile_live_test_access.dart';
+import 'services/capture_time.dart';
 import 'services/mobile_live_test_workflow.dart';
 import 'site_proof_multi/multi_material_site_proof_screen.dart';
 import 'widgets/searchable_select.dart';
 import 'services/session_manager.dart';
 import 'widgets/dashboard_chrome.dart';
 import 'task_display_title.dart';
+import 'indent_task_material.dart';
+import 'widgets/indent_site_proof_summary_card.dart';
 import 'widgets/modern_task_card.dart';
 import 'widgets/themed_scaffold.dart';
 import 'widgets/skeleton_loader.dart';
@@ -239,17 +242,108 @@ bool isLegacyIndentPoActionId(String? id) {
   return _legacyIndentPoActionIds.contains(normalized);
 }
 
-bool isIndentPoSiteProofTask(Map task) {
-  return indentPoSiteProofActions(workflowActionsFromTask(task)).isNotEmpty;
-}
-
-bool isIndentProofReviewTask(Map task) {
-  if (isIndentPoSiteProofTask(task)) return false;
-  final actions = workflowActionsFromTask(task);
-  for (final action in actions) {
+/// Strong review-only signals. Do NOT treat bare native_screen/open_tab
+/// `indent_proof` as review — upload tasks may carry the same deeplink flags.
+bool _taskHasStrongIndentProofReviewSignal(Map task) {
+  for (final action in workflowActionsFromTask(task)) {
     final id = action['id']?.toString() ?? '';
     if (_indentPoReviewActionIds.contains(id)) return true;
   }
+  if (task['indent_proof_review'] == true ||
+      task['indent_proof_review']?.toString() == '1' ||
+      task['indent_proof_review']?.toString().toLowerCase() == 'true') {
+    return true;
+  }
+  for (final raw in [task['config'], task['workflow_config'], task['node_config']]) {
+    if (raw is Map &&
+        (raw['indent_proof_review'] == true ||
+            raw['indent_proof_review']?.toString() == '1' ||
+            raw['indent_proof_review']?.toString().toLowerCase() == 'true')) {
+      return true;
+    }
+  }
+  final meta = task['spawn_meta'];
+  if (meta is Map &&
+      (meta['indent_proof_review'] == true ||
+          meta['indent_proof_review']?.toString() == '1' ||
+          meta['indent_proof_review']?.toString().toLowerCase() == 'true')) {
+    return true;
+  }
+  final result = task['workflow_item_result'];
+  if (result is Map) {
+    final nested = result['spawn_meta'];
+    if (nested is Map &&
+        (nested['indent_proof_review'] == true ||
+            nested['indent_proof_review']?.toString() == '1' ||
+            nested['indent_proof_review']?.toString().toLowerCase() == 'true')) {
+      return true;
+    }
+  }
+  final nodeKey = _indentPoSiteProofNodeKey(task);
+  return nodeKey == 'indent_po_site_proof_review';
+}
+
+
+String _indentPoSiteProofNodeKey(Map task) {
+  for (final key in const [
+    'node_key',
+    'source_node_key',
+    'workflow_node_key',
+    'wf_node_key',
+  ]) {
+    final v = task[key]?.toString().trim() ?? '';
+    if (v.isNotEmpty) return v;
+  }
+  for (final raw in [task['config'], task['workflow_config'], task['node_config']]) {
+    if (raw is Map) {
+      final v = (raw['node_key'] ?? raw['key'] ?? '').toString().trim();
+      if (v.isNotEmpty) return v;
+    }
+  }
+  return '';
+}
+
+bool _taskHasApprovedPoSiteProofFlag(Map task) {
+  bool truthy(dynamic v) =>
+      v == true || v?.toString() == '1' || v?.toString().toLowerCase() == 'true';
+
+  if (truthy(task['indent_approved_po_site_proof'])) return true;
+  for (final raw in [task['context'], task['context_json']]) {
+    if (raw is Map && truthy(raw['indent_approved_po_site_proof'])) return true;
+  }
+  return false;
+}
+
+bool isIndentPoSiteProofTask(Map task) {
+  // Review tasks also embed quantity/video actions — exclude by strong signals only.
+  if (_taskHasStrongIndentProofReviewSignal(task)) return false;
+
+  final actions = workflowActionsFromTask(task);
+  if (indentPoSiteProofActions(actions).isNotEmpty) return true;
+  for (final action in actions) {
+    if (isLegacyIndentPoActionId(action['id']?.toString())) return true;
+  }
+
+  final nodeKey = _indentPoSiteProofNodeKey(task);
+  if (nodeKey == 'indent_po_site_proof') return true;
+  if (_taskHasApprovedPoSiteProofFlag(task)) return true;
+
+  final title = [
+    task['name'],
+    task['title'],
+    task['checklist_item_label'],
+    task['label'],
+    task['action_label'],
+  ].whereType<Object>().map((e) => e.toString().toLowerCase()).join(' ');
+  if (title.contains('upload site proof')) return true;
+
+  return false;
+}
+
+bool isIndentProofReviewTask(Map task) {
+  if (_taskHasStrongIndentProofReviewSignal(task)) return true;
+  // Upload site-proof must win over bare indent_proof deeplink flags.
+  if (isIndentPoSiteProofTask(task)) return false;
   return isIndentProofDeeplinkTask(task);
 }
 
@@ -856,30 +950,111 @@ Future<void> openIndentProofReviewFromTask(
   Map<String, dynamic> task, {
   Future<void> Function()? onRefresh,
 }) async {
+  final indentId = indentProofIndentId(task)?.trim() ??
+      task['indent_id']?.toString().trim() ??
+      '';
+  if (indentId.isEmpty) {
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Indent id not found on this review task.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+    return;
+  }
+  final vendorId = indentSiteProofTaskVendorId(task);
+  final deliveryId = indentProofReviewDeliveryId(task);
+  final runId = _resolvedWorkflowItemRunIdFromTask(task);
   await Navigator.of(context).push(
     MaterialPageRoute(
-      builder: (_) => _IndentProofReviewScreen(
-        task: task,
-        onChanged: onRefresh ?? () async {},
+      builder: (_) => IndentProofDetailScreen(
+        indentId: indentId,
+        forReview: true,
+        vendorId: vendorId,
+        deliveryId: deliveryId,
+        itemRunId: runId.isEmpty ? null : runId,
       ),
     ),
   );
   if (onRefresh != null) await onRefresh();
 }
 
+/// Vendor id for an Upload-site-proof task (spawn_meta / context aware).
+
+/// Delivery id for a Review-site-proof task (spawn_meta last/covered delivery).
+String? indentProofReviewDeliveryId(Map<String, dynamic> task) {
+  String? fromMap(dynamic raw) {
+    if (raw is! Map) return null;
+    final direct = raw['last_delivery_id']?.toString().trim() ?? '';
+    if (direct.isNotEmpty) return direct;
+    final covered = raw['covered_delivery_ids'];
+    if (covered is List && covered.isNotEmpty) {
+      final first = covered.first?.toString().trim() ?? '';
+      if (first.isNotEmpty) return first;
+    }
+    final did = raw['delivery_id']?.toString().trim() ?? '';
+    return did.isNotEmpty ? did : null;
+  }
+
+  final direct = task['last_delivery_id']?.toString().trim() ?? '';
+  if (direct.isNotEmpty) return direct;
+  final fromMeta = fromMap(task['spawn_meta']);
+  if (fromMeta != null) return fromMeta;
+  final nested = task['workflow_item_result'];
+  if (nested is Map) {
+    final fromNested = fromMap(nested['spawn_meta']);
+    if (fromNested != null) return fromNested;
+  }
+  final ctx = task['context'] ?? task['context_json'];
+  final fromCtx = fromMap(ctx);
+  if (fromCtx != null) return fromCtx;
+  return null;
+}
+
+String? indentSiteProofTaskVendorId(Map<String, dynamic> task) {
+  final direct = task['vendor_id']?.toString().trim() ?? '';
+  if (direct.isNotEmpty) return direct;
+  final meta = task['spawn_meta'];
+  if (meta is Map) {
+    final v = meta['vendor_id']?.toString().trim() ?? '';
+    if (v.isNotEmpty) return v;
+  }
+  final nested = task['workflow_item_result'];
+  if (nested is Map && nested['spawn_meta'] is Map) {
+    final v = (nested['spawn_meta'] as Map)['vendor_id']?.toString().trim() ?? '';
+    if (v.isNotEmpty) return v;
+  }
+  final ctx = task['context'] ?? task['context_json'];
+  if (ctx is Map) {
+    final v = ctx['vendor_id']?.toString().trim() ?? '';
+    if (v.isNotEmpty) return v;
+  }
+  return null;
+}
+
 Future<Map<String, dynamic>?> findIndentSiteProofTask({
   required String indentId,
   String? projectId,
+  String? vendorId,
+  String? itemRunId,
   bool fetchIfMissing = true,
   bool includeCompleted = false,
 }) async {
   final needle = indentId.trim();
   if (needle.isEmpty) return null;
+  final wantVendor = (vendorId ?? '').trim();
+  final wantRun = (itemRunId ?? '').trim();
 
   Map<String, dynamic>? match;
   Map<String, dynamic>? completedMatch;
+  Map<String, dynamic>? vendorMatch;
+  Map<String, dynamic>? vendorCompletedMatch;
+  Map<String, dynamic>? runMatch;
+  Map<String, dynamic>? runCompletedMatch;
+
   void scan(List<dynamic> tasks) {
-    if (match != null) return;
     for (final raw in tasks) {
       if (raw is! Map) continue;
       final task = Map<String, dynamic>.from(raw);
@@ -888,12 +1063,38 @@ Future<Map<String, dynamic>?> findIndentSiteProofTask({
           '';
       if (taskIndent != needle) continue;
       if (!isIndentPoSiteProofTask(task)) continue;
+      final taskVendor = indentSiteProofTaskVendorId(task) ?? '';
+      final taskRun = _resolvedWorkflowItemRunIdFromTask(task);
+      // Exact vendor only — empty taskVendor must not match a wanted vendor
+      // (otherwise a completed sibling can be selected for the open card).
+      final vendorOk =
+          wantVendor.isEmpty || taskVendor == wantVendor;
+      final runOk = wantRun.isEmpty || taskRun == wantRun;
+      if (wantRun.isNotEmpty && taskRun == wantRun) {
+        if (isTaskCompletedStatus(task)) {
+          runCompletedMatch ??= task;
+        } else {
+          runMatch ??= task;
+        }
+      }
       if (isTaskCompletedStatus(task)) {
+        if (wantVendor.isNotEmpty && taskVendor == wantVendor) {
+          vendorCompletedMatch ??= task;
+        }
         completedMatch ??= task;
         continue;
       }
-      match = task;
-      return;
+      if (wantVendor.isNotEmpty && taskVendor == wantVendor) {
+        vendorMatch ??= task;
+      }
+      if (vendorOk && runOk) {
+        match ??= task;
+      }
+      if (wantRun.isNotEmpty && runMatch != null) return;
+      if (wantVendor.isEmpty && wantRun.isEmpty && match != null) return;
+      if (wantVendor.isNotEmpty && wantRun.isEmpty && vendorMatch != null) {
+        return;
+      }
     }
   }
 
@@ -901,13 +1102,33 @@ Future<Map<String, dynamic>?> findIndentSiteProofTask({
   scan(dp.clientPendingTasks);
   scan(dp.clientTimelineTasks);
 
-  if (match != null || !fetchIfMissing) {
+  Map<String, dynamic>? _pick() {
+    if (wantRun.isNotEmpty) {
+      return runMatch ??
+          (includeCompleted ? runCompletedMatch : null) ??
+          (wantVendor.isNotEmpty
+              ? (vendorMatch ??
+                  (includeCompleted ? vendorCompletedMatch : null))
+              : null);
+    }
+    if (wantVendor.isNotEmpty) {
+      // Prefer exact vendor match; do not fall back to another vendor's task.
+      return vendorMatch ??
+          (includeCompleted ? vendorCompletedMatch : null);
+    }
     return match ?? (includeCompleted ? completedMatch : null);
+  }
+
+  if (runMatch != null ||
+      vendorMatch != null ||
+      match != null ||
+      !fetchIfMissing) {
+    return _pick();
   }
 
   final fetched = await _fetchTasksForIndentSiteProof(projectId: projectId);
   scan(fetched);
-  return match ?? (includeCompleted ? completedMatch : null);
+  return _pick();
 }
 
 Future<List<dynamic>> _fetchTasksForIndentSiteProof({
@@ -949,7 +1170,11 @@ Future<void> openIndentSiteProofForIndent(
   BuildContext context, {
   required String indentId,
   String? projectId,
+  String? vendorId,
+  String? itemRunId,
+  Map<String, dynamic>? preferredTask,
   Future<void> Function()? onRefresh,
+  Future<void> Function(String taskId)? onTaskFinished,
 }) async {
   final trimmed = indentId.trim();
   if (trimmed.isEmpty) {
@@ -963,8 +1188,23 @@ Future<void> openIndentSiteProofForIndent(
     return;
   }
 
-  // Multi-material may need another delivery cycle after a partial submit.
-  // Prefer opening the multi wizard even if the prior workflow task completed.
+  final preferred = preferredTask == null
+      ? null
+      : Map<String, dynamic>.from(preferredTask);
+  final resolvedVendor = (vendorId ?? '').trim().isNotEmpty
+      ? vendorId!.trim()
+      : (preferred == null
+          ? ''
+          : (indentSiteProofTaskVendorId(preferred) ?? '').trim());
+  final resolvedRunHint = (itemRunId ?? '').trim().isNotEmpty
+      ? itemRunId!.trim()
+      : (preferred == null
+          ? ''
+          : _resolvedWorkflowItemRunIdFromTask(preferred));
+
+  // Multi-material (checkbox → evidence) is the default Approved PO flow.
+  // Prefer the multi wizard even if the prior workflow task completed.
+  // Only explicit site_proof_flow: "single" uses locked-steps legacy UI.
   ApprovedPo? approvedPo;
   try {
     approvedPo = await ApprovedPoService().fetchDetail(int.parse(trimmed));
@@ -972,8 +1212,29 @@ Future<void> openIndentSiteProofForIndent(
     approvedPo = null;
   }
 
-  if (approvedPo != null && approvedPo.usesMultiMaterialSiteProof) {
-    if (!approvedPo.hasOutstandingSiteProofMaterials) {
+  final preferMulti =
+      approvedPo == null || approvedPo.usesMultiMaterialSiteProof;
+  if (preferMulti) {
+    Map<String, dynamic>? task;
+    // Keep the tapped card's vendor / item_run — never re-resolve to "any"
+    // open task for the indent (split-vendor remaining qty bug).
+    if (preferred != null && isIndentPoSiteProofTask(preferred)) {
+      final prefIndent = preferred['indent_id']?.toString().trim() ??
+          indentProofIndentId(preferred) ??
+          '';
+      if (prefIndent == trimmed || prefIndent.isEmpty) {
+        if (!isTaskCompletedStatus(preferred)) {
+          task = preferred;
+        }
+      }
+    }
+    // Indent-level outstanding can be wrong for split-vendor POs (sibling
+    // deliveries zero remaining). Never block an open preferred/vendor task.
+    final hasOpenPreferred = task != null && !isTaskCompletedStatus(task);
+    if (!hasOpenPreferred &&
+        resolvedVendor.isEmpty &&
+        approvedPo != null &&
+        !approvedPo.hasOutstandingSiteProofMaterials) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -984,15 +1245,18 @@ Future<void> openIndentSiteProofForIndent(
       );
       return;
     }
-
-    var task = await findIndentSiteProofTask(
+    task ??= await findIndentSiteProofTask(
       indentId: trimmed,
       projectId: projectId,
+      vendorId: resolvedVendor.isEmpty ? null : resolvedVendor,
+      itemRunId: resolvedRunHint.isEmpty ? null : resolvedRunHint,
       fetchIfMissing: true,
     );
     task ??= await findIndentSiteProofTask(
       indentId: trimmed,
       projectId: projectId,
+      vendorId: resolvedVendor.isEmpty ? null : resolvedVendor,
+      itemRunId: resolvedRunHint.isEmpty ? null : resolvedRunHint,
       fetchIfMissing: true,
       includeCompleted: true,
     );
@@ -1001,6 +1265,9 @@ Future<void> openIndentSiteProofForIndent(
         <String, dynamic>{
           'indent_id': trimmed,
           if ((projectId ?? '').trim().isNotEmpty) 'project_id': projectId,
+          if (resolvedVendor.isNotEmpty) 'vendor_id': resolvedVendor,
+          if (resolvedRunHint.isNotEmpty)
+            'workflow_item_run_id': resolvedRunHint,
         };
 
     // Partial multi deliveries should not be blocked by a completed prior cycle.
@@ -1020,10 +1287,11 @@ Future<void> openIndentSiteProofForIndent(
     // Do NOT reuse a completed item_run for the next remaining delivery.
     // Backend must open/return a new (or still-open) run via GET multi_material.
     final priorRunId = task == null
-        ? ''
+        ? resolvedRunHint
         : _resolvedWorkflowItemRunIdFromTask(resolvedTask);
     final usePriorRunId =
-        priorRunId.isNotEmpty && !isTaskCompletedStatus(resolvedTask);
+        priorRunId.isNotEmpty &&
+        (task == null || !isTaskCompletedStatus(resolvedTask));
 
     if (!context.mounted) return;
     await Navigator.of(context).push(
@@ -1034,6 +1302,7 @@ Future<void> openIndentSiteProofForIndent(
           task: resolvedTask,
           approvedPo: approvedPo,
           onChanged: onRefresh ?? () async {},
+          onTaskFinished: onTaskFinished,
         ),
       ),
     );
@@ -1044,6 +1313,8 @@ Future<void> openIndentSiteProofForIndent(
   final task = await findIndentSiteProofTask(
     indentId: trimmed,
     projectId: projectId,
+    vendorId: resolvedVendor.isEmpty ? null : resolvedVendor,
+    itemRunId: resolvedRunHint.isEmpty ? null : resolvedRunHint,
     fetchIfMissing: true,
   );
 
@@ -1071,12 +1342,13 @@ Future<void> openIndentSiteProofForIndent(
     return;
   }
 
-  // Branch: multi-material uses new APIs/UI; single keeps legacy flow.
+  // Explicit single (or unexpected miss): try multi once more, else legacy.
   final openedMulti = await _tryOpenMultiMaterialSiteProofIfNeeded(
     context: context,
     task: task,
     indentId: trimmed,
     onRefresh: onRefresh,
+    onTaskFinished: onTaskFinished,
   );
   if (openedMulti) return;
 
@@ -1091,40 +1363,49 @@ Future<void> openIndentSiteProofForIndent(
   if (onRefresh != null) await onRefresh();
 }
 
-/// Returns true when the multi-material wizard was opened.
+/// Returns true when the multi-material (checkbox → evidence) wizard was opened.
+///
+/// Default for Approved POs is the new multi wizard. Only an explicit
+/// `site_proof_flow: "single"` keeps the legacy locked-steps screen.
+/// Fetch failures must NOT silently fall back to locked steps.
 Future<bool> _tryOpenMultiMaterialSiteProofIfNeeded({
   required BuildContext context,
   required Map<String, dynamic> task,
   required String indentId,
   Future<void> Function()? onRefresh,
+  Future<void> Function(String taskId)? onTaskFinished,
 }) async {
+  ApprovedPo? po;
   try {
-    final po = await ApprovedPoService().fetchDetail(int.parse(indentId));
-    if (!po.usesMultiMaterialSiteProof) return false;
-
-    final itemRunId = _resolvedWorkflowItemRunIdFromTask(task);
-    if (!context.mounted) return true;
-
-    await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => MultiMaterialSiteProofScreen(
-          indentId: indentId,
-          itemRunId: itemRunId,
-          task: task,
-          approvedPo: po,
-          onChanged: onRefresh ?? () async {},
-        ),
-      ),
-    );
-    if (onRefresh != null) await onRefresh();
-    return true;
+    po = await ApprovedPoService().fetchDetail(int.parse(indentId));
   } catch (e) {
     print(
-      '[SiteProof] multi-material branch check failed indent=$indentId '
-      'error=$e — falling back to single-material flow',
+      '[SiteProof] approved PO detail fetch failed indent=$indentId '
+      'error=$e — defaulting to multi-material wizard',
     );
-    return false;
+    po = null;
   }
+
+  // Explicit single only → caller may open legacy locked-steps.
+  if (po != null && !po.usesMultiMaterialSiteProof) return false;
+
+  final itemRunId = _resolvedWorkflowItemRunIdFromTask(task);
+  if (!context.mounted) return true;
+
+  await Navigator.of(context).push(
+    MaterialPageRoute(
+      builder: (_) => MultiMaterialSiteProofScreen(
+        indentId: indentId,
+        itemRunId: itemRunId,
+        task: task,
+        approvedPo: po,
+        onChanged: onRefresh ?? () async {},
+        onTaskFinished: onTaskFinished,
+      ),
+    ),
+  );
+  if (onRefresh != null) await onRefresh();
+  return true;
 }
 
 bool indentPoSiteProofStepDone(
@@ -2434,40 +2715,62 @@ class _TaskCardState extends State<_TaskCard> {
           onActionCompleted: _handleWorkflowActionCompleted,
         ),
       ],
-      // Wait for item-runs/actions merge so delay_gate / blocked flags are fresh.
-      if (widget.showWorkflowActions &&
+      // PC/APC indent review is a normal erp_tasks row (not always is_workflow_task).
+      // Read action_id / action_label / native_screen / indent_id from task JSON.
+      if (!_isLoadingWorkflowDetail &&
+          isIndentReviewApproveTask(task) &&
+          !kCompletedTaskStatuses.contains(status)) ...[
+        const SizedBox(height: 10),
+        _IndentReviewApproveLaunchCard(
+          indentId: indentProofIndentId(task)?.trim() ??
+              task['indent_id']?.toString().trim() ??
+              '',
+          materialLabel: indentTaskMaterialLabel(task),
+          actionLabel: () {
+            final label = (task['action_label'] ?? task['label'] ?? '')
+                .toString()
+                .trim();
+            return label.isEmpty ? 'Review indent' : label;
+          }(),
+          onOpen: () => openIndentViewOpenFromTask(context, task),
+        ),
+      ] else if (widget.showWorkflowActions &&
           _isWorkflowTask &&
           !_isLoadingWorkflowDetail) ...[
         if (isIndentProofReviewTask(task) &&
             !kCompletedTaskStatuses.contains(status)) ...[
           const SizedBox(height: 10),
           _IndentProofReviewLaunchCard(
+            task: task,
             onOpen: () => _openIndentProofReviewScreen(),
+          ),
+        ] else if (isIndentPoSiteProofTask(task) &&
+            !kCompletedTaskStatuses.contains(status)) ...[
+          const SizedBox(height: 10),
+          _IndentSiteProofLaunchCard(
+            task: task,
+            actions: indentPoSiteProofActions(_workflowActions),
+            onOpen: () => _openIndentSiteProofScreen(),
           ),
         ] else if (workflowActions.isNotEmpty) ...[
           const SizedBox(height: 10),
-          if (isIndentPoSiteProofTask(task) &&
-              !kCompletedTaskStatuses.contains(status))
-            _IndentSiteProofLaunchCard(
-              task: task,
-              actions: indentPoSiteProofActions(_workflowActions),
-              onOpen: () => _openIndentSiteProofScreen(),
-            )
-          else
-            _WorkflowActionsSection(
-              task: task,
-              actions: workflowActions,
-              onActionCompleted: _handleWorkflowActionCompleted,
-              onTaskFinished: widget.onWorkflowTaskFinished,
-              onDelayExpired: _handleDelayExpired,
-            ),
+          _WorkflowActionsSection(
+            task: task,
+            actions: workflowActions,
+            onActionCompleted: _handleWorkflowActionCompleted,
+            onTaskFinished: widget.onWorkflowTaskFinished,
+            onDelayExpired: _handleDelayExpired,
+          ),
         ],
       ],
     ];
 
+    final materialLabel = indentTaskMaterialLabel(task);
+
     return ModernTaskCard(
       title: title,
       projectName: projectName,
+      materialLabel: materialLabel,
       assigneeName: assignedToName,
       dateLabel: createdAt.isNotEmpty ? _formatDate(createdAt) : null,
       // Delayed → pending/scheduled chip styling, never Ready.
@@ -2534,11 +2837,30 @@ class _TaskCardState extends State<_TaskCard> {
       return;
     }
 
+    final indentId = indentProofIndentId(_task)?.trim() ??
+        _task['indent_id']?.toString().trim() ??
+        '';
+    if (indentId.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Indent id not found on this review task.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+    final vendorId = indentSiteProofTaskVendorId(_task);
+    final deliveryId = indentProofReviewDeliveryId(_task);
+    final runId = _resolvedWorkflowItemRunIdFromTask(_task);
     await Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => _IndentProofReviewScreen(
-          task: _task,
-          onChanged: _handleWorkflowActionCompleted,
+        builder: (_) => IndentProofDetailScreen(
+          indentId: indentId,
+          forReview: true,
+          vendorId: vendorId,
+          deliveryId: deliveryId,
+          itemRunId: runId.isEmpty ? null : runId,
         ),
       ),
     );
@@ -2561,27 +2883,32 @@ class _TaskCardState extends State<_TaskCard> {
     final indentId = indentProofIndentId(_task)?.trim() ??
         _task['indent_id']?.toString().trim() ??
         '';
-    if (indentId.isNotEmpty) {
-      final openedMulti = await _tryOpenMultiMaterialSiteProofIfNeeded(
-        context: context,
-        task: _task,
-        indentId: indentId,
-        onRefresh: _handleWorkflowActionCompleted,
+    if (indentId.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Missing indent id for site proof.'),
+          backgroundColor: Colors.red,
+        ),
       );
-      if (openedMulti) {
-        if (!mounted) return;
-        await _handleWorkflowActionCompleted();
-        return;
-      }
+      return;
     }
 
-    await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => _IndentSiteProofScreen(
-          task: _task,
-          onChanged: _handleWorkflowActionCompleted,
-        ),
-      ),
+    // Always prefer openIndentSiteProofForIndent → multi checkbox wizard.
+    // Legacy locked-steps only when backend sets site_proof_flow: "single".
+    // Pass THIS card's vendor / item_run so remaining qty is per-vendor.
+    final projectId = _task['project_id']?.toString().trim();
+    final vendorId = indentSiteProofTaskVendorId(_task);
+    final runId = _resolvedWorkflowItemRunIdFromTask(_task);
+    await openIndentSiteProofForIndent(
+      context,
+      indentId: indentId,
+      projectId: (projectId == null || projectId.isEmpty) ? null : projectId,
+      vendorId: vendorId,
+      itemRunId: runId.isEmpty ? null : runId,
+      preferredTask: Map<String, dynamic>.from(_task),
+      onRefresh: _handleWorkflowActionCompleted,
+      onTaskFinished: widget.onWorkflowTaskFinished,
     );
     if (!mounted) return;
     await _handleWorkflowActionCompleted();
@@ -3780,7 +4107,21 @@ class _IndentProofReviewScreenState extends State<_IndentProofReviewScreen> {
       );
       return;
     }
-    await openIndentProofScreen(context, indentId: indentId);
+    // Scope to THIS review card's vendor / delivery / item_run (batch split).
+    final vendorId = indentSiteProofTaskVendorId(_task);
+    final deliveryId = indentProofReviewDeliveryId(_task);
+    final runId = _resolvedWorkflowItemRunIdFromTask(_task);
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => IndentProofDetailScreen(
+          indentId: indentId,
+          forReview: true,
+          vendorId: vendorId,
+          deliveryId: deliveryId,
+          itemRunId: runId.isEmpty ? null : runId,
+        ),
+      ),
+    );
     await _reloadTask();
   }
 
@@ -3965,12 +4306,17 @@ class _IndentProofReviewScreenState extends State<_IndentProofReviewScreen> {
 }
 
 class _IndentProofReviewLaunchCard extends StatelessWidget {
+  final Map task;
   final Future<void> Function() onOpen;
 
-  const _IndentProofReviewLaunchCard({required this.onOpen});
+  const _IndentProofReviewLaunchCard({
+    required this.task,
+    required this.onOpen,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final material = (indentTaskMaterialLabel(task) ?? '').trim();
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(14),
@@ -3990,6 +4336,18 @@ class _IndentProofReviewLaunchCard extends StatelessWidget {
               fontWeight: FontWeight.w800,
             ),
           ),
+          if (material.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(
+              'Material: $material',
+              style: const TextStyle(
+                color: _premiumInk,
+                fontSize: 12.5,
+                fontWeight: FontWeight.w700,
+                height: 1.3,
+              ),
+            ),
+          ],
           const SizedBox(height: 4),
           const Text(
             'Review indent site proof. Save an optional review comment, then approve.',
@@ -4023,6 +4381,88 @@ class _IndentProofReviewLaunchCard extends StatelessWidget {
   }
 }
 
+class _IndentReviewApproveLaunchCard extends StatelessWidget {
+  final String indentId;
+  final String actionLabel;
+  final String? materialLabel;
+  final Future<void> Function() onOpen;
+
+  const _IndentReviewApproveLaunchCard({
+    required this.indentId,
+    required this.onOpen,
+    this.actionLabel = 'Review indent',
+    this.materialLabel,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final material = (materialLabel ?? '').trim();
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: _premiumSurface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppTheme.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Review and approve the indent',
+            style: TextStyle(
+              color: _premiumInk,
+              fontSize: 14,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          if (material.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(
+              'Material: $material',
+              style: const TextStyle(
+                color: _premiumInk,
+                fontSize: 12.5,
+                fontWeight: FontWeight.w700,
+                height: 1.3,
+              ),
+            ),
+          ],
+          const SizedBox(height: 4),
+          Text(
+            indentId.isEmpty
+                ? 'Open View Open indents to review and approve this indent.'
+                : 'Open View Open for indent #$indentId to review and approve.',
+            style: const TextStyle(
+              color: _premiumMuted,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              height: 1.35,
+            ),
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: onOpen,
+              icon: const Icon(Icons.assignment_turned_in_outlined, size: 18),
+              label: Text(actionLabel),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primaryColorConst,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _IndentSiteProofLaunchCard extends StatelessWidget {
   final Map<String, dynamic> task;
   final List<Map<String, dynamic>> actions;
@@ -4038,59 +4478,14 @@ class _IndentSiteProofLaunchCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final doneCount =
         actions.where((action) => _indentPoStepDone(task, action)).length;
-    final total = actions.length;
     final started = doneCount > 0;
 
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: _premiumSurface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppTheme.border),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Upload site proof for approved PO',
-            style: TextStyle(
-              color: _premiumInk,
-              fontSize: 14,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            total == 0
-                ? 'Complete the on-site steps in order.'
-                : '$doneCount of $total steps complete. Go to the project site, then finish each step in order.',
-            style: const TextStyle(
-              color: _premiumMuted,
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              height: 1.35,
-            ),
-          ),
-          const SizedBox(height: 12),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton.icon(
-              onPressed: onOpen,
-              icon: const Icon(Icons.pin_drop_outlined, size: 18),
-              label: Text(started ? 'Continue site proof' : 'Start site proof'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.primaryColorConst,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
+    return IndentSiteProofSummaryCard.fromTask(
+      task: task,
+      buttonLabel: started ? 'Continue site proof' : 'Start site proof',
+      onPressed: () {
+        onOpen();
+      },
     );
   }
 }
@@ -6166,13 +6561,21 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
           task['indent_id']?.toString().trim() ??
           '';
       if (indentId.isNotEmpty) {
-        final openedMulti = await _tryOpenMultiMaterialSiteProofIfNeeded(
-          context: context,
-          task: task,
+        // Default: multi checkbox wizard (same as Start site proof).
+        // Keep this task's vendor / item_run for correct remaining qty.
+        final vendorId = indentSiteProofTaskVendorId(task);
+        final runId = _resolvedWorkflowItemRunId;
+        await openIndentSiteProofForIndent(
+          context,
           indentId: indentId,
+          projectId: task['project_id']?.toString(),
+          vendorId: vendorId,
+          itemRunId: runId.trim().isEmpty ? null : runId.trim(),
+          preferredTask: Map<String, dynamic>.from(task),
           onRefresh: widget.onActionCompleted,
+          onTaskFinished: widget.onTaskFinished,
         );
-        if (openedMulti) return;
+        return;
       }
       final result = await _presentIndentPoSiteProofAction(
         context: context,
@@ -6264,10 +6667,9 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
       );
       if (picked == null) return null;
 
-      final capturedAt = DateTime.now();
+      final capturedAt = CaptureTime.nowLocal();
       final sourceFile = File(picked.path);
-      final timestamp = DateFormat('yyyyMMdd_HHmmss').format(capturedAt);
-      final stampedName = 'live_$timestamp.jpg';
+      final stampedName = CaptureTime.stampFilename(isVideo: false, at: capturedAt);
       final stampedPath =
           '${Directory.systemTemp.path}${Platform.pathSeparator}$stampedName';
       final copiedFile = await sourceFile.copy(stampedPath);
@@ -6655,7 +7057,7 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
                 )) {
                   request.fields['live_image_only'] = 'true';
                   request.fields['captured_at'] = selectedFiles
-                      .map((file) => file.capturedAt?.toIso8601String())
+                      .map((file) => file.capturedAt == null ? null : CaptureTime.toOffsetIso(file.capturedAt!))
                       .whereType<String>()
                       .join(',');
                 }
@@ -6718,7 +7120,7 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
                     _SelectedUploadFile(
                       path: path,
                       name: 'auto_run.jpg',
-                      capturedAt: DateTime.now(),
+                      capturedAt: CaptureTime.nowLocal(),
                     ),
                   ];
                   setSheetState(() {});
@@ -6942,10 +7344,9 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
       );
       if (picked == null) return null;
 
-      final capturedAt = DateTime.now();
+      final capturedAt = CaptureTime.nowLocal();
       final sourceFile = File(picked.path);
-      final timestamp = DateFormat('yyyyMMdd_HHmmss').format(capturedAt);
-      final stampedName = 'live_$timestamp.jpg';
+      final stampedName = CaptureTime.stampFilename(isVideo: false, at: capturedAt);
       final stampedPath =
           '${Directory.systemTemp.path}${Platform.pathSeparator}$stampedName';
       final copiedFile = await sourceFile.copy(stampedPath);
@@ -7444,7 +7845,7 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
                   request.fields['live_image_only'] = 'true';
                   if (pendingFile!.capturedAt != null) {
                     request.fields['captured_at'] =
-                        pendingFile!.capturedAt!.toIso8601String();
+                        CaptureTime.toOffsetIso(pendingFile!.capturedAt!);
                   }
                 }
 
@@ -7757,7 +8158,7 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
                     pendingFile = _SelectedUploadFile(
                       path: path,
                       name: 'auto_run.jpg',
-                      capturedAt: DateTime.now(),
+                      capturedAt: CaptureTime.nowLocal(),
                     );
                     percentController.text = '100';
                     setSheetState(() {});
@@ -13405,7 +13806,7 @@ Future<_SelectedUploadFile> _finalizeVideoUploadFile({
       : (normalizedFormats.isNotEmpty ? normalizedFormats.first : 'mp4');
   var name = sourceName.trim();
   if (!_looksLikeVideo(name)) {
-    final timestamp = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
+    final timestamp = DateFormat('yyyyMMdd_HHmmss').format(CaptureTime.nowLocal());
     name = 'video_$timestamp.$preferredExt';
   }
 
@@ -14399,7 +14800,7 @@ Future<_IndentPoSiteProofSubmitResult> _presentIndentPoSiteProofAction({
                 final first = selectedFiles.first;
                 if (first.capturedAt != null) {
                   request.fields['captured_at'] =
-                      first.capturedAt!.toIso8601String();
+                      CaptureTime.toOffsetIso(first.capturedAt!);
                 }
               }
               for (final file in selectedFiles) {
@@ -14754,10 +15155,9 @@ Future<_SelectedUploadFile?> _pickWorkflowCameraFile() async {
   );
   if (picked == null) return null;
 
-  final capturedAt = DateTime.now();
+  final capturedAt = CaptureTime.nowLocal();
   final sourceFile = File(picked.path);
-  final timestamp = DateFormat('yyyyMMdd_HHmmss').format(capturedAt);
-  final stampedName = 'live_$timestamp.jpg';
+  final stampedName = CaptureTime.stampFilename(isVideo: false, at: capturedAt);
   final stampedPath =
       '${Directory.systemTemp.path}${Platform.pathSeparator}$stampedName';
   final copiedFile = await sourceFile.copy(stampedPath);

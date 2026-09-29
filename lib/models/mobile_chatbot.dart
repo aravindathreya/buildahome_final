@@ -70,6 +70,22 @@ class MobileChatbotStageImage {
       kind == 'picture' ||
       kind == 'thumbnail';
 
+  bool get isDocument {
+    final k = kind.toLowerCase();
+    if (k == 'file' ||
+        k == 'pdf' ||
+        k == 'document' ||
+        k == 'doc' ||
+        k == 'attachment') {
+      return true;
+    }
+    final lower = url.toLowerCase();
+    return lower.contains('.pdf') ||
+        lower.contains('serve_sales_sop_') ||
+        lower.contains('costing_sheet') ||
+        lower.contains('area_statement');
+  }
+
   factory MobileChatbotStageImage.fromJson(Map<String, dynamic> json) {
     final url = _resolveMediaUrl(_firstNonEmpty([
       json['url'],
@@ -135,37 +151,74 @@ class MobileChatbotStage {
   const MobileChatbotStage({
     required this.name,
     this.images = const [],
+    this.attachments = const [],
     this.tracker = const MobileChatbotTracker(),
   });
 
   final String name;
   final List<MobileChatbotStageImage> images;
+  final List<MobileChatbotStageImage> attachments;
   final MobileChatbotTracker tracker;
 
   bool get hasContent =>
-      name.isNotEmpty || images.isNotEmpty || tracker.hasContent;
+      name.isNotEmpty ||
+      images.isNotEmpty ||
+      attachments.isNotEmpty ||
+      tracker.hasContent;
 
   List<String> get imageUrls =>
       images.where((image) => image.isVisual && image.url.isNotEmpty)
           .map((image) => image.url)
           .toList();
 
-  factory MobileChatbotStage.fromJson(Map<String, dynamic> json) {
+  List<MobileChatbotStageImage> get documents {
+    final seen = <String>{};
+    final out = <MobileChatbotStageImage>[];
+    for (final item in [...attachments, ...images]) {
+      if (!item.isDocument || item.url.isEmpty) continue;
+      if (!seen.add(item.url)) continue;
+      out.add(item);
+    }
+    return out;
+  }
+
+  static List<MobileChatbotStageImage> _parseMediaList(dynamic raw) {
     final images = <MobileChatbotStageImage>[];
-    final rawImages = json['images'] ?? json['photos'] ?? json['media'];
-    if (rawImages is List) {
-      for (final item in rawImages) {
-        if (item is String) {
-          final url = _resolveMediaUrl(item);
-          if (url.isEmpty) continue;
-          images.add(MobileChatbotStageImage(url: url));
-        } else if (item is Map) {
-          final image = MobileChatbotStageImage.fromJson(
-            Map<String, dynamic>.from(item),
-          );
-          if (image.url.isEmpty) continue;
-          images.add(image);
-        }
+    if (raw is! List) return images;
+    for (final item in raw) {
+      if (item is String) {
+        final url = _resolveMediaUrl(item);
+        if (url.isEmpty) continue;
+        images.add(MobileChatbotStageImage(url: url));
+      } else if (item is Map) {
+        final image = MobileChatbotStageImage.fromJson(
+          Map<String, dynamic>.from(item),
+        );
+        if (image.url.isEmpty) continue;
+        images.add(image);
+      }
+    }
+    return images;
+  }
+
+  factory MobileChatbotStage.fromJson(Map<String, dynamic> json) {
+    final allMedia = _parseMediaList(
+      json['images'] ?? json['photos'] ?? json['media'],
+    );
+    final attachments = _parseMediaList(
+      json['attachments'] ?? json['files'] ?? json['documents'],
+    );
+    // Split mixed media lists into visuals vs documents.
+    final visuals = <MobileChatbotStageImage>[];
+    final docs = <MobileChatbotStageImage>[...attachments];
+    final seenDoc = {for (final d in docs) d.url};
+    for (final item in allMedia) {
+      if (item.isDocument) {
+        if (seenDoc.add(item.url)) docs.add(item);
+      } else if (item.isVisual) {
+        visuals.add(item);
+      } else if (item.url.isNotEmpty) {
+        visuals.add(item);
       }
     }
 
@@ -185,7 +238,8 @@ class MobileChatbotStage {
 
     return MobileChatbotStage(
       name: _firstNonEmpty([json['name'], json['title'], json['stage']]),
-      images: images,
+      images: visuals,
+      attachments: docs,
       tracker: tracker,
     );
   }

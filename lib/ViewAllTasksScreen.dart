@@ -7,6 +7,7 @@ import 'app_theme.dart';
 import 'services/data_provider.dart';
 import 'widgets/modern_task_card.dart';
 import 'task_display_title.dart';
+import 'indent_task_material.dart';
 import 'widgets/skeleton_loader.dart';
 
 class ViewAllTasksScreen extends StatefulWidget {
@@ -869,6 +870,7 @@ class _ViewAllTasksScreenState extends State<ViewAllTasksScreen> {
     final createdAt = task['created_at']?.toString() ?? '';
     final isWorkflowTask = _isWorkflowTask(task);
     final title = workflowTaskDisplayTitle(task);
+    final materialLabel = indentTaskMaterialLabel(task);
     final statusColor = _getStatusColor(status);
     final statusIcon = _getStatusIcon(status);
     final isCreatedByMe = _currentUserId != null && taskUserId == _currentUserId;
@@ -946,6 +948,20 @@ class _ViewAllTasksScreenState extends State<ViewAllTasksScreen> {
                                     height: 1.2,
                                   ),
                                 ),
+                                if ((materialLabel ?? '').isNotEmpty) ...[
+                                  SizedBox(height: 6),
+                                  Text(
+                                    'Material: $materialLabel',
+                                    style: TextStyle(
+                                      color: Color(0xFF0F766E),
+                                      fontSize: 12.5,
+                                      fontWeight: FontWeight.w700,
+                                      height: 1.3,
+                                    ),
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ],
                                 if (!isWorkflowTask && note.isNotEmpty) ...[
                                   SizedBox(height: 6),
                                   Text(

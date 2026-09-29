@@ -19,6 +19,7 @@ class _ChatV1CreateDocSheetState extends State<ChatV1CreateDocSheet> {
   final _description = TextEditingController();
   final _amount = TextEditingController();
   final _notes = TextEditingController();
+  final _delayDays = TextEditingController();
   final _store = ChatV1DocStore.instance;
 
   String? _pdfName;
@@ -27,6 +28,13 @@ class _ChatV1CreateDocSheetState extends State<ChatV1CreateDocSheet> {
   bool _saving = false;
   String? _error;
 
+  /// null = unanswered, true = Yes, false = No
+  bool? _causesDelay;
+  List<Map<String, dynamic>> _activities = const [];
+  bool _loadingActivities = false;
+  String? _selectedActivityId;
+  String? _selectedActivityLabel;
+
   static const int _maxPdfBytes = 20 * 1024 * 1024;
 
   @override
@@ -34,6 +42,7 @@ class _ChatV1CreateDocSheetState extends State<ChatV1CreateDocSheet> {
     _description.dispose();
     _amount.dispose();
     _notes.dispose();
+    _delayDays.dispose();
     super.dispose();
   }
 
@@ -71,6 +80,52 @@ class _ChatV1CreateDocSheetState extends State<ChatV1CreateDocSheet> {
     });
   }
 
+  Future<void> _onCausesDelayChanged(bool? value) async {
+    setState(() {
+      _causesDelay = value;
+      _error = null;
+      if (value != true) {
+        _selectedActivityId = null;
+        _selectedActivityLabel = null;
+        _delayDays.clear();
+        _activities = const [];
+      }
+    });
+    if (value == true) {
+      await _loadActivities();
+    }
+  }
+
+  Future<void> _loadActivities() async {
+    setState(() {
+      _loadingActivities = true;
+      _error = null;
+    });
+    try {
+      final rows = await _store.listMainCriticalActivities(
+        widget.salesSopId,
+        incompleteOnly: true,
+      );
+      if (!mounted) return;
+      setState(() {
+        _activities = rows;
+        _loadingActivities = false;
+        if (_selectedActivityId != null &&
+            !_activities.any((a) => '${a['id']}' == _selectedActivityId)) {
+          _selectedActivityId = null;
+          _selectedActivityLabel = null;
+        }
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loadingActivities = false;
+        _activities = const [];
+        _error = e.toString().replaceFirst('Exception: ', '');
+      });
+    }
+  }
+
   Future<void> _submit() async {
     final desc = _description.text.trim();
     final amount = _parseAmount(_amount.text);
@@ -86,6 +141,28 @@ class _ChatV1CreateDocSheetState extends State<ChatV1CreateDocSheet> {
       setState(() => _error = 'Enter an amount greater than 0');
       return;
     }
+    if (_causesDelay == null) {
+      setState(() => _error = 'Please answer: Will it cause delay?');
+      return;
+    }
+
+    String? delayActivityId;
+    String? delayActivityLabel;
+    int? delayDays;
+    if (_causesDelay == true) {
+      delayActivityId = _selectedActivityId;
+      delayActivityLabel = _selectedActivityLabel;
+      delayDays = int.tryParse(_delayDays.text.trim());
+      if (delayActivityId == null || delayActivityId.isEmpty) {
+        setState(() => _error = 'Select a Main Critical task');
+        return;
+      }
+      if (delayDays == null || delayDays <= 0) {
+        setState(() => _error = 'Enter delay days greater than 0');
+        return;
+      }
+    }
+
     setState(() {
       _saving = true;
       _error = null;
@@ -98,6 +175,10 @@ class _ChatV1CreateDocSheetState extends State<ChatV1CreateDocSheet> {
         notes: _notes.text.trim(),
         pdfName: _pdfName,
         pdfBytes: _pdfBytes,
+        causesDelay: _causesDelay == true,
+        delayActivityId: delayActivityId,
+        delayActivityLabel: delayActivityLabel,
+        delayDays: delayDays,
       );
       if (!mounted) return;
       Navigator.of(context).pop(doc);
@@ -108,6 +189,17 @@ class _ChatV1CreateDocSheetState extends State<ChatV1CreateDocSheet> {
         _error = e.toString().replaceFirst('Exception: ', '');
       });
     }
+  }
+
+  Widget _sectionLabel(BuildContext context, String text) {
+    return Text(
+      text,
+      style: TextStyle(
+        color: ChatV1Theme.textSecondary(context),
+        fontWeight: FontWeight.w700,
+        fontSize: 12.5,
+      ),
+    );
   }
 
   @override
@@ -148,14 +240,7 @@ class _ChatV1CreateDocSheetState extends State<ChatV1CreateDocSheet> {
               ),
             ),
             const SizedBox(height: 16),
-            Text(
-              'Description *',
-              style: TextStyle(
-                color: ChatV1Theme.textSecondary(context),
-                fontWeight: FontWeight.w700,
-                fontSize: 12.5,
-              ),
-            ),
+            _sectionLabel(context, 'Description *'),
             const SizedBox(height: 6),
             TextField(
               controller: _description,
@@ -167,14 +252,7 @@ class _ChatV1CreateDocSheetState extends State<ChatV1CreateDocSheet> {
               ),
             ),
             const SizedBox(height: 12),
-            Text(
-              'Amount (₹) *',
-              style: TextStyle(
-                color: ChatV1Theme.textSecondary(context),
-                fontWeight: FontWeight.w700,
-                fontSize: 12.5,
-              ),
-            ),
+            _sectionLabel(context, 'Amount (₹) *'),
             const SizedBox(height: 6),
             TextField(
               controller: _amount,
@@ -189,14 +267,7 @@ class _ChatV1CreateDocSheetState extends State<ChatV1CreateDocSheet> {
               ),
             ),
             const SizedBox(height: 12),
-            Text(
-              'Supporting Document (PDF)',
-              style: TextStyle(
-                color: ChatV1Theme.textSecondary(context),
-                fontWeight: FontWeight.w700,
-                fontSize: 12.5,
-              ),
-            ),
+            _sectionLabel(context, 'Supporting Document (PDF)'),
             const SizedBox(height: 6),
             if (_pdfName == null)
               OutlinedButton.icon(
@@ -252,14 +323,108 @@ class _ChatV1CreateDocSheetState extends State<ChatV1CreateDocSheet> {
                 ),
               ),
             const SizedBox(height: 12),
-            Text(
-              'Additional Notes',
-              style: TextStyle(
-                color: ChatV1Theme.textSecondary(context),
-                fontWeight: FontWeight.w700,
-                fontSize: 12.5,
-              ),
+            _sectionLabel(context, 'Will it cause delay? *'),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 8,
+              children: [
+                ChoiceChip(
+                  label: const Text('Yes'),
+                  selected: _causesDelay == true,
+                  onSelected: _saving
+                      ? null
+                      : (selected) {
+                          if (selected) _onCausesDelayChanged(true);
+                        },
+                ),
+                ChoiceChip(
+                  label: const Text('No'),
+                  selected: _causesDelay == false,
+                  onSelected: _saving
+                      ? null
+                      : (selected) {
+                          if (selected) _onCausesDelayChanged(false);
+                        },
+                ),
+              ],
             ),
+            if (_causesDelay == true) ...[
+              const SizedBox(height: 12),
+              _sectionLabel(
+                context,
+                'Main Critical / Construction Timeline task *',
+              ),
+              const SizedBox(height: 6),
+              if (_loadingActivities)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 8),
+                  child: Center(
+                    child: SizedBox(
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  ),
+                )
+              else
+                DropdownButtonFormField<String>(
+                  value: _selectedActivityId,
+                  isExpanded: true,
+                  decoration: const InputDecoration(
+                    hintText: 'Select incomplete task',
+                  ),
+                  items: _activities.map((act) {
+                    final id = '${act['id'] ?? ''}';
+                    final label = (act['label'] ?? id).toString();
+                    final days = act['duration_days'];
+                    final title = days == null ? label : '$label (${days}d)';
+                    return DropdownMenuItem<String>(
+                      value: id,
+                      child: Text(title, overflow: TextOverflow.ellipsis),
+                    );
+                  }).toList(),
+                  onChanged: _saving
+                      ? null
+                      : (value) {
+                          final match = _activities.cast<Map<String, dynamic>?>().firstWhere(
+                                (a) => '${a?['id']}' == value,
+                                orElse: () => null,
+                              );
+                          setState(() {
+                            _selectedActivityId = value;
+                            _selectedActivityLabel =
+                                (match?['label'] ?? value)?.toString();
+                          });
+                        },
+                ),
+              if (!_loadingActivities && _activities.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Text(
+                    'No incomplete Main Critical tasks found for this project.',
+                    style: TextStyle(
+                      color: ChatV1Theme.textMuted(context),
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+              const SizedBox(height: 12),
+              _sectionLabel(context, 'Extra delay (days) *'),
+              const SizedBox(height: 6),
+              TextField(
+                controller: _delayDays,
+                enabled: !_saving,
+                keyboardType: TextInputType.number,
+                inputFormatters: [
+                  FilteringTextInputFormatter.digitsOnly,
+                ],
+                decoration: const InputDecoration(
+                  hintText: 'Enter whole days > 0',
+                ),
+              ),
+            ],
+            const SizedBox(height: 12),
+            _sectionLabel(context, 'Additional Notes'),
             const SizedBox(height: 6),
             TextField(
               controller: _notes,

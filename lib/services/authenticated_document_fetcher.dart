@@ -236,7 +236,10 @@ class AuthenticatedDocumentFetcher {
     if (lower.contains('serve_sales_sop') ||
         lower.contains('serve_global_reference') ||
         lower.contains('serve_client') ||
-        lower.contains('serve_kyc')) {
+        lower.contains('serve_kyc') ||
+        lower.contains('costing_sheet') ||
+        lower.contains('area_statement') ||
+        lower.contains('final_cost_sheet')) {
       return DocumentUrlProfile.buildahomePrivate;
     }
     if (lower.contains('buildahome.in') &&

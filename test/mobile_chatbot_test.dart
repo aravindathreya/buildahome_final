@@ -67,6 +67,25 @@ void main() {
     });
   });
 
+
+  group('MobileChatbotStage documents', () {
+    test('treats costing serve URL as a document attachment', () {
+      final stage = MobileChatbotStage.fromJson({
+        'name': 'Costing sheet',
+        'images': [
+          {
+            'url': 'https://office.buildahome.in/serve_sales_sop_costing_sheet/3',
+            'caption': 'Costing sheet',
+            'kind': 'file',
+          },
+        ],
+      });
+      expect(stage.documents, isNotEmpty);
+      expect(stage.documents.first.isDocument, isTrue);
+      expect(stage.imageUrls, isEmpty);
+    });
+  });
+
   group('MobileChatbotGreeting', () {
     test('reads greeting and chip questions', () {
       final greeting = MobileChatbotGreeting.fromJson({

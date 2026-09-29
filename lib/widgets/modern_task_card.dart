@@ -309,6 +309,8 @@ class TaskStatusChipSet extends StatelessWidget {
 class ModernTaskCard extends StatelessWidget {
   final String title;
   final String? projectName;
+  /// Indent material (+ qty/unit) shown on the card front when present.
+  final String? materialLabel;
   final String? assigneeName;
   final String? dateLabel;
   final String status;
@@ -329,6 +331,7 @@ class ModernTaskCard extends StatelessWidget {
     required this.title,
     required this.status,
     this.projectName,
+    this.materialLabel,
     this.assigneeName,
     this.dateLabel,
     this.statusLabel,
@@ -468,6 +471,22 @@ class ModernTaskCard extends StatelessWidget {
                                             fontWeight: FontWeight.w700,
                                           ),
                                           maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ],
+                                      if (materialLabel != null &&
+                                          materialLabel!
+                                              .trim()
+                                              .isNotEmpty) ...[
+                                        const SizedBox(height: 3),
+                                        Text(
+                                          'Material: $materialLabel',
+                                          style: const TextStyle(
+                                            color: Color(0xFF0F766E),
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                          maxLines: 2,
                                           overflow: TextOverflow.ellipsis,
                                         ),
                                       ],
