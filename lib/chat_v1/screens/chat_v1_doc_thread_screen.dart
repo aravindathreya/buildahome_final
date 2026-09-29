@@ -26,6 +26,7 @@ class ChatV1DocThreadScreen extends StatefulWidget {
 class _ChatV1DocThreadScreenState extends State<ChatV1DocThreadScreen> {
   final _composer = TextEditingController();
   final _scroll = ScrollController();
+  final _stickKey = GlobalKey<Cv1StickToBottomState>();
   final _store = ChatV1DocStore.instance;
   final _api = ChatV1Api.instance;
 
@@ -60,6 +61,11 @@ class _ChatV1DocThreadScreenState extends State<ChatV1DocThreadScreen> {
         _loading = false;
       });
       WidgetsBinding.instance.addPostFrameCallback((_) {
+        final pin = _stickKey.currentState;
+        if (pin != null) {
+          pin.jumpToEnd();
+          return;
+        }
         if (_scroll.hasClients) {
           _scroll.jumpTo(_scroll.position.maxScrollExtent);
         }
@@ -170,6 +176,11 @@ class _ChatV1DocThreadScreenState extends State<ChatV1DocThreadScreen> {
         _sending = false;
       });
       WidgetsBinding.instance.addPostFrameCallback((_) {
+        final pin = _stickKey.currentState;
+        if (pin != null) {
+          pin.jumpToEnd(animate: true);
+          return;
+        }
         if (_scroll.hasClients) {
           _scroll.animateTo(
             _scroll.position.maxScrollExtent,
@@ -270,7 +281,10 @@ class _ChatV1DocThreadScreenState extends State<ChatV1DocThreadScreen> {
                         Expanded(
                           child: RefreshIndicator(
                             onRefresh: _load,
-                            child: ListView(
+                            child: Cv1StickToBottom(
+                              key: _stickKey,
+                              controller: _scroll,
+                              child: ListView(
                               controller: _scroll,
                               physics: const AlwaysScrollableScrollPhysics(),
                               padding:
@@ -295,6 +309,7 @@ class _ChatV1DocThreadScreenState extends State<ChatV1DocThreadScreen> {
                                 else
                                   ...doc.messages.map(_bubble),
                               ],
+                            ),
                             ),
                           ),
                         ),
@@ -494,13 +509,15 @@ class _ChatV1DocThreadScreenState extends State<ChatV1DocThreadScreen> {
                     padding: const EdgeInsets.only(bottom: 4),
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(8),
-                      child: Image.network(
-                        att.storagePath,
-                        width: 180,
-                        cacheWidth: 360,
-                        cacheHeight: 360,
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => Text(att.fileName),
+                      child: SizeChangedLayoutNotifier(
+                        child: Image.network(
+                          att.storagePath,
+                          width: 180,
+                          cacheWidth: 360,
+                          cacheHeight: 360,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => Text(att.fileName),
+                        ),
                       ),
                     ),
                   );

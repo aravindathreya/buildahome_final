@@ -321,6 +321,8 @@ class ModernTaskCard extends StatelessWidget {
   final Widget? menu;
   final Widget? footer;
   final EdgeInsetsGeometry margin;
+  /// Fills the card with the icon tile tint and drops the outline and left stripe.
+  final bool tintedBackground;
   /// When set, the card can be swiped right to mark complete (swipe-to-pay).
   /// Return `true` if the complete action succeeded.
   final Future<bool> Function()? onSwipeComplete;
@@ -341,6 +343,7 @@ class ModernTaskCard extends StatelessWidget {
     this.menu,
     this.footer,
     this.margin = const EdgeInsets.only(bottom: 12),
+    this.tintedBackground = false,
     this.onSwipeComplete,
     this.swipeCompleteLabel = 'Swipe to complete',
   });
@@ -350,17 +353,21 @@ class ModernTaskCard extends StatelessWidget {
     final accent = taskAccentColor(accentIndex);
     final style = taskStatusStyle(status);
     final icon = taskConstructionIcon(accentIndex);
+    final iconBackground = accent.withValues(alpha: 0.16);
+    final cardBackground = accent.withValues(alpha: 0.05);
     final hasMeta = (assigneeName != null && assigneeName!.trim().isNotEmpty) ||
         (dateLabel != null && dateLabel!.trim().isNotEmpty);
 
     final card = Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: tintedBackground ? cardBackground : Colors.white,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: isSelected ? const Color(0xFF2563EB) : kTaskBorder,
-          width: isSelected ? 1.5 : 1,
-        ),
+        border: tintedBackground
+            ? null
+            : Border.all(
+                color: isSelected ? const Color(0xFF2563EB) : kTaskBorder,
+                width: isSelected ? 1.5 : 1,
+              ),
         boxShadow: const [
           BoxShadow(
             color: kTaskSoftShadow,
@@ -373,16 +380,17 @@ class ModernTaskCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
         child: Stack(
           children: [
-            Positioned(
-              left: 0,
-              top: 0,
-              bottom: 0,
-              child: Container(width: 4, color: accent),
-            ),
+            if (!tintedBackground)
+              Positioned(
+                left: 0,
+                top: 0,
+                bottom: 0,
+                child: Container(width: 4, color: accent),
+              ),
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const SizedBox(width: 4),
+                if (!tintedBackground) const SizedBox(width: 4),
                 Expanded(
                   child: Material(
                     color: Colors.transparent,
@@ -406,7 +414,7 @@ class ModernTaskCard extends StatelessWidget {
                                   width: 36,
                                   height: 36,
                                   decoration: BoxDecoration(
-                                    color: accent.withValues(alpha: 0.12),
+                                    color: iconBackground,
                                     borderRadius: BorderRadius.circular(11),
                                   ),
                                   child:
@@ -433,9 +441,8 @@ class ModernTaskCard extends StatelessWidget {
                                                   title,
                                                   style: const TextStyle(
                                                     color: kTaskNavy,
-                                                    fontSize: 13.5,
-                                                    fontWeight:
-                                                        FontWeight.w800,
+                                                    fontSize: 12.5,
+                                                    fontWeight: FontWeight.normal,
                                                     height: 1.25,
                                                   ),
                                                   maxLines: 2,

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show ScrollDirection;
 
 import '../chat_v1_models.dart';
 import '../chat_v1_theme.dart';
@@ -197,6 +198,112 @@ class Cv1SectionHeader extends StatelessWidget {
           fontWeight: FontWeight.w700,
           letterSpacing: 0.2,
         ),
+      ),
+    );
+  }
+}
+
+/// Keeps a message list pinned to the latest message when content grows
+/// after the first layout — lazy images and list children built on the way
+/// down — until the user scrolls away from the end.
+class Cv1StickToBottom extends StatefulWidget {
+  final ScrollController controller;
+  final Widget child;
+
+  const Cv1StickToBottom({
+    super.key,
+    required this.controller,
+    required this.child,
+  });
+
+  @override
+  State<Cv1StickToBottom> createState() => Cv1StickToBottomState();
+}
+
+class Cv1StickToBottomState extends State<Cv1StickToBottom> {
+  bool _stick = true;
+  bool _scheduled = false;
+
+  void jumpToEnd({bool animate = false}) {
+    _stick = true;
+    _scrollToEnd(animate: animate);
+  }
+
+  void _scrollToEnd({bool animate = false}) {
+    final controller = widget.controller;
+    if (!controller.hasClients) return;
+    final target = controller.position.maxScrollExtent;
+    if (target - controller.position.pixels <= 2) return;
+    if (animate) {
+      controller.animateTo(
+        target,
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOut,
+      );
+      return;
+    }
+    controller.jumpTo(target);
+  }
+
+  void _schedulePin() {
+    if (!_stick || _scheduled) return;
+    _scheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _scheduled = false;
+      if (!mounted || !_stick) return;
+      final controller = widget.controller;
+      if (!controller.hasClients) return;
+      // Don't fight an in-progress drag or fling.
+      if (controller.position.userScrollDirection != ScrollDirection.idle) {
+        return;
+      }
+      _scrollToEnd();
+    });
+  }
+
+  void _onScroll() {
+    final controller = widget.controller;
+    if (!controller.hasClients) return;
+    final position = controller.position;
+    if (position.userScrollDirection == ScrollDirection.idle) return;
+    final distance = position.maxScrollExtent - position.pixels;
+    _stick = distance < 120;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    widget.controller.addListener(_onScroll);
+  }
+
+  @override
+  void didUpdateWidget(covariant Cv1StickToBottom oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller != widget.controller) {
+      oldWidget.controller.removeListener(_onScroll);
+      widget.controller.addListener(_onScroll);
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(_onScroll);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return NotificationListener<ScrollMetricsNotification>(
+      onNotification: (notification) {
+        if (notification.metrics.axis == Axis.vertical) _schedulePin();
+        return false;
+      },
+      child: NotificationListener<SizeChangedLayoutNotification>(
+        onNotification: (_) {
+          _schedulePin();
+          return false;
+        },
+        child: widget.child,
       ),
     );
   }

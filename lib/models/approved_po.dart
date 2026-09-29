@@ -324,7 +324,7 @@ double? _asDouble(dynamic value) {
   if (value == null) return null;
   if (value is num) return value.toDouble();
   final text = value.toString().trim().replaceAll(',', '');
-  if (text.isEmpty) return null;
+  if (text.isEmpty || text.toLowerCase() == 'null') return null;
   return double.tryParse(text);
 }
 

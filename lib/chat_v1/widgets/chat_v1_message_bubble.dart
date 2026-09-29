@@ -318,11 +318,13 @@ class Cv1MessageBubble extends StatelessWidget {
       );
     }
 
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(10),
-      child: GestureDetector(
-        onTap: () => _showImageViewer(context, att),
-        child: image,
+    return SizeChangedLayoutNotifier(
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(10),
+        child: GestureDetector(
+          onTap: () => _showImageViewer(context, att),
+          child: image,
+        ),
       ),
     );
   }

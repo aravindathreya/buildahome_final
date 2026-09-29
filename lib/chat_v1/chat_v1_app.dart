@@ -155,17 +155,13 @@ class ChatV1App extends StatefulWidget {
 }
 
 class _ChatV1AppState extends State<ChatV1App> {
-  bool _dark = false;
-
   @override
   Widget build(BuildContext context) {
     return Theme(
-      data: ChatV1Theme.data(dark: _dark),
+      data: ChatV1Theme.data(dark: false),
       child: Builder(
         builder: (context) => ChatV1HomeScreen(
-          darkMode: _dark,
           salesSopId: widget.salesSopId,
-          onToggleTheme: () => setState(() => _dark = !_dark),
           onOpenChat: (item) => _openChat(context, item),
           onOpenSearch: () => _open(context, const ChatV1SearchScreen()),
         ),

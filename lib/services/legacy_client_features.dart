@@ -30,7 +30,7 @@ class LegacyClientFeatures {
     'Client Information',
     'Upload payment proofs',
     'Timeline Gallery',
-    'Virtual Tour',
+    '3D House Tour',
     'Chat V1',
     'Project Status',
   ];

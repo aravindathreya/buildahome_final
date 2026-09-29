@@ -36,6 +36,7 @@ class ChatV1ConversationScreen extends StatefulWidget {
 class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
   final _composer = TextEditingController();
   final _scroll = ScrollController();
+  final _stickKey = GlobalKey<Cv1StickToBottomState>();
   final _api = ChatV1Api.instance;
   final _socket = ChatV1Socket.instance;
 
@@ -751,6 +752,11 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
   }
 
   void _jumpToBottom() {
+    final pin = _stickKey.currentState;
+    if (pin != null) {
+      pin.jumpToEnd();
+      return;
+    }
     if (!_scroll.hasClients) return;
     _scroll.jumpTo(_scroll.position.maxScrollExtent);
   }
@@ -1224,6 +1230,11 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
                 backgroundColor: ChatV1Theme.card(context),
                 foregroundColor: ChatV1Theme.text(context),
                 onPressed: () {
+                  final pin = _stickKey.currentState;
+                  if (pin != null) {
+                    pin.jumpToEnd(animate: true);
+                    return;
+                  }
                   _scroll.animateTo(
                     _scroll.position.maxScrollExtent,
                     duration: const Duration(milliseconds: 280),
@@ -1305,7 +1316,10 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
       );
     }
 
-    return ListView.builder(
+    return Cv1StickToBottom(
+      key: _stickKey,
+      controller: _scroll,
+      child: ListView.builder(
       controller: _scroll,
       physics: const BouncingScrollPhysics(),
       padding: const EdgeInsets.only(top: 8, bottom: 12),
@@ -1358,6 +1372,7 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
         ),
         );
       },
+      ),
     );
   }
 

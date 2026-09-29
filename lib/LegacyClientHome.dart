@@ -555,7 +555,7 @@ class LegacyClientDashboardScreenState extends State<LegacyClientDashboardScreen
                 SizedBox(height: 20),
                 // Section header for Quick Actions
                 Padding(
-                  padding: EdgeInsets.only(bottom: 16, top: 8),
+                  padding: EdgeInsets.only(bottom: 6, top: 8),
                   child: Row(
                     children: [
                       Container(

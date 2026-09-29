@@ -4,6 +4,16 @@ platform :ios, '15.0'
 # CocoaPods analytics sends network stats synchronously affecting flutter build latency.
 ENV['COCOAPODS_DISABLE_STATS'] = 'true'
 
+# This project lives on ExFAT. macOS cannot store extended attributes there, so
+# copies from the internal drive leave binary AppleDouble sidecars named `._*`.
+# After pod install, Flutter reads every file ending in `.xcconfig` under
+# Pods-Runner and crashes on `._Pods-Runner.release.xcconfig`.
+ENV['COPYFILE_DISABLE'] = '1'
+
+at_exit do
+  system('find', __dir__, '-name', '._*', '-type', 'f', '-delete')
+end
+
 project 'Runner', {
   'Debug' => :debug,
   'Profile' => :release,

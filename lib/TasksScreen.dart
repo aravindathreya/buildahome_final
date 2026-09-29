@@ -1780,6 +1780,7 @@ class _ViewTasksPageState extends State<ViewTasksPage> {
       dateLabel: createdAt.isNotEmpty ? _formatDateTime(createdAt) : null,
       status: status,
       accentIndex: accentIndex.abs(),
+      tintedBackground: true,
       menu: isWorkflowTask
           ? null
           : PopupMenuButton<String>(

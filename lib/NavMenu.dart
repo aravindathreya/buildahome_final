@@ -609,10 +609,10 @@ class NavMenuWidgetState extends State<NavMenuWidget> {
       ));
     }
 
-    // Virtual Tour is available to clients (and staff after project pick)
+    // 3D House Tour is available to clients (and staff after project pick)
     projectEntries.add(_NavEntry(
       actionKey: 'virtual_tour',
-      title: 'Virtual Tour',
+      title: '3D House Tour',
       icon: Icons.view_in_ar_rounded,
       route: isClient ? () => const VirtualTourScreen() : null,
       action: isClient

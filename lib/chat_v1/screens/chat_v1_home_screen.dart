@@ -12,16 +12,12 @@ import '../widgets/chat_v1_opening_splash.dart';
 import 'chat_v1_create_group_sheet.dart';
 
 class ChatV1HomeScreen extends StatefulWidget {
-  final bool darkMode;
-  final VoidCallback onToggleTheme;
   final ValueChanged<ChatV1ChatItem> onOpenChat;
   final VoidCallback onOpenSearch;
   final String? salesSopId;
 
   const ChatV1HomeScreen({
     super.key,
-    required this.darkMode,
-    required this.onToggleTheme,
     required this.onOpenChat,
     required this.onOpenSearch,
     this.salesSopId,
@@ -375,15 +371,6 @@ class _ChatV1HomeScreenState extends State<ChatV1HomeScreen> {
           IconButton(
             onPressed: widget.onOpenSearch,
             icon: Icon(Icons.search_rounded, color: ChatV1Theme.text(context)),
-          ),
-          IconButton(
-            onPressed: widget.onToggleTheme,
-            icon: Icon(
-              widget.darkMode
-                  ? Icons.light_mode_outlined
-                  : Icons.dark_mode_outlined,
-              color: ChatV1Theme.text(context),
-            ),
           ),
           PopupMenuButton<String>(
             icon: Icon(Icons.more_vert_rounded,

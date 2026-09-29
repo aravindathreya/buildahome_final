@@ -45,6 +45,9 @@ class ChatV1Theme {
   static const double rLg = 16;
   static const double rXl = 22;
 
+  /// Same family registered in the app theme (`Mulish-Regular`).
+  static const String fontFamily = 'Mulish-Regular';
+
   static bool isDark(BuildContext c) =>
       Theme.of(c).brightness == Brightness.dark;
 
@@ -77,6 +80,7 @@ class ChatV1Theme {
 
   static ThemeData data({required bool dark}) {
     final base = dark ? ThemeData.dark() : ThemeData.light();
+    final fg = dark ? darkText : lightText;
     return base.copyWith(
       scaffoldBackgroundColor: dark ? darkBg : lightBg,
       colorScheme: ColorScheme(
@@ -88,20 +92,21 @@ class ChatV1Theme {
         error: rejected,
         onError: Colors.white,
         surface: dark ? darkSecondary : lightSecondary,
-        onSurface: dark ? darkText : lightText,
+        onSurface: fg,
       ),
       appBarTheme: AppBarTheme(
         backgroundColor: dark ? darkSecondary : lightSecondary,
-        foregroundColor: dark ? darkText : lightText,
+        foregroundColor: fg,
         elevation: 0,
         scrolledUnderElevation: 0.5,
         centerTitle: false,
         systemOverlayStyle:
             dark ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark,
         titleTextStyle: TextStyle(
+          fontFamily: fontFamily,
           fontSize: 18,
           fontWeight: FontWeight.w700,
-          color: dark ? darkText : lightText,
+          color: fg,
           letterSpacing: -0.2,
         ),
       ),
@@ -113,8 +118,12 @@ class ChatV1Theme {
       ),
       splashFactory: InkRipple.splashFactory,
       textTheme: base.textTheme.apply(
-        bodyColor: dark ? darkText : lightText,
-        displayColor: dark ? darkText : lightText,
+        fontFamily: fontFamily,
+        bodyColor: fg,
+        displayColor: fg,
+      ),
+      primaryTextTheme: base.primaryTextTheme.apply(
+        fontFamily: fontFamily,
       ),
     );
   }

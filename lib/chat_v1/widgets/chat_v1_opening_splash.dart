@@ -3,7 +3,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter_spinkit/flutter_spinkit.dart';
 
 /// Full-screen gate while Chat V1 loads its first project conversations.
-/// Matches [OpeningProjectGate]: solid navy, white logo, ring spinner.
 class ChatV1OpeningSplash extends StatelessWidget {
   final String? subtitle;
 

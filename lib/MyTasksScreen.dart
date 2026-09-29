@@ -2778,6 +2778,7 @@ class _TaskCardState extends State<_TaskCard> {
       statusLabel: statusLabel,
       accentIndex: widget.accentIndex,
       isSelected: widget.isSelected,
+      tintedBackground: true,
       onSwipeComplete: completeAction == null
           ? null
           : () => _handleSwipeComplete(completeAction),

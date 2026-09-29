@@ -190,7 +190,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
     return Container(
       decoration: const BoxDecoration(
         color: Colors.white,
-        border: Border(top: BorderSide(color: Color(0xFFEEF1F5))),
+        border: Border(top: BorderSide(color: AppTheme.border)),
       ),
       child: SafeArea(
         top: false,
@@ -243,7 +243,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
   Widget build(BuildContext context) {
     return Scaffold(
       key: _scaffoldKey,
-      backgroundColor: Colors.white,
+      backgroundColor: AppTheme.lightBackgroundPrimary,
       drawer: NavMenuWidget(),
       appBar: null,
       body: GestureDetector(
@@ -284,45 +284,6 @@ class _AdminDashNavItem {
   const _AdminDashNavItem(this.activeIcon, this.icon, this.label);
 }
 
-class _AdminHeroStat extends StatelessWidget {
-  final String value;
-  final String label;
-  const _AdminHeroStat({required this.value, required this.label});
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.baseline,
-      textBaseline: TextBaseline.alphabetic,
-      children: [
-        Text(
-          value,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 16,
-            fontWeight: FontWeight.w800,
-            height: 1.1,
-            letterSpacing: -0.2,
-          ),
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Text(
-            label,
-            style: const TextStyle(
-              color: Color(0xFFC7D0E0),
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              height: 1.15,
-            ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ),
-      ],
-    );
-  }
-}
 
 class _LogoutButton extends StatelessWidget {
   Future<void> _handleLogout(BuildContext context) async {
@@ -1365,7 +1326,7 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
         route: () => ChatV1App.openQuick(tasksHint: _tasks),
       ),
       _quickActionTile(
-        title: 'Virtual Tour',
+        title: '3D House Tour',
         icon: Icons.view_in_ar_rounded,
         route: () => _routeForCurrentProject(() => const VirtualTourScreen()),
       ),
@@ -1453,7 +1414,7 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
       },
       color: _navy,
       child: Container(
-        color: Colors.white,
+        color: AppTheme.lightBackgroundPrimary,
         height: MediaQuery.of(context).size.height,
         width: MediaQuery.of(context).size.width,
         child: ListView(
@@ -1496,7 +1457,7 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
                       ),
                     ),
                   if (currentUserRole != 'Client') ...[
-                    _buildHeroBanner(),
+                    _buildAdminChatCard(),
                     const SizedBox(height: 18),
                     _buildOverviewCard(totalProjects, pendingCount),
                   ],
@@ -1512,6 +1473,7 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
                           fontSize: 15.5,
                           fontWeight: FontWeight.w800,
                           color: _navy,
+                          height: 1.1,
                         ),
                       ),
                       const Spacer(),
@@ -1529,7 +1491,7 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
                         ),
                     ],
                   ),
-                  const SizedBox(height: 14),
+                  const SizedBox(height: 6),
                   GridView.builder(
                     shrinkWrap: true,
                     physics: const NeverScrollableScrollPhysics(),
@@ -1553,6 +1515,7 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
                               },
                         borderRadius: BorderRadius.circular(16),
                         child: Column(
+                          mainAxisAlignment: MainAxisAlignment.start,
                           children: [
                             Container(
                               width: 56,
@@ -1728,74 +1691,106 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
     );
   }
 
-  Widget _buildHeroBanner() {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(18),
-      child: Container(
-        height: 128,
-        width: double.infinity,
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            colors: [Color(0xFF1B254B), Color(0xFF243463)],
-            begin: Alignment.centerLeft,
-            end: Alignment.centerRight,
+  Widget _buildAdminChatCard() {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(18),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x332563EB),
+            blurRadius: 18,
+            offset: Offset(0, 8),
           ),
-        ),
-        child: Stack(
-          children: [
-            const Positioned(
-              right: -10,
-              bottom: -20,
-              child: Opacity(
-                opacity: 0.12,
-                child: Icon(
-                  Icons.home_work_outlined,
-                  size: 160,
-                  color: Colors.white,
-                ),
-              ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(18),
+        clipBehavior: Clip.antiAlias,
+        child: Ink(
+          decoration: const BoxDecoration(
+            borderRadius: BorderRadius.all(Radius.circular(18)),
+            gradient: LinearGradient(
+              colors: [Color(0xFF1B254B), Color(0xFF2563EB)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
             ),
-            Row(
+          ),
+          child: InkWell(
+          onTap: _isNavigating
+              ? null
+              : () => _handleMenuTap(context, {
+                    'title': 'Chat V1',
+                    'route': () => ChatV1App.openQuick(tasksHint: _tasks),
+                  }),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 14, 16),
+            child: Row(
               children: [
-                const Expanded(
-                  child: Padding(
-                    padding: EdgeInsets.fromLTRB(18, 16, 8, 16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                      children: [
-                        _AdminHeroStat(value: '1700+', label: 'Projects'),
-                        _AdminHeroStat(value: '18+', label: 'Cities'),
-                        _AdminHeroStat(
-                            value: '5M+', label: 'Sq. Ft of Build Area'),
-                      ],
-                    ),
+                Container(
+                  width: 52,
+                  height: 52,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.18),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.chat_bubble_rounded,
+                    color: Colors.white,
+                    size: 26,
                   ),
                 ),
-                SizedBox(
-                  width: 132,
-                  height: double.infinity,
-                  child: ShaderMask(
-                    shaderCallback: (rect) {
-                      return const LinearGradient(
-                        begin: Alignment.centerLeft,
-                        end: Alignment.centerRight,
-                        colors: [Colors.transparent, Colors.white, Colors.white],
-                        stops: [0.0, 0.22, 1.0],
-                      ).createShader(rect);
-                    },
-                    blendMode: BlendMode.dstIn,
-                    child: Image.asset(
-                      'assets/images/Good going.jpg',
-                      fit: BoxFit.cover,
-                      alignment: const Alignment(0, -0.35),
-                      errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                const SizedBox(width: 14),
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Chat',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 20,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: -0.3,
+                          height: 1.1,
+                        ),
+                      ),
+                      SizedBox(height: 4),
+                      Text(
+                        'Message your project team',
+                        style: TextStyle(
+                          color: Color(0xE6FFFFFF),
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w500,
+                          height: 1.25,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 10,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: const Text(
+                    'Open',
+                    style: TextStyle(
+                      color: Color(0xFF1B254B),
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
                     ),
                   ),
                 ),
               ],
             ),
-          ],
+          ),
+          ),
         ),
       ),
     );
@@ -1810,9 +1805,9 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
         border: Border.all(color: _cardBorder),
         boxShadow: const [
           BoxShadow(
-            color: _softShadow,
-            blurRadius: 18,
-            offset: Offset(0, 8),
+            color: Color(0x0A000000),
+            blurRadius: 10,
+            offset: Offset(0, 2),
           ),
         ],
       ),
@@ -2201,8 +2196,8 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
         return 'Proof';
       case 'NT Payments':
         return 'NT Pay';
-      case 'Virtual Tour':
-        return 'Tour';
+      case '3D House Tour':
+        return '3D House Tour';
       case 'Work orders':
         return 'WOs';
       case 'Documents':
@@ -2270,7 +2265,7 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
         return Icons.event_available_outlined;
       case 'Project Timeline':
         return Icons.timeline_rounded;
-      case 'Virtual Tour':
+      case '3D House Tour':
         return Icons.view_in_ar_rounded;
       case 'Inspection Requests':
         return Icons.fact_check_outlined;
@@ -2302,7 +2297,7 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
                     fontWeight: FontWeight.w800,
                   ),
                 ),
-                const SizedBox(height: 14),
+                const SizedBox(height: 6),
                 Flexible(
                   child: GridView.builder(
                     shrinkWrap: true,
@@ -2325,6 +2320,7 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
                         },
                         borderRadius: BorderRadius.circular(16),
                         child: Column(
+                          mainAxisAlignment: MainAxisAlignment.start,
                           children: [
                             Container(
                               width: 56,
@@ -3097,6 +3093,7 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
       status: status,
       statusLabel: workflowStatusDisplayLabel(task),
       accentIndex: index,
+      tintedBackground: true,
       onTap: () {
         Navigator.push(
           context,
