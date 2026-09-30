@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 
 import '../services/attendance_service.dart';
 import 'attendance_open_splash.dart';
+import 'employer_tracking_indicator.dart';
 
 /// Staff home attendance card. Opens the attendance page.
 class StaffCheckInCard extends StatefulWidget {
@@ -191,26 +192,8 @@ class _StaffCheckInCardState extends State<StaffCheckInCard>
                             height: 1.25,
                           ),
                         ),
+                        const EmployerTrackingIndicator(onDark: true),
                       ],
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 10,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                    child: const Text(
-                      'Open',
-                      style: TextStyle(
-                        color: Color(0xFF1B254B),
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                      ),
                     ),
                   ),
                 ],

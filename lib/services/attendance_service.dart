@@ -143,6 +143,7 @@ class AttendanceService {
     required double longitude,
     String? notes,
     bool overrideLocation = false,
+    bool scheduleOverride = false,
   }) async {
     final token = await _apiToken();
     if (token == null) throw AttendanceException('Not logged in');
@@ -152,6 +153,7 @@ class AttendanceService {
       'latitude': latitude,
       'longitude': longitude,
       if (overrideLocation) 'location_override': true,
+      if (scheduleOverride) 'schedule_override': true,
     };
     _putNote(payload, notes);
 

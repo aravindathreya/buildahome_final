@@ -9,8 +9,8 @@ import 'app_theme.dart';
 import 'services/attendance_service.dart';
 import 'services/location_service.dart';
 import 'services/staff_location_tracker.dart';
-import 'widgets/attendance_note_sheet.dart';
 import 'widgets/background_location_banner.dart';
+import 'widgets/employer_tracking_indicator.dart';
 import 'widgets/dashboard_chrome.dart';
 import 'widgets/themed_scaffold.dart';
 
@@ -139,31 +139,134 @@ class _AttendanceScreenState extends State<AttendanceScreen>
       _matches = matches;
       _actionError = null;
     });
-    if (_canCheckInOffSchedule(status) && _noteController.text.trim().isEmpty) {
-      final inside = LocationService.nearestInRange(matches) != null;
-      _noteController.text = offScheduleCheckInNoteFor(
-        locationOverridden: !inside,
-      );
-    }
   }
 
   GeofenceMatch? get _inRange => LocationService.nearestInRange(_matches);
 
-  bool _canCheckInOffSchedule(AttendanceStatus? status) {
-    if (status == null) return false;
-    if (status.canCheckIn || status.canCheckOut) return false;
-    return status.record?.hasCheckedIn != true;
+  bool _isOpenShift(AttendanceStatus status) {
+    final record = status.record;
+    if (record == null) return status.canCheckOut;
+    return record.hasCheckedIn && !record.hasCheckedOut;
   }
 
-  Future<void> _checkIn({
-    bool overrideLocation = false,
-    bool scheduleOverride = false,
-  }) async {
+  bool _isComplete(AttendanceStatus status) {
+    final record = status.record;
+    return record?.hasCheckedIn == true && record?.hasCheckedOut == true;
+  }
+
+  int? _clockMinutes(String raw) {
+    final text = raw.trim().toLowerCase();
+    if (text.isEmpty) return null;
+    final match = RegExp(r'(\d{1,2}):(\d{2})').firstMatch(text);
+    if (match == null) return null;
+    var hour = int.tryParse(match.group(1)!);
+    final minute = int.tryParse(match.group(2)!);
+    if (hour == null || minute == null || minute > 59) return null;
+    if (text.contains('pm') && hour < 12) hour += 12;
+    if (text.contains('am') && hour == 12) hour = 0;
+    if (hour > 23) return null;
+    return hour * 60 + minute;
+  }
+
+  bool _outsideWorkingHours(AttendanceStatus status) {
+    if (!status.isScheduledToday) return true;
+    final now = DateTime.now();
+    final minutes = now.hour * 60 + now.minute;
+    final covering =
+        status.assignments.where((assignment) => assignment.coversToday);
+    final source = covering.isEmpty ? status.assignments : covering;
+    var sawWindow = false;
+    for (final assignment in source) {
+      final start = _clockMinutes(assignment.workStartTime);
+      final end = _clockMinutes(assignment.workEndTime);
+      if (start == null || end == null) continue;
+      sawWindow = true;
+      final inside = start <= end
+          ? minutes >= start && minutes <= end
+          : minutes >= start || minutes <= end;
+      if (inside) return false;
+    }
+    return sawWindow;
+  }
+
+  bool _outsideCheckoutLocation(AttendanceStatus status) {
+    final checkedInId = status.record?.workspaceId;
+    if (checkedInId == null) return _inRange == null;
+    for (final match in _matches) {
+      if (match.withinRadius && match.assignment.workspaceId == checkedInId) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  _AttendanceOverride _checkInOverride(AttendanceStatus status) {
+    final reasons = <String>[];
+    final open = _isOpenShift(status);
+    final complete = _isComplete(status);
+    if (complete) reasons.add('Attendance is already complete.');
+    if (open) reasons.add('You are already checked in.');
+    final outsideHours = _outsideWorkingHours(status) ||
+        (!status.canCheckIn && !open && !complete);
+    if (outsideHours) reasons.add('You are outside working hours.');
+    final outsideLocation = _inRange == null;
+    if (outsideLocation) {
+      reasons.add('You are outside your assigned location.');
+    }
+    return _AttendanceOverride(
+      reasons: reasons,
+      location: outsideLocation,
+      schedule: outsideHours || complete || open,
+    );
+  }
+
+  _AttendanceOverride _checkOutOverride(AttendanceStatus status) {
+    final reasons = <String>[];
+    final open = _isOpenShift(status);
+    final complete = _isComplete(status);
+    if (!open) {
+      reasons.add(
+        complete
+            ? 'Attendance is already complete.'
+            : 'You have not checked in yet.',
+      );
+    }
+    final outsideLocation = _outsideCheckoutLocation(status);
+    final outsideHours = _outsideWorkingHours(status) ||
+        (open && !status.canCheckOut && !outsideLocation);
+    if (outsideHours) reasons.add('You are outside working hours.');
+    if (outsideLocation) {
+      reasons.add('You are outside your assigned location.');
+    }
+    return _AttendanceOverride(
+      reasons: reasons,
+      location: outsideLocation,
+      schedule: !open || outsideHours || complete,
+    );
+  }
+
+  /// Returns the override note, or null if the user cancels.
+  Future<String?> _confirmOverride({
+    required bool checkingOut,
+    required List<String> reasons,
+  }) {
+    final generated = reasons.join(' ');
+    final typed = _noteController.text.trim();
+    final initial = typed.isEmpty ? generated : '$generated $typed';
+    return showDialog<String>(
+      context: context,
+      builder: (dialogContext) => _LocationOverrideDialog(
+        checkingOut: checkingOut,
+        initialNote: initial,
+        reasons: reasons,
+      ),
+    );
+  }
+
+  Future<void> _checkIn() async {
     if (_submitting) return;
     final status = _status;
     if (status == null) return;
-    if (!status.canCheckIn && !scheduleOverride) return;
-    if (scheduleOverride && !_canCheckInOffSchedule(status)) return;
 
     final position = _position;
     if (position == null) {
@@ -172,40 +275,19 @@ class _AttendanceScreenState extends State<AttendanceScreen>
       return;
     }
 
-    final match = _inRange;
-    final locationOverride = overrideLocation || match == null && scheduleOverride;
-    if (match == null && !locationOverride) {
-      setState(() {
-        _actionError =
-            'You must be inside an assigned workspace geofence to check in.';
-      });
-      return;
-    }
-
+    final override = _checkInOverride(status);
     var note = _noteController.text.trim();
-    if (scheduleOverride) {
-      final entered = await showAttendanceNoteSheet(
-        context,
-        title: 'Off schedule',
-        subtitle:
-            'Today is outside your assigned schedule. This note is added for you.',
-        confirmLabel: 'Check in',
-        requireNote: true,
-        initialNote: note.isEmpty
-            ? offScheduleCheckInNoteFor(locationOverridden: match == null)
-            : note,
-        emptyNoteMessage: 'A note is required to check in off schedule.',
+    if (override.reasons.isNotEmpty) {
+      final entered = await _confirmOverride(
+        checkingOut: false,
+        reasons: override.reasons,
       );
       if (entered == null || !mounted) return;
       note = entered;
       _noteController.text = entered;
-    } else if (overrideLocation && note.isEmpty) {
-      setState(() {
-        _actionError = 'Add a note to override your location.';
-      });
-      return;
     }
 
+    final match = _inRange;
     final nearest = match ?? (_matches.isNotEmpty ? _matches.first : null);
 
     setState(() {
@@ -219,8 +301,8 @@ class _AttendanceScreenState extends State<AttendanceScreen>
         longitude: position.longitude,
         workspaceId: nearest?.assignment.workspaceId,
         notes: note,
-        overrideLocation: locationOverride,
-        scheduleOverride: scheduleOverride,
+        overrideLocation: override.location,
+        scheduleOverride: override.schedule,
       );
       _noteController.clear();
       await AttendanceService.markPromptedToday();
@@ -241,10 +323,10 @@ class _AttendanceScreenState extends State<AttendanceScreen>
     }
   }
 
-  Future<void> _checkOut({bool overrideLocation = false}) async {
+  Future<void> _checkOut() async {
     if (_submitting) return;
     final status = _status;
-    if (status == null || !status.canCheckOut) return;
+    if (status == null) return;
 
     final position = _position;
     if (position == null) {
@@ -253,31 +335,16 @@ class _AttendanceScreenState extends State<AttendanceScreen>
       return;
     }
 
-    final checkedInId = status.record?.workspaceId;
-    GeofenceMatch? checkoutMatch;
-    for (final match in _matches) {
-      if (!match.withinRadius) continue;
-      if (checkedInId != null && match.assignment.workspaceId == checkedInId) {
-        checkoutMatch = match;
-        break;
-      }
-      checkoutMatch ??= match;
-    }
-
-    if (checkoutMatch == null && !overrideLocation) {
-      setState(() {
-        _actionError =
-            'You must be at your check-in workspace to check out, or override location with a note.';
-      });
-      return;
-    }
-
-    final note = _noteController.text.trim();
-    if (overrideLocation && note.isEmpty) {
-      setState(() {
-        _actionError = 'Add a note to override your location.';
-      });
-      return;
+    final override = _checkOutOverride(status);
+    var note = _noteController.text.trim();
+    if (override.reasons.isNotEmpty) {
+      final entered = await _confirmOverride(
+        checkingOut: true,
+        reasons: override.reasons,
+      );
+      if (entered == null || !mounted) return;
+      note = entered;
+      _noteController.text = entered;
     }
 
     setState(() {
@@ -290,7 +357,8 @@ class _AttendanceScreenState extends State<AttendanceScreen>
         latitude: position.latitude,
         longitude: position.longitude,
         notes: note,
-        overrideLocation: overrideLocation,
+        overrideLocation: override.location,
+        scheduleOverride: override.schedule,
       );
       _noteController.clear();
       StaffLocationTracker.instance.stop();
@@ -452,30 +520,10 @@ class _AttendanceScreenState extends State<AttendanceScreen>
           const SizedBox(height: 12),
           _errorBanner(_actionError!),
         ],
-        if (status.canCheckIn ||
-            status.canCheckOut ||
-            _canCheckInOffSchedule(status)) ...[
-          const SizedBox(height: 16),
-          _noteField(),
-          const SizedBox(height: 12),
-        ] else
-          const SizedBox(height: 16),
-        _actionButtons(status, inRange: inRange),
-        if ((status.canCheckIn || status.canCheckOut) &&
-            !inRange &&
-            !_locating)
-          Align(
-            alignment: Alignment.centerLeft,
-            child: TextButton.icon(
-              onPressed: _submitting
-                  ? null
-                  : () => status.canCheckOut
-                      ? _checkOut(overrideLocation: true)
-                      : _checkIn(overrideLocation: true),
-              icon: const Icon(Icons.edit_location_alt_outlined, size: 18),
-              label: const Text('Override location with a note'),
-            ),
-          ),
+        const SizedBox(height: 16),
+        _noteField(),
+        const SizedBox(height: 12),
+        _actionButtons(status),
         if (status.record != null) ...[
           const SizedBox(height: 16),
           _recordCard(status.record!),
@@ -512,7 +560,7 @@ class _AttendanceScreenState extends State<AttendanceScreen>
     } else if (status.canCheckIn) {
       headline = 'Not checked in';
       color = const Color(0xFFD97706);
-    } else if (_canCheckInOffSchedule(status)) {
+    } else if (_outsideWorkingHours(status)) {
       headline = 'Off schedule';
       color = const Color(0xFFD97706);
     } else {
@@ -559,6 +607,7 @@ class _AttendanceScreenState extends State<AttendanceScreen>
               ),
             ],
           ),
+          if (checkedIn && !checkedOut) const EmployerTrackingIndicator(),
           if (status.user != null) ...[
             const SizedBox(height: 8),
             Text(
@@ -678,7 +727,7 @@ class _AttendanceScreenState extends State<AttendanceScreen>
       textCapitalization: TextCapitalization.sentences,
       decoration: InputDecoration(
         labelText: 'Note (optional)',
-        hintText: 'Required when you override location',
+        hintText: 'Optional note for this attendance',
         filled: true,
         fillColor: Colors.white,
         border: OutlineInputBorder(
@@ -697,58 +746,49 @@ class _AttendanceScreenState extends State<AttendanceScreen>
     );
   }
 
-  Widget _actionButtons(AttendanceStatus status, {required bool inRange}) {
-    final offSchedule = _canCheckInOffSchedule(status) && !_locating;
-    final canCheckIn =
-        (status.canCheckIn && inRange && !_locating) || offSchedule;
-    final canCheckOut = status.canCheckOut && inRange && !_locating;
+  Widget _actionButtons(AttendanceStatus status) {
+    final checkedOut = status.record?.hasCheckedOut == true;
+    final checkedIn = status.record?.hasCheckedIn == true && !checkedOut;
+    if (checkedIn) {
+      return OutlinedButton.icon(
+        onPressed: _submitting ? null : _checkOut,
+        icon: const Icon(Icons.logout_rounded, size: 18),
+        label: const Text('Check out'),
+        style: OutlinedButton.styleFrom(
+          foregroundColor: AppTheme.navy,
+          side: const BorderSide(color: AppTheme.navy),
+          minimumSize: const Size.fromHeight(48),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
+          textStyle: const TextStyle(
+            fontFamily: 'Mulish-Regular',
+            fontSize: 14.5,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      );
+    }
 
-    return Row(
-      children: [
-        Expanded(
-          child: ElevatedButton.icon(
-            onPressed: (_submitting || !canCheckIn)
-                ? null
-                : () => offSchedule
-                    ? _checkIn(scheduleOverride: true)
-                    : _checkIn(),
-            icon: const Icon(Icons.login_rounded, size: 18),
-            label: const Text('Check in'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppTheme.navy,
-              foregroundColor: Colors.white,
-              disabledBackgroundColor: AppTheme.navy.withValues(alpha: 0.3),
-              elevation: 0,
-              minimumSize: const Size.fromHeight(48),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(14),
-              ),
-              textStyle: const TextStyle(fontWeight: FontWeight.w800),
-            ),
-          ),
+    return ElevatedButton.icon(
+      onPressed: _submitting ? null : _checkIn,
+      icon: const Icon(Icons.login_rounded, size: 18),
+      label: const Text('Check in'),
+      style: ElevatedButton.styleFrom(
+        backgroundColor: AppTheme.navy,
+        foregroundColor: Colors.white,
+        disabledBackgroundColor: AppTheme.navy.withValues(alpha: 0.3),
+        elevation: 0,
+        minimumSize: const Size.fromHeight(48),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
         ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: OutlinedButton.icon(
-            onPressed: (_submitting || !canCheckOut) ? null : _checkOut,
-            icon: const Icon(Icons.logout_rounded, size: 18),
-            label: const Text('Check out'),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: AppTheme.navy,
-              side: BorderSide(
-                color: canCheckOut
-                    ? AppTheme.navy
-                    : AppTheme.navy.withValues(alpha: 0.25),
-              ),
-              minimumSize: const Size.fromHeight(48),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(14),
-              ),
-              textStyle: const TextStyle(fontWeight: FontWeight.w800),
-            ),
-          ),
+        textStyle: const TextStyle(
+          fontFamily: 'Mulish-Regular',
+          fontSize: 14.5,
+          fontWeight: FontWeight.w700,
         ),
-      ],
+      ),
     );
   }
 
@@ -1158,6 +1198,149 @@ class _AttendanceScreenState extends State<AttendanceScreen>
           fontWeight: FontWeight.w600,
         ),
       ),
+    );
+  }
+}
+
+class _AttendanceOverride {
+  final List<String> reasons;
+  final bool location;
+  final bool schedule;
+
+  const _AttendanceOverride({
+    required this.reasons,
+    required this.location,
+    required this.schedule,
+  });
+}
+
+class _LocationOverrideDialog extends StatefulWidget {
+  final bool checkingOut;
+  final String initialNote;
+  final List<String> reasons;
+
+  const _LocationOverrideDialog({
+    required this.checkingOut,
+    required this.initialNote,
+    required this.reasons,
+  });
+
+  @override
+  State<_LocationOverrideDialog> createState() =>
+      _LocationOverrideDialogState();
+}
+
+class _LocationOverrideDialogState extends State<_LocationOverrideDialog> {
+  late final TextEditingController _noteController;
+  String _error = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _noteController = TextEditingController(text: widget.initialNote);
+  }
+
+  @override
+  void dispose() {
+    _noteController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: Colors.white,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      title: const Text(
+        'Override attendance?',
+        style: TextStyle(
+          color: AppTheme.navy,
+          fontWeight: FontWeight.w800,
+          fontSize: 18,
+        ),
+      ),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            widget.reasons.join('\n'),
+            style: const TextStyle(
+              color: AppTheme.mutedGrey,
+              fontWeight: FontWeight.w600,
+              height: 1.35,
+            ),
+          ),
+          const SizedBox(height: 14),
+          TextField(
+            controller: _noteController,
+            minLines: 1,
+            maxLines: 3,
+            textCapitalization: TextCapitalization.sentences,
+            decoration: InputDecoration(
+              labelText: 'Note',
+              filled: true,
+              fillColor: const Color(0xFFF8FAFC),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+          ),
+          if (_error.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(
+              _error,
+              style: const TextStyle(
+                color: Color(0xFFDC2626),
+                fontWeight: FontWeight.w600,
+                fontSize: 13,
+              ),
+            ),
+          ],
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text(
+            'Cancel',
+            style: TextStyle(
+              color: AppTheme.mutedGrey,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+        ElevatedButton(
+          onPressed: () {
+            final note = _noteController.text.trim();
+            if (note.isEmpty) {
+              setState(() {
+                _error = 'A note is required to override location.';
+              });
+              return;
+            }
+            Navigator.of(context).pop(note);
+          },
+          style: ElevatedButton.styleFrom(
+            backgroundColor: AppTheme.navy,
+            foregroundColor: Colors.white,
+            elevation: 0,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+          ),
+          child: Text(
+            widget.checkingOut
+                ? 'Override and check out'
+                : 'Override and check in',
+            style: const TextStyle(
+              fontFamily: 'Mulish-Regular',
+              fontSize: 14.5,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

@@ -25,6 +25,9 @@ class StaffLocationTracker with WidgetsBindingObserver {
   Timer? _timer;
   StreamSubscription<Position>? _positionSub;
   bool _started = false;
+
+  /// True while this shift is sharing location with the employer.
+  final ValueNotifier<bool> tracking = ValueNotifier<bool>(false);
   bool _pingInFlight = false;
   DateTime? _lastSentAt;
   int _generation = 0;
@@ -61,6 +64,7 @@ class StaffLocationTracker with WidgetsBindingObserver {
 
     final generation = ++_generation;
     _started = true;
+    tracking.value = true;
     WidgetsBinding.instance.addObserver(this);
 
     final backgroundGranted = await LocationService.requestBackgroundAccess();
@@ -95,6 +99,7 @@ class StaffLocationTracker with WidgetsBindingObserver {
   void stop() {
     _generation++;
     _started = false;
+    tracking.value = false;
     _timer?.cancel();
     _timer = null;
     _positionSub?.cancel();
