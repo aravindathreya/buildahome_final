@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 
@@ -5,6 +7,8 @@ import '../AttendanceScreen.dart';
 import '../app_theme.dart';
 import '../services/attendance_service.dart';
 import '../services/location_service.dart';
+import '../services/staff_location_tracker.dart';
+import '../widgets/attendance_note_sheet.dart';
 import '../widgets/dashboard_chrome.dart';
 
 /// Once per IST day, prompts staff who still need to check in.
@@ -134,7 +138,7 @@ class _AttendancePromptDialogState extends State<_AttendancePromptDialog> {
     });
   }
 
-  Future<void> _checkIn() async {
+  Future<void> _checkIn({bool overrideLocation = false}) async {
     if (_submitting) return;
     final position = _position;
     final match = _inRange;
@@ -143,13 +147,26 @@ class _AttendancePromptDialogState extends State<_AttendancePromptDialog> {
       await _refreshLocation();
       return;
     }
-    if (match == null) {
+    if (match == null && !overrideLocation) {
       setState(() {
         _error =
-            'You are outside all assigned workspaces. Move closer to check in.';
+            'You are outside all assigned workspaces. Move closer, or override location with a note.';
       });
       return;
     }
+
+    final note = await showAttendanceNoteSheet(
+      context,
+      title: overrideLocation ? 'Override location' : 'Check in',
+      subtitle: overrideLocation
+          ? 'You are outside your assigned workspace. A note is required to check in from here.'
+          : 'Add a note for this check-in, or leave it blank.',
+      confirmLabel: overrideLocation ? 'Override and check in' : 'Check in',
+      requireNote: overrideLocation,
+    );
+    if (note == null || !mounted) return;
+
+    final nearest = match ?? (_matches.isNotEmpty ? _matches.first : null);
 
     setState(() {
       _submitting = true;
@@ -160,14 +177,19 @@ class _AttendancePromptDialogState extends State<_AttendancePromptDialog> {
       await AttendanceService.checkIn(
         latitude: position.latitude,
         longitude: position.longitude,
-        workspaceId: match.assignment.workspaceId,
+        workspaceId: nearest?.assignment.workspaceId,
+        notes: note,
+        overrideLocation: overrideLocation,
       );
+      unawaited(StaffLocationTracker.instance.start());
       if (!mounted) return;
       Navigator.of(context).pop();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Checked in at ${match.assignment.workspaceName}',
+            nearest == null
+                ? 'Checked in'
+                : 'Checked in at ${nearest.assignment.workspaceName}',
           ),
           behavior: SnackBarBehavior.floating,
         ),
@@ -274,10 +296,23 @@ class _AttendancePromptDialogState extends State<_AttendancePromptDialog> {
             ),
           ),
         ),
+        if (canCheckIn && !inRange && !_loading)
+          TextButton(
+            onPressed: (_submitting || _locating)
+                ? null
+                : () => _checkIn(overrideLocation: true),
+            child: const Text(
+              'Override',
+              style: TextStyle(
+                color: AppTheme.navy,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
         ElevatedButton(
           onPressed: (_loading || _submitting || !canCheckIn || !inRange)
               ? null
-              : _checkIn,
+              : () => _checkIn(),
           style: ElevatedButton.styleFrom(
             backgroundColor: AppTheme.navy,
             foregroundColor: Colors.white,

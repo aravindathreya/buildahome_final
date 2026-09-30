@@ -16,6 +16,7 @@ import 'mobile_more_menu_service.dart';
 import 'mobile_quick_actions_service.dart';
 import 'notification_service.dart';
 import 'profile_picture_service.dart';
+import 'staff_location_tracker.dart';
 import '../widgets/client_home_tour.dart';
 
 /// Single logout path for client + staff so we never leave a half-cleared
@@ -25,6 +26,9 @@ class AppLogout {
 
   /// Instant in-memory wipe so the old UI cannot keep rendering user data.
   static void _clearInMemoryNow() {
+    try {
+      StaffLocationTracker.instance.stop();
+    } catch (_) {}
     try {
       ChatV1Socket.instance.disconnect();
     } catch (_) {}

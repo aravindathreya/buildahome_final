@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:intl/intl.dart';
@@ -6,6 +8,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'app_theme.dart';
 import 'services/attendance_service.dart';
 import 'services/location_service.dart';
+import 'services/staff_location_tracker.dart';
 import 'widgets/dashboard_chrome.dart';
 import 'widgets/themed_scaffold.dart';
 
@@ -31,6 +34,7 @@ class _AttendanceScreenState extends State<AttendanceScreen>
   String? _actionError;
   Position? _position;
   List<GeofenceMatch> _matches = const [];
+  final TextEditingController _noteController = TextEditingController();
 
   @override
   void initState() {
@@ -41,6 +45,7 @@ class _AttendanceScreenState extends State<AttendanceScreen>
 
   @override
   void dispose() {
+    _noteController.dispose();
     _tabController.dispose();
     super.dispose();
   }
@@ -136,7 +141,7 @@ class _AttendanceScreenState extends State<AttendanceScreen>
 
   GeofenceMatch? get _inRange => LocationService.nearestInRange(_matches);
 
-  Future<void> _checkIn() async {
+  Future<void> _checkIn({bool overrideLocation = false}) async {
     if (_submitting) return;
     final status = _status;
     if (status == null || !status.canCheckIn) return;
@@ -149,13 +154,23 @@ class _AttendanceScreenState extends State<AttendanceScreen>
     }
 
     final match = _inRange;
-    if (match == null) {
+    if (match == null && !overrideLocation) {
       setState(() {
         _actionError =
             'You must be inside an assigned workspace geofence to check in.';
       });
       return;
     }
+
+    final note = _noteController.text.trim();
+    if (overrideLocation && note.isEmpty) {
+      setState(() {
+        _actionError = 'Add a note to override your location.';
+      });
+      return;
+    }
+
+    final nearest = match ?? (_matches.isNotEmpty ? _matches.first : null);
 
     setState(() {
       _submitting = true;
@@ -166,9 +181,13 @@ class _AttendanceScreenState extends State<AttendanceScreen>
       final record = await AttendanceService.checkIn(
         latitude: position.latitude,
         longitude: position.longitude,
-        workspaceId: match.assignment.workspaceId,
+        workspaceId: nearest?.assignment.workspaceId,
+        notes: note,
+        overrideLocation: overrideLocation,
       );
+      _noteController.clear();
       await AttendanceService.markPromptedToday();
+      unawaited(StaffLocationTracker.instance.start());
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -185,7 +204,7 @@ class _AttendanceScreenState extends State<AttendanceScreen>
     }
   }
 
-  Future<void> _checkOut() async {
+  Future<void> _checkOut({bool overrideLocation = false}) async {
     if (_submitting) return;
     final status = _status;
     if (status == null || !status.canCheckOut) return;
@@ -197,8 +216,6 @@ class _AttendanceScreenState extends State<AttendanceScreen>
       return;
     }
 
-    // Checkout must be within the same workspace geofence (server-enforced).
-    // Prefer the checked-in workspace if we can resolve it.
     final checkedInId = status.record?.workspaceId;
     GeofenceMatch? checkoutMatch;
     for (final match in _matches) {
@@ -210,10 +227,18 @@ class _AttendanceScreenState extends State<AttendanceScreen>
       checkoutMatch ??= match;
     }
 
-    if (checkoutMatch == null) {
+    if (checkoutMatch == null && !overrideLocation) {
       setState(() {
         _actionError =
-            'You must be at your check-in workspace to check out.';
+            'You must be at your check-in workspace to check out, or override location with a note.';
+      });
+      return;
+    }
+
+    final note = _noteController.text.trim();
+    if (overrideLocation && note.isEmpty) {
+      setState(() {
+        _actionError = 'Add a note to override your location.';
       });
       return;
     }
@@ -227,7 +252,11 @@ class _AttendanceScreenState extends State<AttendanceScreen>
       await AttendanceService.checkOut(
         latitude: position.latitude,
         longitude: position.longitude,
+        notes: note,
+        overrideLocation: overrideLocation,
       );
+      _noteController.clear();
+      StaffLocationTracker.instance.stop();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -385,8 +414,28 @@ class _AttendanceScreenState extends State<AttendanceScreen>
           const SizedBox(height: 12),
           _errorBanner(_actionError!),
         ],
-        const SizedBox(height: 16),
+        if (status.canCheckIn || status.canCheckOut) ...[
+          const SizedBox(height: 16),
+          _noteField(),
+          const SizedBox(height: 12),
+        ] else
+          const SizedBox(height: 16),
         _actionButtons(status, inRange: inRange),
+        if ((status.canCheckIn || status.canCheckOut) &&
+            !inRange &&
+            !_locating)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              onPressed: _submitting
+                  ? null
+                  : () => status.canCheckOut
+                      ? _checkOut(overrideLocation: true)
+                      : _checkIn(overrideLocation: true),
+              icon: const Icon(Icons.edit_location_alt_outlined, size: 18),
+              label: const Text('Override location with a note'),
+            ),
+          ),
         if (status.record != null) ...[
           const SizedBox(height: 16),
           _recordCard(status.record!),
@@ -578,6 +627,33 @@ class _AttendanceScreenState extends State<AttendanceScreen>
     );
   }
 
+  Widget _noteField() {
+    return TextField(
+      controller: _noteController,
+      minLines: 1,
+      maxLines: 3,
+      textCapitalization: TextCapitalization.sentences,
+      decoration: InputDecoration(
+        labelText: 'Note (optional)',
+        hintText: 'Required when you override location',
+        filled: true,
+        fillColor: Colors.white,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: AppTheme.border),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: AppTheme.border),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: AppTheme.navy, width: 1.4),
+        ),
+      ),
+    );
+  }
+
   Widget _actionButtons(AttendanceStatus status, {required bool inRange}) {
     final canCheckIn = status.canCheckIn && inRange && !_locating;
     final canCheckOut = status.canCheckOut && inRange && !_locating;
@@ -659,6 +735,11 @@ class _AttendanceScreenState extends State<AttendanceScreen>
               : record.workspaceName),
           _kv('Check in', record.checkInAt ?? '—'),
           _kv('Check out', record.checkOutAt ?? '—'),
+          if (record.note != null) _kv('Note', record.note!),
+          if (record.checkInLocationOverride)
+            _kv('Check-in location', 'Overridden'),
+          if (record.checkOutLocationOverride)
+            _kv('Check-out location', 'Overridden'),
           if (record.distanceM != null)
             _kv('Distance', '${record.distanceM!.round()} m'),
         ],

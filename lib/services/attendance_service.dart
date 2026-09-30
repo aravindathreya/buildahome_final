@@ -113,6 +113,7 @@ class AttendanceService {
     required double longitude,
     int? workspaceId,
     String? notes,
+    bool overrideLocation = false,
   }) async {
     final token = await _apiToken();
     if (token == null) throw AttendanceException('Not logged in');
@@ -122,8 +123,9 @@ class AttendanceService {
       'latitude': latitude,
       'longitude': longitude,
       if (workspaceId != null) 'workspace_id': workspaceId,
-      if (notes != null && notes.trim().isNotEmpty) 'notes': notes.trim(),
+      if (overrideLocation) 'location_override': true,
     };
+    _putNote(payload, notes);
 
     final response = await ApiHttp.post(
       _uri('/api/attendance/check-in'),
@@ -138,6 +140,7 @@ class AttendanceService {
     required double latitude,
     required double longitude,
     String? notes,
+    bool overrideLocation = false,
   }) async {
     final token = await _apiToken();
     if (token == null) throw AttendanceException('Not logged in');
@@ -146,8 +149,9 @@ class AttendanceService {
       'api_token': token,
       'latitude': latitude,
       'longitude': longitude,
-      if (notes != null && notes.trim().isNotEmpty) 'notes': notes.trim(),
+      if (overrideLocation) 'location_override': true,
     };
+    _putNote(payload, notes);
 
     final response = await ApiHttp.post(
       _uri('/api/attendance/check-out'),
@@ -156,6 +160,53 @@ class AttendanceService {
     ).timeout(const Duration(seconds: 25));
 
     return _parseActionRecord(response.statusCode, response.body, 'check-out');
+  }
+
+  /// Saves a GPS poll. This does not check the user in or out.
+  /// Sent about every 15 minutes while the staff member is clocked in.
+  static Future<void> updateLocation({
+    required double latitude,
+    required double longitude,
+    double? accuracy,
+  }) async {
+    final token = await _apiToken();
+    if (token == null) throw AttendanceException('Not logged in');
+
+    final payload = <String, dynamic>{
+      'api_token': token,
+      'latitude': latitude,
+      'longitude': longitude,
+      if (accuracy != null) 'accuracy': accuracy,
+      'recorded_at': DateTime.now().toUtc().toIso8601String(),
+    };
+
+    final response = await ApiHttp.post(
+      _uri('/api/attendance/location'),
+      headers: _authHeaders(token),
+      body: jsonEncode(payload),
+    ).timeout(const Duration(seconds: 25));
+
+    final body = _decodeMap(response.body);
+    if (response.statusCode == 401) {
+      throw AttendanceException(
+        body['message']?.toString() ?? 'Unauthorized',
+      );
+    }
+    final okStatus = response.statusCode >= 200 && response.statusCode < 300;
+    final explicitFailure =
+        body.containsKey('success') && !_asBool(body['success']);
+    if (!okStatus || explicitFailure) {
+      throw AttendanceException(
+        body['message']?.toString() ?? 'Unable to update location',
+      );
+    }
+  }
+
+  static void _putNote(Map<String, dynamic> payload, String? notes) {
+    final note = notes?.trim() ?? '';
+    if (note.isEmpty) return;
+    payload['note'] = note;
+    payload['notes'] = note;
   }
 
   static Future<AttendanceHistory> getHistory({
@@ -526,6 +577,9 @@ class AttendanceRecord {
   final String? checkInAt;
   final String? checkOutAt;
   final String status;
+  final String? note;
+  final bool checkInLocationOverride;
+  final bool checkOutLocationOverride;
   final double? checkInDistanceM;
   final double? distanceM;
 
@@ -538,11 +592,15 @@ class AttendanceRecord {
     this.checkInAt,
     this.checkOutAt,
     required this.status,
+    this.note,
+    this.checkInLocationOverride = false,
+    this.checkOutLocationOverride = false,
     this.checkInDistanceM,
     this.distanceM,
   });
 
   factory AttendanceRecord.fromJson(Map<String, dynamic> json) {
+    final note = json['note']?.toString() ?? json['notes']?.toString();
     return AttendanceRecord(
       id: _asInt(json['id']),
       userId: _asInt(json['user_id']),
@@ -552,6 +610,9 @@ class AttendanceRecord {
       checkInAt: json['check_in_at']?.toString(),
       checkOutAt: json['check_out_at']?.toString(),
       status: json['status']?.toString() ?? '',
+      note: note == null || note.trim().isEmpty ? null : note.trim(),
+      checkInLocationOverride: _asBool(json['check_in_location_override']),
+      checkOutLocationOverride: _asBool(json['check_out_location_override']),
       checkInDistanceM: _asDouble(json['check_in_distance_m']),
       distanceM: _asDouble(json['distance_m']),
     );

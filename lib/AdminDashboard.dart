@@ -44,8 +44,10 @@ import 'utilities/role_app_bar_color.dart';
 import 'widgets/dashboard_chrome.dart';
 import 'widgets/modern_task_card.dart';
 import 'widgets/opening_project_splash.dart';
+import 'services/staff_location_tracker.dart';
 import 'widgets/attendance_prompt_dialog.dart';
 import 'widgets/profile_picture_dialog.dart';
+import 'widgets/staff_check_in_card.dart';
 import 'AttendanceScreen.dart';
 import 'Payments.dart';
 import 'Scheduler.dart';
@@ -102,6 +104,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
 
   @override
   void dispose() {
+    StaffLocationTracker.instance.stop();
     MobileBottomNavService.instance.revision
         .removeListener(_onBottomNavConfigChanged);
     _searchQueryNotifier.dispose();
@@ -149,6 +152,8 @@ class _AdminDashboardState extends State<AdminDashboard> {
     await Future<void>.delayed(const Duration(milliseconds: 350));
     if (!mounted) return;
     await maybePromptForProfilePicture(dialogContext());
+    if (!mounted) return;
+    unawaited(StaffLocationTracker.instance.syncWithShift());
   }
 
   Future<void> _onBottomNavTap(int index) async {
@@ -1410,6 +1415,7 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
             MobileQuickActionSurface.staffHome,
             force: true,
           ),
+          StaffCheckInCard.refreshAll(),
         ]);
       },
       color: _navy,
@@ -1457,7 +1463,7 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
                       ),
                     ),
                   if (currentUserRole != 'Client') ...[
-                    _buildAdminChatCard(),
+                    const StaffCheckInCard(),
                     const SizedBox(height: 18),
                     _buildOverviewCard(totalProjects, pendingCount),
                   ],
@@ -1686,111 +1692,6 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
               ),
             ),
           ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildAdminChatCard() {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(18),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x332563EB),
-            blurRadius: 18,
-            offset: Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Material(
-        color: Colors.transparent,
-        borderRadius: BorderRadius.circular(18),
-        clipBehavior: Clip.antiAlias,
-        child: Ink(
-          decoration: const BoxDecoration(
-            borderRadius: BorderRadius.all(Radius.circular(18)),
-            gradient: LinearGradient(
-              colors: [Color(0xFF1B254B), Color(0xFF2563EB)],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-          ),
-          child: InkWell(
-          onTap: _isNavigating
-              ? null
-              : () => _handleMenuTap(context, {
-                    'title': 'Chat V1',
-                    'route': () => ChatV1App.openQuick(tasksHint: _tasks),
-                  }),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 14, 16),
-            child: Row(
-              children: [
-                Container(
-                  width: 52,
-                  height: 52,
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.18),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(
-                    Icons.chat_bubble_rounded,
-                    color: Colors.white,
-                    size: 26,
-                  ),
-                ),
-                const SizedBox(width: 14),
-                const Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Chat',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 20,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: -0.3,
-                          height: 1.1,
-                        ),
-                      ),
-                      SizedBox(height: 4),
-                      Text(
-                        'Message your project team',
-                        style: TextStyle(
-                          color: Color(0xE6FFFFFF),
-                          fontSize: 13.5,
-                          fontWeight: FontWeight.w500,
-                          height: 1.25,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 10,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                  child: const Text(
-                    'Open',
-                    style: TextStyle(
-                      color: Color(0xFF1B254B),
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          ),
         ),
       ),
     );

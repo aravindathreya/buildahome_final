@@ -1,4 +1,5 @@
 import 'package:geolocator/geolocator.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import 'attendance_service.dart';
 
@@ -66,6 +67,28 @@ class LocationService {
     }
 
     return const LocationResult(ok: true);
+  }
+
+  /// Asks for background ("always") location after when-in-use is granted.
+  /// Returns whether background access was granted. When-in-use can still be
+  /// used for a manual check-in when this returns false.
+  static Future<bool> requestBackgroundAccess() async {
+    final current = await ensurePermission();
+    if (!current.ok) return false;
+
+    var permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.always) return true;
+
+    if (permission == LocationPermission.whileInUse) {
+      permission = await Geolocator.requestPermission();
+    }
+    if (permission == LocationPermission.always) return true;
+
+    final always = await Permission.locationAlways.request();
+    if (always.isGranted) return true;
+
+    permission = await Geolocator.checkPermission();
+    return permission == LocationPermission.always;
   }
 
   static Future<LocationResult> getCurrentPosition() async {
