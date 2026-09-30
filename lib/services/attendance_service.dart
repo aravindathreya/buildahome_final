@@ -114,6 +114,7 @@ class AttendanceService {
     int? workspaceId,
     String? notes,
     bool overrideLocation = false,
+    bool scheduleOverride = false,
   }) async {
     final token = await _apiToken();
     if (token == null) throw AttendanceException('Not logged in');
@@ -124,6 +125,7 @@ class AttendanceService {
       'longitude': longitude,
       if (workspaceId != null) 'workspace_id': workspaceId,
       if (overrideLocation) 'location_override': true,
+      if (scheduleOverride) 'schedule_override': true,
     };
     _putNote(payload, notes);
 

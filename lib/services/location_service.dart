@@ -1,5 +1,8 @@
+import 'dart:io';
+
 import 'package:geolocator/geolocator.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'attendance_service.dart';
 
@@ -115,6 +118,30 @@ class LocationService {
         error: 'Unable to get your current location. Please try again.',
       );
     }
+  }
+
+  static Future<bool> hasBackgroundAccess() async {
+    try {
+      final permission = await Geolocator.checkPermission();
+      return permission == LocationPermission.always;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Opens this app's system settings so background location can be changed.
+  /// iOS uses the `app-settings:` link. Android opens the app details screen.
+  static Future<bool> openBackgroundLocationSettings() async {
+    if (Platform.isIOS) {
+      try {
+        final opened = await launchUrl(
+          Uri.parse('app-settings:'),
+          mode: LaunchMode.externalApplication,
+        );
+        if (opened) return true;
+      } catch (_) {}
+    }
+    return Geolocator.openAppSettings();
   }
 
   static Future<void> openAppSettings() => Geolocator.openAppSettings();

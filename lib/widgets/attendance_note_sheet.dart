@@ -2,6 +2,13 @@ import 'package:flutter/material.dart';
 
 import '../app_theme.dart';
 
+const String offScheduleCheckInNote = 'Off schedule check-in';
+
+String offScheduleCheckInNoteFor({required bool locationOverridden}) {
+  if (!locationOverridden) return offScheduleCheckInNote;
+  return 'Off schedule check-in. Location overridden.';
+}
+
 /// Collects an attendance note. Returns null when dismissed.
 /// An empty string means the user confirmed without a note.
 Future<String?> showAttendanceNoteSheet(
@@ -10,6 +17,8 @@ Future<String?> showAttendanceNoteSheet(
   required String subtitle,
   required String confirmLabel,
   required bool requireNote,
+  String? initialNote,
+  String? emptyNoteMessage,
 }) {
   return showModalBottomSheet<String>(
     context: context,
@@ -24,6 +33,8 @@ Future<String?> showAttendanceNoteSheet(
       subtitle: subtitle,
       confirmLabel: confirmLabel,
       requireNote: requireNote,
+      initialNote: initialNote,
+      emptyNoteMessage: emptyNoteMessage,
     ),
   );
 }
@@ -33,12 +44,16 @@ class _AttendanceNoteSheet extends StatefulWidget {
   final String subtitle;
   final String confirmLabel;
   final bool requireNote;
+  final String? initialNote;
+  final String? emptyNoteMessage;
 
   const _AttendanceNoteSheet({
     required this.title,
     required this.subtitle,
     required this.confirmLabel,
     required this.requireNote,
+    this.initialNote,
+    this.emptyNoteMessage,
   });
 
   @override
@@ -46,8 +61,14 @@ class _AttendanceNoteSheet extends StatefulWidget {
 }
 
 class _AttendanceNoteSheetState extends State<_AttendanceNoteSheet> {
-  final TextEditingController _noteController = TextEditingController();
+  late final TextEditingController _noteController;
   String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _noteController = TextEditingController(text: widget.initialNote ?? '');
+  }
 
   @override
   void dispose() {
@@ -58,7 +79,10 @@ class _AttendanceNoteSheetState extends State<_AttendanceNoteSheet> {
   void _submit() {
     final note = _noteController.text.trim();
     if (widget.requireNote && note.isEmpty) {
-      setState(() => _error = 'Add a note to override your location.');
+      setState(() {
+        _error = widget.emptyNoteMessage ??
+            'Add a note to override your location.';
+      });
       return;
     }
     Navigator.of(context).pop(note);
@@ -105,7 +129,8 @@ class _AttendanceNoteSheetState extends State<_AttendanceNoteSheet> {
           const SizedBox(height: 14),
           TextField(
             controller: _noteController,
-            autofocus: widget.requireNote,
+            autofocus: widget.requireNote &&
+                (widget.initialNote == null || widget.initialNote!.isEmpty),
             minLines: 2,
             maxLines: 4,
             textCapitalization: TextCapitalization.sentences,

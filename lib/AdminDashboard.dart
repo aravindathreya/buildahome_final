@@ -47,6 +47,7 @@ import 'widgets/opening_project_splash.dart';
 import 'services/staff_location_tracker.dart';
 import 'widgets/attendance_prompt_dialog.dart';
 import 'widgets/profile_picture_dialog.dart';
+import 'widgets/background_location_banner.dart';
 import 'widgets/staff_check_in_card.dart';
 import 'AttendanceScreen.dart';
 import 'Payments.dart';
@@ -1463,6 +1464,7 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
                       ),
                     ),
                   if (currentUserRole != 'Client') ...[
+                    const BackgroundLocationBanner(),
                     const StaffCheckInCard(),
                     const SizedBox(height: 18),
                     _buildOverviewCard(totalProjects, pendingCount),

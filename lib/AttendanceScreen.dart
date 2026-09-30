@@ -9,6 +9,8 @@ import 'app_theme.dart';
 import 'services/attendance_service.dart';
 import 'services/location_service.dart';
 import 'services/staff_location_tracker.dart';
+import 'widgets/attendance_note_sheet.dart';
+import 'widgets/background_location_banner.dart';
 import 'widgets/dashboard_chrome.dart';
 import 'widgets/themed_scaffold.dart';
 
@@ -137,14 +139,31 @@ class _AttendanceScreenState extends State<AttendanceScreen>
       _matches = matches;
       _actionError = null;
     });
+    if (_canCheckInOffSchedule(status) && _noteController.text.trim().isEmpty) {
+      final inside = LocationService.nearestInRange(matches) != null;
+      _noteController.text = offScheduleCheckInNoteFor(
+        locationOverridden: !inside,
+      );
+    }
   }
 
   GeofenceMatch? get _inRange => LocationService.nearestInRange(_matches);
 
-  Future<void> _checkIn({bool overrideLocation = false}) async {
+  bool _canCheckInOffSchedule(AttendanceStatus? status) {
+    if (status == null) return false;
+    if (status.canCheckIn || status.canCheckOut) return false;
+    return status.record?.hasCheckedIn != true;
+  }
+
+  Future<void> _checkIn({
+    bool overrideLocation = false,
+    bool scheduleOverride = false,
+  }) async {
     if (_submitting) return;
     final status = _status;
-    if (status == null || !status.canCheckIn) return;
+    if (status == null) return;
+    if (!status.canCheckIn && !scheduleOverride) return;
+    if (scheduleOverride && !_canCheckInOffSchedule(status)) return;
 
     final position = _position;
     if (position == null) {
@@ -154,7 +173,8 @@ class _AttendanceScreenState extends State<AttendanceScreen>
     }
 
     final match = _inRange;
-    if (match == null && !overrideLocation) {
+    final locationOverride = overrideLocation || match == null && scheduleOverride;
+    if (match == null && !locationOverride) {
       setState(() {
         _actionError =
             'You must be inside an assigned workspace geofence to check in.';
@@ -162,8 +182,24 @@ class _AttendanceScreenState extends State<AttendanceScreen>
       return;
     }
 
-    final note = _noteController.text.trim();
-    if (overrideLocation && note.isEmpty) {
+    var note = _noteController.text.trim();
+    if (scheduleOverride) {
+      final entered = await showAttendanceNoteSheet(
+        context,
+        title: 'Off schedule',
+        subtitle:
+            'Today is outside your assigned schedule. This note is added for you.',
+        confirmLabel: 'Check in',
+        requireNote: true,
+        initialNote: note.isEmpty
+            ? offScheduleCheckInNoteFor(locationOverridden: match == null)
+            : note,
+        emptyNoteMessage: 'A note is required to check in off schedule.',
+      );
+      if (entered == null || !mounted) return;
+      note = entered;
+      _noteController.text = entered;
+    } else if (overrideLocation && note.isEmpty) {
       setState(() {
         _actionError = 'Add a note to override your location.';
       });
@@ -183,7 +219,8 @@ class _AttendanceScreenState extends State<AttendanceScreen>
         longitude: position.longitude,
         workspaceId: nearest?.assignment.workspaceId,
         notes: note,
-        overrideLocation: overrideLocation,
+        overrideLocation: locationOverride,
+        scheduleOverride: scheduleOverride,
       );
       _noteController.clear();
       await AttendanceService.markPromptedToday();
@@ -407,6 +444,7 @@ class _AttendanceScreenState extends State<AttendanceScreen>
       physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
       children: [
+        const BackgroundLocationBanner(),
         _statusHeader(status),
         const SizedBox(height: 14),
         _locationBanner(inRange: inRange),
@@ -414,7 +452,9 @@ class _AttendanceScreenState extends State<AttendanceScreen>
           const SizedBox(height: 12),
           _errorBanner(_actionError!),
         ],
-        if (status.canCheckIn || status.canCheckOut) ...[
+        if (status.canCheckIn ||
+            status.canCheckOut ||
+            _canCheckInOffSchedule(status)) ...[
           const SizedBox(height: 16),
           _noteField(),
           const SizedBox(height: 12),
@@ -471,6 +511,9 @@ class _AttendanceScreenState extends State<AttendanceScreen>
       color = const Color(0xFF059669);
     } else if (status.canCheckIn) {
       headline = 'Not checked in';
+      color = const Color(0xFFD97706);
+    } else if (_canCheckInOffSchedule(status)) {
+      headline = 'Off schedule';
       color = const Color(0xFFD97706);
     } else {
       headline = 'No check-in needed';
@@ -655,14 +698,20 @@ class _AttendanceScreenState extends State<AttendanceScreen>
   }
 
   Widget _actionButtons(AttendanceStatus status, {required bool inRange}) {
-    final canCheckIn = status.canCheckIn && inRange && !_locating;
+    final offSchedule = _canCheckInOffSchedule(status) && !_locating;
+    final canCheckIn =
+        (status.canCheckIn && inRange && !_locating) || offSchedule;
     final canCheckOut = status.canCheckOut && inRange && !_locating;
 
     return Row(
       children: [
         Expanded(
           child: ElevatedButton.icon(
-            onPressed: (_submitting || !canCheckIn) ? null : _checkIn,
+            onPressed: (_submitting || !canCheckIn)
+                ? null
+                : () => offSchedule
+                    ? _checkIn(scheduleOverride: true)
+                    : _checkIn(),
             icon: const Icon(Icons.login_rounded, size: 18),
             label: const Text('Check in'),
             style: ElevatedButton.styleFrom(
