@@ -17,6 +17,8 @@ class ChatV1Controller extends ChangeNotifier {
   final _api = ChatV1Api.instance;
   final _socket = ChatV1Socket.instance;
   bool _socketBound = false;
+  bool _catchingUp = false;
+  bool _catchUpAgain = false;
 
   String? salesSopId;
   String? currentUserId;
@@ -303,6 +305,7 @@ class ChatV1Controller extends ChangeNotifier {
         allProjectTasks.isNotEmpty;
     loading = true;
     error = null;
+    final socketSession = _socket.sessionGeneration;
     // Keep previous lists visible while refreshing so reopen feels instant.
     notifyListeners();
 
@@ -428,9 +431,14 @@ class ChatV1Controller extends ChangeNotifier {
         'workflows=${workflowConversations.length} dms=${dms.length}',
       );
 
+      if (_socket.sessionGeneration != socketSession) {
+        print('[ChatV1] CHAT SOCKET connect skipped (logged out during load)');
+        return;
+      }
+      // Bind before connect so a fast handshake cannot miss `connected`.
+      _ensureSocketBound();
       // ignore: unawaited_futures
       _socket.connect();
-      _ensureSocketBound();
     } catch (e) {
       error = e.toString().replaceFirst('Exception: ', '');
       print('[ChatV1] Load failed: $error');
@@ -527,6 +535,135 @@ class ChatV1Controller extends ChangeNotifier {
     if (_socketBound) return;
     _socketBound = true;
     _socket.on('message_created', _onSocketMessageCreated);
+    _socket.on('connected', (_) => _catchUpAfterReconnect());
+  }
+
+  /// Pull messages missed while the socket was down. Merges by id, so a
+  /// reconnect cannot duplicate or reorder rows already on screen.
+  Future<void> _catchUpAfterReconnect() async {
+    if (_catchingUp) {
+      _catchUpAgain = true;
+      return;
+    }
+    final ids = _messageCache.keys.toList();
+    if (ids.isEmpty) return;
+    _catchingUp = true;
+    var added = 0;
+    print(
+      '[ChatV1] CHAT SOCKET message catch-up start conversations=${ids.length}',
+    );
+    try {
+      for (final id in ids) {
+        final cached = _messageCache[id];
+        if (cached == null || cached.isEmpty) continue;
+        var cursor = cached.last.id;
+        final fresh = <ChatV1Message>[];
+        while (true) {
+          final rows = await _api.listMessages(
+            id,
+            afterId: cursor,
+            pageSize: 100,
+          );
+          if (rows.isEmpty) break;
+          final mapped = rows
+              .map(
+                (row) => ChatV1Mapper.messageFromJson(
+                  row,
+                  currentUserId: currentUserId ?? '',
+                ),
+              )
+              .toList();
+          final known = _messageCache[id]?.map((m) => m.id).toSet() ?? {};
+          for (final message in mapped) {
+            if (message.id.isEmpty || known.contains(message.id)) continue;
+            fresh.add(message);
+            known.add(message.id);
+          }
+          putCachedMessages(
+            id,
+            mergeConversationMessages(_messageCache[id] ?? const [], mapped),
+          );
+          final next = mapped.last.id;
+          if (next.isEmpty || next == cursor || rows.length < 100) break;
+          cursor = next;
+        }
+        if (fresh.isEmpty) continue;
+        added += fresh.length;
+        _applyCaughtUpPreview(id, fresh);
+      }
+    } catch (e) {
+      print('[ChatV1] CHAT SOCKET message catch-up error: $e');
+    } finally {
+      _catchingUp = false;
+      print('[ChatV1] CHAT SOCKET message catch-up done added=$added');
+      if (_catchUpAgain) {
+        _catchUpAgain = false;
+        _catchUpAfterReconnect();
+      }
+    }
+  }
+
+  void _applyCaughtUpPreview(String conversationId, List<ChatV1Message> fresh) {
+    fresh.sort((a, b) => a.sentAt.compareTo(b.sentAt));
+    final latest = _messageCache[conversationId]?.last ?? fresh.last;
+    final preview = ChatV1Mapper.formatLastMessagePreview({
+      'type': _previewType(latest),
+      'text': latest.body,
+      'sender': latest.authorName,
+      'is_from_me': latest.isMine,
+      'attachment_count': latest.attachments.length,
+      'attachment_name': latest.fileName,
+    });
+    final openId = _socket.joinedConversationId;
+    final isOpen = openId != null && openId == conversationId;
+    final extraUnread = isOpen ? 0 : fresh.where((m) => !m.isMine).length;
+    var changed = false;
+
+    List<ChatV1TaskItem> patchTasks(List<ChatV1TaskItem> source) {
+      return source.map((t) {
+        final id = t.conversationId ?? t.id;
+        if (id != conversationId) return t;
+        changed = true;
+        return t.copyWith(
+          lastActivity: latest.sentAt,
+          lastMessagePreview: preview.label,
+          hasMessages: !preview.isEmpty,
+          unread: t.unread + extraUnread,
+        );
+      }).toList();
+    }
+
+    taskConversations = patchTasks(taskConversations);
+    workflowConversations = patchTasks(workflowConversations);
+
+    List<ChatV1ChatItem> patchChats(List<ChatV1ChatItem> source) {
+      return source.map((c) {
+        if (c.id != conversationId) return c;
+        changed = true;
+        return c.copyWith(
+          lastMessage: preview.label,
+          lastActivity: latest.sentAt,
+          unread: c.unread + extraUnread,
+        );
+      }).toList();
+    }
+
+    channels = patchChats(channels);
+    customGroups = patchChats(customGroups);
+    dms = patchChats(dms);
+    if (changed) notifyListeners();
+  }
+
+  String _previewType(ChatV1Message message) {
+    switch (message.type) {
+      case ChatV1MsgType.image:
+        return 'image';
+      case ChatV1MsgType.pdf:
+      case ChatV1MsgType.document:
+        return 'document';
+      default:
+        return message.attachments.length > 1 ? 'attachments' : 'text';
+    }
   }
 
   void _onSocketMessageCreated(dynamic data) {
@@ -535,6 +672,15 @@ class ChatV1Controller extends ChangeNotifier {
     final conversationId = (unwrapped['conversationId'] ?? '').toString();
     if (conversationId.isEmpty) return;
     final message = Map<String, dynamic>.from(unwrapped['message'] as Map);
+    if (_messageCache.containsKey(conversationId)) {
+      upsertCachedMessage(
+        conversationId,
+        ChatV1Mapper.messageFromJson(
+          message,
+          currentUserId: currentUserId ?? '',
+        ),
+      );
+    }
 
     String senderName = '';
     final senderRaw = message['sender'];

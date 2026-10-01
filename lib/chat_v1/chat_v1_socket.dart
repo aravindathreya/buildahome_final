@@ -1,10 +1,20 @@
 import 'dart:async';
 
+import 'package:flutter/widgets.dart';
 import 'package:socket_io_client/socket_io_client.dart' as io;
 
 import 'chat_v1_api.dart';
 
 typedef ChatV1SocketHandler = void Function(dynamic data);
+
+/// Distinguishes a network drop from logout so reconnect never runs after logout.
+enum ChatV1SocketState {
+  loggedOut,
+  connecting,
+  connected,
+  disconnected,
+  reconnecting,
+}
 
 class _QueuedEmit {
   final String event;
@@ -14,9 +24,11 @@ class _QueuedEmit {
 
 /// Socket.IO client for Chat V1 (`/socket.io`, websocket-only).
 ///
-/// Lifecycle: create once → bind listeners → connect() once;
-/// never call connect() while Manager is already opening.
-class ChatV1Socket {
+/// One Manager per process. Reconnect reuses it. [disconnect] is logout only
+/// and stops reconnection. The server authenticates and joins the user's
+/// rooms on each new Engine.IO session; the open conversation is joined again
+/// from here because that room does not survive the previous WebSocket.
+class ChatV1Socket with WidgetsBindingObserver {
   ChatV1Socket._();
   static final ChatV1Socket instance = ChatV1Socket._();
 
@@ -32,11 +44,31 @@ class ChatV1Socket {
   Completer<void>? _connecting;
   bool _handlersBound = false;
   String? _boundToken;
+  bool _loggedOut = true;
+  bool _backgrounded = false;
+  bool _everConnected = false;
+  bool _observingLifecycle = false;
+  int _generation = 0;
+  ChatV1SocketState _state = ChatV1SocketState.loggedOut;
 
   final Map<String, List<ChatV1SocketHandler>> _listeners = {};
   final List<_QueuedEmit> _outboundQueue = [];
 
-  bool get isConnected => _socket?.connected == true;
+  ChatV1SocketState get state => _state;
+
+  /// Bumps on logout. In-flight chat loads compare this so they do not connect
+  /// again after the session was destroyed.
+  int get sessionGeneration => _generation;
+
+  /// True only when the namespace is up and the app has not been backgrounded
+  /// since the last connect. `socket.connected` alone stays true on a dead
+  /// mobile TCP socket, so it is not sufficient.
+  bool get isConnected =>
+      !_loggedOut &&
+      !_backgrounded &&
+      _state == ChatV1SocketState.connected &&
+      _socket?.connected == true;
+
   String? get joinedConversationId => _joinedConversationId;
 
   /// Coerce conversation id to int when numeric (server expects number).
@@ -79,6 +111,11 @@ class ChatV1Socket {
     };
   }
 
+  void _log(String message) => print(message);
+
+  bool _stillCurrent(int generation) =>
+      !_loggedOut && generation == _generation;
+
   String _managerReadyState() {
     try {
       return (_socket?.io.readyState ?? '').toString();
@@ -91,11 +128,6 @@ class ChatV1Socket {
 
   bool _managerIsOpen() => _managerReadyState() == 'open';
 
-  bool _managerIsClosedOrIdle() {
-    final rs = _managerReadyState();
-    return rs.isEmpty || rs.contains('closed');
-  }
-
   void _completeConnecting() {
     final c = _connecting;
     if (c != null && !c.isCompleted) {
@@ -103,64 +135,124 @@ class ChatV1Socket {
     }
   }
 
-  /// Ensure a live connection without overlapping Engine.IO opens.
+  void _ensureLifecycleObserver() {
+    if (_observingLifecycle) return;
+    _observingLifecycle = true;
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  void _removeLifecycleObserver() {
+    if (!_observingLifecycle) return;
+    _observingLifecycle = false;
+    WidgetsBinding.instance.removeObserver(this);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.hidden) {
+      if (_backgrounded || _loggedOut) return;
+      _backgrounded = true;
+      _log('CHAT SOCKET app paused');
+      return;
+    }
+    if (state != AppLifecycleState.resumed) return;
+    _log('CHAT SOCKET app resumed');
+    if (_loggedOut) return;
+    final suspect = _backgrounded || _socket?.connected != true;
+    if (!suspect && _state == ChatV1SocketState.connected) return;
+    connect();
+  }
+
+  Map<String, dynamic> _authFor(String? token) {
+    if (token == null || token.isEmpty) return <String, dynamic>{};
+    return <String, dynamic>{'api_token': token};
+  }
+
+  void _applyCredentials(String? token) {
+    final socket = _socket;
+    if (socket == null) return;
+    final auth = _authFor(token);
+    socket.auth = auth;
+    final options = socket.io.options;
+    if (options != null) {
+      options['auth'] = auth;
+      options['query'] = Map<String, dynamic>.from(auth);
+    }
+    if (_boundToken != token) {
+      _log('CHAT SOCKET auth updated on existing manager');
+    }
+    _boundToken = token;
+  }
+
+  void _createSocket(String? token) {
+    final auth = _authFor(token);
+    // Do not call enableForceNew(). socket_io_client already opens a second
+    // Manager when this namespace is cached, and forceNew does that on every
+    // io() call. This socket is created once and reused for reconnect.
+    // WebSocket-only stays: the browser client uses the same transport against
+    // this Nginx/Socket.IO server, and the Dart VM client cannot fall back to
+    // XHR polling.
+    final options = io.OptionBuilder()
+        .setPath(_path)
+        .setTransports(List<String>.from(_transports))
+        .setAuth(auth)
+        .setQuery(Map<String, dynamic>.from(auth))
+        .disableAutoConnect()
+        .enableReconnection()
+        .setReconnectionAttempts(_reconnectAttempts)
+        .setReconnectionDelay(_reconnectDelayMs)
+        .setReconnectionDelayMax(_reconnectDelayMaxMs)
+        .setTimeout(_timeoutMs)
+        .build();
+
+    _boundToken = token;
+    _handlersBound = false;
+    _socket = io.io(ChatV1Api.baseUrl, options);
+    _log(
+      'CHAT SOCKET created url=${ChatV1Api.baseUrl} path=$_path transport=websocket',
+    );
+    _bindSocketHandlers();
+  }
+
+  /// Ensure a live connection on the existing Manager.
+  ///
+  /// Does not open a second socket. A backgrounded app with `socket.connected`
+  /// still true is treated as stale and the current engine is closed so
+  /// Socket.IO's own reconnect can run.
   Future<void> connect() async {
-    if (_socket?.connected == true) return;
+    if (_loggedOut) _loggedOut = false;
     if (_connecting != null) return _connecting!.future;
+
+    if (!_backgrounded &&
+        _state == ChatV1SocketState.connected &&
+        _socket?.connected == true) {
+      return;
+    }
+
+    final generation = _generation;
+    _ensureLifecycleObserver();
 
     final completer = Completer<void>();
     _connecting = completer;
 
     try {
       final token = await ChatV1Api.instance.getApiToken();
-      final query = <String, dynamic>{
-        if (token != null) 'api_token': token,
-      };
-      final auth = <String, dynamic>{
-        if (token != null) 'api_token': token,
-      };
-
-      // Recreate only when api_token changes (session lifetime otherwise).
-      if (_socket != null && _boundToken != token) {
-        _handlersBound = false;
-        _socket!.dispose();
-        _socket = null;
-      }
+      if (!_stillCurrent(generation)) return;
 
       if (_socket == null) {
-        final options = io.OptionBuilder()
-            .setPath(_path)
-            .setTransports(List<String>.from(_transports))
-            .setAuth(auth)
-            .setQuery(query)
-            .enableForceNew()
-            .disableAutoConnect()
-            .enableReconnection()
-            .setReconnectionAttempts(_reconnectAttempts)
-            .setReconnectionDelay(_reconnectDelayMs)
-            .setReconnectionDelayMax(_reconnectDelayMaxMs)
-            .setTimeout(_timeoutMs)
-            .build();
-
-        _boundToken = token;
-        _handlersBound = false;
-        _socket = io.io(ChatV1Api.baseUrl, options);
-
-        // Bind ALL listeners BEFORE the single connect().
-        _bindSocketHandlers();
-        _socket!.connect();
-      } else if (_socket?.connected != true) {
-        if (_managerIsOpening()) {
-          // Manager already opening — wait; do not call connect().
-        } else if (_managerIsOpen()) {
-          // Transport open but namespace not connected — attach namespace.
-          _socket!.connect();
-        } else if (_managerIsClosedOrIdle()) {
-          _socket!.connect();
-        }
+        _createSocket(token);
+      } else {
+        _applyCredentials(token);
+        if (!_handlersBound) _bindSocketHandlers();
       }
+      if (!_stillCurrent(generation)) return;
 
-      if (_socket?.connected == true) {
+      _openOrRecover(generation, 'ensure');
+
+      if (_socket?.connected == true &&
+          _state == ChatV1SocketState.connected &&
+          !_backgrounded) {
         _completeConnecting();
       } else {
         await Future.any([
@@ -168,12 +260,58 @@ class ChatV1Socket {
           Future<void>.delayed(const Duration(seconds: 20)),
         ]);
       }
-    } catch (_) {
-      _completeConnecting();
+    } catch (e) {
+      _log('CHAT SOCKET connect error: $e');
     } finally {
       _completeConnecting();
       if (_connecting == completer) _connecting = null;
     }
+  }
+
+  void _openOrRecover(int generation, String reason) {
+    final socket = _socket;
+    if (socket == null || !_stillCurrent(generation)) return;
+    final manager = socket.io;
+    if (manager.reconnecting || _managerIsOpening()) {
+      _state = ChatV1SocketState.reconnecting;
+      _log('CHAT SOCKET reconnect already in progress ($reason)');
+      return;
+    }
+
+    final stale = _backgrounded && (socket.connected == true || _managerIsOpen());
+    if (stale) {
+      _state = ChatV1SocketState.reconnecting;
+      _log('CHAT SOCKET reconnect existing manager ($reason)');
+      final engine = manager.engine;
+      if (engine != null) {
+        try {
+          engine.close();
+          return;
+        } catch (e) {
+          _log('CHAT SOCKET connect error: $e');
+        }
+      }
+      // `socket.connected` can stay true after the phone drops the TCP socket.
+      socket.connected = false;
+      socket.connect();
+      return;
+    }
+
+    if (socket.connected == true && !_backgrounded) {
+      _state = ChatV1SocketState.connected;
+      _completeConnecting();
+      return;
+    }
+
+    _state = _everConnected
+        ? ChatV1SocketState.reconnecting
+        : ChatV1SocketState.connecting;
+    _log(
+      _everConnected
+          ? 'CHAT SOCKET reconnect existing manager ($reason)'
+          : 'CHAT SOCKET connecting',
+    );
+    socket.connect();
   }
 
   void _bindSocketHandlers() {
@@ -183,19 +321,57 @@ class ChatV1Socket {
 
     s
       ..onConnect((_) {
+        if (_loggedOut) return;
+        final recovered = _everConnected;
+        _everConnected = true;
+        _backgrounded = false;
+        _state = ChatV1SocketState.connected;
+        _log(recovered ? 'CHAT SOCKET reconnect success' : 'CHAT SOCKET connected');
         _flushOutboundQueue();
-        final id = _joinedConversationId;
-        if (id != null) _emitJoin(id);
+        _rejoinOpenConversation();
         _completeConnecting();
         _emitLocal('connected', null);
       })
-      ..onConnectError((_) {
-        _completeConnecting();
+      ..onDisconnect((dynamic reason) {
+        final why = (reason ?? 'unknown').toString();
+        _log('CHAT SOCKET DISCONNECTED: $why');
+        if (_loggedOut) return;
+        _state = ChatV1SocketState.reconnecting;
+        // Engine close (transport close, ping timeout, forced close) is
+        // retried by the Manager. An explicit server disconnect sets
+        // skipReconnect, so reuse this same socket once.
+        if (why == 'io server disconnect') {
+          scheduleMicrotask(() {
+            if (_loggedOut || _socket == null) return;
+            if (_socket!.io.reconnecting || _managerIsOpening()) return;
+            _log('CHAT SOCKET reconnect existing manager (server disconnect)');
+            _state = ChatV1SocketState.reconnecting;
+            _socket!.connect();
+          });
+        }
       })
-      ..onConnectTimeout((_) {
-        _completeConnecting();
+      ..onConnectError((dynamic err) {
+        _log('CHAT SOCKET connect error: $err');
+        if (_loggedOut) return;
+        if (_state != ChatV1SocketState.reconnecting) {
+          _state = ChatV1SocketState.disconnected;
+        }
       })
-      // App events
+      ..onReconnectAttempt((dynamic attempt) {
+        if (_loggedOut) return;
+        _state = ChatV1SocketState.reconnecting;
+        _log('CHAT SOCKET reconnect attempt $attempt');
+      })
+      ..onReconnectError((dynamic err) {
+        if (_loggedOut) return;
+        _log('CHAT SOCKET connect error: reconnect $err');
+      })
+      ..onReconnectFailed((_) {
+        if (_loggedOut) return;
+        _state = ChatV1SocketState.disconnected;
+        _log('CHAT SOCKET reconnect failed');
+      })
+      // App events. Bound once for this socket object; reconnect does not rebind.
       ..on('message_created', (data) => _emitLocal('message_created', data))
       ..on('typing_started', (data) => _emitLocal('typing_started', data))
       ..on('typing_stopped', (data) => _emitLocal('typing_stopped', data))
@@ -212,8 +388,22 @@ class ChatV1Socket {
           (data) => _emitLocal('attachment_uploaded', data));
   }
 
+  void _rejoinOpenConversation() {
+    final id = _joinedConversationId;
+    if (id == null) {
+      _log(
+        'CHAT SOCKET room rejoin skipped (server restores user rooms on connect)',
+      );
+      return;
+    }
+    _log('CHAT SOCKET room rejoin conversation=$id');
+    _emitJoin(id);
+  }
+
   void on(String event, ChatV1SocketHandler handler) {
-    _listeners.putIfAbsent(event, () => []).add(handler);
+    final list = _listeners.putIfAbsent(event, () => []);
+    if (list.contains(handler)) return;
+    list.add(handler);
   }
 
   void off(String event, [ChatV1SocketHandler? handler]) {
@@ -233,7 +423,7 @@ class ChatV1Socket {
   }
 
   void _emitOrQueue(String event, Map<String, dynamic> data) {
-    if (_socket?.connected == true) {
+    if (_socket?.connected == true && !_loggedOut && !_backgrounded) {
       _socket!.emit(event, data);
       return;
     }
@@ -259,20 +449,19 @@ class ChatV1Socket {
     final payload = <String, dynamic>{
       'conversation_id': convId(conversationId),
     };
-    if (_socket?.connected == true) {
+    if (_socket?.connected == true && !_loggedOut) {
       _socket!.emit('join_conversation', payload);
-    } else {
-      _emitOrQueue('join_conversation', payload);
     }
   }
 
   /// Ensure connection exists (wait if opening), then join room.
-  /// Does not force a reconnect when already connected.
+  /// Does not force a second Manager when already connected.
   Future<void> joinConversation(String conversationId) async {
     _joinedConversationId = conversationId;
-    if (_socket?.connected != true) {
+    if (!isConnected) {
       await connect();
     }
+    if (_loggedOut) return;
     _emitJoin(conversationId);
   }
 
@@ -283,7 +472,7 @@ class ChatV1Socket {
     final payload = <String, dynamic>{
       'conversation_id': convId(conversationId),
     };
-    if (_socket?.connected == true) {
+    if (_socket?.connected == true && !_loggedOut && !_backgrounded) {
       _socket!.emit('leave_conversation', payload);
     }
   }
@@ -294,12 +483,11 @@ class ChatV1Socket {
     String contentType = 'text',
     int? parentMessageId,
   }) async {
-    // Wait for existing connect if opening; do not force a new Engine open.
-    if (_socket?.connected != true) {
+    if (!isConnected) {
       await connect();
     }
     final socket = _socket;
-    if (socket == null || !socket.connected) return null;
+    if (_loggedOut || socket == null || socket.connected != true) return null;
 
     final payload = <String, dynamic>{
       'conversation_id': convId(conversationId),
@@ -391,14 +579,24 @@ class ChatV1Socket {
     });
   }
 
+  /// Logout only. Closes the engine, clears listeners, and does not reconnect.
   void disconnect() {
+    _loggedOut = true;
+    _state = ChatV1SocketState.loggedOut;
+    _backgrounded = false;
+    _everConnected = false;
+    _generation++;
+    _removeLifecycleObserver();
     _joinedConversationId = null;
     _outboundQueue.clear();
-    _handlersBound = false;
     _boundToken = null;
-    _socket?.dispose();
-    _socket = null;
+    _handlersBound = false;
     _completeConnecting();
     _connecting = null;
+    _log('CHAT SOCKET logout disconnect');
+    // dispose() sets the Manager's skipReconnect and clears socket listeners.
+    // The same socket object is kept so the next login does not call io()
+    // again and open a second Manager.
+    _socket?.dispose();
   }
 }

@@ -129,6 +129,8 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen>
   }
 
   Future<void> _resumeChat() async {
+    // Logout owns the socket. Resume must not start a new session.
+    if (_socket.state == ChatV1SocketState.loggedOut) return;
     await _socket.connect();
     if (mounted && _socket.isConnected) _catchUpMessages();
   }
@@ -146,6 +148,10 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen>
       // One bounded read sequence per reconnect/resume, never periodic polling.
       // Keep a private cursor so concurrent socket messages cannot skip a gap.
       String? cursor = _messages.isEmpty ? null : _messages.last.id;
+      print(
+        '[ChatV1] CHAT SOCKET message catch-up conversation=$_conversationId '
+        'after=${cursor ?? 'start'}',
+      );
       while (mounted) {
         final rows = await _api.listMessages(
           _conversationId,
