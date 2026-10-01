@@ -103,7 +103,8 @@ class _VirtualTourScreenState extends State<VirtualTourScreen> {
   }
 
   void _openPage(Uri uri) {
-    final controller = WebViewController()
+    late final WebViewController controller;
+    controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setBackgroundColor(_isometricBackground)
       ..setNavigationDelegate(
