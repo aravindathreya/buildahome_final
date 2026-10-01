@@ -150,7 +150,7 @@ class ChatV1Api {
   }) async {
     try {
       final uri = await _uri(path, query: query);
-      print('[ChatV1Api] GET $uri');
+      print('[ChatV1Api] GET ${uri.path}');
       final response = await ApiHttp.get(
         uri,
         headers: await _headers(),
@@ -243,7 +243,8 @@ class ChatV1Api {
           'page_size': '$pageSize',
         },
       );
-      return _asMapList(data, keys: const ['conversations', 'items', 'results']);
+      return _asMapList(data,
+          keys: const ['conversations', 'items', 'results']);
     } on ChatV1ApiException catch (e) {
       // Older servers block Client on context-scoped list even when they are
       // channel members. Fall back to membership list, then filter to this SOP.
@@ -373,7 +374,8 @@ class ChatV1Api {
 
   Future<List<Map<String, dynamic>>> listMembers(String salesSopId) async {
     final data = await get('$chatPrefix/sales-sop/$salesSopId/members');
-    return _asMapList(data, keys: const ['members', 'users', 'items', 'results']);
+    return _asMapList(data,
+        keys: const ['members', 'users', 'items', 'results']);
   }
 
   Future<Map<String, dynamic>> createConversation({
@@ -392,6 +394,21 @@ class ChatV1Api {
     });
     if (data is Map) return Map<String, dynamic>.from(data);
     throw ChatV1ApiException('Unexpected create conversation response');
+  }
+
+  Future<List<Map<String, dynamic>>> listMentionParticipants(
+    String conversationId,
+  ) async {
+    final result = <Map<String, dynamic>>[];
+    for (var page = 1;; page++) {
+      final data = await get(
+        '$chatPrefix/conversations/$conversationId/participants',
+        query: {'page_size': '100', 'page': '$page'},
+      );
+      final rows = _asMapList(data, keys: const ['participants']);
+      result.addAll(rows);
+      if (rows.length < 100) return result;
+    }
   }
 
   // ── Messages ─────────────────────────────────────────────────────────────

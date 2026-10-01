@@ -187,17 +187,13 @@ class ChatV1Socket {
         final id = _joinedConversationId;
         if (id != null) _emitJoin(id);
         _completeConnecting();
+        _emitLocal('connected', null);
       })
       ..onConnectError((_) {
         _completeConnecting();
       })
       ..onConnectTimeout((_) {
         _completeConnecting();
-      })
-      ..onReconnect((_) {
-        _flushOutboundQueue();
-        final id = _joinedConversationId;
-        if (id != null) _emitJoin(id);
       })
       // App events
       ..on('message_created', (data) => _emitLocal('message_created', data))
@@ -241,6 +237,11 @@ class ChatV1Socket {
       _socket!.emit(event, data);
       return;
     }
+    // Typing and room joins expire while offline; the current room is rejoined
+    // on connect. Do not replay stale typing or old room subscriptions.
+    if (event == 'typing_start' ||
+        event == 'typing_stop' ||
+        event == 'join_conversation') return;
     // Do NOT start another connection attempt — queue until onConnect flush.
     _outboundQueue.add(_QueuedEmit(event, data));
   }
