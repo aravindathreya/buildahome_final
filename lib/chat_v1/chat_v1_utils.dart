@@ -34,18 +34,18 @@ class ChatV1Utils {
     final canonical = canonicalChannelTitle(title);
     final n = _normalizeTitle(canonical);
     for (var i = 0; i < channelTitles.length; i++) {
-      final tn = _normalizeTitle(channelTitles[i]);
-      if (n == tn || n.startsWith('$tn ')) return i;
+      if (n == _normalizeTitle(channelTitles[i])) return i;
     }
     return 999;
   }
 
+  /// Exact title match only. A custom group such as "Architectural review"
+  /// must not be treated as the Architectural channel and hide it.
   static bool isKnownChannelTitle(String title) {
     if (isUpdateAndDocChannel(title)) return true;
     final n = _normalizeTitle(title);
     for (final t in channelTitles) {
-      final tn = _normalizeTitle(t);
-      if (n == tn || n.startsWith('$tn ')) return true;
+      if (n == _normalizeTitle(t)) return true;
     }
     return false;
   }
@@ -63,8 +63,7 @@ class ChatV1Utils {
     if (isUpdateAndDocChannel(title)) return 'Update and Doc';
     final n = _normalizeTitle(title);
     for (final t in channelTitles) {
-      final tn = _normalizeTitle(t);
-      if (n == tn || n.startsWith('$tn ')) return t;
+      if (n == _normalizeTitle(t)) return t;
     }
     return title;
   }

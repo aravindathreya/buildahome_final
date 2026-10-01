@@ -456,6 +456,8 @@ class UserDashboardLayoutState extends State<UserDashboardLayout> {
       nav.pop();
       return;
     }
+    final role = (_userRole ?? '').trim().toLowerCase();
+    if (role == 'client') return;
     Navigator.pushReplacement(
       context,
       MaterialPageRoute(builder: (context) => AdminDashboard()),
@@ -788,15 +790,11 @@ class UserDashboardLayoutState extends State<UserDashboardLayout> {
       canPop: !widget.fromAdminDashboard,
       onPopInvokedWithResult: (didPop, _) {
         if (didPop || !widget.fromAdminDashboard) return;
+        // A screen pushed on top (chat, tasks, …) owns this back press.
+        final route = ModalRoute.of(context);
+        if (route != null && !route.isCurrent) return;
         final nav = Navigator.of(context);
-        if (nav.canPop()) {
-          nav.pop();
-        } else {
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (context) => AdminDashboard()),
-          );
-        }
+        if (nav.canPop()) nav.pop();
       },
       child: Stack(
         children: [

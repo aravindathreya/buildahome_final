@@ -371,7 +371,9 @@ class ChatV1Controller extends ChangeNotifier {
       loading = false;
       notifyListeners();
       print(
-        '[ChatV1] Phase1 channels=${channels.length} groups=${customGroups.length}',
+        '[ChatV1] Phase1 channels=${channels.length} '
+        '[${channels.map((c) => c.title).join(', ')}] '
+        'groups=${customGroups.length}',
       );
 
       // Phase 2 — secondary lists in parallel (don't block home UI).
@@ -458,23 +460,25 @@ class ChatV1Controller extends ChangeNotifier {
   void _applyConversations(List<Map<String, dynamic>> conversations) {
     final channelItems = <ChatV1ChatItem>[];
     final customItems = <ChatV1ChatItem>[];
-    final seenChannelKeys = <String>{};
+    final seenChannelIds = <String>{};
     final seenCustomIds = <String>{};
 
     for (final row in conversations) {
-      final type = (row['conversation_type'] ?? '').toString();
+      final type = (row['conversation_type'] ?? '').toString().toLowerCase();
       final contextType = (row['context_type'] ?? '').toString();
       final title = (row['title'] ?? row['name'] ?? '').toString();
 
       if (type == 'direct') continue;
+      if (contextType == 'erp_task' || contextType == 'workflow_item_run') {
+        continue;
+      }
 
+      // Web creates these as conversation_type=channel on the sales SOP.
+      // Exact known titles still count (older rows stored as groups).
       if (type == 'channel' || ChatV1Utils.isKnownChannelTitle(title)) {
         final item =
             ChatV1Mapper.conversationToChatItem(row, forceFixed: true);
-        final dedupeKey =
-            ChatV1Utils.canonicalChannelTitle(item.title).toLowerCase();
-        if (seenChannelKeys.contains(dedupeKey)) continue;
-        seenChannelKeys.add(dedupeKey);
+        if (!seenChannelIds.add(item.id)) continue;
         channelItems.add(item);
       } else if (type == 'group' || contextType == 'sales_sop') {
         final item = ChatV1Mapper.conversationToChatItem(row);
@@ -484,12 +488,41 @@ class ChatV1Controller extends ChangeNotifier {
       }
     }
 
-    channelItems.sort((a, b) => ChatV1Utils.channelSortIndex(a.title)
-        .compareTo(ChatV1Utils.channelSortIndex(b.title)));
-
-    channels = channelItems;
+    channels = _preferUniqueChannelTitles(channelItems);
     customGroups = customItems
       ..sort((a, b) => b.lastActivity.compareTo(a.lastActivity));
+  }
+
+  /// Collapse only exact known titles (two "General" rows). Keep every other
+  /// channel. When both a real channel and a same-named group exist, keep
+  /// the `conversation_type=channel` row.
+  List<ChatV1ChatItem> _preferUniqueChannelTitles(
+    List<ChatV1ChatItem> items,
+  ) {
+    final byTitle = <String, ChatV1ChatItem>{};
+    final others = <ChatV1ChatItem>[];
+    for (final item in items) {
+      if (!ChatV1Utils.isKnownChannelTitle(item.title)) {
+        others.add(item);
+        continue;
+      }
+      final key = ChatV1Utils.canonicalChannelTitle(item.title).toLowerCase();
+      final prev = byTitle[key];
+      if (prev == null || _preferChannelRow(item, prev)) {
+        byTitle[key] = item;
+      }
+    }
+    final out = [...byTitle.values, ...others];
+    out.sort((a, b) => ChatV1Utils.channelSortIndex(a.title)
+        .compareTo(ChatV1Utils.channelSortIndex(b.title)));
+    return out;
+  }
+
+  bool _preferChannelRow(ChatV1ChatItem next, ChatV1ChatItem prev) {
+    final nextIs = (next.conversationType ?? '').toLowerCase() == 'channel';
+    final prevIs = (prev.conversationType ?? '').toLowerCase() == 'channel';
+    if (nextIs != prevIs) return nextIs;
+    return next.lastActivity.isAfter(prev.lastActivity);
   }
 
   void _applySecondaryLists({

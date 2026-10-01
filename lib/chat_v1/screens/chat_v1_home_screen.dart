@@ -14,12 +14,14 @@ import 'chat_v1_create_group_sheet.dart';
 class ChatV1HomeScreen extends StatefulWidget {
   final ValueChanged<ChatV1ChatItem> onOpenChat;
   final VoidCallback onOpenSearch;
+  final VoidCallback? onBack;
   final String? salesSopId;
 
   const ChatV1HomeScreen({
     super.key,
     required this.onOpenChat,
     required this.onOpenSearch,
+    this.onBack,
     this.salesSopId,
   });
 
@@ -348,6 +350,8 @@ class _ChatV1HomeScreenState extends State<ChatV1HomeScreen> {
             onPressed: () {
               if (selecting) {
                 setState(() => _selected.clear());
+              } else if (widget.onBack != null) {
+                widget.onBack!();
               } else {
                 Navigator.of(context).maybePop();
               }

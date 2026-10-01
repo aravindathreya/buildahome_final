@@ -229,22 +229,35 @@ class ChatV1Api {
 
   // ── Conversations ────────────────────────────────────────────────────────
 
+  /// Project chats for one sales SOP — the same `/api/v1/chat/conversations`
+  /// list the web sidebar uses.
+  ///
+  /// Channels are `conversation_type=channel` rooms created on the web
+  /// (General, Internal, Architectural, …). The mixed list is sorted by
+  /// recent activity and paged, so a quiet channel disappears from mobile
+  /// when it is not on page 1. This loads every page, then merges the
+  /// channel-only query the web uses so those rooms always come through.
   Future<List<Map<String, dynamic>>> listConversations({
     required String contextType,
     required String contextId,
     int pageSize = 100,
   }) async {
+    final scoped = <String, String>{
+      'context_type': contextType,
+      'context_id': contextId,
+    };
     try {
-      final data = await get(
-        '$chatPrefix/conversations',
-        query: {
-          'context_type': contextType,
-          'context_id': contextId,
-          'page_size': '$pageSize',
-        },
-      );
-      return _asMapList(data,
-          keys: const ['conversations', 'items', 'results']);
+      final mixed = await _listConversationPages(scoped, pageSize: pageSize);
+      var channels = const <Map<String, dynamic>>[];
+      try {
+        channels = await _listConversationPages(
+          {...scoped, 'conversation_type': 'channel'},
+          pageSize: pageSize,
+        );
+      } catch (e) {
+        print('[ChatV1Api] Channel list warning (using mixed list): $e');
+      }
+      return _mergeConversationRows([...channels, ...mixed]);
     } on ChatV1ApiException catch (e) {
       // Older servers block Client on context-scoped list even when they are
       // channel members. Fall back to membership list, then filter to this SOP.
@@ -263,20 +276,140 @@ class ChatV1Api {
     String salesSopId, {
     int pageSize = 100,
   }) async {
-    final data = await get(
-      '$chatPrefix/conversations',
-      query: {'page_size': '$pageSize'},
-    );
-    final all =
-        _asMapList(data, keys: const ['conversations', 'items', 'results']);
+    List<Map<String, dynamic>> rows;
+    try {
+      final channels = await _listConversationPages(
+        const {'conversation_type': 'channel'},
+        pageSize: pageSize,
+      );
+      final groups = await _listConversationPages(
+        const {'conversation_type': 'group'},
+        pageSize: pageSize,
+      );
+      rows = _mergeConversationRows([...channels, ...groups]);
+      // A server that ignores conversation_type answers with an empty list.
+      // Page the full membership list so this project's channels still arrive.
+      if (channels.isEmpty) {
+        rows = _mergeConversationRows([
+          ...rows,
+          ...await _listConversationPages(const {}, pageSize: pageSize),
+        ]);
+      }
+    } catch (e) {
+      print(
+        '[ChatV1Api] Typed member list failed ($e) — paging all conversations',
+      );
+      rows = await _listConversationPages(const {}, pageSize: pageSize);
+    }
     final sid = salesSopId.trim();
-    return all.where((row) {
+    return rows.where((row) {
       final contextType = (row['context_type'] ?? '').toString();
       final contextId = (row['context_id'] ?? '').toString();
-      final type = (row['conversation_type'] ?? '').toString();
+      final type = (row['conversation_type'] ?? '').toString().toLowerCase();
       if (contextType != 'sales_sop' || contextId != sid) return false;
       return type == 'channel' || type == 'group';
     }).toList();
+  }
+
+  static const int _maxConversationPages = 40;
+
+  /// Walks `page` / `next_cursor` until the server has no further rows.
+  /// Stops if a later page repeats ids (server ignored the page parameter).
+  Future<List<Map<String, dynamic>>> _listConversationPages(
+    Map<String, String> query, {
+    int pageSize = 100,
+  }) async {
+    final merged = <Map<String, dynamic>>[];
+    final seen = <String>{};
+    String? cursor;
+    for (var page = 1; page <= _maxConversationPages; page++) {
+      final data = await get(
+        '$chatPrefix/conversations',
+        query: {
+          ...query,
+          'page_size': '$pageSize',
+          if (cursor == null) 'page': '$page',
+          if (cursor != null) 'cursor': cursor,
+        },
+      );
+      final rows = _asMapList(
+        data,
+        keys: const ['conversations', 'items', 'results'],
+      );
+      var added = 0;
+      for (final row in rows) {
+        final id = (row['id'] ?? row['conversation_id'] ?? '').toString();
+        if (id.isNotEmpty && !seen.add(id)) continue;
+        merged.add(row);
+        added++;
+      }
+      if (rows.isEmpty || added == 0) break;
+      final next = _nextCursor(data);
+      final more = _hasAnotherPage(data, page, rows.length, pageSize) ||
+          (next != null && next.isNotEmpty && next != cursor);
+      if (!more) break;
+      if (next != null && next.isNotEmpty && next != cursor) {
+        cursor = next;
+      } else if (rows.length < pageSize) {
+        break;
+      }
+    }
+    return merged;
+  }
+
+  List<Map<String, dynamic>> _mergeConversationRows(
+    Iterable<Map<String, dynamic>> rows,
+  ) {
+    final byId = <String, Map<String, dynamic>>{};
+    final noId = <Map<String, dynamic>>[];
+    for (final row in rows) {
+      final id = (row['id'] ?? row['conversation_id'] ?? '').toString();
+      if (id.isEmpty) {
+        noId.add(row);
+      } else {
+        byId.putIfAbsent(id, () => row);
+      }
+    }
+    return [...byId.values, ...noId];
+  }
+
+  String? _nextCursor(dynamic data) {
+    if (data is! Map) return null;
+    final sources = <Map>[
+      data,
+      if (data['meta'] is Map) data['meta'] as Map,
+      if (data['pagination'] is Map) data['pagination'] as Map,
+    ];
+    for (final src in sources) {
+      for (final key in const ['next_cursor', 'nextCursor']) {
+        final v = src[key]?.toString().trim();
+        if (v != null && v.isNotEmpty && v.toLowerCase() != 'null') return v;
+      }
+    }
+    return null;
+  }
+
+  bool _hasAnotherPage(
+    dynamic data,
+    int page,
+    int rowCount,
+    int pageSize,
+  ) {
+    if (data is Map) {
+      final sources = <Map>[
+        data,
+        if (data['meta'] is Map) data['meta'] as Map,
+        if (data['pagination'] is Map) data['pagination'] as Map,
+      ];
+      for (final src in sources) {
+        final hasNext = src['has_next'] ?? src['has_more'] ?? src['hasNext'];
+        if (hasNext is bool) return hasNext;
+        if (hasNext is num) return hasNext != 0;
+        final pages = src['pages'] ?? src['total_pages'] ?? src['page_count'];
+        if (pages is num && pages > 0) return page < pages;
+      }
+    }
+    return rowCount >= pageSize;
   }
 
   Future<List<Map<String, dynamic>>> listDirectConversations({

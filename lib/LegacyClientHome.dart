@@ -8,7 +8,6 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:shimmer/shimmer.dart';
 
 import 'AnimationHelper.dart';
-import 'AdminDashboard.dart';
 import 'Gallery.dart' hide AnimatedWidgetSlide, SlideDirection;
 import 'NotesAndComments.dart';
 import 'Payments.dart' hide AnimatedWidgetSlide, SlideDirection;
@@ -74,10 +73,10 @@ class LegacyClientHomeState extends State<LegacyClientHome> {
       canPop: !widget.fromAdminDashboard,
       onPopInvokedWithResult: (didPop, _) {
         if (didPop || !widget.fromAdminDashboard) return;
+        final route = ModalRoute.of(context);
+        if (route != null && !route.isCurrent) return;
         final nav = Navigator.of(context);
-        if (nav.canPop()) {
-          nav.pop();
-        }
+        if (nav.canPop()) nav.pop();
       },
       child: Scaffold(
         backgroundColor: AppTheme.backgroundPrimary,
@@ -109,15 +108,7 @@ class LegacyClientHomeState extends State<LegacyClientHome> {
                       InkWell(
                         onTap: () {
                           final nav = Navigator.of(context);
-                          if (nav.canPop()) {
-                            nav.pop();
-                          } else {
-                            Navigator.pushReplacement(
-                              context,
-                              MaterialPageRoute(
-                                  builder: (context) => AdminDashboard()),
-                            );
-                          }
+                          if (nav.canPop()) nav.pop();
                         },
                         borderRadius: BorderRadius.circular(12),
                         child: Container(

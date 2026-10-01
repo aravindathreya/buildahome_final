@@ -13,6 +13,31 @@ import 'screens/chat_v1_home_screen.dart';
 import 'screens/chat_v1_search_screen.dart';
 import 'screens/chat_v1_task_list_screen.dart';
 
+/// Notifies when the chat navigator pushes or pops an inner screen.
+class _ChatInnerObserver extends NavigatorObserver {
+  _ChatInnerObserver(this.onChanged);
+
+  final VoidCallback onChanged;
+
+  void _notify() {
+    WidgetsBinding.instance.addPostFrameCallback((_) => onChanged());
+  }
+
+  @override
+  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) => _notify();
+
+  @override
+  void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) => _notify();
+
+  @override
+  void didRemove(Route<dynamic> route, Route<dynamic>? previousRoute) =>
+      _notify();
+
+  @override
+  void didReplace({Route<dynamic>? newRoute, Route<dynamic>? oldRoute}) =>
+      _notify();
+}
+
 /// ChatV1 entry — wired to `/api/v1/chat` + Socket.IO.
 class ChatV1App extends StatefulWidget {
   final String? salesSopId;
@@ -155,15 +180,54 @@ class ChatV1App extends StatefulWidget {
 }
 
 class _ChatV1AppState extends State<ChatV1App> {
+  final _navKey = GlobalKey<NavigatorState>();
+  late final NavigatorObserver _innerObserver = _ChatInnerObserver(_syncInner);
+  bool _innerCanPop = false;
+
+  void _syncInner() {
+    final next = _navKey.currentState?.canPop() ?? false;
+    if (!mounted || next == _innerCanPop) return;
+    setState(() => _innerCanPop = next);
+  }
+
+  /// A thread, task list, or search closes first.
+  /// From the chat list, back returns to the screen that opened chat.
+  void _handleBack() {
+    final nested = _navKey.currentState;
+    if (nested != null && nested.canPop()) {
+      nested.pop();
+      return;
+    }
+    final nav = Navigator.of(context);
+    if (nav.canPop()) nav.pop();
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Theme(
-      data: ChatV1Theme.data(dark: true),
-      child: Builder(
-        builder: (context) => ChatV1HomeScreen(
-          salesSopId: widget.salesSopId,
-          onOpenChat: (item) => _openChat(context, item),
-          onOpenSearch: () => _open(context, const ChatV1SearchScreen()),
+    return PopScope(
+      // Only the chat list may leave this route. An open thread stays inside chat.
+      canPop: !_innerCanPop,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        _navKey.currentState?.pop();
+      },
+      child: Theme(
+        data: ChatV1Theme.data(dark: true),
+        child: Navigator(
+          key: _navKey,
+          observers: [_innerObserver],
+          onGenerateRoute: (settings) {
+            return MaterialPageRoute<void>(
+              settings: settings,
+              builder: (routeContext) => ChatV1HomeScreen(
+                salesSopId: widget.salesSopId,
+                onBack: _handleBack,
+                onOpenChat: (item) => _openChat(routeContext, item),
+                onOpenSearch: () =>
+                    _open(routeContext, const ChatV1SearchScreen()),
+              ),
+            );
+          },
         ),
       ),
     );
