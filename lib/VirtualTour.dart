@@ -6,6 +6,48 @@ import 'app_theme.dart';
 import 'services/isometric_view_service.dart';
 import 'services/session_manager.dart';
 
+/// Dark grey behind the server isometric page and its WebView.
+const Color _isometricBackground = Color(0xFF3A3A3A);
+
+/// The isometric page is hosted on the server. Force its page and WebGL
+/// clear color to dark grey after it loads.
+const String _isometricBackgroundScript = r'''
+(function () {
+  var css = '#3A3A3A';
+  var hex = 0x3A3A3A;
+  function paintElement(el) {
+    if (!el || !el.style) return;
+    el.style.background = css;
+    el.style.backgroundColor = css;
+  }
+  paintElement(document.documentElement);
+  paintElement(document.body);
+  var nodes = document.querySelectorAll('body, #app, #root, canvas, .viewer, .scene');
+  for (var i = 0; i < nodes.length; i++) {
+    paintElement(nodes[i]);
+    if (nodes[i].parentElement) paintElement(nodes[i].parentElement);
+  }
+  var THREE = window.THREE;
+  function paintObject(obj) {
+    if (!obj || typeof obj !== 'object') return;
+    try {
+      if (obj.isScene) {
+        if (obj.background && obj.background.isColor && obj.background.set) {
+          obj.background.set(hex);
+        } else if (THREE && THREE.Color) {
+          obj.background = new THREE.Color(hex);
+        }
+      }
+      if (typeof obj.setClearColor === 'function') obj.setClearColor(hex, 1);
+    } catch (e) {}
+  }
+  var keys = Object.keys(window);
+  for (var k = 0; k < keys.length; k++) {
+    try { paintObject(window[keys[k]]); } catch (e) {}
+  }
+})();
+''';
+
 /// Full-screen isometric view. The page URL comes from the web API.
 class VirtualTourScreen extends StatefulWidget {
   final String? title;
@@ -63,7 +105,7 @@ class _VirtualTourScreenState extends State<VirtualTourScreen> {
   void _openPage(Uri uri) {
     final controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setBackgroundColor(Colors.white)
+      ..setBackgroundColor(_isometricBackground)
       ..setNavigationDelegate(
         NavigationDelegate(
           onPageStarted: (_) {
@@ -73,7 +115,10 @@ class _VirtualTourScreenState extends State<VirtualTourScreen> {
               _error = null;
             });
           },
-          onPageFinished: (_) {
+          onPageFinished: (_) async {
+            try {
+              await controller.runJavaScript(_isometricBackgroundScript);
+            } catch (_) {}
             if (!mounted) return;
             setState(() => _pageLoading = false);
           },
@@ -119,9 +164,9 @@ class _VirtualTourScreenState extends State<VirtualTourScreen> {
         _handleBack(didPop);
       },
       child: AnnotatedRegion<SystemUiOverlayStyle>(
-        value: SystemUiOverlayStyle.dark,
+        value: SystemUiOverlayStyle.light,
         child: Scaffold(
-          backgroundColor: Colors.white,
+          backgroundColor: _isometricBackground,
           body: Stack(
             fit: StackFit.expand,
             children: [
@@ -168,7 +213,7 @@ class _LoadingView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const ColoredBox(
-      color: Color(0xF2FFFFFF),
+      color: _isometricBackground,
       child: Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -178,14 +223,14 @@ class _LoadingView extends StatelessWidget {
               height: 48,
               child: CircularProgressIndicator(
                 strokeWidth: 3.5,
-                color: AppTheme.accentBlue,
+                color: Colors.white,
               ),
             ),
             SizedBox(height: 16),
             Text(
               'Opening 3D House Tour',
               style: TextStyle(
-                color: AppTheme.navy,
+                color: Colors.white,
                 fontSize: 15.5,
                 fontWeight: FontWeight.w700,
               ),
