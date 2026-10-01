@@ -112,6 +112,8 @@ void main() {
       expect(item.isRejected, isTrue);
       expect(item.displayAmount, isNot('—'));
       expect(item.countsTowardPaymentTotal, isFalse);
+      expect(item.isCorrectBill, isFalse);
+      expect(item.canRemove, isTrue);
     });
 
     test('valid pending bill with no reject hides the note row', () {
@@ -129,7 +131,8 @@ void main() {
       expect(item.showNotABillBadge, isFalse);
       expect(item.countsTowardPaymentTotal, isTrue);
       expect(item.displayAmount, isNot('—'));
-      expect(item.canRemove, isTrue);
+      expect(item.isCorrectBill, isTrue);
+      expect(item.canRemove, isFalse);
     });
 
     test('approved proofs cannot be removed', () {
@@ -328,7 +331,7 @@ void main() {
       expect(items, hasLength(2));
       expect(items[0].displayAmount, isNot('—'));
       expect(items[0].receiptTotal, 15000);
-      expect(items[0].canRemove, isTrue);
+      expect(items[0].canRemove, isFalse);
       expect(items[1].rejectionDisplayText, 'Not a bill');
       expect(items[1].isRejected, isTrue);
       expect(items[1].canRemove, isTrue);
@@ -407,7 +410,7 @@ void main() {
 
       expect(items.first.receiptTotal, 15000);
       expect(items.first.displayAmount, contains('15,000'));
-      expect(items.first.canRemove, isTrue);
+      expect(items.first.canRemove, isFalse);
       expect(items.first.status, 'pending');
       final notABill = items.firstWhere((e) => e.isNotABill);
       expect(notABill.note, 'Not a bill');

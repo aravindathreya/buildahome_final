@@ -52,8 +52,14 @@ class PaymentProofItem {
     return s == 'approved' || s == 'accepted' || s == 'verified';
   }
 
-  /// Clients may remove any proof that finance has not approved.
+  /// A file the classifier accepted as a real bill, and finance has not rejected.
+  bool get isCorrectBill =>
+      isBill == true && !isStatusRejected && !isNotABill;
+
+  /// Clients can remove a wrong or rejected proof. A correct bill has no
+  /// delete mark.
   bool get canRemove {
+    if (isCorrectBill) return false;
     if (canDeleteFlag == false) return false;
     if (canDeleteFlag == true) return true;
     return !isApproved;
