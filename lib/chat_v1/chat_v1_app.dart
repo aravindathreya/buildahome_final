@@ -158,7 +158,7 @@ class _ChatV1AppState extends State<ChatV1App> {
   @override
   Widget build(BuildContext context) {
     return Theme(
-      data: ChatV1Theme.data(dark: false),
+      data: ChatV1Theme.data(dark: true),
       child: Builder(
         builder: (context) => ChatV1HomeScreen(
           salesSopId: widget.salesSopId,

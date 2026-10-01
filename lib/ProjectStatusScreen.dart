@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'app_theme.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -530,7 +531,7 @@ class _ProjectStatusScreenState extends State<ProjectStatusScreen>
   Widget build(BuildContext context) {
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: SystemUiOverlayStyle.light.copyWith(
-        statusBarColor: _navy,
+        statusBarColor: AppTheme.darkTextPrimary,
         statusBarIconBrightness: Brightness.light,
         statusBarBrightness: Brightness.dark,
       ),
@@ -922,7 +923,7 @@ class _PendingNowTab extends StatelessWidget {
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.w800,
-                color: Color(0xFF111827),
+                color: AppTheme.darkTextPrimary,
               ),
             ),
             SizedBox(height: 6),
@@ -1009,7 +1010,7 @@ class _UpcomingTab extends StatelessWidget {
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.w800,
-                color: Color(0xFF111827),
+                color: AppTheme.darkTextPrimary,
               ),
             ),
             SizedBox(height: 6),
@@ -1071,7 +1072,7 @@ class _SectionHeader extends StatelessWidget {
           style: const TextStyle(
             fontSize: 16,
             fontWeight: FontWeight.w800,
-            color: Color(0xFF111827),
+            color: AppTheme.darkTextPrimary,
             letterSpacing: -0.2,
           ),
         ),
@@ -1155,7 +1156,7 @@ class _PrimaryPendingCard extends StatelessWidget {
                 style: const TextStyle(
                   fontSize: 15.5,
                   fontWeight: FontWeight.w800,
-                  color: Color(0xFF111827),
+                  color: AppTheme.darkTextPrimary,
                   height: 1.25,
                 ),
               ),
@@ -1313,7 +1314,7 @@ class _CompactTaskRow extends StatelessWidget {
                       style: const TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w700,
-                        color: Color(0xFF111827),
+                        color: AppTheme.darkTextPrimary,
                         height: 1.25,
                       ),
                     ),
@@ -1461,7 +1462,7 @@ class _TaskDetailsSheet extends StatelessWidget {
                 style: const TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.w800,
-                  color: Color(0xFF111827),
+                  color: AppTheme.darkTextPrimary,
                   height: 1.25,
                 ),
               ),
@@ -1568,7 +1569,7 @@ class _SheetMeta extends StatelessWidget {
           style: const TextStyle(
             fontSize: 14.5,
             fontWeight: FontWeight.w700,
-            color: Color(0xFF111827),
+            color: AppTheme.darkTextPrimary,
           ),
         ),
         if (sub != null && sub!.isNotEmpty)

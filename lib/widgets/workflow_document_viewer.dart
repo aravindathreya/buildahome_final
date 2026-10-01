@@ -162,7 +162,7 @@ class _WorkflowDocumentViewerScreenState
     return Scaffold(
       backgroundColor: _result?.kind == DocumentPayloadKind.image
           ? Colors.black
-          : const Color(0xFFF7F8FB),
+          : AppTheme.darkBackgroundPrimary,
       appBar: _fullscreen
           ? null
           : AppBar(
@@ -171,7 +171,7 @@ class _WorkflowDocumentViewerScreenState
                   : AppTheme.getBackgroundSecondary(context),
               foregroundColor: widget.clientMode && _isImage
                   ? Colors.white
-                  : AppTheme.navy,
+                  : AppTheme.darkTextPrimary,
               elevation: 0,
               title: Text(
                 title,
@@ -180,7 +180,7 @@ class _WorkflowDocumentViewerScreenState
                 style: TextStyle(
                   color: widget.clientMode && _isImage
                       ? Colors.white
-                      : AppTheme.navy,
+                      : AppTheme.darkTextPrimary,
                   fontSize: 16,
                   fontWeight: FontWeight.w800,
                 ),

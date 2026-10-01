@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_spinkit/flutter_spinkit.dart';
 
+import '../../app_theme.dart';
+
 /// Full-screen gate while Chat V1 loads its first project conversations.
 class ChatV1OpeningSplash extends StatelessWidget {
   final String? subtitle;
@@ -11,7 +13,7 @@ class ChatV1OpeningSplash extends StatelessWidget {
     this.subtitle,
   });
 
-  static const Color _navy = Color(0xFF1B254B);
+  static const Color _navy = AppTheme.primaryColorConstDark;
 
   @override
   Widget build(BuildContext context) {

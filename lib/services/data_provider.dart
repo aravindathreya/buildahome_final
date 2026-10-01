@@ -25,6 +25,29 @@ class DataProvider {
   String? clientProjectCompletion;
   /// Extra construction days from approved DOCs (Main Critical timeline).
   double clientDocDelayDays = 0;
+  /// Full construction duration, including approved DOC extra days.
+  int? clientTotalDays;
+  /// Planned duration before DOC delays.
+  int? clientBaseTotalDays;
+
+  /// Completed days ≈ total_days × percent / 100.
+  int? get clientCompletedDays {
+    final total = clientTotalDays;
+    final raw = clientProjectCompletion?.replaceAll('%', '').trim();
+    final percent = double.tryParse(raw ?? '');
+    if (total == null || total < 0 || percent == null) return null;
+    final clamped = percent.clamp(0.0, 100.0);
+    return (total * clamped / 100).round();
+  }
+
+  /// Days still pending until completion.
+  int? get clientRemainingDays {
+    final total = clientTotalDays;
+    final completed = clientCompletedDays;
+    if (total == null || completed == null) return null;
+    final remaining = total - completed;
+    return remaining < 0 ? 0 : remaining;
+  }
   dynamic clientProjectUpdates;
   bool? clientProjectBlocked;
   String? clientProjectBlockReason;
@@ -1290,11 +1313,70 @@ class DataProvider {
     }
   }
 
-  // Helper method to load project completion percentage
+  int? _dayCount(dynamic raw) {
+    if (raw == null) return null;
+    final value = num.tryParse(raw.toString());
+    if (value == null) return null;
+    return value.round();
+  }
+
+  void _clearProjectDuration() {
+    clientProjectCompletion = null;
+    clientDocDelayDays = 0;
+    clientTotalDays = null;
+    clientBaseTotalDays = null;
+  }
+
+  void _restoreProjectDuration(SharedPreferences prefs) {
+    if (currentRole == 'Client' && prefs.containsKey('completed')) {
+      clientProjectCompletion = prefs.getString('completed');
+      clientDocDelayDays = prefs.getDouble('doc_delay_days') ?? 0;
+      clientTotalDays =
+          prefs.containsKey('total_days') ? prefs.getInt('total_days') : null;
+      clientBaseTotalDays = prefs.containsKey('base_total_days')
+          ? prefs.getInt('base_total_days')
+          : null;
+      return;
+    }
+    _clearProjectDuration();
+  }
+
+  void _persistProjectDuration(SharedPreferences prefs) {
+    if (currentRole != 'Client') return;
+    final percent = clientProjectCompletion;
+    if (percent == null || percent.isEmpty) return;
+    prefs.setString('completed', percent);
+    prefs.setDouble('doc_delay_days', clientDocDelayDays);
+    final total = clientTotalDays;
+    if (total == null) {
+      prefs.remove('total_days');
+    } else {
+      prefs.setInt('total_days', total);
+    }
+    final base = clientBaseTotalDays;
+    if (base == null) {
+      prefs.remove('base_total_days');
+    } else {
+      prefs.setInt('base_total_days', base);
+    }
+  }
+
+  Future<void> refreshProjectPercentage() async {
+    final prefs = await SharedPreferences.getInstance();
+    final projectId =
+        (clientProjectId ?? prefs.getString('project_id'))?.trim();
+    if (projectId == null || projectId.isEmpty) return;
+    if (currentRole == null) {
+      currentRole = prefs.getString('role');
+    }
+    await _loadProjectPercentage(projectId, prefs);
+  }
+
+  // Helper method to load project completion percentage.
+  // detail=1 returns percent plus day totals; a plain percent string is still accepted.
   Future<void> _loadProjectPercentage(
       String projectId, SharedPreferences prefs) async {
     try {
-      // detail=1 returns Main Critical % + DOC extra days JSON; legacy plain string still accepted.
       var percUrl =
           'https://office.buildahome.in/API/get_project_percentage?id=${projectId}&detail=1';
       var percResponse = await ApiHttp.get(Uri.parse(percUrl));
@@ -1303,6 +1385,8 @@ class DataProvider {
         final body = percResponse.body.trim();
         String? percentText;
         double docDays = 0;
+        int? totalDays;
+        int? baseTotalDays;
         if (body.startsWith('{')) {
           try {
             final decoded = jsonDecode(body);
@@ -1316,6 +1400,8 @@ class DataProvider {
                   map['doc_delay_days'] ??
                   map['extra_days'];
               docDays = double.tryParse(rawDays?.toString() ?? '') ?? 0;
+              totalDays = _dayCount(map['total_days']);
+              baseTotalDays = _dayCount(map['base_total_days']);
             }
           } catch (_) {
             percentText = null;
@@ -1326,36 +1412,18 @@ class DataProvider {
         if (percentText != null && percentText.isNotEmpty) {
           clientProjectCompletion = percentText;
           clientDocDelayDays = docDays;
-          if (currentRole == 'Client') {
-            prefs.setString('completed', percentText);
-            prefs.setDouble('doc_delay_days', docDays);
-          }
-        } else if (currentRole == 'Client' && prefs.containsKey("completed")) {
-          clientProjectCompletion = prefs.getString('completed');
-          clientDocDelayDays = prefs.getDouble('doc_delay_days') ?? 0;
+          clientTotalDays = totalDays;
+          clientBaseTotalDays = baseTotalDays;
+          _persistProjectDuration(prefs);
         } else {
-          clientProjectCompletion = null;
-    clientDocDelayDays = 0;
-          clientDocDelayDays = 0;
+          _restoreProjectDuration(prefs);
         }
-      } else if (currentRole == 'Client' && prefs.containsKey("completed")) {
-        clientProjectCompletion = prefs.getString('completed');
-        clientDocDelayDays = prefs.getDouble('doc_delay_days') ?? 0;
       } else {
-        clientProjectCompletion = null;
-    clientDocDelayDays = 0;
-        clientDocDelayDays = 0;
+        _restoreProjectDuration(prefs);
       }
     } catch (e) {
       print('Error loading project percentage: $e');
-      if (currentRole == 'Client' && prefs.containsKey("completed")) {
-        clientProjectCompletion = prefs.getString('completed');
-        clientDocDelayDays = prefs.getDouble('doc_delay_days') ?? 0;
-      } else {
-        clientProjectCompletion = null;
-    clientDocDelayDays = 0;
-        clientDocDelayDays = 0;
-      }
+      _restoreProjectDuration(prefs);
     }
   }
 
@@ -2086,6 +2154,8 @@ class DataProvider {
     _clearSalesSopIdCacheInMemory();
     clientProjectCompletion = null;
     clientDocDelayDays = 0;
+    clientTotalDays = null;
+    clientBaseTotalDays = null;
     clientProjectUpdates = null;
     clientProjectBlocked = null;
     clientProjectBlockReason = null;
@@ -2138,6 +2208,8 @@ class DataProvider {
     clientProjectLocation = null;
     clientProjectCompletion = null;
     clientDocDelayDays = 0;
+    clientTotalDays = null;
+    clientBaseTotalDays = null;
     clientProjectUpdates = null;
     clientProjectBlocked = null;
     clientProjectBlockReason = null;

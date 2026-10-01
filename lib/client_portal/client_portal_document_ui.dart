@@ -23,10 +23,10 @@ class ClientPortalDocTheme {
         ],
       );
 
-  static const cardBackground = Colors.white;
+  static const cardBackground = AppTheme.darkBackgroundSecondary;
 
   static TabBarTheme tabBarTheme() => const TabBarTheme(
-        labelColor: AppTheme.navy,
+        labelColor: AppTheme.darkTextPrimary,
         unselectedLabelColor: AppTheme.mutedGrey,
         indicatorColor: accentBlue,
         indicatorSize: TabBarIndicatorSize.label,
@@ -52,7 +52,7 @@ class ClientPortalCategoryVisual {
     required this.icon,
     required this.subtitle,
     required this.iconBg,
-    this.iconFg = AppTheme.navy,
+    this.iconFg = AppTheme.darkTextPrimary,
   });
 }
 
@@ -74,8 +74,8 @@ ClientPortalCategoryVisual categoryVisualFor({
       return const ClientPortalCategoryVisual(
         icon: Icons.folder_shared_outlined,
         subtitle: 'Office project library',
-        iconBg: Color(0xFFEEF2FF),
-        iconFg: Color(0xFF4338CA),
+        iconBg: Color(0xFF2A2040),
+        iconFg: Color(0xFFC4B5FD),
       );
     }
     if (blob.contains('receipts_and_agreements') ||
@@ -83,160 +83,160 @@ ClientPortalCategoryVisual categoryVisualFor({
       return const ClientPortalCategoryVisual(
         icon: Icons.receipt_long_outlined,
         subtitle: 'Receipts, agreements & tax invoices',
-        iconBg: Color(0xFFECFDF5),
-        iconFg: Color(0xFF059669),
+        iconBg: Color(0xFF143028),
+        iconFg: Color(0xFF34D399),
       );
     }
     if (blob.contains('kyc') || blob.contains('pre_conversion')) {
       return const ClientPortalCategoryVisual(
         icon: Icons.badge_outlined,
         subtitle: 'KYC and other project documents',
-        iconBg: Color(0xFFEEF2FF),
-        iconFg: Color(0xFF4338CA),
+        iconBg: Color(0xFF2A2040),
+        iconFg: Color(0xFFC4B5FD),
       );
     }
     if (blob.contains('floor_plan')) {
       return const ClientPortalCategoryVisual(
         icon: Icons.architecture_outlined,
         subtitle: 'View floor plans and elevations',
-        iconBg: Color(0xFFECFEFF),
-        iconFg: Color(0xFF0891B2),
+        iconBg: Color(0xFF142830),
+        iconFg: Color(0xFF67E8F9),
       );
     }
     if (blob.contains('architectural') || blob.contains('architecture')) {
       return const ClientPortalCategoryVisual(
         icon: Icons.apartment_outlined,
         subtitle: 'Architectural drawings',
-        iconBg: Color(0xFFEEF2FF),
-        iconFg: Color(0xFF2563EB),
+        iconBg: Color(0xFF2A2040),
+        iconFg: Color(0xFFC4B5FD),
       );
     }
     if (blob.contains('structural') || blob.contains('civil')) {
       return const ClientPortalCategoryVisual(
         icon: Icons.account_tree_outlined,
         subtitle: 'Structural & civil drawings',
-        iconBg: Color(0xFFECFDF5),
-        iconFg: Color(0xFF059669),
+        iconBg: Color(0xFF143028),
+        iconFg: Color(0xFF34D399),
       );
     }
     if (blob.contains('electrical')) {
       return const ClientPortalCategoryVisual(
         icon: Icons.electrical_services_outlined,
         subtitle: 'Electrical layouts',
-        iconBg: Color(0xFFFFF7ED),
-        iconFg: Color(0xFFEA580C),
+        iconBg: Color(0xFF2A2112),
+        iconFg: Color(0xFFFBBF24),
       );
     }
     if (blob.contains('plumb')) {
       return const ClientPortalCategoryVisual(
         icon: Icons.water_drop_outlined,
         subtitle: 'Plumbing drawings',
-        iconBg: Color(0xFFE0F2FE),
-        iconFg: Color(0xFF0284C7),
+        iconBg: Color(0xFF142830),
+        iconFg: Color(0xFF67E8F9),
       );
     }
     if (blob.contains('landscape') || blob.contains('planting')) {
       return const ClientPortalCategoryVisual(
         icon: Icons.park_outlined,
         subtitle: 'Landscape documents',
-        iconBg: Color(0xFFF0FDF4),
-        iconFg: Color(0xFF16A34A),
+        iconBg: Color(0xFF143028),
+        iconFg: Color(0xFF34D399),
       );
     }
     if (blob.contains('fire') || blob.contains('safety')) {
       return const ClientPortalCategoryVisual(
         icon: Icons.local_fire_department_outlined,
         subtitle: 'Fire & safety documents',
-        iconBg: Color(0xFFFEE2E2),
-        iconFg: Color(0xFFDC2626),
+        iconBg: Color(0xFF2C1618),
+        iconFg: Color(0xFFF87171),
       );
     }
     if (blob.contains('interior') || blob.contains('mep')) {
       return const ClientPortalCategoryVisual(
         icon: Icons.weekend_outlined,
         subtitle: 'Interior & MEP documents',
-        iconBg: Color(0xFFF3E8FF),
-        iconFg: Color(0xFF9333EA),
+        iconBg: Color(0xFF241A33),
+        iconFg: Color(0xFFC4B5FD),
       );
     }
     if (blob.contains('handover') || blob.contains('final document')) {
       return const ClientPortalCategoryVisual(
         icon: Icons.handshake_outlined,
         subtitle: 'Handover & final documents',
-        iconBg: Color(0xFFEEF2FF),
-        iconFg: Color(0xFF4338CA),
+        iconBg: Color(0xFF2A2040),
+        iconFg: Color(0xFFC4B5FD),
       );
     }
     if (blob.contains('cost') || blob.contains('variation')) {
       return const ClientPortalCategoryVisual(
         icon: Icons.request_quote_outlined,
         subtitle: 'Cost variations',
-        iconBg: Color(0xFFFEF3C7),
-        iconFg: Color(0xFFD97706),
+        iconBg: Color(0xFF2A2112),
+        iconFg: Color(0xFFFBBF24),
       );
     }
     if (blob.contains('design')) {
       return const ClientPortalCategoryVisual(
         icon: Icons.auto_awesome_outlined,
         subtitle: 'Vastu, elevation refs & bylaws',
-        iconBg: Color(0xFFF3E8FF),
-        iconFg: Color(0xFF9333EA),
+        iconBg: Color(0xFF241A33),
+        iconFg: Color(0xFFC4B5FD),
       );
     }
     if (blob.contains('gfc') || blob.contains('construction_drawings')) {
       return const ClientPortalCategoryVisual(
         icon: Icons.domain_outlined,
         subtitle: 'Working drawings & elevations',
-        iconBg: Color(0xFFEEF2FF),
-        iconFg: Color(0xFF2563EB),
+        iconBg: Color(0xFF2A2040),
+        iconFg: Color(0xFFC4B5FD),
       );
     }
     if (blob.contains('quality') || blob.contains('ndt')) {
       return const ClientPortalCategoryVisual(
         icon: Icons.science_outlined,
         subtitle: 'NDT & construction test reports',
-        iconBg: Color(0xFFECFDF5),
-        iconFg: Color(0xFF059669),
+        iconBg: Color(0xFF143028),
+        iconFg: Color(0xFF34D399),
       );
     }
     if (blob.contains('site_record') || blob.contains('site_construction')) {
       return const ClientPortalCategoryVisual(
         icon: Icons.engineering_outlined,
         subtitle: 'Site marking, conduit marking & more',
-        iconBg: Color(0xFFFFF7ED),
-        iconFg: Color(0xFFEA580C),
+        iconBg: Color(0xFF2A2112),
+        iconFg: Color(0xFFFBBF24),
       );
     }
     if (blob.contains('door') || blob.contains('window') || blob.contains('grill')) {
       return const ClientPortalCategoryVisual(
         icon: Icons.grid_view_rounded,
         subtitle: 'Designs and details',
-        iconBg: Color(0xFFF0FDF4),
-        iconFg: Color(0xFF16A34A),
+        iconBg: Color(0xFF143028),
+        iconFg: Color(0xFF34D399),
       );
     }
     if (blob.contains('site_prep')) {
       return const ClientPortalCategoryVisual(
         icon: Icons.construction_outlined,
         subtitle: 'Demolition & borewell questionnaire',
-        iconBg: Color(0xFFFEF3C7),
-        iconFg: Color(0xFFD97706),
+        iconBg: Color(0xFF2A2112),
+        iconFg: Color(0xFFFBBF24),
       );
     }
     if (blob.contains('demolition')) {
       return const ClientPortalCategoryVisual(
         icon: Icons.home_work_outlined,
         subtitle: 'Demolition completion & comments',
-        iconBg: Color(0xFFFEE2E2),
-        iconFg: Color(0xFFDC2626),
+        iconBg: Color(0xFF2C1618),
+        iconFg: Color(0xFFF87171),
       );
     }
     if (blob.contains('inspection')) {
       return const ClientPortalCategoryVisual(
         icon: Icons.fact_check_outlined,
         subtitle: 'Book a slot or view reports',
-        iconBg: Color(0xFFE0F2FE),
-        iconFg: Color(0xFF0284C7),
+        iconBg: Color(0xFF142830),
+        iconFg: Color(0xFF67E8F9),
       );
     }
     return null;
@@ -298,62 +298,62 @@ const List<ClientPortalCategoryVisual> kCatalogIconPalette = [
   ClientPortalCategoryVisual(
     icon: Icons.apartment_outlined,
     subtitle: 'View documents in this category',
-    iconBg: Color(0xFFEEF2FF),
-    iconFg: Color(0xFF2563EB),
+    iconBg: Color(0xFF2A2040),
+    iconFg: Color(0xFFC4B5FD),
   ),
   ClientPortalCategoryVisual(
     icon: Icons.account_tree_outlined,
     subtitle: 'View documents in this category',
-    iconBg: Color(0xFFECFDF5),
-    iconFg: Color(0xFF059669),
+    iconBg: Color(0xFF143028),
+    iconFg: Color(0xFF34D399),
   ),
   ClientPortalCategoryVisual(
     icon: Icons.electrical_services_outlined,
     subtitle: 'View documents in this category',
-    iconBg: Color(0xFFFFF7ED),
-    iconFg: Color(0xFFEA580C),
+    iconBg: Color(0xFF2A2112),
+    iconFg: Color(0xFFFBBF24),
   ),
   ClientPortalCategoryVisual(
     icon: Icons.water_drop_outlined,
     subtitle: 'View documents in this category',
-    iconBg: Color(0xFFE0F2FE),
-    iconFg: Color(0xFF0284C7),
+    iconBg: Color(0xFF142830),
+    iconFg: Color(0xFF67E8F9),
   ),
   ClientPortalCategoryVisual(
     icon: Icons.park_outlined,
     subtitle: 'View documents in this category',
-    iconBg: Color(0xFFF0FDF4),
-    iconFg: Color(0xFF16A34A),
+    iconBg: Color(0xFF143028),
+    iconFg: Color(0xFF34D399),
   ),
   ClientPortalCategoryVisual(
     icon: Icons.local_fire_department_outlined,
     subtitle: 'View documents in this category',
-    iconBg: Color(0xFFFEE2E2),
-    iconFg: Color(0xFFDC2626),
+    iconBg: Color(0xFF2C1618),
+    iconFg: Color(0xFFF87171),
   ),
   ClientPortalCategoryVisual(
     icon: Icons.weekend_outlined,
     subtitle: 'View documents in this category',
-    iconBg: Color(0xFFF3E8FF),
-    iconFg: Color(0xFF9333EA),
+    iconBg: Color(0xFF241A33),
+    iconFg: Color(0xFFC4B5FD),
   ),
   ClientPortalCategoryVisual(
     icon: Icons.science_outlined,
     subtitle: 'View documents in this category',
-    iconBg: Color(0xFFECFDF5),
-    iconFg: Color(0xFF0F766E),
+    iconBg: Color(0xFF143028),
+    iconFg: Color(0xFF34D399),
   ),
   ClientPortalCategoryVisual(
     icon: Icons.request_quote_outlined,
     subtitle: 'View documents in this category',
-    iconBg: Color(0xFFFEF3C7),
-    iconFg: Color(0xFFD97706),
+    iconBg: Color(0xFF2A2112),
+    iconFg: Color(0xFFFBBF24),
   ),
   ClientPortalCategoryVisual(
     icon: Icons.handshake_outlined,
     subtitle: 'View documents in this category',
-    iconBg: Color(0xFFEEF2FF),
-    iconFg: Color(0xFF4338CA),
+    iconBg: Color(0xFF2A2040),
+    iconFg: Color(0xFFC4B5FD),
   ),
 ];
 
@@ -413,24 +413,24 @@ ClientPortalCategoryVisual sectionVisualFor(WorkflowDocumentSection section) {
       return const ClientPortalCategoryVisual(
         icon: Icons.receipt_long_outlined,
         subtitle: 'Payment receipts',
-        iconBg: Color(0xFFECFDF5),
-        iconFg: Color(0xFF059669),
+        iconBg: Color(0xFF143028),
+        iconFg: Color(0xFF34D399),
       );
     }
     if (id == 'agreements' || label == 'agreements') {
       return const ClientPortalCategoryVisual(
         icon: Icons.handshake_outlined,
         subtitle: 'Signed agreements',
-        iconBg: Color(0xFFEEF2FF),
-        iconFg: Color(0xFF2563EB),
+        iconBg: Color(0xFF2A2040),
+        iconFg: Color(0xFFC4B5FD),
       );
     }
     if (id.contains('tax_invoice') || label.contains('tax invoice')) {
       return const ClientPortalCategoryVisual(
         icon: Icons.request_quote_outlined,
         subtitle: 'Tax invoices',
-        iconBg: Color(0xFFFEF3C7),
-        iconFg: Color(0xFFD97706),
+        iconBg: Color(0xFF2A2112),
+        iconFg: Color(0xFFFBBF24),
       );
     }
   }
@@ -438,8 +438,8 @@ ClientPortalCategoryVisual sectionVisualFor(WorkflowDocumentSection section) {
     return const ClientPortalCategoryVisual(
       icon: Icons.folder_shared_outlined,
       subtitle: 'Office project library',
-      iconBg: Color(0xFFEEF2FF),
-      iconFg: Color(0xFF4338CA),
+      iconBg: Color(0xFF2A2040),
+      iconFg: Color(0xFFC4B5FD),
     );
   }
 
@@ -447,80 +447,80 @@ ClientPortalCategoryVisual sectionVisualFor(WorkflowDocumentSection section) {
     return const ClientPortalCategoryVisual(
       icon: Icons.apartment_outlined,
       subtitle: 'Floor plans, elevations, working drawings',
-      iconBg: Color(0xFFEEF2FF),
-      iconFg: Color(0xFF2563EB),
+      iconBg: Color(0xFF2A2040),
+      iconFg: Color(0xFFC4B5FD),
     );
   }
   if (label.contains('structural') || id.contains('structural')) {
     return const ClientPortalCategoryVisual(
       icon: Icons.account_tree_outlined,
       subtitle: 'Foundation, framing & structural details',
-      iconBg: Color(0xFFECFDF5),
-      iconFg: Color(0xFF059669),
+      iconBg: Color(0xFF143028),
+      iconFg: Color(0xFF34D399),
     );
   }
   if (label.contains('electrical') || id.contains('electrical')) {
     return const ClientPortalCategoryVisual(
       icon: Icons.electrical_services_outlined,
       subtitle: 'Electrical layouts & wiring diagrams',
-      iconBg: Color(0xFFFFF7ED),
-      iconFg: Color(0xFFEA580C),
+      iconBg: Color(0xFF2A2112),
+      iconFg: Color(0xFFFBBF24),
     );
   }
   if (label.contains('ndt') || id.contains('ndt')) {
     return const ClientPortalCategoryVisual(
       icon: Icons.biotech_outlined,
       subtitle: 'Non-destructive test reports',
-      iconBg: Color(0xFFECFDF5),
-      iconFg: Color(0xFF059669),
+      iconBg: Color(0xFF143028),
+      iconFg: Color(0xFF34D399),
     );
   }
   if (label.contains('site marking') || id.contains('site_marking')) {
     return const ClientPortalCategoryVisual(
       icon: Icons.location_on_outlined,
       subtitle: 'Site marking records & photos',
-      iconBg: Color(0xFFFFF7ED),
-      iconFg: Color(0xFFEA580C),
+      iconBg: Color(0xFF2A2112),
+      iconFg: Color(0xFFFBBF24),
     );
   }
   if (label.contains('conduit') || label.contains('mep') || id.contains('conduit')) {
     return const ClientPortalCategoryVisual(
       icon: Icons.cable_outlined,
       subtitle: 'Conduit & MEP marking records',
-      iconBg: Color(0xFFE0F2FE),
-      iconFg: Color(0xFF0284C7),
+      iconBg: Color(0xFF142830),
+      iconFg: Color(0xFF67E8F9),
     );
   }
   if (label.contains('vastu')) {
     return const ClientPortalCategoryVisual(
       icon: Icons.auto_awesome_outlined,
       subtitle: 'Vastu design documents',
-      iconBg: Color(0xFFF3E8FF),
-      iconFg: Color(0xFF9333EA),
+      iconBg: Color(0xFF241A33),
+      iconFg: Color(0xFFC4B5FD),
     );
   }
   if (label.contains('elevation') && label.contains('reference')) {
     return const ClientPortalCategoryVisual(
       icon: Icons.image_outlined,
       subtitle: 'Elevation reference designs',
-      iconBg: Color(0xFFECFEFF),
-      iconFg: Color(0xFF0891B2),
+      iconBg: Color(0xFF142830),
+      iconFg: Color(0xFF67E8F9),
     );
   }
   if (label.contains('bylaw')) {
     return const ClientPortalCategoryVisual(
       icon: Icons.gavel_outlined,
       subtitle: 'Bylaw compliance documents',
-      iconBg: Color(0xFFFEF3C7),
-      iconFg: Color(0xFFD97706),
+      iconBg: Color(0xFF2A2112),
+      iconFg: Color(0xFFFBBF24),
     );
   }
   if (label.contains('floor plan') || label.contains('elevation')) {
     return const ClientPortalCategoryVisual(
       icon: Icons.architecture_outlined,
       subtitle: 'Plans and elevation drawings',
-      iconBg: Color(0xFFECFEFF),
-      iconFg: Color(0xFF0891B2),
+      iconBg: Color(0xFF142830),
+      iconFg: Color(0xFF67E8F9),
     );
   }
 
@@ -604,7 +604,7 @@ class ClientPortalSearchBar extends StatelessWidget {
               )
             : null,
         filled: true,
-        fillColor: Colors.white,
+        fillColor: AppTheme.darkBackgroundPrimaryLight,
         contentPadding:
             const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         border: OutlineInputBorder(
@@ -640,7 +640,7 @@ class ClientPortalCountBadge extends StatelessWidget {
       height: 28,
       alignment: Alignment.center,
       decoration: BoxDecoration(
-        color: const Color(0xFFDBEAFE),
+        color: const Color(0xFF3A2A55),
         shape: BoxShape.circle,
       ),
       child: Text(
@@ -694,28 +694,28 @@ class ClientPortalStatusBadge extends StatelessWidget {
     late String label;
     switch (kind) {
       case ClientPortalStatusBadgeKind.latest:
-        bg = const Color(0xFFECFDF5);
-        fg = const Color(0xFF059669);
+        bg = const Color(0xFF143028);
+        fg = const Color(0xFF34D399);
         label = 'Latest';
         break;
       case ClientPortalStatusBadgeKind.verified:
-        bg = const Color(0xFFECFDF5);
-        fg = const Color(0xFF059669);
+        bg = const Color(0xFF143028);
+        fg = const Color(0xFF34D399);
         label = 'Verified';
         break;
       case ClientPortalStatusBadgeKind.superseded:
-        bg = const Color(0xFFF3F4F6);
+        bg = const Color(0xFF2A2A2D);
         fg = AppTheme.mutedGrey;
         label = 'Superseded';
         break;
       case ClientPortalStatusBadgeKind.optional:
-        bg = const Color(0xFFF3F4F6);
+        bg = const Color(0xFF2A2A2D);
         fg = AppTheme.mutedGrey;
         label = 'Optional';
         break;
       case ClientPortalStatusBadgeKind.pending:
-        bg = const Color(0xFFFFF7ED);
-        fg = const Color(0xFFEA580C);
+        bg = const Color(0xFF2A2112);
+        fg = const Color(0xFFFBBF24);
         label = 'Pending';
         break;
     }
@@ -779,13 +779,13 @@ class ClientPortalCategoryCard extends StatelessWidget {
                 width: journeyStyle ? 48 : 44,
                 height: journeyStyle ? 48 : 44,
                 decoration: BoxDecoration(
-                  color: iconBg ?? const Color(0xFFE8F1FF),
+                  color: iconBg ?? const Color(0xFF2A2040),
                   borderRadius:
                       BorderRadius.circular(ClientPortalDocTheme.iconBoxRadius),
                 ),
                 child: Icon(
                   icon,
-                  color: iconFg ?? AppTheme.navy,
+                  color: iconFg ?? AppTheme.darkTextPrimary,
                   size: journeyStyle ? 24 : 22,
                 ),
               ),
@@ -799,7 +799,7 @@ class ClientPortalCategoryCard extends StatelessWidget {
                       style: TextStyle(
                         fontSize: journeyStyle ? 15 : 14,
                         fontWeight: FontWeight.w800,
-                        color: AppTheme.navy,
+                        color: AppTheme.darkTextPrimary,
                         height: 1.25,
                       ),
                     ),
@@ -912,7 +912,7 @@ class ClientPortalFilterTabs extends StatelessWidget {
                   style: TextStyle(
                     fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
                     fontSize: 14,
-                    color: selected ? AppTheme.navy : AppTheme.mutedGrey,
+                    color: selected ? AppTheme.darkTextPrimary : AppTheme.mutedGrey,
                   ),
                 ),
                 const SizedBox(height: 6),
@@ -956,7 +956,7 @@ class ClientPortalDocumentListHeader extends StatelessWidget {
           style: const TextStyle(
             fontWeight: FontWeight.w800,
             fontSize: 14,
-            color: AppTheme.navy,
+            color: AppTheme.darkTextPrimary,
           ),
         ),
         const Spacer(),
@@ -1023,7 +1023,7 @@ class ClientPortalDocumentRow extends StatelessWidget {
                       style: const TextStyle(
                         fontWeight: FontWeight.w800,
                         fontSize: 14,
-                        color: AppTheme.navy,
+                        color: AppTheme.darkTextPrimary,
                         height: 1.25,
                       ),
                     ),
@@ -1115,12 +1115,12 @@ class _LeadingPreview extends StatelessWidget {
         width: 40,
         height: 40,
         decoration: BoxDecoration(
-          color: const Color(0xFFFEE2E2),
+          color: const Color(0xFF2C1618),
           borderRadius: BorderRadius.circular(10),
         ),
         child: const Icon(
           Icons.picture_as_pdf_rounded,
-          color: Color(0xFFDC2626),
+          color: Color(0xFFF87171),
           size: 22,
         ),
       );
@@ -1129,12 +1129,12 @@ class _LeadingPreview extends StatelessWidget {
       width: 40,
       height: 40,
       decoration: BoxDecoration(
-        color: const Color(0xFFF0F4FF),
+        color: const Color(0xFF2A2040),
         borderRadius: BorderRadius.circular(10),
       ),
       child: Icon(
         document.isImage ? Icons.image_outlined : Icons.description_outlined,
-        color: AppTheme.navy,
+        color: AppTheme.darkTextPrimary,
         size: 20,
       ),
     );
@@ -1152,9 +1152,9 @@ class ClientPortalInfoBanner extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: const Color(0xFFEFF6FF),
+        color: const Color(0xFF241A33),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFDBEAFE)),
+        border: Border.all(color: const Color(0xFF3A2A55)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1202,7 +1202,7 @@ class ClientPortalScreenHeader extends StatelessWidget {
           style: const TextStyle(
             fontSize: 16,
             fontWeight: FontWeight.w800,
-            color: AppTheme.navy,
+            color: AppTheme.darkTextPrimary,
           ),
         ),
         if (subtitle != null) ...[
@@ -1386,10 +1386,10 @@ class ClientPortalJourneyStatusBanner extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: success ? const Color(0xFFECFDF5) : const Color(0xFFFFF7ED),
+        color: success ? const Color(0xFF143028) : const Color(0xFF2A2112),
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
-          color: success ? const Color(0xFFA7F3D0) : const Color(0xFFFED7AA),
+          color: success ? const Color(0xFF065F46) : const Color(0xFF92400E),
         ),
       ),
       child: Row(
@@ -1400,14 +1400,14 @@ class ClientPortalJourneyStatusBanner extends StatelessWidget {
             height: 28,
             decoration: BoxDecoration(
               color: success
-                  ? const Color(0xFF059669).withValues(alpha: 0.12)
-                  : const Color(0xFFEA580C).withValues(alpha: 0.12),
+                  ? const Color(0xFF34D399).withValues(alpha: 0.12)
+                  : const Color(0xFFFBBF24).withValues(alpha: 0.12),
               shape: BoxShape.circle,
             ),
             child: Icon(
               success ? Icons.check_rounded : Icons.hourglass_bottom_rounded,
               size: 16,
-              color: success ? const Color(0xFF059669) : const Color(0xFFEA580C),
+              color: success ? const Color(0xFF34D399) : const Color(0xFFFBBF24),
             ),
           ),
           const SizedBox(width: 10),
@@ -1418,7 +1418,7 @@ class ClientPortalJourneyStatusBanner extends StatelessWidget {
                 fontWeight: FontWeight.w700,
                 fontSize: 13.5,
                 height: 1.35,
-                color: AppTheme.navy,
+                color: AppTheme.darkTextPrimary,
               ),
             ),
           ),
@@ -1436,7 +1436,7 @@ class ClientPortalHelpCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: const Color(0xFFF5F3FF),
+      color: const Color(0xFF241A33),
       borderRadius: BorderRadius.circular(14),
       child: InkWell(
         onTap: onTap,
@@ -1446,7 +1446,7 @@ class ClientPortalHelpCard extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: const Color(0xFFDDD6FE)),
+            border: Border.all(color: const Color(0xFF5B3A8C)),
           ),
           child: Row(
             children: [
@@ -1454,12 +1454,12 @@ class ClientPortalHelpCard extends StatelessWidget {
                 width: 40,
                 height: 40,
                 decoration: BoxDecoration(
-                  color: const Color(0xFFEDE9FE),
+                  color: const Color(0xFF2A2040),
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: const Icon(
                   Icons.headset_mic_outlined,
-                  color: Color(0xFF7C3AED),
+                  color: Color(0xFFC4B5FD),
                   size: 20,
                 ),
               ),
@@ -1470,7 +1470,7 @@ class ClientPortalHelpCard extends StatelessWidget {
                   style: TextStyle(
                     fontWeight: FontWeight.w800,
                     fontSize: 14,
-                    color: AppTheme.navy,
+                    color: AppTheme.darkTextPrimary,
                   ),
                 ),
               ),
@@ -1503,7 +1503,7 @@ class ClientPortalSectionHeroCard extends StatelessWidget {
           end: Alignment.bottomRight,
           colors: [
             visual.iconBg,
-            Colors.white,
+            AppTheme.darkBackgroundSecondary,
           ],
         ),
         borderRadius: BorderRadius.circular(16),
@@ -1528,7 +1528,7 @@ class ClientPortalSectionHeroCard extends StatelessWidget {
                 width: 56,
                 height: 56,
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.85),
+                  color: AppTheme.darkBackgroundPrimaryLight,
                   borderRadius: BorderRadius.circular(14),
                   boxShadow: const [
                     BoxShadow(
@@ -1546,7 +1546,7 @@ class ClientPortalSectionHeroCard extends StatelessWidget {
                 style: const TextStyle(
                   fontWeight: FontWeight.w800,
                   fontSize: 15,
-                  color: AppTheme.navy,
+                  color: AppTheme.darkTextPrimary,
                 ),
               ),
             ],
@@ -1596,7 +1596,7 @@ class ClientPortalJourneyDocumentRow extends StatelessWidget {
                       style: const TextStyle(
                         fontWeight: FontWeight.w800,
                         fontSize: 14.5,
-                        color: AppTheme.navy,
+                        color: AppTheme.darkTextPrimary,
                         height: 1.25,
                       ),
                     ),
@@ -1658,12 +1658,12 @@ class _DocTypeIcon extends StatelessWidget {
         width: 44,
         height: 44,
         decoration: BoxDecoration(
-          color: const Color(0xFFFEE2E2),
+          color: const Color(0xFF2C1618),
           borderRadius: BorderRadius.circular(12),
         ),
         child: const Icon(
           Icons.picture_as_pdf_rounded,
-          color: Color(0xFFDC2626),
+          color: Color(0xFFF87171),
           size: 24,
         ),
       );
@@ -1673,12 +1673,12 @@ class _DocTypeIcon extends StatelessWidget {
         width: 44,
         height: 44,
         decoration: BoxDecoration(
-          color: const Color(0xFFECFDF5),
+          color: const Color(0xFF143028),
           borderRadius: BorderRadius.circular(12),
         ),
         child: const Icon(
           Icons.image_outlined,
-          color: Color(0xFF059669),
+          color: Color(0xFF34D399),
           size: 24,
         ),
       );
@@ -1687,7 +1687,7 @@ class _DocTypeIcon extends StatelessWidget {
       width: 44,
       height: 44,
       decoration: BoxDecoration(
-        color: const Color(0xFFEFF6FF),
+        color: const Color(0xFF241A33),
         borderRadius: BorderRadius.circular(12),
       ),
       child: const Icon(
@@ -1821,7 +1821,7 @@ class ClientPortalViewerDocCard extends StatelessWidget {
                   style: const TextStyle(
                     fontWeight: FontWeight.w800,
                     fontSize: 13.5,
-                    color: AppTheme.navy,
+                    color: AppTheme.darkTextPrimary,
                   ),
                 ),
                 if (meta.isNotEmpty) ...[

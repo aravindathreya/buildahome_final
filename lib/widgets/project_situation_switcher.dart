@@ -27,7 +27,7 @@ class ProjectSituationSwitcher extends StatelessWidget
         height: 40,
         padding: const EdgeInsets.all(3),
         decoration: BoxDecoration(
-          color: const Color(0xFFF3F4F6),
+          color: AppTheme.darkBackgroundPrimaryLight,
           borderRadius: BorderRadius.circular(12),
         ),
         child: Row(
@@ -64,7 +64,7 @@ class _TabChip extends StatelessWidget {
   Widget build(BuildContext context) {
     return Expanded(
       child: Material(
-        color: selected ? Colors.white : Colors.transparent,
+        color: selected ? AppTheme.navy : Colors.transparent,
         borderRadius: BorderRadius.circular(10),
         child: InkWell(
           onTap: selected ? null : onTap,
@@ -75,7 +75,9 @@ class _TabChip extends StatelessWidget {
               style: TextStyle(
                 fontSize: 13.5,
                 fontWeight: FontWeight.w800,
-                color: selected ? AppTheme.navy : const Color(0xFF6B7280),
+                color: selected
+                    ? Colors.white
+                    : AppTheme.darkTextSecondary,
               ),
             ),
           ),

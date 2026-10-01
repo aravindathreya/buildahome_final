@@ -24,7 +24,7 @@ Future<String?> showAttendanceNoteSheet(
     context: context,
     isScrollControlled: true,
     useRootNavigator: true,
-    backgroundColor: Colors.white,
+    backgroundColor: AppTheme.darkBackgroundSecondary,
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
     ),
@@ -111,7 +111,7 @@ class _AttendanceNoteSheetState extends State<_AttendanceNoteSheet> {
           Text(
             widget.title,
             style: const TextStyle(
-              color: AppTheme.navy,
+              color: AppTheme.darkTextPrimary,
               fontSize: 18,
               fontWeight: FontWeight.w800,
             ),
@@ -167,7 +167,7 @@ class _AttendanceNoteSheetState extends State<_AttendanceNoteSheet> {
                 child: OutlinedButton(
                   onPressed: () => Navigator.of(context).pop(),
                   style: OutlinedButton.styleFrom(
-                    foregroundColor: AppTheme.navy,
+                    foregroundColor: AppTheme.darkTextPrimary,
                     minimumSize: const Size.fromHeight(48),
                     side: const BorderSide(color: Color(0xFFE8ECF1)),
                     shape: RoundedRectangleBorder(

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'app_theme.dart';
 import 'dart:io';
 
 import 'package:cached_network_image/cached_network_image.dart';
@@ -10,6 +11,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'FullScreenImage.dart';
 import 'models/payment_proof_item.dart';
 import 'services/app_logout.dart';
+import 'services/camera_permission.dart';
 import 'services/client_portal_service.dart';
 import 'widgets/skeleton_loader.dart';
 
@@ -23,12 +25,12 @@ class UploadPaymentProofScreen extends StatefulWidget {
 
 class _UploadPaymentProofScreenState extends State<UploadPaymentProofScreen>
     with WidgetsBindingObserver {
-  static const Color _navyStart = Color(0xFF224A7A);
-  static const Color _navyEnd = Color(0xFF2B66AC);
-  static const Color _pageBg = Color(0xFFEEF2F6);
-  static const Color _cardBorder = Color(0xFFE2E8F0);
-  static const Color _textPrimary = Color(0xFF334155);
-  static const Color _textSecondary = Color(0xFF475569);
+  static const Color _navyStart = AppTheme.navy;
+  static const Color _navyEnd = AppTheme.navySoft;
+  static const Color _pageBg = AppTheme.darkBackgroundPrimary;
+  static const Color _cardBorder = AppTheme.border;
+  static const Color _textPrimary = AppTheme.darkTextPrimary;
+  static const Color _textSecondary = AppTheme.darkTextSecondary;
   static const Color _rejectBorder = Color(0xFFDC2626);
   static const Color _rejectOverlay = Color(0x4DDC2626);
   static const Color _rejectText = Color(0xFFB91C1C);
@@ -171,6 +173,8 @@ class _UploadPaymentProofScreenState extends State<UploadPaymentProofScreen>
 
   Future<void> _takePhoto() async {
     if (_uploading || !_canUpload) return;
+    if (!await ensureCameraPermission(context)) return;
+    if (!mounted) return;
     try {
       final picked = await _picker.pickImage(
         source: ImageSource.camera,
@@ -189,7 +193,7 @@ class _UploadPaymentProofScreenState extends State<UploadPaymentProofScreen>
     if (_uploading || !_canUpload) return;
     final choice = await showModalBottomSheet<String>(
       context: context,
-      backgroundColor: Colors.white,
+      backgroundColor: AppTheme.darkBackgroundSecondary,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -606,7 +610,7 @@ class _UploadZone extends StatelessWidget {
         width: double.infinity,
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: AppTheme.darkBackgroundSecondary,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(color: _UploadPaymentProofScreenState._cardBorder),
         ),
@@ -616,7 +620,7 @@ class _UploadZone extends StatelessWidget {
               const LinearProgressIndicator(
                 minHeight: 4,
                 color: _UploadPaymentProofScreenState._navyEnd,
-                backgroundColor: Color(0xFFDEE7F3),
+                backgroundColor: AppTheme.darkBackgroundPrimaryLight,
               ),
               const SizedBox(height: 12),
               const Row(
@@ -707,11 +711,11 @@ class _PrimaryActionButton extends StatelessWidget {
                     ],
                   )
                 : null,
-            color: filled ? null : const Color(0xFFEEF4FB),
+            color: filled ? null : AppTheme.darkBackgroundPrimaryLight,
             borderRadius: BorderRadius.circular(14),
             border: filled
                 ? null
-                : Border.all(color: const Color(0xFFC5D6EA)),
+                : Border.all(color: AppTheme.border),
           ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -765,7 +769,7 @@ class _ProofCard extends StatelessWidget {
     final rejected = item.isRejected;
     final rejectText = item.rejectionDisplayText;
     return Material(
-      color: rejected ? const Color(0xFFFFF1F1) : Colors.white,
+      color: rejected ? const Color(0xFF3F1D24) : AppTheme.darkBackgroundSecondary,
       borderRadius: BorderRadius.circular(16),
       child: Stack(
         clipBehavior: Clip.none,
@@ -797,7 +801,7 @@ class _ProofCard extends StatelessWidget {
                         children: [
                           item.isPdf
                               ? Container(
-                                  color: const Color(0xFFF8FAFC),
+                                  color: AppTheme.darkBackgroundPrimaryLight,
                                   child: const Column(
                                     mainAxisAlignment: MainAxisAlignment.center,
                                     children: [
@@ -904,7 +908,7 @@ class _ProofCard extends StatelessWidget {
               top: 4,
               right: 4,
               child: Material(
-                color: Colors.white,
+                color: AppTheme.darkBackgroundSecondary,
                 elevation: 3,
                 shape: const CircleBorder(),
                 child: InkWell(
@@ -968,7 +972,7 @@ class _EmptyProofsState extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.symmetric(vertical: 36, horizontal: 18),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppTheme.darkBackgroundSecondary,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: _UploadPaymentProofScreenState._cardBorder),
       ),

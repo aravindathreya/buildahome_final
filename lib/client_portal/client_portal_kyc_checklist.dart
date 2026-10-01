@@ -61,7 +61,7 @@ class ClientPortalKycChecklist extends StatelessWidget {
           style: TextStyle(
             fontWeight: FontWeight.w800,
             fontSize: 16,
-            color: AppTheme.navy,
+            color: AppTheme.darkTextPrimary,
           ),
         ),
         const SizedBox(height: 12),
@@ -274,7 +274,7 @@ class _CustomDocumentsSectionState extends State<_CustomDocumentsSection> {
               const Icon(
                 Icons.note_add_outlined,
                 size: 20,
-                color: AppTheme.navy,
+                color: AppTheme.darkTextPrimary,
               ),
               const SizedBox(width: 8),
               Expanded(
@@ -283,7 +283,7 @@ class _CustomDocumentsSectionState extends State<_CustomDocumentsSection> {
                   style: const TextStyle(
                     fontWeight: FontWeight.w800,
                     fontSize: 16,
-                    color: AppTheme.navy,
+                    color: AppTheme.darkTextPrimary,
                   ),
                 ),
               ),
@@ -291,7 +291,7 @@ class _CustomDocumentsSectionState extends State<_CustomDocumentsSection> {
                 padding:
                     const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFF1F5F9),
+                  color: const Color(0xFF2A2A2D),
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: const Text(
@@ -320,7 +320,7 @@ class _CustomDocumentsSectionState extends State<_CustomDocumentsSection> {
             style: TextStyle(
               fontWeight: FontWeight.w700,
               fontSize: 13,
-              color: AppTheme.navy,
+              color: AppTheme.darkTextPrimary,
             ),
           ),
           const SizedBox(height: 6),
@@ -334,7 +334,7 @@ class _CustomDocumentsSectionState extends State<_CustomDocumentsSection> {
             decoration: InputDecoration(
               hintText: _placeholder,
               filled: true,
-              fillColor: const Color(0xFFF7F8FB),
+              fillColor: AppTheme.darkBackgroundPrimary,
               errorText: _nameError,
               errorMaxLines: 2,
               border: OutlineInputBorder(
@@ -346,7 +346,7 @@ class _CustomDocumentsSectionState extends State<_CustomDocumentsSection> {
                 borderSide: BorderSide(
                   color: _nameError == null
                       ? AppTheme.border
-                      : const Color(0xFFDC2626),
+                      : const Color(0xFFF87171),
                 ),
               ),
               focusedBorder: OutlineInputBorder(
@@ -415,7 +415,7 @@ class _CustomUploadRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: const Color(0xFFF7F8FB),
+      color: AppTheme.darkBackgroundPrimary,
       borderRadius: BorderRadius.circular(12),
       child: InkWell(
         onTap: record.hasUrl ? onView : null,
@@ -428,13 +428,13 @@ class _CustomUploadRow extends StatelessWidget {
                 width: 36,
                 height: 36,
                 decoration: BoxDecoration(
-                  color: const Color(0xFFEEF2FF),
+                  color: const Color(0xFF2A2040),
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: const Icon(
                   Icons.insert_drive_file_outlined,
                   size: 18,
-                  color: AppTheme.navy,
+                  color: AppTheme.darkTextPrimary,
                 ),
               ),
               const SizedBox(width: 10),
@@ -447,7 +447,7 @@ class _CustomUploadRow extends StatelessWidget {
                       style: const TextStyle(
                         fontWeight: FontWeight.w700,
                         fontSize: 13.5,
-                        color: AppTheme.navy,
+                        color: AppTheme.darkTextPrimary,
                       ),
                     ),
                     if (record.filename != null &&
@@ -514,14 +514,14 @@ class _CommentSectionState extends State<_CommentSection> {
               child: Row(
                 children: [
                   const Icon(Icons.chat_bubble_outline_rounded,
-                      size: 20, color: AppTheme.navy),
+                      size: 20, color: AppTheme.darkTextPrimary),
                   const SizedBox(width: 10),
                   const Expanded(
                     child: Text(
                       'Notes for your team',
                       style: TextStyle(
                         fontWeight: FontWeight.w700,
-                        color: AppTheme.navy,
+                        color: AppTheme.darkTextPrimary,
                       ),
                     ),
                   ),
@@ -547,7 +547,7 @@ class _CommentSectionState extends State<_CommentSection> {
                     decoration: InputDecoration(
                       hintText: 'Any notes for the team…',
                       filled: true,
-                      fillColor: const Color(0xFFF7F8FB),
+                      fillColor: AppTheme.darkBackgroundPrimary,
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
                         borderSide: const BorderSide(color: AppTheme.border),
@@ -660,7 +660,7 @@ class _KycChecklistTile extends StatelessWidget {
                       style: const TextStyle(
                         fontWeight: FontWeight.w800,
                         fontSize: 14.5,
-                        color: AppTheme.navy,
+                        color: AppTheme.darkTextPrimary,
                       ),
                     ),
                     if (subtitle != null) ...[
@@ -671,7 +671,7 @@ class _KycChecklistTile extends StatelessWidget {
                           fontSize: 12.5,
                           color: isUploaded
                               ? AppTheme.getTextSecondary(context)
-                              : const Color(0xFFEA580C),
+                              : const Color(0xFFFBBF24),
                           fontWeight: FontWeight.w600,
                         ),
                       ),
@@ -684,7 +684,7 @@ class _KycChecklistTile extends StatelessWidget {
                   padding: EdgeInsets.only(right: 4),
                   child: Icon(
                     Icons.check_circle_rounded,
-                    color: Color(0xFF059669),
+                    color: Color(0xFF34D399),
                     size: 22,
                   ),
                 )
@@ -693,7 +693,7 @@ class _KycChecklistTile extends StatelessWidget {
                   padding: EdgeInsets.only(right: 4),
                   child: Icon(
                     Icons.upload_file_rounded,
-                    color: Color(0xFFEA580C),
+                    color: Color(0xFFFBBF24),
                     size: 20,
                   ),
                 ),

@@ -2,39 +2,39 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 class AppTheme {
-  // Brand / light theme tokens (matches redesigned dashboards)
-  static const Color navy = Color(0xFF1B254B);
-  static const Color navySoft = Color(0xFF243463);
-  static const Color accentBlue = Color(0xFF2563EB);
-  static const Color mutedGrey = Color(0xFF8A94A6);
-  static const Color border = Color(0xFFE8ECF1);
+  // Brand tokens — deep purple
+  static const Color navy = Color(0xFF43266F);
+  static const Color navySoft = Color(0xFF5A348C);
+  static const Color accentBlue = Color(0xFF7A52B8);
+  static const Color mutedGrey = Color(0xFFA1A1AA);
+  static const Color border = Color(0xFF3F3F46);
   static const Color softShadow = Color(0x14000000);
 
-  // Light theme colors
+  // Light theme colors (kept for helpers; app is dark-mode-only)
   static const Color lightBackgroundPrimary = Color(0xFFF7F8FB);
   static const Color lightBackgroundSecondary = Color(0xFFFFFFFF);
   static const Color lightBackgroundPrimaryLight = Color(0xFFEEF2F7);
   static const Color lightTextPrimary = Color(0xFF1B254B);
   static const Color lightTextSecondary = Color(0xFF8A94A6);
 
-  // Dark theme colors
-  static const Color darkBackgroundPrimary = Color(0xFF0F1424);
-  static const Color darkBackgroundSecondary = Color(0xFF1A2238);
-  static const Color darkBackgroundPrimaryLight = Color(0xFF243049);
-  static const Color darkTextPrimary = Color(0xFFF8FAFC);
-  static const Color darkTextSecondary = Color(0xFFA8B3C7);
+  // Dark theme colors — dark grey surfaces
+  static const Color darkBackgroundPrimary = Color(0xFF121212);
+  static const Color darkBackgroundSecondary = Color(0xFF1C1C1E);
+  static const Color darkBackgroundPrimaryLight = Color(0xFF2A2A2D);
+  static const Color darkTextPrimary = Color(0xFFF4F4F5);
+  static const Color darkTextSecondary = Color(0xFFA1A1AA);
 
-  // Primary color
+  // Primary color — deep purple
   static const Color primaryColorConst = navy;
-  static const Color primaryColorConstDark = Color(0xFF151D3A);
-  static const Color primaryColorConstLight = Color(0xFF3B4A7A);
+  static const Color primaryColorConstDark = Color(0xFF2C184C);
+  static const Color primaryColorConstLight = Color(0xFF55308A);
 
-  // Legacy colors for backward compatibility
-  static Color get backgroundPrimary => lightBackgroundPrimary;
-  static Color get backgroundSecondary => lightBackgroundSecondary;
-  static Color get backgroundPrimaryLight => lightBackgroundPrimaryLight;
-  static Color get textPrimary => lightTextPrimary;
-  static Color get textSecondary => lightTextSecondary;
+  // Legacy colors — app is dark-mode-only; these map to dark tokens
+  static Color get backgroundPrimary => darkBackgroundPrimary;
+  static Color get backgroundSecondary => darkBackgroundSecondary;
+  static Color get backgroundPrimaryLight => darkBackgroundPrimaryLight;
+  static Color get textPrimary => darkTextPrimary;
+  static Color get textSecondary => darkTextSecondary;
 
   static ThemeData getLightTheme() {
     final colorScheme = ColorScheme.light(
@@ -315,7 +315,7 @@ class AppTheme {
       onSecondary: Colors.white,
       onSurface: darkTextPrimary,
       onBackground: darkTextPrimary,
-      outline: const Color(0xFF334155),
+      outline: const Color(0xFF3F3F46),
     );
 
     return ThemeData(
@@ -335,7 +335,7 @@ class AppTheme {
       scaffoldBackgroundColor: darkBackgroundPrimary,
       canvasColor: darkBackgroundPrimary,
       cardColor: darkBackgroundSecondary,
-      dividerColor: const Color(0xFF334155),
+      dividerColor: const Color(0xFF3F3F46),
       fontFamily: 'Mulish-Regular',
       colorScheme: colorScheme,
       appBarTheme: AppBarTheme(
@@ -358,7 +358,7 @@ class AppTheme {
         elevation: 0,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
-          side: const BorderSide(color: Color(0xFF334155)),
+          side: const BorderSide(color: Color(0xFF3F3F46)),
         ),
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
@@ -377,11 +377,11 @@ class AppTheme {
         fillColor: darkBackgroundPrimaryLight,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: Color(0xFF334155)),
+          borderSide: const BorderSide(color: Color(0xFF3F3F46)),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: Color(0xFF334155)),
+          borderSide: const BorderSide(color: Color(0xFF3F3F46)),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
@@ -392,18 +392,60 @@ class AppTheme {
         contentPadding:
             const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       ),
-      textTheme: const TextTheme(
-        headlineLarge: TextStyle(
+      textTheme: ThemeData.dark().textTheme.apply(
+        fontFamily: 'Mulish-Regular',
+        bodyColor: darkTextPrimary,
+        displayColor: darkTextPrimary,
+      ).copyWith(
+        headlineLarge: const TextStyle(
             color: darkTextPrimary, fontSize: 26, fontWeight: FontWeight.w800),
-        headlineMedium: TextStyle(
+        headlineMedium: const TextStyle(
             color: darkTextPrimary, fontSize: 22, fontWeight: FontWeight.w800),
-        headlineSmall: TextStyle(
+        headlineSmall: const TextStyle(
             color: darkTextPrimary, fontSize: 18, fontWeight: FontWeight.w800),
-        bodyLarge: TextStyle(color: darkTextPrimary, fontSize: 15),
-        bodyMedium: TextStyle(color: darkTextPrimary, fontSize: 14),
-        bodySmall: TextStyle(color: darkTextSecondary, fontSize: 12.5),
+        bodyLarge: const TextStyle(color: darkTextPrimary, fontSize: 15),
+        bodyMedium: const TextStyle(color: darkTextPrimary, fontSize: 14),
+        bodySmall: const TextStyle(color: darkTextSecondary, fontSize: 12.5),
+        titleLarge: const TextStyle(color: darkTextPrimary, fontSize: 18, fontWeight: FontWeight.w800),
+        titleMedium: const TextStyle(color: darkTextPrimary, fontSize: 16, fontWeight: FontWeight.w700),
+        titleSmall: const TextStyle(color: darkTextPrimary, fontSize: 14, fontWeight: FontWeight.w600),
+        labelLarge: const TextStyle(color: darkTextPrimary, fontSize: 14, fontWeight: FontWeight.w600),
+        labelMedium: const TextStyle(color: darkTextSecondary, fontSize: 12),
+        labelSmall: const TextStyle(color: darkTextSecondary, fontSize: 11),
+      ),
+      primaryTextTheme: ThemeData.dark().primaryTextTheme.apply(
+        fontFamily: 'Mulish-Regular',
+        bodyColor: darkTextPrimary,
+        displayColor: darkTextPrimary,
       ),
       iconTheme: const IconThemeData(color: darkTextPrimary),
+      primaryIconTheme: const IconThemeData(color: darkTextPrimary),
+      listTileTheme: const ListTileThemeData(
+        iconColor: darkTextPrimary,
+        textColor: darkTextPrimary,
+      ),
+      dialogTheme: const DialogThemeData(
+        backgroundColor: darkBackgroundSecondary,
+        titleTextStyle: TextStyle(
+          color: darkTextPrimary,
+          fontSize: 18,
+          fontWeight: FontWeight.w800,
+          fontFamily: 'Mulish-Regular',
+        ),
+        contentTextStyle: TextStyle(
+          color: darkTextPrimary,
+          fontSize: 14,
+          fontFamily: 'Mulish-Regular',
+        ),
+      ),
+      bottomSheetTheme: const BottomSheetThemeData(
+        backgroundColor: darkBackgroundSecondary,
+        modalBackgroundColor: darkBackgroundSecondary,
+        elevation: 0,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+      ),
       bottomNavigationBarTheme: const BottomNavigationBarThemeData(
         backgroundColor: darkBackgroundSecondary,
         selectedItemColor: Colors.white,
@@ -417,39 +459,26 @@ class AppTheme {
   }
 
   // Legacy getter for backward compatibility
-  static ThemeData get darkTheme => getLightTheme();
+  static ThemeData get darkTheme => getDarkTheme();
 
   static Color getBackgroundPrimary(BuildContext context) {
-    final brightness = Theme.of(context).brightness;
-    return brightness == Brightness.dark
-        ? darkBackgroundPrimary
-        : lightBackgroundPrimary;
+    return darkBackgroundPrimary;
   }
 
   static Color getBackgroundSecondary(BuildContext context) {
-    final brightness = Theme.of(context).brightness;
-    return brightness == Brightness.dark
-        ? darkBackgroundSecondary
-        : lightBackgroundSecondary;
+    return darkBackgroundSecondary;
   }
 
   static Color getBackgroundPrimaryLight(BuildContext context) {
-    final brightness = Theme.of(context).brightness;
-    return brightness == Brightness.dark
-        ? darkBackgroundPrimaryLight
-        : lightBackgroundPrimaryLight;
+    return darkBackgroundPrimaryLight;
   }
 
   static Color getTextPrimary(BuildContext context) {
-    final brightness = Theme.of(context).brightness;
-    return brightness == Brightness.dark ? darkTextPrimary : lightTextPrimary;
+    return darkTextPrimary;
   }
 
   static Color getTextSecondary(BuildContext context) {
-    final brightness = Theme.of(context).brightness;
-    return brightness == Brightness.dark
-        ? darkTextSecondary
-        : lightTextSecondary;
+    return darkTextSecondary;
   }
 
   static Color getPrimaryColor(BuildContext context) {
@@ -457,10 +486,7 @@ class AppTheme {
   }
 
   static Color getBorderColor(BuildContext context) {
-    final brightness = Theme.of(context).brightness;
-    return brightness == Brightness.dark
-        ? const Color(0xFF334155)
-        : border;
+    return const Color(0xFF3F3F46);
   }
 
   // Shared surface card decoration for list/grid items
@@ -481,9 +507,9 @@ class AppTheme {
 
   // Grid card decoration
   static BoxDecoration get gridCardDecoration => BoxDecoration(
-        color: lightBackgroundSecondary,
+        color: darkBackgroundSecondary,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: border),
+        border: Border.all(color: const Color(0xFF3F3F46)),
         boxShadow: const [
           BoxShadow(
             color: softShadow,
@@ -494,12 +520,12 @@ class AppTheme {
       );
 
   static BoxDecoration get gridCardDecorationPressed => BoxDecoration(
-        color: lightBackgroundPrimaryLight,
+        color: darkBackgroundPrimaryLight,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: primaryColorConst, width: 1.5),
+        border: Border.all(color: primaryColorConstLight, width: 1.5),
         boxShadow: [
           BoxShadow(
-            color: primaryColorConst.withValues(alpha: 0.12),
+            color: primaryColorConstLight.withValues(alpha: 0.2),
             blurRadius: 12,
             offset: const Offset(0, 6),
           ),

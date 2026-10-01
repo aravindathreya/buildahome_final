@@ -871,8 +871,8 @@ class _IndentProofDetailScreenState extends State<IndentProofDetailScreen> {
       backgroundColor: AppTheme.getBackgroundPrimary(context),
       appBar: AppBar(
         title: const Text('Indent proof'),
-        backgroundColor: Colors.white,
-        foregroundColor: AppTheme.navy,
+        backgroundColor: AppTheme.darkBackgroundSecondary,
+        foregroundColor: AppTheme.darkTextPrimary,
         elevation: 0,
       ),
       body: _loading

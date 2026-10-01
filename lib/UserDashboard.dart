@@ -1,13 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:percent_indicator/circular_percent_indicator.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:http/http.dart' as http;
 import 'dart:async';
 import 'dart:convert';
-import 'dart:math' as math;
 import "Payments.dart";
 import 'app_theme.dart';
 import 'widgets/skeleton_loader.dart';
@@ -44,7 +42,9 @@ import 'ClientPortalScreen.dart';
 import 'UploadPaymentProofScreen.dart';
 import 'documents_v1/documents_v1_home_screen.dart';
 import 'VirtualTour.dart';
+import 'widgets/virtual_tour_embed.dart';
 import 'NavMenu.dart';
+import 'ProfileScreen.dart';
 import 'notifcations.dart';
 import 'Dpr.dart';
 import 'services/client_generation_service.dart';
@@ -267,7 +267,7 @@ class UserDashboardLayoutState extends State<UserDashboardLayout> {
   bool _tourActive = false;
   bool _tourStartInFlight = false;
   List<String>? _lastLoggedBottomNavKeys;
-  static const Color _navy = Color(0xFF1B254B);
+  static const Color _navy = AppTheme.navy;
   static const Color _mutedGrey = Color(0xFF8A94A6);
   // Removed local navigatorKey and observer - using global ones from main.dart
 
@@ -282,9 +282,6 @@ class UserDashboardLayoutState extends State<UserDashboardLayout> {
     if (_showBackToDashboard) return true;
     return !widget.fromAdminDashboard && Navigator.of(context).canPop();
   }
-
-  bool get _isClientRole =>
-      (_userRole ?? '').trim().toLowerCase() == 'client';
 
   /// AI assistant bubble on the client project home.
   /// Hidden for now; the team chat card remains the way to message the project.
@@ -352,10 +349,12 @@ class UserDashboardLayoutState extends State<UserDashboardLayout> {
   List<String> _resolvedBottomNavKeys() {
     final surface = _bottomNavSurface;
     final snapshot = MobileBottomNavService.instance.snapshot(surface);
-    final keys = resolveMobileBottomNavActionKeys(
-      surface: surface,
-      fallbackKeys: fallbackBottomNavKeysFor(surface),
-      snapshot: snapshot,
+    final keys = ensureProjectHomePaymentsTab(
+      resolveMobileBottomNavActionKeys(
+        surface: surface,
+        fallbackKeys: fallbackBottomNavKeysFor(surface),
+        snapshot: snapshot,
+      ),
     );
     final previous = _lastLoggedBottomNavKeys;
     if (previous == null ||
@@ -549,7 +548,7 @@ class UserDashboardLayoutState extends State<UserDashboardLayout> {
       width: MediaQuery.of(context).size.width,
       padding: EdgeInsets.only(top: topPad + 10, left: 20, right: 16, bottom: 12),
       decoration: const BoxDecoration(
-        color: Colors.white,
+        color: AppTheme.darkBackgroundSecondary,
         border: Border(bottom: BorderSide(color: AppTheme.border)),
       ),
       child: Column(
@@ -566,7 +565,7 @@ class UserDashboardLayoutState extends State<UserDashboardLayout> {
                   constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
                   icon: const Icon(
                     Icons.arrow_back_rounded,
-                    color: _navy,
+                    color: AppTheme.darkTextPrimary,
                     size: 22,
                   ),
                 ),
@@ -578,26 +577,22 @@ class UserDashboardLayoutState extends State<UserDashboardLayout> {
                   children: [
                     Text(
                       _greetingForNow(),
-                      style: TextStyle(
+                      style: const TextStyle(
                         color: _mutedGrey,
-                        fontSize: _isClientRole ? 14 : 12.5,
-                        fontWeight:
-                            _isClientRole ? FontWeight.w400 : FontWeight.w500,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w400,
                         height: 1.2,
                       ),
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      _isClientRole
-                          ? (displayName.isNotEmpty ? displayName : 'there')
-                          : '${displayName.isNotEmpty ? displayName : 'there'} 👋',
-                      style: TextStyle(
-                        color: _navy,
-                        fontSize: _isClientRole ? 26 : 20,
-                        fontWeight:
-                            _isClientRole ? FontWeight.w600 : FontWeight.w800,
+                      displayName.isNotEmpty ? displayName : 'there',
+                      style: const TextStyle(
+                        color: AppTheme.darkTextPrimary,
+                        fontSize: 26,
+                        fontWeight: FontWeight.w600,
                         height: 1.1,
-                        letterSpacing: _isClientRole ? -0.6 : -0.2,
+                        letterSpacing: -0.6,
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -618,19 +613,17 @@ class UserDashboardLayoutState extends State<UserDashboardLayout> {
                     height: 44,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: Colors.white,
+                      color: AppTheme.darkBackgroundPrimaryLight,
                       border: Border.all(
-                        color: const Color(0xFFE6EAF0),
+                        color: AppTheme.border,
                       ),
-                      boxShadow: _isClientRole
-                          ? const [
-                              BoxShadow(
-                                color: Color(0x14000000),
-                                blurRadius: 8,
-                                offset: Offset(0, 2),
-                              ),
-                            ]
-                          : null,
+                      boxShadow: const [
+                        BoxShadow(
+                          color: Color(0x14000000),
+                          blurRadius: 8,
+                          offset: Offset(0, 2),
+                        ),
+                      ],
                     ),
                     child: ValueListenableBuilder<int>(
                       valueListenable:
@@ -642,7 +635,7 @@ class UserDashboardLayoutState extends State<UserDashboardLayout> {
                             const Center(
                               child: Icon(
                                 Icons.notifications_none_rounded,
-                                color: _navy,
+                                color: AppTheme.darkTextPrimary,
                                 size: 22,
                               ),
                             ),
@@ -689,8 +682,14 @@ class UserDashboardLayoutState extends State<UserDashboardLayout> {
                       size: 40,
                       backgroundColor: _navy,
                       foregroundColor: Colors.white,
-                      borderColor: const Color(0xFFE6EAF0),
-                      onTap: () => _scaffoldKey.currentState?.openDrawer(),
+                      borderColor: AppTheme.border,
+                      onTap: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => const ProfileScreen(),
+                          ),
+                        );
+                      },
                     );
                   },
                 ),
@@ -718,10 +717,10 @@ class UserDashboardLayoutState extends State<UserDashboardLayout> {
     return Container(
       key: _tourBottomNavKey,
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppTheme.darkBackgroundSecondary,
         border: Border(
           top: BorderSide(
-            color: const Color(0xFFEEF1F5),
+            color: AppTheme.border,
           ),
         ),
       ),
@@ -737,9 +736,9 @@ class UserDashboardLayoutState extends State<UserDashboardLayout> {
               final comingSoon =
                   _restrictLegacyClientFeatures && key == 'my_tasks';
               final color = comingSoon
-                  ? const Color(0xFFB0B7C3)
+                  ? const Color(0xFF6B7280)
                   : (selected
-                      ? _navy
+                      ? Colors.white
                       : _mutedGrey);
               return Expanded(
                 child: InkWell(
@@ -803,7 +802,7 @@ class UserDashboardLayoutState extends State<UserDashboardLayout> {
         children: [
           Scaffold(
             key: _scaffoldKey,
-            backgroundColor: AppTheme.lightBackgroundPrimary,
+            backgroundColor: AppTheme.darkBackgroundPrimary,
             drawer: NavMenuWidget(),
             body: Column(
               children: [
@@ -919,29 +918,27 @@ class UserDashboardScreen extends StatefulWidget {
 }
 
 class UserDashboardScreenState extends State<UserDashboardScreen> {
-  static const Color _navy = Color(0xFF1B254B);
-  static const Color _mutedGrey = Color(0xFF8A94A6);
-  static const Color _cardBorder = Color(0xFFE8ECF1);
-  static const Color _softShadow = Color(0x14000000);
-  static const Color _ink = _navy;
+  static const Color _navy = AppTheme.navy;
+  static const Color _mutedGrey = Color(0xFFA8B3C7);
+  static const Color _cardBorder = AppTheme.border;
+  static const Color _ink = Color(0xFFF8FAFC);
   static const Color _airbnbMuted = _mutedGrey;
   static const Color _hairline = _cardBorder;
-  static const Color _rausch = Color(0xFF2563EB);
-  static const Color _canvasGray = Color(0xFFEEF2F7);
-  static const Color _chatTint = Color(0xFFEFF6FF);
-  static const Color _chatTintEdge = Color(0xFFDBEAFE);
 
   List dailyUpdateList = [];
   var username = ' ';
   var updatePostedOnDate = " ";
   String? completed;
   double docDelayDays = 0;
+  int? totalDays;
+  int? baseTotalDays;
   dynamic updateResponseBody;
   var blocked = false;
   var bolckReason = '';
   var location = '';
   var expanded = false;
   bool _isLoadingSummary = true;
+  bool _durationRequested = false;
   bool _isLoadingUpdates = true;
   bool _hasLoadedSummary = false;
   bool _hasLoadedUpdates = false;
@@ -1087,12 +1084,18 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
       location = nextLocation;
       completed = nextCompletion;
       docDelayDays = dataProvider.clientDocDelayDays;
+      totalDays = dataProvider.clientTotalDays;
+      baseTotalDays = dataProvider.clientBaseTotalDays;
       blocked = nextBlocked;
       bolckReason = nextBlockReason;
       username = loadedUsername;
       _isLoadingSummary = false;
       _hasLoadedSummary = true;
     });
+
+    if (totalDays == null) {
+      unawaited(_ensureCompletionDays());
+    }
 
     setState(() {
       updateResponseBody = nextUpdates;
@@ -1125,13 +1128,6 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
     }
     // Section flags are reset inside loadDataFromProvider once data is applied.
     // Note: loadTasks() is only called once at initState to avoid multiple API calls
-  }
-
-  Future<void> _openHomeSlotsViewAll() async {
-    await Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => const SlotsScreen()),
-    );
   }
 
   String _tasksDeltaKey(List<dynamic> tasks) {
@@ -1481,41 +1477,18 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
     );
   }
 
-  BoxDecoration get _dashboardSurfaceDecoration => _isClientUser
-      ? BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: _hairline),
-          boxShadow: const [
-            BoxShadow(
-              color: Color(0x0A000000),
-              blurRadius: 8,
-              offset: Offset(0, 2),
-            ),
-          ],
-        )
-      : BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: _cardBorder),
-          boxShadow: const [
-            BoxShadow(
-              color: _softShadow,
-              blurRadius: 16,
-              offset: Offset(0, 6),
-            ),
-          ],
-        );
-
-  Widget _buildClientChatAndSlots() {
-    return Column(
-      children: [
-        _buildHighlightedChatCard(),
-        const SizedBox(height: 12),
-        _buildAirbnbSlotsCard(),
-      ],
-    );
-  }
+  BoxDecoration get _dashboardSurfaceDecoration => BoxDecoration(
+        color: AppTheme.darkBackgroundSecondary,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: _hairline),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x0A000000),
+            blurRadius: 8,
+            offset: Offset(0, 2),
+          ),
+        ],
+      );
 
   Widget _buildHighlightedChatCard() {
     return DecoratedBox(
@@ -1537,7 +1510,7 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
           decoration: const BoxDecoration(
             borderRadius: BorderRadius.all(Radius.circular(18)),
             gradient: LinearGradient(
-              colors: [Color(0xFF1B254B), Color(0xFF2563EB)],
+              colors: [AppTheme.navy, AppTheme.accentBlue],
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
             ),
@@ -1596,13 +1569,13 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
                       vertical: 10,
                     ),
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      color: AppTheme.darkBackgroundSecondary,
                       borderRadius: BorderRadius.circular(999),
                     ),
                     child: const Text(
                       'Open',
                       style: TextStyle(
-                        color: Color(0xFF1B254B),
+                        color: AppTheme.darkTextPrimary,
                         fontSize: 14,
                         fontWeight: FontWeight.w700,
                       ),
@@ -1617,541 +1590,8 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
     );
   }
 
-  Widget _buildAirbnbSlotsCard() {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: _openHomeSlotsViewAll,
-        borderRadius: BorderRadius.circular(16),
-        child: Ink(
-          decoration: _dashboardSurfaceDecoration,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-            child: Row(
-              children: [
-                Container(
-                  width: 44,
-                  height: 44,
-                  decoration: const BoxDecoration(
-                    color: _canvasGray,
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(
-                    Icons.event_available_outlined,
-                    color: _ink,
-                    size: 22,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                const Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Your slots',
-                        style: TextStyle(
-                          color: _ink,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                          letterSpacing: -0.2,
-                        ),
-                      ),
-                      SizedBox(height: 2),
-                      Text(
-                        'View and choose visit times',
-                        style: TextStyle(
-                          color: _airbnbMuted,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w400,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const Icon(
-                  Icons.chevron_right_rounded,
-                  color: _ink,
-                  size: 22,
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
   void _openChat() {
     openChat();
-  }
-
-  void _openAllProjectTasks() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => MyTasksScreen(
-          tasks: _tasks,
-          onRefresh: _refreshTasksForMyTasks,
-          initialTabIndex: 0,
-        ),
-      ),
-    );
-  }
-
-  void _openProjectTaskDetails(Map<String, dynamic> task) {
-    if (isIndentProofReviewTask(task) || isIndentProofDeeplinkTask(task)) {
-      if (isIndentProofReviewTask(task)) {
-        openIndentProofReviewFromTask(
-          context,
-          Map<String, dynamic>.from(task),
-          onRefresh: _refreshTasksForMyTasks,
-        );
-      } else {
-        openIndentProofFromTask(context, task).then((_) {
-          _refreshTasksForMyTasks();
-        });
-      }
-      return;
-    }
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => MyTasksScreen(
-          tasks: _tasks,
-          onRefresh: _refreshTasksForMyTasks,
-          focusTaskId: task['id']?.toString(),
-        ),
-      ),
-    );
-  }
-
-  String _compactTaskDate(Map<String, dynamic> task) {
-    final iso = _firstTaskString(task, [
-      'due_date',
-      'updated_at',
-      'created_at',
-      'completed_at',
-    ]);
-    if (iso == null) return '';
-    try {
-      return DateFormat('d MMM').format(DateTime.parse(iso));
-    } catch (_) {
-      return iso;
-    }
-  }
-
-  Map<String, dynamic> _compactTaskStatusMeta(Map<String, dynamic> task) {
-    if (_isTaskOverdue(task)) {
-      return {
-        'label': 'Overdue',
-        'color': const Color(0xFFDC2626),
-        'bg': const Color(0xFFFEE2E2),
-      };
-    }
-
-    final status = _normalizedTaskStatus(task);
-    switch (status) {
-      case 'in_progress':
-      case 'ready':
-      case 'waiting_approval':
-        return {
-          'label': status == 'waiting_approval' ? 'In Review' : 'In Progress',
-          'color': status == 'waiting_approval'
-              ? const Color(0xFF2563EB)
-              : const Color(0xFFEA580C),
-          'bg': status == 'waiting_approval'
-              ? const Color(0xFFDBEAFE)
-              : const Color(0xFFFFEDD5),
-        };
-      case 'scheduled':
-        return {
-          'label': 'Scheduled',
-          'color': const Color(0xFF6366F1),
-          'bg': const Color(0xFFEEF2FF),
-        };
-      default:
-        final label = workflowStatusDisplayLabel(task);
-        if (label.toLowerCase().contains('progress')) {
-          return {
-            'label': label,
-            'color': const Color(0xFFEA580C),
-            'bg': const Color(0xFFFFEDD5),
-          };
-        }
-        return {
-          'label': label == 'Pending' ? 'On Track' : label,
-          'color': const Color(0xFF16A34A),
-          'bg': const Color(0xFFDCFCE7),
-        };
-    }
-  }
-
-  Widget _buildChatAndLatestTasksRow() {
-    return IntrinsicHeight(
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Expanded(child: _buildBahChatCard()),
-          const SizedBox(width: 12),
-          Expanded(child: _buildProjectSlotsCard()),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildBahChatCard() {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: _openChat,
-        borderRadius: BorderRadius.circular(18),
-        child: Container(
-          padding: const EdgeInsets.fromLTRB(14, 14, 14, 16),
-          decoration: _dashboardSurfaceDecoration.copyWith(
-            color: _chatTint,
-            border: Border.all(color: _chatTintEdge),
-          ),
-          child: Stack(
-            children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'bAh Chat',
-                    style: TextStyle(
-                      color: _navy,
-                      fontSize: 14.5,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                  const SizedBox(height: 18),
-                  Center(
-                    child: Container(
-                      width: 88,
-                      height: 88,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFEFF6FF),
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: const Color(0xFFDBEAFE),
-                        ),
-                      ),
-                      child: Stack(
-                        alignment: Alignment.center,
-                        children: [
-                          Icon(
-                            Icons.forum_outlined,
-                            size: 34,
-                            color: AppTheme.getPrimaryColor(context),
-                          ),
-                          Positioned(
-                            bottom: 18,
-                            child: Icon(
-                              Icons.home_work_outlined,
-                              size: 16,
-                              color: AppTheme.getPrimaryColor(context)
-                                  .withValues(alpha: 0.85),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  const Center(
-                    child: Text(
-                      'Start a conversation',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: _mutedGrey,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500,
-                        height: 1.3,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              Positioned(
-                right: 0,
-                top: 54,
-                child: Container(
-                  width: 28,
-                  height: 28,
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    shape: BoxShape.circle,
-                    border: Border.all(color: const Color(0xFFE8ECF1)),
-                    boxShadow: const [
-                      BoxShadow(
-                        color: Color(0x12000000),
-                        blurRadius: 8,
-                        offset: Offset(0, 2),
-                      ),
-                    ],
-                  ),
-                  child: const Icon(
-                    Icons.chevron_right_rounded,
-                    color: Color(0xFF2563EB),
-                    size: 18,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildProjectSlotsCard() {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: _openHomeSlotsViewAll,
-        borderRadius: BorderRadius.circular(18),
-        child: Container(
-          padding: const EdgeInsets.fromLTRB(14, 14, 14, 16),
-          decoration: _dashboardSurfaceDecoration,
-          child: Stack(
-            children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Your Slots',
-                    style: TextStyle(
-                      color: _navy,
-                      fontSize: 14.5,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                  const SizedBox(height: 18),
-                  Center(
-                    child: Container(
-                      width: 88,
-                      height: 88,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFEFF6FF),
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: const Color(0xFFDBEAFE),
-                        ),
-                      ),
-                      child: Icon(
-                        Icons.event_available_outlined,
-                        size: 34,
-                        color: AppTheme.getPrimaryColor(context),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  const Center(
-                    child: Text(
-                      'View and choose visit times',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: _mutedGrey,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500,
-                        height: 1.3,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              Positioned(
-                right: 0,
-                top: 54,
-                child: Container(
-                  width: 28,
-                  height: 28,
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    shape: BoxShape.circle,
-                    border: Border.all(color: const Color(0xFFE8ECF1)),
-                    boxShadow: const [
-                      BoxShadow(
-                        color: Color(0x12000000),
-                        blurRadius: 8,
-                        offset: Offset(0, 2),
-                      ),
-                    ],
-                  ),
-                  child: const Icon(
-                    Icons.chevron_right_rounded,
-                    color: Color(0xFF2563EB),
-                    size: 18,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildProjectLatestTasksCard() {
-    final recent = _activeRecentTasks.take(_isClientUser ? 1 : 2).toList();
-
-    return Container(
-      padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
-      decoration: _dashboardSurfaceDecoration,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Expanded(
-                child: Text(
-                  'Latest Tasks',
-                  style: TextStyle(
-                    color: _navy,
-                    fontSize: 14.5,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ),
-              if (!_isClientUser)
-                TextButton(
-                  onPressed: _openAllProjectTasks,
-                  style: TextButton.styleFrom(
-                    padding: EdgeInsets.zero,
-                    minimumSize: Size.zero,
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  ),
-                  child: const Text(
-                    'View all',
-                    style: TextStyle(
-                      color: Color(0xFF2563EB),
-                      fontSize: 12.5,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          if (_isLoadingTasks && recent.isEmpty)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 18),
-              child: Center(
-                child: SizedBox(
-                  width: 22,
-                  height: 22,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                ),
-              ),
-            )
-          else if (recent.isEmpty)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 18),
-              child: Text(
-                'No pending tasks',
-                style: TextStyle(
-                  color: _mutedGrey,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            )
-          else
-            for (var index = 0; index < recent.length; index++) ...[
-              if (index > 0)
-                const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 10),
-                  child: Divider(height: 1, color: Color(0xFFEEF2F6)),
-                ),
-              _buildCompactProjectTaskRow(
-                recent[index],
-                showAction: !_isClientUser,
-              ),
-            ],
-        ],
-      ),
-    );
-  }
-
-  Widget _buildCompactProjectTaskRow(
-    Map<String, dynamic> task, {
-    bool showAction = true,
-  }) {
-    final status = _compactTaskStatusMeta(task);
-    final description = _clientTaskTitle(task);
-    final dateLabel = _compactTaskDate(task);
-
-    final content = Padding(
-      padding: const EdgeInsets.symmetric(vertical: 2),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 7,
-                height: 7,
-                decoration: BoxDecoration(
-                  color: status['color'] as Color,
-                  shape: BoxShape.circle,
-                ),
-              ),
-              const SizedBox(width: 6),
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                  color: status['bg'] as Color,
-                  borderRadius: BorderRadius.circular(999),
-                ),
-                child: Text(
-                  status['label'] as String,
-                  style: TextStyle(
-                    color: status['color'] as Color,
-                    fontSize: 10,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Text(
-            description,
-            style: const TextStyle(
-              color: _navy,
-              fontSize: 12.5,
-              fontWeight: FontWeight.w600,
-              height: 1.35,
-            ),
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-          ),
-          if (dateLabel.isNotEmpty) ...[
-            const SizedBox(height: 4),
-            Text(
-              dateLabel,
-              style: const TextStyle(
-                color: _mutedGrey,
-                fontSize: 11,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-
-    if (!showAction) return content;
-
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: () => _openProjectTaskDetails(task),
-        borderRadius: BorderRadius.circular(10),
-        child: content,
-      ),
-    );
   }
 
   bool get _shouldShowMyPendingTasksSection =>
@@ -2170,12 +1610,12 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
           children: [
             Expanded(
               child: Text(
-                _isClientUser ? 'Pending tasks' : 'My Pending Tasks',
+                'Pending tasks',
                 style: TextStyle(
-                  fontSize: _isClientUser ? 22 : 15.5,
-                  fontWeight: _isClientUser ? FontWeight.w600 : FontWeight.w800,
-                  color: _isClientUser ? _ink : _navy,
-                  letterSpacing: _isClientUser ? -0.4 : -0.2,
+                  fontSize: 22,
+                  fontWeight: FontWeight.w600,
+                  color: _ink,
+                  letterSpacing: -0.4,
                 ),
               ),
             ),
@@ -2186,14 +1626,13 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
                 minimumSize: Size.zero,
                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
               ),
-              child: Text(
+              child: const Text(
                 'View all tasks',
                 style: TextStyle(
-                  color: _isClientUser ? _ink : const Color(0xFF2563EB),
-                  fontSize: _isClientUser ? 14 : 13,
+                  color: _ink,
+                  fontSize: 14,
                   fontWeight: FontWeight.w600,
-                  decoration:
-                      _isClientUser ? TextDecoration.underline : null,
+                  decoration: TextDecoration.underline,
                   decorationColor: _ink,
                 ),
               ),
@@ -2205,31 +1644,6 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
           children: [
             for (var index = 0; index < recent.length; index++)
               _buildModernDashboardTaskCard(recent[index], index),
-            if (!_isClientUser)
-              Align(
-                alignment: Alignment.centerRight,
-                child: TextButton(
-                  onPressed: _openAllTasks,
-                  child: const Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        'View all tasks',
-                        style: TextStyle(
-                          color: Color(0xFF2563EB),
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      SizedBox(width: 2),
-                      Icon(
-                        Icons.arrow_forward_rounded,
-                        size: 16,
-                        color: Color(0xFF2563EB),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
           ],
         ),
       ],
@@ -2238,9 +1652,7 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
 
   Widget _buildModernDashboardTaskCard(
       Map<String, dynamic> task, int index) {
-    final assigneeParts = _taskAssigneeParts(task);
     final dateParts = _taskDateTimeParts(task);
-    final assigneeText = assigneeParts.whereType<String>().join(' · ');
     final dateText = dateParts[0] == null
         ? null
         : dateParts[1] == null
@@ -2249,26 +1661,20 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
 
     return ModernTaskCard(
       title: _dashboardPendingTaskTitle(task),
-      projectName: _isClientUser ? null : task['project_name']?.toString(),
       materialLabel: indentTaskMaterialLabel(task),
-      assigneeName: _isClientUser
-          ? null
-          : (assigneeText.isEmpty ? null : assigneeText),
       dateLabel: dateText,
       status: isWorkflowDelayGated(task)
           ? 'pending'
           : normalizeTaskStatusValue(task),
       statusLabel: workflowStatusDisplayLabel(task),
       accentIndex: index,
-      tintedBackground: _isClientUser,
+      tintedBackground: true,
       onTap: () => _openTaskDetails(task),
     );
   }
 
   String _dashboardPendingTaskTitle(Map<String, dynamic> task) {
     final title = _clientTaskTitle(task);
-    if (!_isClientUser) return title;
-
     final projectName = task['project_name']?.toString().trim() ?? '';
     if (projectName.isEmpty) return title;
 
@@ -2395,9 +1801,9 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
         child: Container(
           padding: EdgeInsets.all(10),
           decoration: BoxDecoration(
-            color: Color(0xFFF8FAFC),
+            color: AppTheme.darkBackgroundPrimaryLight,
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: Color(0xFFE5E7EB)),
+            border: Border.all(color: AppTheme.border),
           ),
           child: Row(
             children: [
@@ -2405,11 +1811,11 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
                 width: 40,
                 height: 40,
                 decoration: BoxDecoration(
-                  color: Color(0xFFEFF6FF),
+                  color: const Color(0xFF1A2A45),
                   borderRadius: BorderRadius.circular(13),
                 ),
                 child: Icon(_taskFileIcon(type),
-                    color: Color(0xFF2563EB), size: 21),
+                    color: const Color(0xFF60A5FA), size: 21),
               ),
               SizedBox(width: 11),
               Expanded(
@@ -2419,7 +1825,7 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
                     Text(
                       name,
                       style: TextStyle(
-                        color: Color(0xFF111827),
+                        color: AppTheme.darkTextPrimary,
                         fontSize: 12.5,
                         fontWeight: FontWeight.w800,
                       ),
@@ -2551,7 +1957,7 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
                 width: double.infinity,
                 padding: EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: AppTheme.darkBackgroundSecondary,
                   borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
                 ),
                 child: Row(
@@ -2560,7 +1966,7 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
                       child: Text(
                         title,
                         style: TextStyle(
-                          color: Color(0xFF111827),
+                          color: AppTheme.darkTextPrimary,
                           fontSize: 14,
                           fontWeight: FontWeight.w800,
                         ),
@@ -2570,7 +1976,7 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
                     ),
                     IconButton(
                       onPressed: () => Navigator.pop(context),
-                      icon: Icon(Icons.close_rounded, color: Color(0xFF111827)),
+                      icon: Icon(Icons.close_rounded, color: AppTheme.darkTextPrimary),
                     ),
                   ],
                 ),
@@ -2580,7 +1986,7 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
                   bottom: Radius.circular(22),
                 ),
                 child: Container(
-                  color: Colors.white,
+                  color: AppTheme.darkBackgroundSecondary,
                   constraints: BoxConstraints(
                     maxHeight: MediaQuery.of(context).size.height * 0.68,
                   ),
@@ -2659,7 +2065,7 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
               children: [
                 Icon(
                   icon,
-                  color: isPrimary ? Colors.white : Color(0xFF111827),
+                  color: isPrimary ? Colors.white : AppTheme.darkTextPrimary,
                   size: 18,
                 ),
                 SizedBox(width: 7),
@@ -2667,7 +2073,7 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
                   child: Text(
                     label,
                     style: TextStyle(
-                      color: isPrimary ? Colors.white : Color(0xFF111827),
+                      color: isPrimary ? Colors.white : AppTheme.darkTextPrimary,
                       fontSize: 12.5,
                       fontWeight: FontWeight.w800,
                     ),
@@ -2721,23 +2127,6 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
         ),
       ),
     );
-  }
-
-  List<String?> _taskAssigneeParts(Map<String, dynamic> task) {
-    final name = _firstTaskString(task, [
-      'assigned_to_name',
-      'assignee_name',
-      'assigned_to',
-      'user_name',
-      'assigned_user_name',
-    ]);
-    final role = _firstTaskString(task, [
-      'assigned_to_role',
-      'assigned_role',
-      'role',
-      'assignee_role',
-    ]);
-    return [name, role];
   }
 
   List<String?> _taskDateTimeParts(Map<String, dynamic> task) {
@@ -3279,14 +2668,12 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
     final rbac = RBACService();
 
     if (_currentRole != 'Billing') {
-      // Client Portal — documents, design, site prep, inspection (clients only)
-      if (_currentRole?.toLowerCase() == 'client') {
-        menuItems.add({
-          'title': 'Client Portal',
-          'icon': Icons.dashboard_customize_outlined,
-          'route': () => const ClientPortalScreen(),
-        });
-      }
+      // Same project home tiles a client sees after login.
+      menuItems.add({
+        'title': 'Client Portal',
+        'icon': Icons.dashboard_customize_outlined,
+        'route': () => const ClientPortalScreen(),
+      });
       menuItems.add({
         'title': 'My tasks',
         'icon': Icons.pending_actions,
@@ -3377,22 +2764,21 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
     //   });
     // }
 
-    // Payments - check RBAC
-    if (rbac.canViewSync(_currentRole, RBACService.payments)) {
+    // Payments is part of the shared project home, including staff.
+    menuItems.add({
+      'title': 'Payments',
+      'icon': Icons.payment,
+      'route': () => PaymentTaskWidget(),
+    });
+    if (_isClientUser ||
+        rbac.canViewSync(_currentRole, RBACService.payments)) {
       menuItems.add({
-        'title': 'Payments',
-        'icon': Icons.payment,
-        'route': () => PaymentTaskWidget(),
+        'title': 'NT Payments',
+        'icon': Icons.receipt_long,
+        'route': () => const PaymentTaskWidget(
+              initialCategory: PaymentCategory.nonTender,
+            ),
       });
-      if (_isClientUser) {
-        menuItems.add({
-          'title': 'NT Payments',
-          'icon': Icons.receipt_long,
-          'route': () => const PaymentTaskWidget(
-                initialCategory: PaymentCategory.nonTender,
-              ),
-        });
-      }
     }
 
     if (_isClientUser) {
@@ -3403,14 +2789,11 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
       });
     }
 
-    // Client-only: upload UPI / bank / cheque screenshots for Finance review.
-    if (_currentRole?.toLowerCase() == 'client') {
-      menuItems.add({
-        'title': 'Upload proof',
-        'icon': Icons.cloud_upload_outlined,
-        'route': () => const UploadPaymentProofScreen(),
-      });
-    }
+    menuItems.add({
+      'title': 'Upload proof',
+      'icon': Icons.cloud_upload_outlined,
+      'route': () => const UploadPaymentProofScreen(),
+    });
 
     // Documents — staff only. Clients no longer get Docs V1 on home.
     if (!_isClientUser &&
@@ -3579,20 +2962,6 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
     'Project Status',
   ];
 
-  /// Pinned quick actions for staff / other roles on the project dashboard.
-  static const List<String> _staffPinnedQuickActionTitles = [
-    'My tasks',
-    'Project Timeline',
-    'Project Status',
-    'Timeline Gallery',
-    'Indents',
-    'Approved POs',
-    'Work orders',
-    'Documents V1',
-    'Payments',
-    'Slots',
-  ];
-
   List<Map<String, dynamic>> _hardcodedPinnedQuickActions(
       List<Map<String, dynamic>> items) {
     final byTitle = <String, Map<String, dynamic>>{};
@@ -3600,11 +2969,9 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
       byTitle[item['title'].toString()] = item;
     }
 
-    final titles = _isClientUser
-        ? (_restrictLegacyClientFeatures
-            ? _legacyClientPinnedQuickActionTitles
-            : _clientPinnedQuickActionTitles)
-        : _staffPinnedQuickActionTitles;
+    final titles = _restrictLegacyClientFeatures
+        ? _legacyClientPinnedQuickActionTitles
+        : _clientPinnedQuickActionTitles;
 
     final pinned = <Map<String, dynamic>>[];
     for (final title in titles) {
@@ -3623,9 +2990,31 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
       snapshot: MobileQuickActionsService.instance
           .snapshot(MobileQuickActionSurface.projectHomeNew),
     );
-    return actions
+    final visible = actions
         .where((item) => item['title']?.toString() != '3D House Tour')
         .toList();
+    final hasSlots = visible.any((item) => item['title']?.toString() == 'Slots');
+    if (!hasSlots) {
+      for (final item in items) {
+        if (item['title']?.toString() == 'Slots') {
+          visible.insert(visible.isEmpty ? 0 : 1, item);
+          break;
+        }
+      }
+    }
+    final hasPayments =
+        visible.any((item) => item['title']?.toString() == 'Payments');
+    if (!hasPayments) {
+      for (final item in items) {
+        if (item['title']?.toString() == 'Payments') {
+          // Keep it on the first screen of the grid, same slot clients use.
+          final insertAt = visible.length < 4 ? visible.length : 4;
+          visible.insert(insertAt, item);
+          break;
+        }
+      }
+    }
+    return visible;
   }
 
   Widget build(BuildContext context) {
@@ -3633,18 +3022,13 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
     final pinnedActions = _pinnedQuickActions(menuItems);
 
     final dashboardContent = Container(
-      color: AppTheme.lightBackgroundPrimary,
+      color: AppTheme.darkBackgroundPrimary,
       child: RefreshIndicator(
         color: _navy,
         onRefresh: () => reloadData(force: true),
         child: ListView(
           controller: _scrollController,
-          padding: EdgeInsets.fromLTRB(
-            _isClientUser ? 24 : 20,
-            _isClientUser ? 16 : 8,
-            _isClientUser ? 24 : 20,
-            32,
-          ),
+          padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
           children: <Widget>[
             if (blocked == true) ...[
               Container(
@@ -3691,15 +3075,13 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
               _buildTasksSection(),
             ],
             if (!_restrictLegacyClientFeatures) ...[
-              SizedBox(height: _isClientUser ? 20 : 12),
+              const SizedBox(height: 20),
               KeyedSubtree(
                 key: widget.tourChatKey,
-                child: _isClientUser
-                    ? _buildClientChatAndSlots()
-                    : _buildChatAndLatestTasksRow(),
+                child: _buildHighlightedChatCard(),
               ),
             ],
-            SizedBox(height: _isClientUser ? 28 : 22),
+            const SizedBox(height: 28),
             KeyedSubtree(
               key: widget.tourActionsKey,
               child: Column(
@@ -3707,14 +3089,13 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
                 children: [
                   Row(
                     children: [
-                      Text(
-                        _isClientUser ? 'Quick actions' : 'Quick Actions',
+                      const Text(
+                        'Quick actions',
                         style: TextStyle(
-                          fontSize: _isClientUser ? 22 : 15.5,
-                          fontWeight:
-                              _isClientUser ? FontWeight.w600 : FontWeight.w800,
-                          color: _isClientUser ? _ink : _navy,
-                          letterSpacing: _isClientUser ? -0.4 : 0,
+                          fontSize: 22,
+                          fontWeight: FontWeight.w600,
+                          color: _ink,
+                          letterSpacing: -0.4,
                           height: 1.1,
                         ),
                       ),
@@ -3726,127 +3107,13 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
               physics: const NeverScrollableScrollPhysics(),
               gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                 crossAxisCount: _restrictLegacyClientFeatures ? 3 : 4,
-                crossAxisSpacing: _isClientUser ? 12 : 10,
-                mainAxisSpacing: _isClientUser ? 18 : 14,
-                childAspectRatio: _isClientUser
-                    ? 0.62
-                    : (_restrictLegacyClientFeatures ? 0.72 : 0.78),
+                crossAxisSpacing: 12,
+                mainAxisSpacing: 18,
+                childAspectRatio: _restrictLegacyClientFeatures ? 0.72 : 0.62,
               ),
               itemCount: pinnedActions.length,
               itemBuilder: (BuildContext context, int index) {
-                final item = pinnedActions[index];
-                if (_isClientUser) return _buildAirbnbQuickAction(item);
-                final title = item['title'].toString();
-                final colors = _quickActionColors(title);
-                final comingSoon = _restrictLegacyClientFeatures &&
-                    !_isLegacyFeatureAllowed(title);
-                return InkWell(
-                  onTap: () => _handleMenuTap(item),
-                  borderRadius: BorderRadius.circular(16),
-                  child: Opacity(
-                    opacity: comingSoon ? 0.62 : 1,
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.start,
-                      children: [
-                        Stack(
-                          clipBehavior: Clip.none,
-                          children: [
-                            Container(
-                              width: 56,
-                              height: 56,
-                              decoration: BoxDecoration(
-                                color: colors['bg'],
-                                borderRadius: BorderRadius.circular(16),
-                              ),
-                              child: Icon(
-                                _quickActionIcon(
-                                    title, item['icon'] as IconData),
-                                size: 24,
-                                color: colors['fg'],
-                              ),
-                            ),
-                            if (!comingSoon &&
-                                _quickActionBadgeCount(title) != null)
-                              Positioned(
-                                right: -4,
-                                top: -4,
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 6, vertical: 2),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFFEF4444),
-                                    borderRadius: BorderRadius.circular(999),
-                                    border: Border.all(
-                                        color: Colors.white, width: 1.2),
-                                  ),
-                                  child: Text(
-                                    _quickActionBadgeCount(title).toString(),
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 9.5,
-                                      fontWeight: FontWeight.w800,
-                                      height: 1,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            if (comingSoon)
-                              Positioned(
-                                right: -8,
-                                top: -6,
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 5, vertical: 2),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFF1B254B),
-                                    borderRadius: BorderRadius.circular(999),
-                                  ),
-                                  child: const Text(
-                                    'Soon',
-                                    style: TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 8.5,
-                                      fontWeight: FontWeight.w800,
-                                      height: 1,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          _restrictLegacyClientFeatures && title == 'ChatBox'
-                              ? 'Notes & Comments'
-                              : _quickActionLabel(title),
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
-                            color: _navy,
-                            fontSize: 11.5,
-                            fontWeight: FontWeight.w600,
-                            height: 1.15,
-                          ),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        if (comingSoon) ...[
-                          const SizedBox(height: 2),
-                          const Text(
-                            'Coming soon',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              color: Color(0xFF8A94A6),
-                              fontSize: 9.5,
-                              fontWeight: FontWeight.w600,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                );
+                return _buildAirbnbQuickAction(pinnedActions[index]);
               },
             ),
                 ],
@@ -3874,12 +3141,35 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
     }
   }
 
+  Future<void> _ensureCompletionDays() async {
+    if (_durationRequested) return;
+    _durationRequested = true;
+    await DataProvider().refreshProjectPercentage();
+    if (!mounted) return;
+    final dataProvider = DataProvider();
+    setState(() {
+      completed = dataProvider.clientProjectCompletion ?? completed;
+      docDelayDays = dataProvider.clientDocDelayDays;
+      totalDays = dataProvider.clientTotalDays;
+      baseTotalDays = dataProvider.clientBaseTotalDays;
+    });
+  }
+
   Widget _buildHeroBanner() {
+    if (!_durationRequested && totalDays == null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) unawaited(_ensureCompletionDays());
+      });
+    }
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         KeyedSubtree(
           key: widget.tourProgressKey,
-          child: _build3dViewHero(),
+          child: VirtualTourEmbed(
+            height: 200,
+            onExpand: _open3dView,
+          ),
         ),
         const SizedBox(height: 12),
         _buildCompletionBanner(),
@@ -3887,259 +3177,158 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
     );
   }
 
-  Widget _build3dViewHero() {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x332563EB),
-            blurRadius: 18,
-            offset: Offset(0, 8),
-          ),
-        ],
-      ),
-      child: _InfiniteBorder(
-        child: Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: _open3dView,
-        borderRadius: BorderRadius.circular(17),
-        child: Ink(
-          height: 152,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(17),
-            gradient: const LinearGradient(
-              colors: [Color(0xFF1B254B), Color(0xFF2563EB)],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-          ),
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              const Positioned(
-                right: -16,
-                bottom: -26,
-                child: Icon(
-                  Icons.view_in_ar_rounded,
-                  size: 148,
-                  color: Color(0x1AFFFFFF),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 3,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.16),
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                      child: const Text(
-                        'FEATURED',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 10,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 0.8,
-                        ),
-                      ),
-                    ),
-                    const Spacer(),
-                    const Text(
-                      'Models and 3d views',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 22,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: -0.3,
-                        height: 1.1,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            'Open isometric 3d views of your home',
-                            style: TextStyle(
-                              color: Colors.white.withValues(alpha: 0.9),
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                              height: 1.25,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 8,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(999),
-                          ),
-                          child: const Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                'Open',
-                                style: TextStyle(
-                                  color: _navy,
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w800,
-                                ),
-                              ),
-                              SizedBox(width: 2),
-                              Icon(
-                                Icons.arrow_forward_rounded,
-                                size: 16,
-                                color: _navy,
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-        ),
-      ),
-    );
+  String _wholeNumber(num value) {
+    if (value == value.roundToDouble()) return value.round().toString();
+    return value.toString();
   }
+
+  String? _percentText() {
+    final raw = completed?.replaceAll('%', '').trim();
+    if (raw == null || raw.isEmpty) return null;
+    final value = double.tryParse(raw);
+    if (value == null) return raw;
+    return _wholeNumber(value);
+  }
+
+  /// Days still pending ≈ total_days − (total_days × percent / 100).
+  int? _remainingDays() {
+    final total = totalDays;
+    final percent = double.tryParse(_percentText() ?? '');
+    if (total == null || total < 0 || percent == null) return null;
+    final completedDays = (total * percent.clamp(0.0, 100.0) / 100).round();
+    final remaining = total - completedDays;
+    return remaining < 0 ? 0 : remaining;
+  }
+
+  String _dayWord(num count) => count == 1 ? 'day' : 'days';
 
   Widget _buildCompletionBanner() {
     final progress = ((double.tryParse(completed ?? '') ?? 0.0) / 100)
         .clamp(0.0, 1.0)
         .toDouble();
-    final percentLabel = completed == null || completed!.isEmpty
-        ? '--'
-        : '${completed!.replaceAll('%', '')}%';
+    final percentText = _percentText();
+    final percentLabel = percentText == null ? '--' : '$percentText%';
+    final duration = totalDays;
+    final hasDuration = duration != null && duration > 0;
+    final durationLabel =
+        hasDuration ? '$percentLabel · $duration days' : null;
+    final remaining = _remainingDays();
+    final pendingLabel = remaining == null
+        ? null
+        : '$remaining ${_dayWord(remaining)} pending to completion';
+    final delayLabel = docDelayDays > 0
+        ? '+${_wholeNumber(docDelayDays)} ${_dayWord(docDelayDays)} delay'
+        : null;
+    final planned = baseTotalDays;
+    final plannedLabel = delayLabel != null && planned != null && planned > 0
+        ? 'Planned $planned days'
+        : null;
 
-    final progressColor =
-        _isClientUser ? _ink : const Color(0xFF2563EB);
-    final trackColor =
-        _isClientUser ? const Color(0xFFEBEBEB) : const Color(0xFFE8ECF1);
+    final progressColor = _ink;
+    final trackColor = const Color(0xFF2A2A2D);
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      decoration: _dashboardSurfaceDecoration,
-      child: Row(
-        children: [
-          SizedBox(
-            width: 48,
-            height: 48,
-            child: CircularPercentIndicator(
-              radius: 22,
-              lineWidth: 5,
-              percent: progress,
-              animation: true,
-              animationDuration: 1000,
-              circularStrokeCap: CircularStrokeCap.round,
-              progressColor: progressColor,
-              backgroundColor: trackColor,
-              center: Text(
-                percentLabel,
-                style: TextStyle(
-                  color: _isClientUser ? _ink : _navy,
-                  fontSize: 10,
-                  fontWeight: FontWeight.w800,
-                  height: 1,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Text(
+                pendingLabel ??
+                    (hasDuration ? durationLabel! : 'Project completion'),
+                style: const TextStyle(
+                  color: _ink,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  height: 1.2,
+                  letterSpacing: -0.3,
                 ),
               ),
             ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Project completion',
-                  style: TextStyle(
-                    color: _isClientUser ? _ink : _navy,
-                    fontSize: _isClientUser ? 15 : 14,
-                    fontWeight:
-                        _isClientUser ? FontWeight.w600 : FontWeight.w700,
-                    height: 1.2,
-                    letterSpacing: _isClientUser ? -0.2 : 0,
-                  ),
-                ),
-                if (docDelayDays > 0) ...[
-                  const SizedBox(height: 4),
-                  Text(
-                    '+${docDelayDays % 1 == 0 ? docDelayDays.toInt() : docDelayDays} schedule days (DOC)',
-                    style: TextStyle(
-                      color: _isClientUser ? _airbnbMuted : _mutedGrey,
-                      fontSize: 11.5,
-                      fontWeight: FontWeight.w500,
-                      height: 1.2,
-                    ),
-                  ),
-                ],
-                const SizedBox(height: 2),
-                Text(
-                  'How far construction has come',
-                  style: TextStyle(
-                    color: _isClientUser ? _airbnbMuted : _mutedGrey,
-                    fontSize: 13,
-                    fontWeight:
-                        _isClientUser ? FontWeight.w400 : FontWeight.w600,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          if (location.isNotEmpty)
-            InkWell(
-              onTap: () async {
-                await launchUrl(
-                  Uri.parse(location),
-                  mode: LaunchMode.externalApplication,
-                );
-              },
-              borderRadius: BorderRadius.circular(8),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      Icons.location_on_outlined,
-                      size: 16,
-                      color: _isClientUser ? _ink : const Color(0xFF2563EB),
-                    ),
-                    const SizedBox(width: 2),
-                    Text(
-                      'Map',
-                      style: TextStyle(
-                        color: _isClientUser ? _ink : const Color(0xFF2563EB),
-                        fontSize: _isClientUser ? 14 : 12.5,
-                        fontWeight: FontWeight.w600,
-                        decoration: _isClientUser
-                            ? TextDecoration.underline
-                            : null,
-                        decorationColor: _ink,
+            if (location.isNotEmpty)
+              InkWell(
+                onTap: () async {
+                  await launchUrl(
+                    Uri.parse(location),
+                    mode: LaunchMode.externalApplication,
+                  );
+                },
+                borderRadius: BorderRadius.circular(8),
+                child: Padding(
+                  padding: const EdgeInsets.only(left: 8, top: 2),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.location_on_outlined,
+                        size: 16,
+                        color: _ink,
                       ),
-                    ),
-                  ],
+                      const SizedBox(width: 2),
+                      Text(
+                        'Map',
+                        style: const TextStyle(
+                          color: _ink,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          decoration: TextDecoration.underline,
+                          decorationColor: _ink,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
+          ],
+        ),
+        if (pendingLabel != null && durationLabel != null) ...[
+          const SizedBox(height: 4),
+          Text(
+            durationLabel,
+            style: const TextStyle(
+              color: _ink,
+              fontSize: 15,
+              fontWeight: FontWeight.w600,
+              height: 1.2,
             ),
+          ),
         ],
-      ),
+        if (delayLabel != null) ...[
+          const SizedBox(height: 4),
+          Text(
+            delayLabel,
+            style: const TextStyle(
+              color: _airbnbMuted,
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              height: 1.2,
+            ),
+          ),
+        ],
+        if (plannedLabel != null) ...[
+          const SizedBox(height: 2),
+          Text(
+            plannedLabel,
+            style: const TextStyle(
+              color: _airbnbMuted,
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+              height: 1.2,
+            ),
+          ),
+        ],
+        const SizedBox(height: 10),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(99),
+          child: LinearProgressIndicator(
+            value: progress,
+            minHeight: 6,
+            backgroundColor: trackColor,
+            color: progressColor,
+          ),
+        ),
+      ],
     );
   }
 
@@ -4480,6 +3669,16 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
       );
       return;
     }
+    // Clients have no menu row titled "Gallery" (only Timeline Gallery), so a
+    // title lookup no-ops. Timeline Gallery is also where project photos live.
+    if (canonical == 'gallery') {
+      await _navigateToWidget(
+        const TimelineGallery(),
+        chromeStyle: chromeStyle,
+        appBarColor: appBarColor,
+      );
+      return;
+    }
 
     final title = flutterTitleForMobileBottomNav(surface, canonical);
     if (title == null) return;
@@ -4719,7 +3918,7 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
       case 'client portal':
         return {
           'bg': const Color(0xFFE0E7FF),
-          'fg': const Color(0xFF1B254B),
+          'fg': AppTheme.navy,
         };
       case 'slots':
         return {
@@ -4729,7 +3928,7 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
       default:
         return {
           'bg': const Color(0xFFEEF2FF),
-          'fg': _navy,
+          'fg': AppTheme.darkTextPrimary,
         };
     }
   }
@@ -4833,48 +4032,22 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
 
   List<Map<String, dynamic>> _orderedMenuItems(
       List<Map<String, dynamic>> items) {
-    const clientPreferred = [
-      'Client Portal',
-      'Slots',
-      'Project Timeline',
-      'Timeline Gallery',
-      'Payments',
-      'Upload proof',
-      '3D House Tour',
-      'My tasks',
-      'Scheduler',
-      'ChatBox',
-      'Chat V1',
-      'Checklist',
-    ];
-    const staffPreferred = [
-      'My tasks',
-      'Project Timeline',
-      'Timeline Gallery',
-      'Indents',
-      'Approved POs',
-      'Work orders',
-      'Documents V1',
-      'Payments',
-      'Project Details',
-      'Slots',
-      'Documents',
-      'Scheduler',
-      'Gallery',
-      '3D House Tour',
-      'ChatBox',
-      'Chat V1',
-      'Project Status',
-      'Checklist',
-      'Request Drawings',
-      'Inspection Requests',
-      'Site Visit Reports',
-    ];
-    final preferred = _isClientUser
-        ? (_restrictLegacyClientFeatures
-            ? _legacyClientPinnedQuickActionTitles
-            : clientPreferred)
-        : staffPreferred;
+    final preferred = _restrictLegacyClientFeatures
+        ? _legacyClientPinnedQuickActionTitles
+        : const [
+            'Client Portal',
+            'Slots',
+            'Project Timeline',
+            'Timeline Gallery',
+            'Payments',
+            'Upload proof',
+            '3D House Tour',
+            'My tasks',
+            'Scheduler',
+            'ChatBox',
+            'Chat V1',
+            'Checklist',
+          ];
     final byTitle = <String, Map<String, dynamic>>{};
     for (final item in items) {
       byTitle[item['title'].toString()] = item;
@@ -4917,11 +4090,11 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
   }
 
   Widget _buildLoadingState() {
-    final baseColor = const Color(0xFFE8ECF1);
-    final highlightColor = const Color(0xFFF8FAFC);
+    final baseColor = AppTheme.darkBackgroundPrimaryLight;
+    final highlightColor = AppTheme.darkBackgroundSecondary;
 
     return Container(
-      color: Colors.white,
+      color: AppTheme.darkBackgroundPrimary,
       child: ListView(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
         children: [
@@ -5044,62 +4217,6 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
           ),
         ),
       ),
-    );
-  }
-}
-
-class _InfiniteBorder extends StatefulWidget {
-  final Widget child;
-
-  const _InfiniteBorder({required this.child});
-
-  @override
-  State<_InfiniteBorder> createState() => _InfiniteBorderState();
-}
-
-class _InfiniteBorderState extends State<_InfiniteBorder>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _controller;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 2800),
-    )..repeat();
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _controller,
-      builder: (context, child) {
-        return Container(
-          padding: const EdgeInsets.all(2.2),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(20),
-            gradient: SweepGradient(
-              transform: GradientRotation(_controller.value * math.pi * 2),
-              colors: const [
-                Color(0xFFFFFFFF),
-                Color(0xFF93C5FD),
-                Color(0xFF1B254B),
-                Color(0xFF2563EB),
-                Color(0xFFFFFFFF),
-              ],
-            ),
-          ),
-          child: child,
-        );
-      },
-      child: widget.child,
     );
   }
 }

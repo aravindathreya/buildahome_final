@@ -7,7 +7,7 @@ class NewRoute extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Connect dots',
-      theme: AppTheme.getLightTheme(),
+      theme: AppTheme.getDarkTheme(),
       home: HomePage(),
     );
   }

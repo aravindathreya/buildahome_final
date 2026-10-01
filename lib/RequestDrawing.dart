@@ -8,6 +8,7 @@ import 'package:image_picker/image_picker.dart';
 import 'dart:convert';
 import 'ShowAlert.dart';
 import 'app_theme.dart';
+import 'services/camera_permission.dart';
 import 'projects.dart';
 import 'widgets/skeleton_loader.dart';
 
@@ -2380,6 +2381,9 @@ class _ViewRequestsPageState extends State<ViewRequestsPage> {
               title: Text('Take Photo'),
               onTap: () async {
                 Navigator.pop(context);
+                if (!mounted) return;
+                if (!await ensureCameraPermission(this.context)) return;
+                if (!mounted) return;
                 final picker = ImagePicker();
                 final pickedFile = await picker.pickImage(
                   source: ImageSource.camera,

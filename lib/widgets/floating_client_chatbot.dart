@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../app_theme.dart';
 
 import '../client_chatbot_panel.dart';
 
@@ -137,7 +138,7 @@ class AssistantBotFace extends StatelessWidget {
       errorBuilder: (_, __, ___) => Icon(
         Icons.smart_toy_rounded,
         size: size * 0.55,
-        color: const Color(0xFF1B254B),
+        color: AppTheme.darkTextPrimary,
       ),
     );
 
@@ -154,7 +155,7 @@ class AssistantBotFace extends StatelessWidget {
         border: Border.all(color: const Color(0xFFD7DEE8), width: 2),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF1B254B).withValues(alpha: 0.18),
+            color: AppTheme.darkTextPrimary.withValues(alpha: 0.18),
             blurRadius: 16,
             offset: const Offset(0, 6),
           ),

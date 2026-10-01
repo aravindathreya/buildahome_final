@@ -21,10 +21,10 @@ class PaymentTaskWidget extends StatelessWidget {
     final GlobalKey<ScaffoldState> _scaffoldKey = new GlobalKey<ScaffoldState>();
     return MaterialApp(
       title: appTitle,
-      theme: AppTheme.getLightTheme(),
+      theme: AppTheme.getDarkTheme(),
       home: Scaffold(
         key: _scaffoldKey,
-        backgroundColor: Colors.white,
+        backgroundColor: AppTheme.darkBackgroundSecondary,
         // ADD THIS LINE
         drawer: NavMenuWidget(),
         appBar: AppBar(
@@ -35,16 +35,16 @@ class PaymentTaskWidget extends StatelessWidget {
               onPressed: () => {
                     Navigator.pop(context),
                   }),
-          backgroundColor: Colors.white,
-          foregroundColor: AppTheme.navy,
+          backgroundColor: AppTheme.darkBackgroundSecondary,
+          foregroundColor: AppTheme.darkTextPrimary,
           elevation: 0,
-          iconTheme: const IconThemeData(color: AppTheme.navy),
-          titleTextStyle: const TextStyle(color: AppTheme.navy, fontSize: 18, fontWeight: FontWeight.w800),
+          iconTheme: const IconThemeData(color: AppTheme.darkTextPrimary),
+          titleTextStyle: const TextStyle(color: AppTheme.darkTextPrimary, fontSize: 18, fontWeight: FontWeight.w800),
         ),
         body: PaymentTasksClass(this.id),
         bottomNavigationBar: BottomNavigationBar(
           currentIndex: 4,
-          selectedItemColor: AppTheme.navy,
+          selectedItemColor: AppTheme.darkTextPrimary,
           onTap: (int index) {
             if (index == 0) {
               Navigator.pushReplacement(

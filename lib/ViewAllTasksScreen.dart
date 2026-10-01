@@ -1126,17 +1126,17 @@ class _ViewAllTasksScreenState extends State<ViewAllTasksScreen> {
       backgroundColor: AppTheme.getBackgroundPrimary(context),
       appBar: AppBar(
         backgroundColor: AppTheme.getBackgroundSecondary(context),
-        foregroundColor: AppTheme.navy,
+        foregroundColor: AppTheme.darkTextPrimary,
         elevation: 0,
-        iconTheme: const IconThemeData(color: AppTheme.navy),
-        actionsIconTheme: const IconThemeData(color: AppTheme.navy),
+        iconTheme: const IconThemeData(color: AppTheme.darkTextPrimary),
+        actionsIconTheme: const IconThemeData(color: AppTheme.darkTextPrimary),
         leading: IconButton(
           icon: Icon(Icons.arrow_back),
           onPressed: () => Navigator.pop(context),
         ),
         title: const Text(
           'All tasks',
-          style: TextStyle(color: AppTheme.navy, fontWeight: FontWeight.w800),
+          style: TextStyle(color: AppTheme.darkTextPrimary, fontWeight: FontWeight.w800),
         ),
       ),
       body: _isLoading && _tasks.isEmpty

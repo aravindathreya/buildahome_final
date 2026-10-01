@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import '../app_theme.dart';
 import '../services/attendance_service.dart';
 import 'attendance_open_splash.dart';
 import 'employer_tracking_indicator.dart';
@@ -125,11 +126,11 @@ class _StaffCheckInCardState extends State<StaffCheckInCard>
     return DecoratedBox(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(18),
-        boxShadow: const [
+        boxShadow: [
           BoxShadow(
-            color: Color(0x332563EB),
+            color: AppTheme.navy.withValues(alpha: 0.45),
             blurRadius: 18,
-            offset: Offset(0, 8),
+            offset: const Offset(0, 8),
           ),
         ],
       ),
@@ -141,7 +142,7 @@ class _StaffCheckInCardState extends State<StaffCheckInCard>
           decoration: const BoxDecoration(
             borderRadius: BorderRadius.all(Radius.circular(18)),
             gradient: LinearGradient(
-              colors: [Color(0xFF1B254B), Color(0xFF2563EB)],
+              colors: [AppTheme.primaryColorConstDark, AppTheme.navySoft],
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
             ),

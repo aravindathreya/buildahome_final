@@ -73,10 +73,10 @@ class DprState extends State<Dpr> {
     final GlobalKey<ScaffoldState> _scaffoldKey = new GlobalKey<ScaffoldState>();
     return MaterialApp(
       title: appTitle,
-      theme: AppTheme.getLightTheme(),
+      theme: AppTheme.getDarkTheme(),
       home: Scaffold(
         key: _scaffoldKey,
-        backgroundColor: Colors.white,
+        backgroundColor: AppTheme.darkBackgroundSecondary,
         appBar: AppBar(
           automaticallyImplyLeading: false,
           title: Text(appTitle),
@@ -85,16 +85,16 @@ class DprState extends State<Dpr> {
               onPressed: () => {
                     Navigator.pop(context),
                   }),
-          backgroundColor: Colors.white,
-          foregroundColor: AppTheme.navy,
+          backgroundColor: AppTheme.darkBackgroundSecondary,
+          foregroundColor: AppTheme.darkTextPrimary,
           elevation: 0,
-          iconTheme: const IconThemeData(color: AppTheme.navy),
-          titleTextStyle: const TextStyle(color: AppTheme.navy, fontSize: 18, fontWeight: FontWeight.w800),
+          iconTheme: const IconThemeData(color: AppTheme.darkTextPrimary),
+          titleTextStyle: const TextStyle(color: AppTheme.darkTextPrimary, fontSize: 18, fontWeight: FontWeight.w800),
         ),
         drawer: NavMenuWidget(),
         bottomNavigationBar: BottomNavigationBar(
           currentIndex: 0,
-          selectedItemColor: AppTheme.navy,
+          selectedItemColor: AppTheme.darkTextPrimary,
           onTap: (int index) {
             if (index == 0) {
               Navigator.pushReplacement(
@@ -168,7 +168,7 @@ class DprState extends State<Dpr> {
                       children: <Widget>[
                         Row(
                           children: <Widget>[
-                            Icon(Icons.calendar_today, color: Colors.black),
+                            Icon(Icons.calendar_today, color: AppTheme.darkTextPrimary),
                             Container(
                                 padding: EdgeInsets.only(top: 10, left: 5, bottom: 10), child: Text(listOfDates[index]))
                           ],

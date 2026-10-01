@@ -394,7 +394,7 @@ class _ApprovedPoListCard extends StatelessWidget {
                               style: const TextStyle(
                                 fontWeight: FontWeight.w800,
                                 fontSize: 14.5,
-                                color: AppTheme.navy,
+                                color: AppTheme.darkTextPrimary,
                                 height: 1.25,
                               ),
                             ),
@@ -417,7 +417,7 @@ class _ApprovedPoListCard extends StatelessWidget {
                           style: const TextStyle(
                             fontSize: 13,
                             fontWeight: FontWeight.w700,
-                            color: Color(0xFF374151),
+                            color: AppTheme.darkTextPrimary,
                             height: 1.3,
                           ),
                         ),
@@ -791,7 +791,7 @@ class _ApprovedPoDetailScreenState extends State<ApprovedPoDetailScreen> {
       backgroundColor: AppTheme.getBackgroundPrimary(context),
       appBar: AppBar(
         backgroundColor: AppTheme.getBackgroundSecondary(context),
-        foregroundColor: AppTheme.navy,
+        foregroundColor: AppTheme.darkTextPrimary,
         elevation: 0,
         title: Text(
           title,
@@ -951,7 +951,7 @@ class _ApprovedPoHeroCard extends StatelessWidget {
                   item.displayPoNumber(),
                   style: const TextStyle(
                     fontWeight: FontWeight.w800,
-                    color: AppTheme.navy,
+                    color: AppTheme.darkTextPrimary,
                     fontSize: 16,
                     height: 1.25,
                   ),
@@ -1134,7 +1134,7 @@ class _ApprovedPoInfoTable extends StatelessWidget {
                   child: Text(
                     row.value,
                     style: const TextStyle(
-                      color: AppTheme.navy,
+                      color: AppTheme.darkTextPrimary,
                       fontWeight: FontWeight.w700,
                       fontSize: 13,
                     ),
@@ -1217,7 +1217,7 @@ class _ApprovedPoMaterialsCard extends StatelessWidget {
         style: const TextStyle(
           fontSize: 13.5,
           fontWeight: FontWeight.w600,
-          color: AppTheme.navy,
+          color: AppTheme.darkTextPrimary,
         ),
       ),
     );
@@ -1286,7 +1286,7 @@ class _ApprovedPoSiteProofCard extends StatelessWidget {
           icon: const Icon(Icons.verified_outlined, size: 18),
           label: const Text('Review site proof'),
           style: OutlinedButton.styleFrom(
-            foregroundColor: AppTheme.navy,
+            foregroundColor: AppTheme.darkTextPrimary,
             minimumSize: const Size.fromHeight(44),
             side: const BorderSide(color: AppTheme.border),
             shape: RoundedRectangleBorder(
@@ -1354,7 +1354,7 @@ class _ApprovedPoDocumentCard extends StatelessWidget {
                       style: const TextStyle(
                         fontWeight: FontWeight.w800,
                         fontSize: 14,
-                        color: AppTheme.navy,
+                        color: AppTheme.darkTextPrimary,
                         height: 1.25,
                       ),
                     ),
@@ -1434,7 +1434,7 @@ class _ApprovedPoPendingDocumentCard extends StatelessWidget {
                   style: TextStyle(
                     fontWeight: FontWeight.w800,
                     fontSize: 14,
-                    color: AppTheme.navy,
+                    color: AppTheme.darkTextPrimary,
                   ),
                 ),
                 const SizedBox(height: 4),
@@ -1488,7 +1488,7 @@ class _InlineMessage extends StatelessWidget {
               style: const TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.w800,
-                color: Color(0xFF111827),
+                color: AppTheme.darkTextPrimary,
               ),
             ),
             const SizedBox(height: 6),

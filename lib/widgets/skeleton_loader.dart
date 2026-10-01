@@ -21,7 +21,7 @@ class SkeletonBar extends StatelessWidget {
       width: width,
       height: height,
       decoration: BoxDecoration(
-        color: AppTheme.getBackgroundPrimaryLight(context),
+        color: AppTheme.darkBackgroundPrimaryLight,
         borderRadius: BorderRadius.circular(radius),
       ),
     );
@@ -44,7 +44,7 @@ class SkeletonCard extends StatelessWidget {
       margin: margin,
       padding: padding,
       decoration: BoxDecoration(
-        color: AppTheme.getBackgroundSecondary(context),
+        color: AppTheme.darkBackgroundSecondary,
         borderRadius: BorderRadius.circular(20),
       ),
       child: Column(
@@ -90,8 +90,8 @@ class SkeletonListLoader extends StatelessWidget {
     final summaryWidth = (width - 60) / 2;
 
     return Shimmer.fromColors(
-      baseColor: AppTheme.getBackgroundPrimaryLight(context),
-      highlightColor: AppTheme.getBackgroundSecondary(context),
+      baseColor: AppTheme.darkBackgroundSecondary,
+      highlightColor: AppTheme.darkBackgroundPrimaryLight,
       child: ListView(
         shrinkWrap: shrinkWrap,
         physics: physics ??
@@ -114,7 +114,7 @@ class SkeletonListLoader extends StatelessWidget {
                   width: summaryWidth,
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: AppTheme.getBackgroundSecondary(context),
+                    color: AppTheme.darkBackgroundSecondary,
                     borderRadius: BorderRadius.circular(18),
                   ),
                   child: const Column(
@@ -153,8 +153,8 @@ class SkeletonSheetLoader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Shimmer.fromColors(
-      baseColor: AppTheme.getBackgroundPrimaryLight(context),
-      highlightColor: AppTheme.getBackgroundSecondary(context),
+      baseColor: AppTheme.darkBackgroundSecondary,
+      highlightColor: AppTheme.darkBackgroundPrimaryLight,
       child: ListView.builder(
         padding: padding,
         itemCount: itemCount,
@@ -162,7 +162,7 @@ class SkeletonSheetLoader extends StatelessWidget {
           margin: const EdgeInsets.only(bottom: 12),
           height: itemHeight,
           decoration: BoxDecoration(
-            color: AppTheme.getBackgroundSecondary(context),
+            color: AppTheme.darkBackgroundSecondary,
             borderRadius: BorderRadius.circular(12),
           ),
         ),
@@ -185,8 +185,8 @@ class SkeletonBlockLoader extends StatelessWidget {
     return Padding(
       padding: padding,
       child: Shimmer.fromColors(
-        baseColor: AppTheme.getBackgroundPrimaryLight(context),
-        highlightColor: AppTheme.getBackgroundSecondary(context),
+        baseColor: AppTheme.darkBackgroundSecondary,
+        highlightColor: AppTheme.darkBackgroundPrimaryLight,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -200,7 +200,7 @@ class SkeletonBlockLoader extends StatelessWidget {
                 child: Container(
                   height: 40,
                   decoration: BoxDecoration(
-                    color: AppTheme.getBackgroundSecondary(context),
+                    color: AppTheme.darkBackgroundSecondary,
                     borderRadius: BorderRadius.circular(10),
                   ),
                 ),
@@ -229,13 +229,13 @@ class SkeletonImage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Shimmer.fromColors(
-      baseColor: AppTheme.getBackgroundPrimaryLight(context),
-      highlightColor: AppTheme.getBackgroundSecondary(context),
+      baseColor: AppTheme.darkBackgroundSecondary,
+      highlightColor: AppTheme.darkBackgroundPrimaryLight,
       child: Container(
         width: width,
         height: height,
         decoration: BoxDecoration(
-          color: AppTheme.getBackgroundPrimaryLight(context),
+          color: AppTheme.darkBackgroundPrimaryLight,
           borderRadius: BorderRadius.circular(radius),
         ),
       ),

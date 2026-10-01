@@ -57,12 +57,12 @@ class _DocumentsV1DetailScreenState extends State<DocumentsV1DetailScreen>
       backgroundColor: AppTheme.getBackgroundPrimary(context),
       appBar: AppBar(
         backgroundColor: AppTheme.getBackgroundSecondary(context),
-        foregroundColor: AppTheme.navy,
+        foregroundColor: AppTheme.darkTextPrimary,
         elevation: 0,
         title: Text(
           widget.document.displayTitle,
           style: const TextStyle(
-            color: AppTheme.navy,
+            color: AppTheme.darkTextPrimary,
             fontSize: 16,
             fontWeight: FontWeight.w800,
           ),
@@ -76,7 +76,7 @@ class _DocumentsV1DetailScreenState extends State<DocumentsV1DetailScreen>
               height: 48,
               padding: const EdgeInsets.all(4),
               decoration: BoxDecoration(
-                color: const Color(0xFFF1F4F8),
+                color: const Color(0xFF2A2A2D),
                 borderRadius: BorderRadius.circular(14),
               ),
               child: TabBar(
@@ -189,7 +189,7 @@ class _DetailsTab extends StatelessWidget {
                       document.displayTitle,
                       style: const TextStyle(
                         fontWeight: FontWeight.w800,
-                        color: AppTheme.navy,
+                        color: AppTheme.darkTextPrimary,
                         fontSize: 15,
                         height: 1.25,
                       ),
@@ -271,12 +271,12 @@ class _DocIcon extends StatelessWidget {
         width: size,
         height: size,
         decoration: BoxDecoration(
-          color: const Color(0xFFFEE2E2),
+          color: const Color(0xFF2C1618),
           borderRadius: BorderRadius.circular(12),
         ),
         child: Icon(
           Icons.picture_as_pdf_rounded,
-          color: const Color(0xFFDC2626),
+          color: const Color(0xFFF87171),
           size: size * 0.5,
         ),
       );
@@ -285,12 +285,12 @@ class _DocIcon extends StatelessWidget {
       width: size,
       height: size,
       decoration: BoxDecoration(
-        color: const Color(0xFFF0F4FF),
+        color: const Color(0xFF2A2040),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Icon(
         document.isImage ? Icons.image_outlined : Icons.description_outlined,
-        color: AppTheme.navy,
+        color: AppTheme.darkTextPrimary,
         size: size * 0.45,
       ),
     );
@@ -362,7 +362,7 @@ class _InfoTable extends StatelessWidget {
                   child: Text(
                     row.value,
                     style: const TextStyle(
-                      color: AppTheme.navy,
+                      color: AppTheme.darkTextPrimary,
                       fontWeight: FontWeight.w700,
                       fontSize: 13,
                     ),
@@ -421,7 +421,7 @@ class _RevisionsTab extends StatelessWidget {
           return Padding(
             padding: const EdgeInsets.only(bottom: 8),
             child: Material(
-              color: Colors.white,
+              color: ClientPortalDocTheme.cardBackground,
               borderRadius: BorderRadius.circular(ClientPortalDocTheme.cardRadius),
               child: InkWell(
                 onTap: revision.hasUrl
@@ -449,7 +449,7 @@ class _RevisionsTab extends StatelessWidget {
                                   : revision.displayTitle,
                               style: const TextStyle(
                                 fontWeight: FontWeight.w800,
-                                color: AppTheme.navy,
+                                color: AppTheme.darkTextPrimary,
                                 fontSize: 14,
                               ),
                             ),
@@ -539,7 +539,7 @@ class _ActivityTab extends StatelessWidget {
                 title,
                 style: const TextStyle(
                   fontWeight: FontWeight.w700,
-                  color: AppTheme.navy,
+                  color: AppTheme.darkTextPrimary,
                 ),
               ),
               if (subtitle != null)

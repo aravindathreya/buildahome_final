@@ -12,6 +12,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
 import 'app_theme.dart';
+import 'services/camera_permission.dart';
 import 'AddDailyUpdate.dart'; // For FullScreenImage
 import 'services/data_provider.dart';
 import 'widgets/searchable_select.dart';
@@ -185,8 +186,9 @@ class _TestReportsScreenState extends State<TestReportsScreen> with SingleTicker
   }
 
   Future<void> _takePhotoFromCamera() async {
-    if (!await checkPermissionStatus(forCamera: true)) return;
-    
+    if (!await ensureCameraPermission(context)) return;
+    if (!mounted) return;
+
     final picker = ImagePicker();
     final pickedFile = await picker.pickImage(
       source: ImageSource.camera,

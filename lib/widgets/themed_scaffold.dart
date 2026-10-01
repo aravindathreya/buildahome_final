@@ -7,7 +7,7 @@ import 'dashboard_chrome.dart';
 /// Shared app chrome so feature screens pick up the redesigned theme.
 ///
 /// AppBar colors follow [DashboardChrome]: role-based dark color when opened
-/// from Admin Dashboard, white when opened from User Dashboard (default).
+/// from Admin Dashboard, darker surface when opened from User Dashboard.
 class ThemedScaffold extends StatelessWidget {
   final String title;
   final Widget body;
@@ -20,6 +20,9 @@ class ThemedScaffold extends StatelessWidget {
   final Color? backgroundColor;
   final Widget? leading;
   final bool? centerTitle;
+
+  /// Extra space between the status bar and the title row.
+  final double headerDrop;
 
   const ThemedScaffold({
     super.key,
@@ -34,6 +37,7 @@ class ThemedScaffold extends StatelessWidget {
     this.backgroundColor,
     this.leading,
     this.centerTitle,
+    this.headerDrop = 0,
   });
 
   @override
@@ -45,49 +49,81 @@ class ThemedScaffold extends StatelessWidget {
 
     final Color appBarBg = isAdminChrome
         ? (DashboardChrome.appBarColorOf(context) ?? AppTheme.primaryColorConst)
-        : Colors.white;
-    final Color appBarFg =
-        isAdminChrome ? Colors.white : AppTheme.navy;
+        : AppTheme.darkBackgroundSecondary;
+    final Color appBarFg = Colors.white;
+
+    final appBar = AppBar(
+      primary: headerDrop <= 0,
+      backgroundColor: appBarBg,
+      foregroundColor: appBarFg,
+      elevation: 0,
+      scrolledUnderElevation: 0,
+      centerTitle: centerTitle ?? false,
+      automaticallyImplyLeading: false,
+      systemOverlayStyle: SystemUiOverlayStyle.light,
+      leading: leading ??
+          (shouldImplyLeading
+              ? IconButton(
+                  icon: const Icon(Icons.arrow_back_rounded),
+                  color: appBarFg,
+                  onPressed: () => Navigator.of(context).maybePop(),
+                )
+              : null),
+      iconTheme: IconThemeData(color: appBarFg),
+      actionsIconTheme: IconThemeData(color: appBarFg),
+      title: Text(
+        title,
+        style: TextStyle(
+          color: appBarFg,
+          fontSize: 18,
+          fontWeight: FontWeight.w800,
+          letterSpacing: -0.2,
+        ),
+      ),
+      actions: actions,
+      bottom: headerDrop <= 0 ? bottom : null,
+    );
+
+    final PreferredSizeWidget chrome = headerDrop <= 0
+        ? appBar
+        : PreferredSize(
+            preferredSize: Size.fromHeight(
+              MediaQuery.paddingOf(context).top +
+                  headerDrop +
+                  kToolbarHeight +
+                  (bottom?.preferredSize.height ?? 0),
+            ),
+            child: ColoredBox(
+              color: appBarBg,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SizedBox(
+                    height: MediaQuery.paddingOf(context).top + headerDrop,
+                  ),
+                  SizedBox(
+                    height: kToolbarHeight,
+                    width: double.infinity,
+                    child: appBar,
+                  ),
+                  if (bottom != null)
+                    SizedBox(
+                      height: bottom!.preferredSize.height,
+                      width: double.infinity,
+                      child: bottom,
+                    ),
+                ],
+              ),
+            ),
+          );
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: isAdminChrome
-          ? SystemUiOverlayStyle.light
-          : SystemUiOverlayStyle.dark,
+      value: SystemUiOverlayStyle.light,
       child: Scaffold(
-        backgroundColor: backgroundColor ?? const Color(0xFFF7F8FB),
+        backgroundColor:
+            backgroundColor ?? AppTheme.darkBackgroundPrimary,
         drawer: showDrawer ? NavMenuWidget() : null,
-        appBar: AppBar(
-          backgroundColor: appBarBg,
-          foregroundColor: appBarFg,
-          elevation: 0,
-          scrolledUnderElevation: 0,
-          centerTitle: centerTitle ?? false,
-          automaticallyImplyLeading: false,
-          systemOverlayStyle: isAdminChrome
-              ? SystemUiOverlayStyle.light
-              : SystemUiOverlayStyle.dark,
-          leading: leading ??
-              (shouldImplyLeading
-                  ? IconButton(
-                      icon: const Icon(Icons.arrow_back_rounded),
-                      color: appBarFg,
-                      onPressed: () => Navigator.of(context).maybePop(),
-                    )
-                  : null),
-          iconTheme: IconThemeData(color: appBarFg),
-          actionsIconTheme: IconThemeData(color: appBarFg),
-          title: Text(
-            title,
-            style: TextStyle(
-              color: appBarFg,
-              fontSize: 18,
-              fontWeight: FontWeight.w800,
-              letterSpacing: -0.2,
-            ),
-          ),
-          actions: actions,
-          bottom: bottom,
-        ),
+        appBar: chrome,
         body: body,
         floatingActionButton: floatingActionButton,
         bottomNavigationBar: bottomNavigationBar,

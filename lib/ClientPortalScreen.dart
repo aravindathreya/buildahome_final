@@ -168,12 +168,12 @@ class _ClientPortalScreenState extends State<ClientPortalScreen> {
       backgroundColor: AppTheme.getBackgroundPrimary(context),
       appBar: AppBar(
         backgroundColor: AppTheme.getBackgroundSecondary(context),
-        foregroundColor: AppTheme.navy,
+        foregroundColor: AppTheme.darkTextPrimary,
         elevation: 0,
         title: const Text(
           'Client Portal',
           style: TextStyle(
-            color: AppTheme.navy,
+            color: AppTheme.darkTextPrimary,
             fontSize: 18,
             fontWeight: FontWeight.w800,
           ),
@@ -393,7 +393,7 @@ class _TutorialBanner extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
-          colors: [Color(0xFF1B254B), Color(0xFF2F3F73)],
+          colors: [AppTheme.primaryColorConstDark, AppTheme.navySoft],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -416,7 +416,7 @@ class _TutorialBanner extends StatelessWidget {
                 SizedBox(height: 4),
                 Text(
                   'Mark the welcome tour as done when you are ready.',
-                  style: TextStyle(color: Color(0xFFD6DCF0), fontSize: 12.5),
+                  style: TextStyle(color: Color(0xFFE4D4F7), fontSize: 12.5),
                 ),
               ],
             ),
@@ -425,8 +425,8 @@ class _TutorialBanner extends StatelessWidget {
           TextButton(
             onPressed: onComplete,
             style: TextButton.styleFrom(
-              backgroundColor: Colors.white,
-              foregroundColor: AppTheme.navy,
+              backgroundColor: AppTheme.darkBackgroundSecondary,
+              foregroundColor: AppTheme.darkTextPrimary,
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(10),
@@ -460,12 +460,12 @@ class _PortalScaffold extends StatelessWidget {
       backgroundColor: AppTheme.getBackgroundPrimary(context),
       appBar: AppBar(
         backgroundColor: AppTheme.getBackgroundSecondary(context),
-        foregroundColor: AppTheme.navy,
+        foregroundColor: AppTheme.darkTextPrimary,
         elevation: 0,
         title: Text(
           title,
           style: const TextStyle(
-            color: AppTheme.navy,
+            color: AppTheme.darkTextPrimary,
             fontSize: 17,
             fontWeight: FontWeight.w800,
           ),
@@ -509,7 +509,7 @@ Widget _emptyDocHint(BuildContext context, String label) {
     width: double.infinity,
     padding: const EdgeInsets.all(18),
     decoration: BoxDecoration(
-      color: Colors.white,
+      color: AppTheme.darkBackgroundSecondary,
       borderRadius: BorderRadius.circular(14),
       border: Border.all(color: AppTheme.border),
     ),
@@ -543,17 +543,17 @@ Widget _docTile(
       borderRadius: BorderRadius.circular(12),
       side: const BorderSide(color: AppTheme.border),
     ),
-    tileColor: Colors.white,
+    tileColor: AppTheme.darkBackgroundSecondary,
     leading: Container(
       width: 40,
       height: 40,
       decoration: BoxDecoration(
-        color: available ? const Color(0xFFECFDF5) : const Color(0xFFF3F4F6),
+        color: available ? const Color(0xFF143028) : const Color(0xFF2A2A2D),
         borderRadius: BorderRadius.circular(10),
       ),
       child: Icon(
         icon,
-        color: available ? const Color(0xFF059669) : AppTheme.mutedGrey,
+        color: available ? const Color(0xFF34D399) : AppTheme.mutedGrey,
         size: 20,
       ),
     ),
@@ -562,7 +562,7 @@ Widget _docTile(
       style: TextStyle(
         fontWeight: FontWeight.w700,
         fontSize: 14,
-        color: available ? AppTheme.navy : AppTheme.mutedGrey,
+        color: available ? AppTheme.darkTextPrimary : AppTheme.mutedGrey,
       ),
     ),
     subtitle: Text(
@@ -995,8 +995,8 @@ class _FloorPlanElevationScreenState extends State<_FloorPlanElevationScreen> {
                       padding: const EdgeInsets.all(14),
                       decoration: BoxDecoration(
                         color: status == 'finalized'
-                            ? const Color(0xFFECFDF5)
-                            : const Color(0xFFFFF7ED),
+                            ? const Color(0xFF143028)
+                            : const Color(0xFF2A2112),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Row(
@@ -1006,8 +1006,8 @@ class _FloorPlanElevationScreenState extends State<_FloorPlanElevationScreen> {
                                 ? Icons.verified_rounded
                                 : Icons.hourglass_bottom_rounded,
                             color: status == 'finalized'
-                                ? const Color(0xFF059669)
-                                : const Color(0xFFEA580C),
+                                ? const Color(0xFF34D399)
+                                : const Color(0xFFFBBF24),
                           ),
                           const SizedBox(width: 10),
                           Text(
@@ -1016,7 +1016,7 @@ class _FloorPlanElevationScreenState extends State<_FloorPlanElevationScreen> {
                                 : 'Drawings in progress',
                             style: const TextStyle(
                               fontWeight: FontWeight.w700,
-                              color: AppTheme.navy,
+                              color: AppTheme.darkTextPrimary,
                             ),
                           ),
                         ],
@@ -1096,7 +1096,7 @@ class _DesignElementScreenState extends State<_DesignElementScreen> {
           children: [
             Text(title,
                 style: const TextStyle(
-                    fontWeight: FontWeight.w800, color: AppTheme.navy)),
+                    fontWeight: FontWeight.w800, color: AppTheme.darkTextPrimary)),
             const SizedBox(height: 8),
             _emptyDocHint(context, title),
           ],
@@ -1110,7 +1110,7 @@ class _DesignElementScreenState extends State<_DesignElementScreen> {
         children: [
           Text(title,
               style: const TextStyle(
-                  fontWeight: FontWeight.w800, color: AppTheme.navy)),
+                  fontWeight: FontWeight.w800, color: AppTheme.darkTextPrimary)),
           const SizedBox(height: 8),
           ...items.map((raw) {
             final doc = raw is Map
@@ -1282,7 +1282,7 @@ class _SitePreparationScreenState extends State<_SitePreparationScreen> {
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppTheme.darkBackgroundSecondary,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: AppTheme.border),
       ),
@@ -1291,7 +1291,7 @@ class _SitePreparationScreenState extends State<_SitePreparationScreen> {
         children: [
           Text(label,
               style: const TextStyle(
-                  fontWeight: FontWeight.w700, color: AppTheme.navy)),
+                  fontWeight: FontWeight.w700, color: AppTheme.darkTextPrimary)),
           const SizedBox(height: 8),
           Row(
             children: [
@@ -1299,10 +1299,10 @@ class _SitePreparationScreenState extends State<_SitePreparationScreen> {
                 label: const Text('Yes'),
                 selected: value == true,
                 onSelected: _readonly ? null : (_) => onChanged(true),
-                selectedColor: const Color(0xFFDBEAFE),
+                selectedColor: const Color(0xFF3A2A55),
                 labelStyle: TextStyle(
                   fontWeight: FontWeight.w700,
-                  color: value == true ? AppTheme.navy : AppTheme.mutedGrey,
+                  color: value == true ? AppTheme.darkTextPrimary : AppTheme.mutedGrey,
                 ),
               ),
               const SizedBox(width: 8),
@@ -1310,10 +1310,10 @@ class _SitePreparationScreenState extends State<_SitePreparationScreen> {
                 label: const Text('No'),
                 selected: value == false,
                 onSelected: _readonly ? null : (_) => onChanged(false),
-                selectedColor: const Color(0xFFDBEAFE),
+                selectedColor: const Color(0xFF3A2A55),
                 labelStyle: TextStyle(
                   fontWeight: FontWeight.w700,
-                  color: value == false ? AppTheme.navy : AppTheme.mutedGrey,
+                  color: value == false ? AppTheme.darkTextPrimary : AppTheme.mutedGrey,
                 ),
               ),
             ],
@@ -1500,10 +1500,10 @@ class _DemolitionScreenState extends State<_DemolitionScreen> {
                         'Demolition required',
                         style: TextStyle(
                           fontWeight: FontWeight.w700,
-                          color: AppTheme.navy,
+                          color: AppTheme.darkTextPrimary,
                         ),
                       ),
-                      activeColor: AppTheme.navy,
+                      activeColor: AppTheme.darkTextPrimary,
                       contentPadding: EdgeInsets.zero,
                     ),
                     const SizedBox(height: 8),
@@ -1513,7 +1513,7 @@ class _DemolitionScreenState extends State<_DemolitionScreen> {
                         'Completion date',
                         style: TextStyle(
                           fontWeight: FontWeight.w700,
-                          color: AppTheme.navy,
+                          color: AppTheme.darkTextPrimary,
                         ),
                       ),
                       subtitle: Text(
@@ -1531,7 +1531,7 @@ class _DemolitionScreenState extends State<_DemolitionScreen> {
                       decoration: InputDecoration(
                         labelText: 'Comment',
                         filled: true,
-                        fillColor: Colors.white,
+                        fillColor: AppTheme.darkBackgroundPrimaryLight,
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(12),
                         ),
@@ -1745,12 +1745,12 @@ class _SiteInspectionScreenState extends State<_SiteInspectionScreen> {
         backgroundColor: AppTheme.getBackgroundPrimary(context),
         appBar: AppBar(
           backgroundColor: AppTheme.getBackgroundSecondary(context),
-          foregroundColor: AppTheme.navy,
+          foregroundColor: AppTheme.darkTextPrimary,
           elevation: 0,
           title: const Text(
             'Site Inspection',
             style: TextStyle(
-              color: AppTheme.navy,
+              color: AppTheme.darkTextPrimary,
               fontSize: 17,
               fontWeight: FontWeight.w800,
             ),
@@ -1759,7 +1759,7 @@ class _SiteInspectionScreenState extends State<_SiteInspectionScreen> {
             IconButton(onPressed: _load, icon: const Icon(Icons.refresh_rounded)),
           ],
           bottom: const TabBar(
-            labelColor: AppTheme.navy,
+            labelColor: AppTheme.darkTextPrimary,
             unselectedLabelColor: AppTheme.mutedGrey,
             indicatorColor: AppTheme.navy,
             tabs: [
@@ -1871,14 +1871,14 @@ class _SiteInspectionBookSlotTab extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
-              color: const Color(0xFFECFDF5),
+              color: const Color(0xFF143028),
               borderRadius: BorderRadius.circular(12),
             ),
             child: Text(
               'Accepted slot: $accepted',
               style: const TextStyle(
                 fontWeight: FontWeight.w700,
-                color: Color(0xFF059669),
+                color: Color(0xFF34D399),
               ),
             ),
           ),
@@ -1889,7 +1889,7 @@ class _SiteInspectionBookSlotTab extends StatelessWidget {
             'Current booking',
             style: TextStyle(
               fontWeight: FontWeight.w800,
-              color: AppTheme.navy,
+              color: AppTheme.darkTextPrimary,
             ),
           ),
           const SizedBox(height: 8),
@@ -1937,7 +1937,7 @@ class _SiteInspectionBookSlotTab extends StatelessWidget {
                   label: const Center(child: Text('At site')),
                   selected: presenceType == 'at_site',
                   onSelected: (_) => onPresenceChanged('at_site'),
-                  selectedColor: const Color(0xFFDBEAFE),
+                  selectedColor: const Color(0xFF3A2A55),
                 ),
               ),
               const SizedBox(width: 8),
@@ -1946,7 +1946,7 @@ class _SiteInspectionBookSlotTab extends StatelessWidget {
                   label: const Center(child: Text('Virtually')),
                   selected: presenceType == 'virtually',
                   onSelected: (_) => onPresenceChanged('virtually'),
-                  selectedColor: const Color(0xFFDBEAFE),
+                  selectedColor: const Color(0xFF3A2A55),
                 ),
               ),
             ],
@@ -1959,7 +1959,7 @@ class _SiteInspectionBookSlotTab extends StatelessWidget {
                 labelText: 'Virtual connection details',
                 hintText: 'Zoom / Google Meet link',
                 filled: true,
-                fillColor: Colors.white,
+                fillColor: AppTheme.darkBackgroundPrimaryLight,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
@@ -1973,7 +1973,7 @@ class _SiteInspectionBookSlotTab extends StatelessWidget {
               margin: const EdgeInsets.only(bottom: 10),
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: AppTheme.darkBackgroundSecondary,
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: AppTheme.border),
               ),
@@ -1984,7 +1984,7 @@ class _SiteInspectionBookSlotTab extends StatelessWidget {
                     'Slot ${i + 1}',
                     style: const TextStyle(
                       fontWeight: FontWeight.w800,
-                      color: AppTheme.navy,
+                      color: AppTheme.darkTextPrimary,
                     ),
                   ),
                   ListTile(
@@ -2010,7 +2010,7 @@ class _SiteInspectionBookSlotTab extends StatelessWidget {
                           selected: slot.period == period['key'],
                           onSelected: (_) =>
                               onSlotPeriodChanged(i, period['key']!),
-                          selectedColor: const Color(0xFFDBEAFE),
+                          selectedColor: const Color(0xFF3A2A55),
                         ),
                     ],
                   ),
@@ -2026,7 +2026,7 @@ class _SiteInspectionBookSlotTab extends StatelessWidget {
               'I confirm the site is cleaned',
               style: TextStyle(fontWeight: FontWeight.w600),
             ),
-            activeColor: AppTheme.navy,
+            activeColor: AppTheme.darkTextPrimary,
             controlAffinity: ListTileControlAffinity.leading,
           ),
           OutlinedButton.icon(
@@ -2260,7 +2260,7 @@ class _AllDocumentsScreenState extends State<_AllDocumentsScreen> {
                       'Client KYC',
                       style: TextStyle(
                         fontWeight: FontWeight.w800,
-                        color: AppTheme.navy,
+                        color: AppTheme.darkTextPrimary,
                       ),
                     ),
                     const SizedBox(height: 8),

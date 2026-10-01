@@ -6,10 +6,10 @@ import 'services/data_provider.dart';
 import 'widgets/project_situation_switcher.dart';
 import 'widgets/skeleton_loader.dart';
 
-const Color _pageBackground = Color(0xFFF8F9FC);
-const Color _cardSurface = Colors.white;
-const Color _ink = Color(0xFF111827);
-const Color _muted = Color(0xFF6B7280);
+const Color _pageBackground = AppTheme.darkBackgroundPrimary;
+const Color _cardSurface = AppTheme.darkBackgroundSecondary;
+const Color _ink = AppTheme.darkTextPrimary;
+const Color _muted = AppTheme.darkTextSecondary;
 
 enum _TimelineFilter { all, completed, pending, upcoming }
 
@@ -120,20 +120,20 @@ class _ProjectTimelineScreenState extends State<ProjectTimelineScreen> {
       backgroundColor: AppTheme.getBackgroundPrimary(context),
       appBar: AppBar(
         backgroundColor: AppTheme.getBackgroundSecondary(context),
-        foregroundColor: AppTheme.navy,
+        foregroundColor: AppTheme.darkTextPrimary,
         elevation: 0,
         scrolledUnderElevation: 0,
-        iconTheme: const IconThemeData(color: AppTheme.navy),
-        actionsIconTheme: const IconThemeData(color: AppTheme.navy),
+        iconTheme: const IconThemeData(color: AppTheme.darkTextPrimary),
+        actionsIconTheme: const IconThemeData(color: AppTheme.darkTextPrimary),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios_new_rounded,
-              color: AppTheme.navy, size: 20),
+              color: AppTheme.darkTextPrimary, size: 20),
           onPressed: () => Navigator.maybePop(context),
         ),
         title: const Text(
           'Project Timeline',
           style: TextStyle(
-            color: AppTheme.navy,
+            color: AppTheme.darkTextPrimary,
             fontSize: 20,
             fontWeight: FontWeight.w800,
             letterSpacing: -0.4,
@@ -162,7 +162,7 @@ class _ProjectTimelineScreenState extends State<ProjectTimelineScreen> {
                     child: CircularProgressIndicator(
                         strokeWidth: 2, color: AppTheme.navy),
                   )
-                : const Icon(Icons.refresh_rounded, color: AppTheme.navy),
+                : const Icon(Icons.refresh_rounded, color: AppTheme.darkTextPrimary),
           ),
           const SizedBox(width: 8),
         ],
@@ -225,9 +225,9 @@ class _ProjectTimelineScreenState extends State<ProjectTimelineScreen> {
       margin: const EdgeInsets.fromLTRB(18, 4, 18, 12),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppTheme.darkBackgroundSecondary,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFFE5E7EB)),
+        border: Border.all(color: AppTheme.border),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.04),
@@ -290,16 +290,16 @@ class _ProjectTimelineScreenState extends State<ProjectTimelineScreen> {
             selected: selected,
             onSelected: (_) => setState(() => _filter = filter),
             labelStyle: TextStyle(
-              color: selected ? Colors.white : _ink,
+              color: selected ? Colors.white : AppTheme.darkTextPrimary,
               fontWeight: FontWeight.w700,
               fontSize: 12,
             ),
-            selectedColor: AppTheme.getPrimaryColor(context),
-            backgroundColor: Colors.white,
+            selectedColor: AppTheme.navy,
+            backgroundColor: AppTheme.darkBackgroundSecondary,
             side: BorderSide(
               color: selected
-                  ? AppTheme.getPrimaryColor(context)
-                  : const Color(0xFFE5E7EB),
+                  ? AppTheme.navy
+                  : AppTheme.border,
             ),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(999),
@@ -493,8 +493,8 @@ class _TimelineTaskCard extends StatelessWidget {
             borderRadius: BorderRadius.circular(20),
             border: Border.all(
               color: isCompleted
-                  ? const Color(0xFFD1FAE5)
-                  : const Color(0xFFF3F4F6),
+                  ? const Color(0xFF14532D)
+                  : AppTheme.border,
             ),
             boxShadow: [
               BoxShadow(
@@ -543,13 +543,13 @@ class _TimelineTaskCard extends StatelessWidget {
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 8, vertical: 4),
                             decoration: BoxDecoration(
-                              color: const Color(0xFFEFF6FF),
+                              color: const Color(0xFF1A2A45),
                               borderRadius: BorderRadius.circular(999),
                             ),
                             child: const Text(
                               'Workflow',
                               style: TextStyle(
-                                color: Color(0xFF2563EB),
+                                color: AppTheme.accentBlue,
                                 fontSize: 10,
                                 fontWeight: FontWeight.w800,
                               ),
@@ -624,7 +624,7 @@ class _TimelineTaskCard extends StatelessWidget {
                 Text(
                   workflowName,
                   style: const TextStyle(
-                    color: Color(0xFF2563EB),
+                    color: AppTheme.accentBlue,
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
                   ),
@@ -679,7 +679,7 @@ Color _timelineStatusColor(
   if (isCompleted) return const Color(0xFF059669);
   if (isRedoPending) return const Color(0xFFCA8A04);
   final normalized = status.toLowerCase();
-  if (normalized.contains('progress')) return const Color(0xFF2563EB);
+  if (normalized.contains('progress')) return AppTheme.accentBlue;
   if (normalized.contains('upcoming') ||
       normalized.contains('not started') ||
       isUpcoming) {

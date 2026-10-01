@@ -280,11 +280,12 @@ class _TourCard extends StatelessWidget {
       constraints: const BoxConstraints(maxWidth: 360),
       child: DecoratedBox(
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: AppTheme.darkBackgroundSecondary,
           borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: AppTheme.border),
           boxShadow: const [
             BoxShadow(
-              color: Color(0x33000000),
+              color: Color(0x66000000),
               blurRadius: 24,
               offset: Offset(0, 10),
             ),
@@ -302,13 +303,13 @@ class _TourCard extends StatelessWidget {
                     padding:
                         const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFEEF2FF),
+                      color: const Color(0xFF2A2040),
                       borderRadius: BorderRadius.circular(999),
                     ),
                     child: Text(
                       '${index + 1} / $total',
                       style: const TextStyle(
-                        color: AppTheme.accentBlue,
+                        color: Color(0xFFC4B5FD),
                         fontSize: 11.5,
                         fontWeight: FontWeight.w800,
                       ),
@@ -335,7 +336,7 @@ class _TourCard extends StatelessWidget {
               Text(
                 step.title,
                 style: const TextStyle(
-                  color: AppTheme.navy,
+                  color: AppTheme.darkTextPrimary,
                   fontSize: 18,
                   fontWeight: FontWeight.w800,
                   height: 1.2,
@@ -346,7 +347,7 @@ class _TourCard extends StatelessWidget {
               Text(
                 step.body,
                 style: const TextStyle(
-                  color: Color(0xFF5B6578),
+                  color: AppTheme.darkTextSecondary,
                   fontSize: 14,
                   fontWeight: FontWeight.w500,
                   height: 1.45,
@@ -366,8 +367,8 @@ class _TourCard extends StatelessWidget {
                           height: 7,
                           decoration: BoxDecoration(
                             color: active
-                                ? AppTheme.navy
-                                : const Color(0xFFD5DBE6),
+                                ? const Color(0xFFC4B5FD)
+                                : AppTheme.border,
                             borderRadius: BorderRadius.circular(999),
                           ),
                         );
@@ -423,7 +424,7 @@ class _SpotlightPainter extends CustomPainter {
     }
     canvas.drawPath(
       scrim,
-      Paint()..color = const Color(0xCC0F1424),
+      Paint()..color = const Color(0xCC0E0C14),
     );
 
     if (hole == null) return;
@@ -442,7 +443,7 @@ class _SpotlightPainter extends CustomPainter {
       Paint()
         ..style = PaintingStyle.stroke
         ..strokeWidth = 6
-        ..color = const Color(0xFF60A5FA).withValues(alpha: 0.18 + pulse * 0.16),
+        ..color = const Color(0xFFC4B5FD).withValues(alpha: 0.22 + pulse * 0.18),
     );
   }
 

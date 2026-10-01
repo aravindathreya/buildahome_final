@@ -6,6 +6,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../app_theme.dart';
+import '../services/camera_permission.dart';
 import '../services/profile_picture_service.dart';
 
 /// Shows a startup prompt if the user has no profile picture yet.
@@ -14,40 +15,56 @@ import '../services/profile_picture_service.dart';
 /// [ProfilePictureService.maxStartupSkips] times; after that the dialog is
 /// required until a photo is uploaded.
 Future<void> maybePromptForProfilePicture(BuildContext context) async {
-  if (ProfilePictureService.promptShownThisSession) {
-    debugPrint('[ProfilePic] skip — already shown this session');
+  if (!_canShowStartupPrompt(context)) {
+    debugPrint('[ProfilePic] skip — logged out or already shown');
     return;
   }
-  final existing = await ProfilePictureService.getStoredPath();
-  if (existing != null) {
-    debugPrint('[ProfilePic] skip — picture already set ($existing)');
+  if (ProfilePictureService.startupPromptInFlight) {
+    debugPrint('[ProfilePic] skip — prompt already in flight');
     return;
   }
-  if (!context.mounted) {
-    debugPrint('[ProfilePic] skip — context not mounted');
-    return;
-  }
-
-  final prefs = await SharedPreferences.getInstance();
-  final role = (prefs.getString('role') ?? '').trim().toLowerCase();
-  final userId =
-      (prefs.getString('userId') ?? prefs.getString('user_id') ?? '').trim();
-  final isClient = role == 'client';
-
-  // Clients keep a soft optional prompt; other roles get the skip limit.
-  final enforceSkipLimit = !isClient;
-  final remaining = enforceSkipLimit
-      ? await ProfilePictureService.remainingSkips()
-      : ProfilePictureService.maxStartupSkips;
-  final requirePhoto = enforceSkipLimit && remaining <= 0;
-
-  if (!context.mounted) return;
-
-  debugPrint(
-    '[ProfilePic] showing prompt userId=$userId role=$role '
-    'remaining=$remaining require=$requirePhoto',
-  );
+  ProfilePictureService.startupPromptInFlight = true;
   try {
+    final existing = await ProfilePictureService.getStoredPath();
+    if (!_canShowStartupPrompt(context)) return;
+    if (existing != null) {
+      debugPrint('[ProfilePic] skip — picture already set ($existing)');
+      return;
+    }
+
+    final prefs = await SharedPreferences.getInstance();
+    if (!_canShowStartupPrompt(context)) return;
+    final token = (prefs.getString('api_token') ?? '').trim();
+    if (token.isEmpty) {
+      debugPrint('[ProfilePic] skip — no active session');
+      return;
+    }
+    final role = (prefs.getString('role') ?? '').trim().toLowerCase();
+    final userId =
+        (prefs.getString('userId') ?? prefs.getString('user_id') ?? '').trim();
+    final isClient = role == 'client';
+
+    // Clients keep a soft optional prompt; other roles get the skip limit.
+    final enforceSkipLimit = !isClient;
+    final remaining = enforceSkipLimit
+        ? await ProfilePictureService.remainingSkips()
+        : ProfilePictureService.maxStartupSkips;
+    final requirePhoto = enforceSkipLimit && remaining <= 0;
+
+    // Re-check after every await. Logout clears the session and the root
+    // navigator context stays mounted, which used to present this dialog
+    // on the login screen.
+    if (!_canShowStartupPrompt(context)) return;
+    final tokenStillValid =
+        ((await SharedPreferences.getInstance()).getString('api_token') ?? '')
+            .trim()
+            .isNotEmpty;
+    if (!tokenStillValid || !_canShowStartupPrompt(context)) return;
+
+    debugPrint(
+      '[ProfilePic] showing prompt userId=$userId role=$role '
+      'remaining=$remaining require=$requirePhoto',
+    );
     ProfilePictureService.promptShownThisSession = true;
     await showProfilePictureDialog(
       context,
@@ -56,9 +73,19 @@ Future<void> maybePromptForProfilePicture(BuildContext context) async {
       requirePhoto: requirePhoto,
     );
   } catch (e) {
-    ProfilePictureService.promptShownThisSession = false;
+    if (!ProfilePictureService.promptsSuppressed) {
+      ProfilePictureService.promptShownThisSession = false;
+    }
     debugPrint('[ProfilePic] dialog failed: $e');
+  } finally {
+    ProfilePictureService.startupPromptInFlight = false;
   }
+}
+
+bool _canShowStartupPrompt(BuildContext context) {
+  if (ProfilePictureService.promptsSuppressed) return false;
+  if (ProfilePictureService.promptShownThisSession) return false;
+  return context.mounted;
 }
 
 /// Profile picture picker + upload dialog.
@@ -116,6 +143,10 @@ class _ProfilePictureDialogState extends State<_ProfilePictureDialog> {
     });
 
     try {
+      if (source == ImageSource.camera) {
+        final allowed = await ensureCameraPermission(context);
+        if (!allowed || !mounted) return;
+      }
       final picker = ImagePicker();
       final picked = await picker.pickImage(
         source: source,
@@ -171,7 +202,7 @@ class _ProfilePictureDialogState extends State<_ProfilePictureDialog> {
         : true;
 
     return AlertDialog(
-      backgroundColor: Colors.white,
+      backgroundColor: AppTheme.darkBackgroundSecondary,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       titlePadding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
       contentPadding: const EdgeInsets.fromLTRB(24, 16, 24, 8),
@@ -181,7 +212,7 @@ class _ProfilePictureDialogState extends State<_ProfilePictureDialog> {
             ? 'Add a profile picture'
             : 'Update profile picture',
         style: const TextStyle(
-          color: AppTheme.navy,
+          color: AppTheme.darkTextPrimary,
           fontWeight: FontWeight.w800,
           fontSize: 18,
         ),
@@ -327,19 +358,19 @@ class _ProfilePictureDialogState extends State<_ProfilePictureDialog> {
           color: AppTheme.navy.withValues(alpha: 0.08),
           borderRadius: BorderRadius.circular(12),
         ),
-        child: Icon(icon, color: AppTheme.navy, size: 20),
+        child: Icon(icon, color: AppTheme.darkTextPrimary, size: 20),
       ),
       title: Text(
         label,
         style: TextStyle(
-          color: onTap == null ? AppTheme.mutedGrey : AppTheme.navy,
+          color: onTap == null ? AppTheme.mutedGrey : AppTheme.darkTextPrimary,
           fontWeight: FontWeight.w700,
           fontSize: 15,
         ),
       ),
       trailing: Icon(
         Icons.chevron_right_rounded,
-        color: onTap == null ? AppTheme.mutedGrey : AppTheme.navy,
+        color: onTap == null ? AppTheme.mutedGrey : AppTheme.darkTextPrimary,
       ),
       onTap: onTap,
     );

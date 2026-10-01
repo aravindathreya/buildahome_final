@@ -329,7 +329,7 @@ class _SalesSopCardsScreenState extends State<SalesSopCardsScreen>
         backgroundColor: AppTheme.getBackgroundPrimary(context),
         appBar: AppBar(
           backgroundColor: AppTheme.getBackgroundSecondary(context),
-          foregroundColor: AppTheme.navy,
+          foregroundColor: AppTheme.darkTextPrimary,
           elevation: 0,
           title: const Text('Project Details'),
         ),
@@ -341,12 +341,12 @@ class _SalesSopCardsScreenState extends State<SalesSopCardsScreen>
       backgroundColor: AppTheme.getBackgroundPrimary(context),
       appBar: AppBar(
         backgroundColor: AppTheme.getBackgroundSecondary(context),
-        foregroundColor: AppTheme.navy,
+        foregroundColor: AppTheme.darkTextPrimary,
         elevation: 0,
         title: const Text(
           'Project Details',
           style: TextStyle(
-            color: AppTheme.navy,
+            color: AppTheme.darkTextPrimary,
             fontSize: 18,
             fontWeight: FontWeight.w800,
           ),
@@ -355,7 +355,7 @@ class _SalesSopCardsScreenState extends State<SalesSopCardsScreen>
           IconButton(
             tooltip: 'Refresh',
             onPressed: _refreshCurrent,
-            icon: const Icon(Icons.refresh_rounded, color: AppTheme.navy),
+            icon: const Icon(Icons.refresh_rounded, color: AppTheme.darkTextPrimary),
           ),
         ],
         bottom: _cardKeys.length > 1
@@ -603,7 +603,7 @@ class _CardHeader extends StatelessWidget {
               color: AppTheme.navy.withValues(alpha: 0.08),
               borderRadius: BorderRadius.circular(12),
             ),
-            child: Icon(icon, color: AppTheme.navy, size: 24),
+            child: Icon(icon, color: AppTheme.darkTextPrimary, size: 24),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -615,7 +615,7 @@ class _CardHeader extends StatelessWidget {
                   style: const TextStyle(
                     fontSize: 17,
                     fontWeight: FontWeight.w800,
-                    color: AppTheme.navy,
+                    color: AppTheme.darkTextPrimary,
                   ),
                 ),
                 if (salesSopId != null || convertedProjectId != null) ...[
@@ -657,7 +657,7 @@ class _SectionTitle extends StatelessWidget {
         style: TextStyle(
           fontSize: depth == 0 ? 14.5 : 13.5,
           fontWeight: FontWeight.w800,
-          color: AppTheme.navy.withValues(alpha: 0.9),
+          color: AppTheme.darkTextPrimary.withValues(alpha: 0.9),
         ),
       ),
     );
@@ -689,7 +689,7 @@ class _NestedGroup extends StatelessWidget {
             style: const TextStyle(
               fontSize: 13.5,
               fontWeight: FontWeight.w800,
-              color: AppTheme.navy,
+              color: AppTheme.darkTextPrimary,
             ),
           ),
           const SizedBox(height: 8),
@@ -765,7 +765,7 @@ class _InfoRow extends StatelessWidget {
                         style: const TextStyle(
                           fontSize: 14.5,
                           fontWeight: FontWeight.w700,
-                          color: AppTheme.navy,
+                          color: AppTheme.darkTextPrimary,
                         ),
                       ),
               ],
@@ -843,7 +843,7 @@ class _ErrorState extends StatelessWidget {
             Icon(
               Icons.error_outline_rounded,
               size: 42,
-              color: AppTheme.navy.withValues(alpha: 0.45),
+              color: AppTheme.darkTextPrimary.withValues(alpha: 0.45),
             ),
             const SizedBox(height: 12),
             Text(

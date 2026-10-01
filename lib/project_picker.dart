@@ -1,9 +1,11 @@
 import 'package:buildAhome/UserHome.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'app_theme.dart';
 import 'services/data_provider.dart';
 import 'services/project_open_timing.dart';
 import 'widgets/opening_project_splash.dart';
+import 'widgets/searchable_select.dart';
 import 'widgets/skeleton_loader.dart';
 
 class ProjectPickerScreen {
@@ -11,9 +13,8 @@ class ProjectPickerScreen {
   static DateTime? _lastClosedTime;
   static const Duration _cooldownDuration = Duration(milliseconds: 500);
 
-  static const Color _navy = Color(0xFF1B254B);
   static const Color _muted = Color(0xFF8A94A6);
-  static const Color _border = Color(0xFFE8ECF1);
+  static const Color _border = Color(0xFF334155);
   static const Color _softShadow = Color(0x14000000);
 
   /// Pick a project and persist it, without opening the project Home screen.
@@ -86,7 +87,7 @@ class ProjectPickerScreen {
         builder: (sheetContext) => Container(
           height: MediaQuery.of(sheetContext).size.height * 0.82,
           decoration: const BoxDecoration(
-            color: Colors.white,
+            color: AppTheme.darkBackgroundSecondary,
             borderRadius: BorderRadius.only(
               topLeft: Radius.circular(24),
               topRight: Radius.circular(24),
@@ -125,7 +126,7 @@ class ProjectPickerScreen {
                     width: 40,
                     height: 4,
                     decoration: BoxDecoration(
-                      color: const Color(0xFFD7DEE8),
+                      color: const Color(0xFF334155),
                       borderRadius: BorderRadius.circular(999),
                     ),
                   ),
@@ -137,12 +138,12 @@ class ProjectPickerScreen {
                           width: 40,
                           height: 40,
                           decoration: BoxDecoration(
-                            color: const Color(0xFFEEF2FF),
+                            color: AppTheme.darkBackgroundPrimaryLight,
                             borderRadius: BorderRadius.circular(12),
                           ),
                           child: const Icon(
                             Icons.folder_special_rounded,
-                            color: _navy,
+                            color: AppTheme.darkTextPrimary,
                             size: 20,
                           ),
                         ),
@@ -154,7 +155,7 @@ class ProjectPickerScreen {
                               const Text(
                                 'Select Project',
                                 style: TextStyle(
-                                  color: _navy,
+                                  color: AppTheme.darkTextPrimary,
                                   fontSize: 18,
                                   fontWeight: FontWeight.w800,
                                 ),
@@ -188,8 +189,10 @@ class ProjectPickerScreen {
                     padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
                     child: TextField(
                       controller: searchController,
+                      textCapitalization: TextCapitalization.sentences,
+                      inputFormatters: const [FirstLetterCapitalFormatter()],
                       style: const TextStyle(
-                        color: _navy,
+                        color: AppTheme.darkTextPrimary,
                         fontSize: 14,
                         fontWeight: FontWeight.w600,
                       ),
@@ -205,7 +208,7 @@ class ProjectPickerScreen {
                         ),
                         prefixIcon: const Icon(
                           Icons.search_rounded,
-                          color: _navy,
+                          color: AppTheme.darkTextPrimary,
                         ),
                         suffixIcon: searchController.text.isNotEmpty
                             ? IconButton(
@@ -222,7 +225,7 @@ class ProjectPickerScreen {
                               )
                             : null,
                         filled: true,
-                        fillColor: const Color(0xFFF7F8FB),
+                        fillColor: AppTheme.darkBackgroundPrimary,
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(14),
                           borderSide: const BorderSide(color: _border),
@@ -233,8 +236,10 @@ class ProjectPickerScreen {
                         ),
                         focusedBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(14),
-                          borderSide:
-                              const BorderSide(color: _navy, width: 1.5),
+                          borderSide: const BorderSide(
+                            color: AppTheme.accentBlue,
+                            width: 1.5,
+                          ),
                         ),
                         contentPadding: const EdgeInsets.symmetric(
                           horizontal: 16,
@@ -287,7 +292,7 @@ class ProjectPickerScreen {
                                         margin:
                                             const EdgeInsets.only(bottom: 10),
                                         decoration: BoxDecoration(
-                                          color: Colors.white,
+                                          color: AppTheme.darkBackgroundPrimaryLight,
                                           borderRadius:
                                               BorderRadius.circular(16),
                                           border:
@@ -434,7 +439,7 @@ class ProjectPickerScreen {
                                                                     style:
                                                                         const TextStyle(
                                                                       color:
-                                                                          _navy,
+                                                                          AppTheme.darkTextPrimary,
                                                                       fontSize:
                                                                           14.5,
                                                                       fontWeight:
@@ -553,16 +558,16 @@ class _EmptyState extends StatelessWidget {
               width: 64,
               height: 64,
               decoration: BoxDecoration(
-                color: const Color(0xFFEEF2FF),
+                color: AppTheme.darkBackgroundPrimaryLight,
                 borderRadius: BorderRadius.circular(18),
               ),
-              child: Icon(icon, size: 30, color: ProjectPickerScreen._navy),
+              child: Icon(icon, size: 30, color: AppTheme.darkTextPrimary),
             ),
             const SizedBox(height: 16),
             Text(
               title,
               style: const TextStyle(
-                color: ProjectPickerScreen._navy,
+                color: AppTheme.darkTextPrimary,
                 fontSize: 15,
                 fontWeight: FontWeight.w800,
               ),

@@ -121,21 +121,21 @@ class EditIndentLayout extends StatelessWidget {
         new GlobalKey<ScaffoldState>();
     return MaterialApp(
       title: appTitle,
-      theme: AppTheme.getLightTheme(),
+      theme: AppTheme.getDarkTheme(),
       home: Scaffold(
         key: _scaffoldKey, // ADD THIS LINE
-        backgroundColor: Colors.white,
+        backgroundColor: AppTheme.darkBackgroundSecondary,
         appBar: AppBar(
           automaticallyImplyLeading: true,
           title: Text(appTitle),
           leading: new IconButton(
               icon: new Icon(Icons.chevron_left),
               onPressed: () => {Navigator.pop(context)}),
-          backgroundColor: Colors.white,
-          foregroundColor: AppTheme.navy,
+          backgroundColor: AppTheme.darkBackgroundSecondary,
+          foregroundColor: AppTheme.darkTextPrimary,
           elevation: 0,
-          iconTheme: const IconThemeData(color: AppTheme.navy),
-          titleTextStyle: const TextStyle(color: AppTheme.navy, fontSize: 18, fontWeight: FontWeight.w800),
+          iconTheme: const IconThemeData(color: AppTheme.darkTextPrimary),
+          titleTextStyle: const TextStyle(color: AppTheme.darkTextPrimary, fontSize: 18, fontWeight: FontWeight.w800),
         ),
 
         body: EditIndent(this.indent),
@@ -211,7 +211,7 @@ class EditIndentState extends State<EditIndent> {
         style: const TextStyle(
           fontSize: 16,
           fontWeight: FontWeight.w800,
-          color: AppTheme.navy,
+          color: AppTheme.darkTextPrimary,
         ),
       ),
     );
@@ -259,7 +259,7 @@ class EditIndentState extends State<EditIndent> {
               filled: true,
               hintText: hintText,
               alignLabelWithHint: true,
-              fillColor: Colors.white,
+              fillColor: AppTheme.darkBackgroundPrimaryLight,
             ),
           ),
         ),
@@ -328,7 +328,7 @@ class EditIndentState extends State<EditIndent> {
                         EdgeInsets.symmetric(vertical: 5, horizontal: 10),
                     border: OutlineInputBorder(),
                     floatingLabelBehavior: FloatingLabelBehavior.never,
-                    fillColor: Colors.white,
+                    fillColor: AppTheme.darkBackgroundPrimaryLight,
                     focusColor: Colors.white,
                     filled: true,
                     errorBorder: OutlineInputBorder(
@@ -417,10 +417,10 @@ class EditIndentState extends State<EditIndent> {
                   // Colors are easy thanks to Flutter's Colors class.
 
                   //Colors.blue,
-                  AppTheme.navy,
+                  AppTheme.darkTextPrimary,
                   AppTheme.navySoft,
                   //AppTheme.navySoft,
-                  AppTheme.navy,
+                  AppTheme.darkTextPrimary,
                 ],
               ),
               border: Border.all(color: Colors.black, width: 1),

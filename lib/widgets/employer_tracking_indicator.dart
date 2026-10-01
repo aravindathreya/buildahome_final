@@ -39,7 +39,7 @@ class EmployerTrackingIndicator extends StatelessWidget {
                   child: Text(
                     'Location tracked by employer',
                     style: TextStyle(
-                      color: onDark ? foreground : AppTheme.navy,
+                      color: onDark ? foreground : AppTheme.darkTextPrimary,
                       fontSize: 12,
                       fontWeight: FontWeight.w700,
                       height: 1.2,

@@ -25,7 +25,7 @@ class Notifications extends StatelessWidget {
   Widget build(BuildContext context) {
     return ThemedScaffold(
       title: 'Notifications',
-      backgroundColor: const Color(0xFFF7F8FB),
+      backgroundColor: AppTheme.darkBackgroundPrimary,
       body: const SafeArea(child: NotificationPageBody()),
     );
   }
@@ -39,7 +39,7 @@ class NotificationPageBody extends StatefulWidget {
 }
 
 class NotificationPageBodyState extends State<NotificationPageBody> {
-  static const Color _navy = AppTheme.navy;
+  static const Color _navy = Color(0xFF1B254B);
   static const Color _mutedGrey = AppTheme.mutedGrey;
   static const Color _cardBorder = AppTheme.border;
 
@@ -645,7 +645,7 @@ class NotificationPageBodyState extends State<NotificationPageBody> {
                                       ? FontWeight.w800
                                       : FontWeight.w700,
                                   fontSize: 14.5,
-                                  color: _navy,
+                                  color: AppTheme.darkTextPrimary,
                                   letterSpacing: -0.1,
                                   height: 1.25,
                                 ),
@@ -719,7 +719,7 @@ class NotificationPageBodyState extends State<NotificationPageBody> {
             child: const Icon(
               Icons.notifications_off_outlined,
               size: 36,
-              color: _navy,
+              color: AppTheme.darkTextPrimary,
             ),
           ),
         ),
@@ -728,7 +728,7 @@ class NotificationPageBodyState extends State<NotificationPageBody> {
           "You're all caught up!",
           textAlign: TextAlign.center,
           style: TextStyle(
-            color: _navy,
+            color: AppTheme.darkTextPrimary,
             fontSize: 18,
             fontWeight: FontWeight.w800,
             letterSpacing: -0.2,

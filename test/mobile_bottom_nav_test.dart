@@ -218,6 +218,46 @@ void main() {
       expect(keys, ['home', 'more']);
     });
 
+    test('project home keeps a Payments tab when the saved bar omits it', () {
+      final keys = ensureProjectHomePaymentsTab(
+        resolveMobileBottomNavActionKeys(
+          surface: MobileBottomNavSurface.projectNew,
+          fallbackKeys: kMobileBottomNavProjectFallback,
+          snapshot: const MobileBottomNavSnapshot(
+            surface: MobileBottomNavSurface.projectNew,
+            configured: true,
+            actionKeys: ['home', 'my_tasks', 'updates', 'chatbox', 'more'],
+          ),
+        ),
+      );
+      expect(keys, [
+        'home',
+        'my_tasks',
+        'updates',
+        'chatbox',
+        'payments',
+        'more',
+      ]);
+      expect(keys.length, lessThanOrEqualTo(kMobileBottomNavHardMaxTabs));
+    });
+
+    test('project home drops a middle tab to fit Payments under the cap', () {
+      final keys = ensureProjectHomePaymentsTab([
+        'home',
+        'my_tasks',
+        'updates',
+        'chatbox',
+        'gallery',
+        'scheduler',
+        'more',
+      ]);
+      expect(keys.first, 'home');
+      expect(keys.last, 'more');
+      expect(keys.contains('payments'), isTrue);
+      expect(keys.length, kMobileBottomNavHardMaxTabs);
+      expect(keys.contains('scheduler'), isFalse);
+    });
+
     test('client project_new save without chatbox drops Chat', () {
       final snapshot = parseMobileBottomNavPayload(
         {

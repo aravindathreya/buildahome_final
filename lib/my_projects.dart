@@ -15,7 +15,7 @@ class MyProjects extends StatelessWidget {
     final GlobalKey<ScaffoldState> _scaffoldKey = new GlobalKey<ScaffoldState>();
     return MaterialApp(
       title: appTitle,
-      theme: AppTheme.getLightTheme(),
+      theme: AppTheme.getDarkTheme(),
       home: Scaffold(
         key: _scaffoldKey,
         backgroundColor: AppTheme.backgroundPrimary,

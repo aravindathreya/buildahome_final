@@ -5,7 +5,7 @@ import 'app_theme.dart';
 import 'widgets/skeleton_loader.dart';
 
 class UserPickerScreen {
-  static const Color _navy = AppTheme.navy;
+  static const Color _navy = Color(0xFF1B254B);
   static const Color _muted = AppTheme.mutedGrey;
   static const Color _border = AppTheme.border;
   static const Color _softShadow = AppTheme.softShadow;
@@ -69,7 +69,7 @@ class UserPickerScreen {
       builder: (context) => Container(
         height: MediaQuery.of(context).size.height * 0.82,
         decoration: const BoxDecoration(
-          color: Colors.white,
+          color: AppTheme.darkBackgroundSecondary,
           borderRadius: BorderRadius.only(
             topLeft: Radius.circular(24),
             topRight: Radius.circular(24),
@@ -101,7 +101,7 @@ class UserPickerScreen {
                   width: 40,
                   height: 4,
                   decoration: BoxDecoration(
-                    color: const Color(0xFFD7DEE8),
+                    color: const Color(0xFF334155),
                     borderRadius: BorderRadius.circular(999),
                   ),
                 ),
@@ -113,18 +113,18 @@ class UserPickerScreen {
                         width: 36,
                         height: 36,
                         decoration: BoxDecoration(
-                          color: const Color(0xFFEEF2FF),
+                          color: AppTheme.darkBackgroundPrimaryLight,
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: const Icon(Icons.person_search_rounded,
-                            color: _navy, size: 20),
+                            color: AppTheme.darkTextPrimary, size: 20),
                       ),
                       const SizedBox(width: 12),
                       const Expanded(
                         child: Text(
                           'Select User',
                           style: TextStyle(
-                            color: _navy,
+                            color: AppTheme.darkTextPrimary,
                             fontSize: 18,
                             fontWeight: FontWeight.w800,
                             letterSpacing: -0.2,
@@ -146,7 +146,7 @@ class UserPickerScreen {
                   child: TextField(
                     controller: searchController,
                     style: const TextStyle(
-                      color: _navy,
+                      color: AppTheme.darkTextPrimary,
                       fontSize: 14,
                       fontWeight: FontWeight.w600,
                     ),
@@ -170,7 +170,7 @@ class UserPickerScreen {
                             )
                           : null,
                       filled: true,
-                      fillColor: const Color(0xFFF7F8FB),
+                      fillColor: AppTheme.darkBackgroundPrimary,
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(14),
                         borderSide: const BorderSide(color: _border),
@@ -265,7 +265,7 @@ class UserPickerScreen {
                                       margin:
                                           const EdgeInsets.only(bottom: 10),
                                       decoration: BoxDecoration(
-                                        color: Colors.white,
+                                        color: AppTheme.darkBackgroundPrimaryLight,
                                         borderRadius:
                                             BorderRadius.circular(14),
                                         border: Border.all(color: _border),
@@ -294,15 +294,15 @@ class UserPickerScreen {
                                                   width: 40,
                                                   height: 40,
                                                   decoration: BoxDecoration(
-                                                    color: const Color(
-                                                        0xFFEEF2FF),
+                                                    color: AppTheme
+                                                        .darkBackgroundPrimaryLight,
                                                     borderRadius:
                                                         BorderRadius.circular(
                                                             12),
                                                   ),
                                                   child: const Icon(
                                                     Icons.person_rounded,
-                                                    color: _navy,
+                                                    color: AppTheme.darkTextPrimary,
                                                     size: 20,
                                                   ),
                                                 ),
@@ -311,7 +311,7 @@ class UserPickerScreen {
                                                   child: Text(
                                                     userName,
                                                     style: const TextStyle(
-                                                      color: _navy,
+                                                      color: AppTheme.darkTextPrimary,
                                                       fontSize: 14.5,
                                                       fontWeight:
                                                           FontWeight.w700,

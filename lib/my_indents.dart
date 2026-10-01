@@ -21,21 +21,21 @@ class MyIndentsLayout extends StatelessWidget {
         new GlobalKey<ScaffoldState>();
     return MaterialApp(
       title: appTitle,
-      theme: AppTheme.getLightTheme(),
+      theme: AppTheme.getDarkTheme(),
       home: Scaffold(
         key: _scaffoldKey, // ADD THIS LINE
-        backgroundColor: Colors.white,
+        backgroundColor: AppTheme.darkBackgroundSecondary,
         appBar: AppBar(
           automaticallyImplyLeading: false,
           title: Text(appTitle),
           leading: new IconButton(
               icon: new Icon(Icons.menu),
               onPressed: () => _scaffoldKey.currentState?.openDrawer()),
-          backgroundColor: Colors.white,
-          foregroundColor: AppTheme.navy,
+          backgroundColor: AppTheme.darkBackgroundSecondary,
+          foregroundColor: AppTheme.darkTextPrimary,
           elevation: 0,
-          iconTheme: const IconThemeData(color: AppTheme.navy),
-          titleTextStyle: const TextStyle(color: AppTheme.navy, fontSize: 18, fontWeight: FontWeight.w800),
+          iconTheme: const IconThemeData(color: AppTheme.darkTextPrimary),
+          titleTextStyle: const TextStyle(color: AppTheme.darkTextPrimary, fontSize: 18, fontWeight: FontWeight.w800),
         ),
         drawer: NavMenuWidget(),
         body: MyIndents(),

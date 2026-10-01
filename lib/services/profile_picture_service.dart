@@ -14,6 +14,28 @@ class ProfilePictureService {
   /// Prevents re-prompting within the same app session after dismiss/skip.
   static bool promptShownThisSession = false;
 
+  /// Set for the whole logout → login-screen gap. Startup prompts must not
+  /// attach to the root navigator after the dashboard route is gone.
+  static bool promptsSuppressed = false;
+
+  /// True while the startup dialog is being decided or is on screen.
+  static bool startupPromptInFlight = false;
+
+  /// Call at the start of logout, before navigation.
+  static void onLoggedOut() {
+    promptsSuppressed = true;
+    promptShownThisSession = true;
+    startupPromptInFlight = false;
+    picturePathNotifier.value = null;
+  }
+
+  /// Call only after a real authenticated session exists (login or cold start).
+  static void onLoggedIn() {
+    promptsSuppressed = false;
+    promptShownThisSession = false;
+    startupPromptInFlight = false;
+  }
+
   /// Live path used by header/drawer avatars across the app.
   static final ValueNotifier<String?> picturePathNotifier =
       ValueNotifier<String?>(null);
@@ -116,7 +138,11 @@ class ProfilePictureService {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_prefsKey);
     picturePathNotifier.value = null;
-    promptShownThisSession = false;
+    // Logout sets [promptsSuppressed]; don't re-arm the startup prompt while
+    // the login screen is coming up.
+    if (!promptsSuppressed) {
+      promptShownThisSession = false;
+    }
   }
 
   /// How many times this user has tapped "Maybe later" on the startup prompt.

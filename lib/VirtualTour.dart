@@ -193,14 +193,14 @@ class _BackButton extends StatelessWidget {
       top: MediaQuery.paddingOf(context).top + 8,
       left: 12,
       child: Material(
-        color: Colors.white,
+        color: AppTheme.darkBackgroundSecondary,
         elevation: 3,
         shadowColor: AppTheme.softShadow,
         shape: const CircleBorder(),
         child: IconButton(
           tooltip: 'Back',
           onPressed: onPressed,
-          icon: const Icon(Icons.arrow_back_rounded, color: AppTheme.navy),
+          icon: const Icon(Icons.arrow_back_rounded, color: AppTheme.darkTextPrimary),
         ),
       ),
     );
@@ -254,7 +254,7 @@ class _ErrorView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ColoredBox(
-      color: const Color(0xFFF7F8FB),
+      color: AppTheme.darkBackgroundPrimary,
       child: Center(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(28, 72, 28, 28),
@@ -271,7 +271,7 @@ class _ErrorView extends StatelessWidget {
                 '3D House Tour unavailable',
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                  color: AppTheme.navy,
+                  color: AppTheme.darkTextPrimary,
                   fontSize: 18,
                   fontWeight: FontWeight.w800,
                 ),

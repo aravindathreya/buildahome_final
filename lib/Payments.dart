@@ -380,7 +380,7 @@ class _PaymentsDashboardState extends State<PaymentsDashboard> {
           style: TextStyle(
             fontSize: 18,
             fontWeight: FontWeight.w800,
-            color: AppTheme.navy,
+            color: AppTheme.darkTextPrimary,
             letterSpacing: -0.2,
           ),
         ),
@@ -405,7 +405,7 @@ class _PaymentsDashboardState extends State<PaymentsDashboard> {
         const Text(
           'Filter by',
           style: TextStyle(
-            color: AppTheme.navy,
+            color: AppTheme.darkTextPrimary,
             fontSize: 13,
             fontWeight: FontWeight.w800,
           ),
@@ -415,7 +415,7 @@ class _PaymentsDashboardState extends State<PaymentsDashboard> {
           height: 48,
           padding: const EdgeInsets.all(4),
           decoration: BoxDecoration(
-            color: const Color(0xFFF1F4F8),
+            color: AppTheme.darkBackgroundPrimaryLight,
             borderRadius: BorderRadius.circular(14),
           ),
           child: Row(
@@ -446,7 +446,7 @@ class _PaymentsDashboardState extends State<PaymentsDashboard> {
         });
       },
       style: const TextStyle(
-        color: AppTheme.navy,
+        color: AppTheme.darkTextPrimary,
         fontWeight: FontWeight.w600,
       ),
       decoration: InputDecoration(
@@ -467,7 +467,7 @@ class _PaymentsDashboardState extends State<PaymentsDashboard> {
                 },
               ),
         filled: true,
-        fillColor: Colors.white,
+        fillColor: AppTheme.darkBackgroundPrimaryLight,
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
           borderSide: const BorderSide(color: AppTheme.border),
@@ -574,8 +574,8 @@ class _PaymentsDashboardState extends State<PaymentsDashboard> {
           icon: Icons.pending_actions,
           valueColor: Colors.red[700],
           gradient: [
-            Color(0xFFFFEBEE),
-            Color(0xFFFFCDD2),
+            Color(0xFF3F1D24),
+            Color(0xFF7F1D1D),
           ],
         ),
         _SummaryCard(
@@ -1159,7 +1159,7 @@ class _SummaryCard extends StatelessWidget {
       width: (MediaQuery.of(context).size.width - 60) / 2,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppTheme.darkBackgroundSecondary,
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: AppTheme.border),
         boxShadow: const [
@@ -1184,7 +1184,7 @@ class _SummaryCard extends StatelessWidget {
                       : const Color(0xFFEEF2FF),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: Icon(icon, size: 18, color: AppTheme.navy),
+                child: Icon(icon, size: 18, color: AppTheme.darkTextPrimary),
               ),
               const SizedBox(width: 8),
               Expanded(
@@ -1192,7 +1192,7 @@ class _SummaryCard extends StatelessWidget {
                   title,
                   style: const TextStyle(
                     fontWeight: FontWeight.w800,
-                    color: AppTheme.navy,
+                    color: AppTheme.darkTextPrimary,
                     fontSize: 12,
                   ),
                 ),
@@ -1687,7 +1687,7 @@ class PaymentTasks extends State<PaymentTasksClass> {
                           style: TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.bold,
-                            color: AppTheme.navy,
+                            color: AppTheme.darkTextPrimary,
                           ),
                         ),
                       ),
@@ -1770,7 +1770,7 @@ class PaymentTasks extends State<PaymentTasksClass> {
                                       children: [
                                         Row(
                                           children: [
-                                            Icon(Icons.account_balance_wallet, size: 18, color: AppTheme.navy),
+                                            Icon(Icons.account_balance_wallet, size: 18, color: AppTheme.darkTextPrimary),
                                             SizedBox(width: 6),
                                             Text(
                                               "Project Value",
@@ -1787,7 +1787,7 @@ class PaymentTasks extends State<PaymentTasksClass> {
                                           style: TextStyle(
                                             fontSize: 18,
                                             fontWeight: FontWeight.bold,
-                                            color: AppTheme.navy,
+                                            color: AppTheme.darkTextPrimary,
                                           ),
                                         ),
                                       ],

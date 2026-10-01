@@ -94,9 +94,9 @@ class ProjectFocusScreen extends StatefulWidget {
 }
 
 class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
-  static const _ink = Color(0xFF111827);
-  static const _muted = Color(0xFF6B7280);
-  static const _pageBg = Color(0xFFF7F8FB);
+  static const _ink = AppTheme.darkTextPrimary;
+  static const _muted = AppTheme.darkTextSecondary;
+  static const _pageBg = AppTheme.darkBackgroundPrimary;
 
   bool _loading = true;
   String? _error;
@@ -280,18 +280,18 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
   @override
   Widget build(BuildContext context) {
     return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: SystemUiOverlayStyle.dark.copyWith(
-        statusBarColor: Colors.white,
-        statusBarIconBrightness: Brightness.dark,
+      value: SystemUiOverlayStyle.light.copyWith(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: Brightness.light,
       ),
       child: Scaffold(
         backgroundColor: _pageBg,
         appBar: AppBar(
-          backgroundColor: Colors.white,
-          foregroundColor: AppTheme.navy,
+          backgroundColor: AppTheme.darkBackgroundSecondary,
+          foregroundColor: AppTheme.darkTextPrimary,
           elevation: 0,
           scrolledUnderElevation: 0,
-          iconTheme: const IconThemeData(color: AppTheme.navy),
+          iconTheme: const IconThemeData(color: AppTheme.darkTextPrimary),
           leading: IconButton(
             icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
             onPressed: () => Navigator.maybePop(context),
@@ -299,7 +299,7 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
           title: const Text(
             'Project Focus',
             style: TextStyle(
-              color: AppTheme.navy,
+              color: AppTheme.darkTextPrimary,
               fontSize: 20,
               fontWeight: FontWeight.w800,
               letterSpacing: -0.4,
@@ -323,10 +323,10 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
                       height: 18,
                       child: CircularProgressIndicator(
                         strokeWidth: 2,
-                        color: AppTheme.navy,
+                        color: AppTheme.darkTextPrimary,
                       ),
                     )
-                  : const Icon(Icons.refresh_rounded, color: AppTheme.navy),
+                  : const Icon(Icons.refresh_rounded, color: AppTheme.darkTextPrimary),
             ),
             const SizedBox(width: 4),
           ],
@@ -427,9 +427,9 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
         final waiting = blocker?.waitingCount ?? 0;
         return _StatusBanner(
           title: 'PROJECT IS BLOCKED',
-          color: const Color(0xFFDC2626),
-          background: const Color(0xFFFEF2F2),
-          border: const Color(0xFFFECACA),
+          color: const Color(0xFFF87171),
+          background: const Color(0xFF2C1618),
+          border: const Color(0xFF7F1D1D),
           icon: Icons.lock_rounded,
           body: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -462,16 +462,16 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
       case ProjectActivityState.waiting:
         return _StatusBanner(
           title: 'PROJECT IS WAITING',
-          color: const Color(0xFFB45309),
-          background: const Color(0xFFFFF7ED),
-          border: const Color(0xFFFED7AA),
+          color: const Color(0xFFFBBF24),
+          background: const Color(0xFF2A2112),
+          border: const Color(0xFF92400E),
           icon: Icons.hourglass_top_rounded,
           body: Text(
             focus.projectActivity?.message ??
                 focus.projectActivity?.label ??
                 'Work is waiting on a dependency.',
             style: const TextStyle(
-              color: Color(0xFF9A3412),
+              color: Color(0xFFFDE68A),
               fontSize: 13.5,
               fontWeight: FontWeight.w600,
               height: 1.35,
@@ -484,9 +484,9 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
             : null;
         return _StatusBanner(
           title: 'PROJECT NEEDS ATTENTION',
-          color: const Color(0xFF7C3AED),
-          background: const Color(0xFFF5F3FF),
-          border: const Color(0xFFDDD6FE),
+          color: const Color(0xFFC4B5FD),
+          background: const Color(0xFF241A33),
+          border: const Color(0xFF5B3A8C),
           icon: Icons.warning_amber_rounded,
           body: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -508,7 +508,7 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
                     focus.projectActivity?.message ??
                     'Expected task was not triggered.',
                 style: const TextStyle(
-                  color: Color(0xFF5B21B6),
+                  color: Color(0xFFDDD6FE),
                   fontSize: 13.5,
                   fontWeight: FontWeight.w600,
                   height: 1.35,
@@ -521,14 +521,14 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
       case ProjectActivityState.unknown:
         return _StatusBanner(
           title: 'PROJECT IS MOVING',
-          color: const Color(0xFF059669),
-          background: const Color(0xFFECFDF5),
-          border: const Color(0xFFA7F3D0),
+          color: const Color(0xFF34D399),
+          background: const Color(0xFF12261C),
+          border: const Color(0xFF065F46),
           icon: Icons.check_circle_rounded,
           body: Text(
             focus.projectActivity?.message ?? 'No current blocker',
             style: const TextStyle(
-              color: Color(0xFF047857),
+              color: Color(0xFFA7F3D0),
               fontSize: 13.5,
               fontWeight: FontWeight.w600,
             ),
@@ -641,7 +641,7 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
               child: Text(
                 branches[b].label!,
                 style: const TextStyle(
-                  color: AppTheme.navy,
+                  color: AppTheme.darkTextPrimary,
                   fontSize: 12.5,
                   fontWeight: FontWeight.w800,
                 ),
@@ -685,13 +685,13 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
         const _SectionLabel('What can you do now?'),
         if (!focus.hasMyActions)
           const _FocusCard(
-            color: Color(0xFFEFF6FF),
-            borderColor: Color(0xFFBFDBFE),
+            color: Color(0xFF241A33),
+            borderColor: Color(0xFF5B3A8C),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Icon(Icons.info_outline_rounded,
-                    color: Color(0xFF2563EB), size: 22),
+                    color: AppTheme.accentBlue, size: 22),
                 SizedBox(width: 12),
                 Expanded(
                   child: Column(
@@ -700,7 +700,7 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
                       Text(
                         'Nothing assigned to you right now',
                         style: TextStyle(
-                          color: Color(0xFF111827),
+                          color: AppTheme.darkTextPrimary,
                           fontSize: 14.5,
                           fontWeight: FontWeight.w800,
                           height: 1.3,
@@ -710,7 +710,7 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
                       Text(
                         'The project is progressing with other team members.',
                         style: TextStyle(
-                          color: Color(0xFF1E40AF),
+                          color: AppTheme.darkTextSecondary,
                           fontSize: 13,
                           fontWeight: FontWeight.w600,
                           height: 1.35,
@@ -879,7 +879,7 @@ class _SectionLabel extends StatelessWidget {
           fontSize: 11,
           fontWeight: FontWeight.w800,
           letterSpacing: 0.9,
-          color: Color(0xFF6B7280),
+          color: AppTheme.darkTextSecondary,
         ),
       ),
     );
@@ -907,14 +907,14 @@ class _FocusCard extends StatelessWidget {
       width: double.infinity,
       padding: padding,
       decoration: BoxDecoration(
-        color: color ?? Colors.white,
+        color: color ?? AppTheme.darkBackgroundSecondary,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: borderColor ?? const Color(0xFFE8ECF1)),
-        boxShadow: [
+        border: Border.all(color: borderColor ?? AppTheme.border),
+        boxShadow: const [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
+            color: AppTheme.softShadow,
             blurRadius: 14,
-            offset: const Offset(0, 6),
+            offset: Offset(0, 6),
           ),
         ],
       ),
@@ -952,7 +952,7 @@ class _PhaseHeroCard extends StatelessWidget {
                       ? 'Phase unavailable'
                       : label.toUpperCase(),
                   style: const TextStyle(
-                    color: Color(0xFF111827),
+                    color: AppTheme.darkTextPrimary,
                     fontSize: 24,
                     fontWeight: FontWeight.w800,
                     letterSpacing: -0.5,
@@ -963,7 +963,7 @@ class _PhaseHeroCard extends StatelessWidget {
                 const Text(
                   'Currently in this phase',
                   style: TextStyle(
-                    color: Color(0xFF6B7280),
+                    color: AppTheme.darkTextSecondary,
                     fontSize: 13.5,
                     fontWeight: FontWeight.w600,
                   ),
@@ -975,12 +975,12 @@ class _PhaseHeroCard extends StatelessWidget {
             width: 54,
             height: 54,
             decoration: BoxDecoration(
-              color: const Color(0xFFEFF4FF),
+              color: AppTheme.navy.withValues(alpha: 0.45),
               borderRadius: BorderRadius.circular(16),
             ),
             child: const Icon(
               Icons.apartment_rounded,
-              color: AppTheme.accentBlue,
+              color: Color(0xFFC4B5FD),
               size: 28,
             ),
           ),
@@ -1007,20 +1007,20 @@ class _PhaseRoadmap extends StatelessWidget {
           final current = phase.isCurrent;
           final completed = phase.isCompleted;
           final Color accent = current
-              ? AppTheme.accentBlue
+              ? const Color(0xFFC4B5FD)
               : completed
-                  ? const Color(0xFF16A34A)
-                  : const Color(0xFF9CA3AF);
+                  ? const Color(0xFF34D399)
+                  : AppTheme.darkTextSecondary;
           return Container(
             width: 84,
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
             decoration: BoxDecoration(
-              color: current ? const Color(0xFFEFF4FF) : Colors.white,
+              color: current
+                  ? AppTheme.navy.withValues(alpha: 0.4)
+                  : AppTheme.darkBackgroundSecondary,
               borderRadius: BorderRadius.circular(16),
               border: Border.all(
-                color: current
-                    ? const Color(0xFFBFDBFE)
-                    : const Color(0xFFE8ECF1),
+                color: current ? AppTheme.accentBlue : AppTheme.border,
                 width: current ? 1.4 : 1,
               ),
             ),
@@ -1046,11 +1046,9 @@ class _PhaseRoadmap extends StatelessWidget {
                     fontSize: 11,
                     height: 1.15,
                     fontWeight: current ? FontWeight.w800 : FontWeight.w600,
-                    color: current
-                        ? AppTheme.navy
-                        : completed
-                            ? const Color(0xFF111827)
-                            : const Color(0xFF9CA3AF),
+                    color: current || completed
+                        ? AppTheme.darkTextPrimary
+                        : AppTheme.darkTextSecondary,
                   ),
                 ),
               ],
@@ -1093,7 +1091,7 @@ class _StatusBanner extends StatelessWidget {
                 width: 34,
                 height: 34,
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.7),
+                  color: color.withValues(alpha: 0.16),
                   borderRadius: BorderRadius.circular(11),
                 ),
                 child: Icon(icon, color: color, size: 18),
@@ -1162,7 +1160,7 @@ class _PersonTaskCard extends StatelessWidget {
                 child: Text(
                   title,
                   style: const TextStyle(
-                    color: Color(0xFF111827),
+                    color: AppTheme.darkTextPrimary,
                     fontSize: 15.5,
                     fontWeight: FontWeight.w800,
                     height: 1.25,
@@ -1172,7 +1170,7 @@ class _PersonTaskCard extends StatelessWidget {
               if (onOpen != null)
                 const Icon(
                   Icons.chevron_right_rounded,
-                  color: Color(0xFF9CA3AF),
+                  color: AppTheme.darkTextSecondary,
                 ),
             ],
           ),
@@ -1181,7 +1179,7 @@ class _PersonTaskCard extends StatelessWidget {
             Text(
               category!,
               style: const TextStyle(
-                color: Color(0xFF6B7280),
+                color: AppTheme.darkTextSecondary,
                 fontSize: 12.5,
                 fontWeight: FontWeight.w600,
               ),
@@ -1203,7 +1201,7 @@ class _PersonTaskCard extends StatelessWidget {
               child: FilledButton(
                 onPressed: onOpen,
                 style: FilledButton.styleFrom(
-                  backgroundColor: AppTheme.accentBlue,
+                  backgroundColor: AppTheme.navy,
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(
                     horizontal: 16,
@@ -1236,8 +1234,8 @@ class _AttentionCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return _FocusCard(
-      color: const Color(0xFFF5F3FF),
-      borderColor: const Color(0xFFDDD6FE),
+      color: const Color(0xFF241A33),
+      borderColor: const Color(0xFF5B3A8C),
       onTap: onOpen,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1245,12 +1243,12 @@ class _AttentionCard extends StatelessWidget {
           const Row(
             children: [
               Icon(Icons.warning_amber_rounded,
-                  color: Color(0xFF7C3AED), size: 18),
+                  color: Color(0xFFC4B5FD), size: 18),
               SizedBox(width: 8),
               Text(
                 'NEEDS ATTENTION',
                 style: TextStyle(
-                  color: Color(0xFF7C3AED),
+                  color: Color(0xFFC4B5FD),
                   fontSize: 11.5,
                   fontWeight: FontWeight.w800,
                   letterSpacing: 0.4,
@@ -1262,7 +1260,7 @@ class _AttentionCard extends StatelessWidget {
           Text(
             item.name,
             style: const TextStyle(
-              color: Color(0xFF111827),
+              color: AppTheme.darkTextPrimary,
               fontSize: 15.5,
               fontWeight: FontWeight.w800,
               height: 1.25,
@@ -1272,7 +1270,7 @@ class _AttentionCard extends StatelessWidget {
           Text(
             item.message ?? 'Expected task was not triggered.',
             style: const TextStyle(
-              color: Color(0xFF5B21B6),
+              color: Color(0xFFDDD6FE),
               fontSize: 13.5,
               fontWeight: FontWeight.w600,
               height: 1.35,
@@ -1285,7 +1283,7 @@ class _AttentionCard extends StatelessWidget {
               child: Text(
                 'View dependency →',
                 style: TextStyle(
-                  color: Color(0xFF7C3AED),
+                  color: Color(0xFFC4B5FD),
                   fontSize: 13,
                   fontWeight: FontWeight.w800,
                 ),
@@ -1312,7 +1310,7 @@ class _NoInvolvementCard extends StatelessWidget {
           const Text(
             'Nothing is assigned to you right now.',
             style: TextStyle(
-              color: Color(0xFF111827),
+              color: AppTheme.darkTextPrimary,
               fontSize: 14.5,
               fontWeight: FontWeight.w700,
               height: 1.35,
@@ -1323,7 +1321,7 @@ class _NoInvolvementCard extends StatelessWidget {
             const Text(
               'The project is currently progressing with:',
               style: TextStyle(
-                color: Color(0xFF6B7280),
+                color: AppTheme.darkTextSecondary,
                 fontSize: 12.5,
                 fontWeight: FontWeight.w600,
               ),
@@ -1333,7 +1331,7 @@ class _NoInvolvementCard extends StatelessWidget {
               Text(
                 current.assignee!,
                 style: const TextStyle(
-                  color: AppTheme.navy,
+                  color: AppTheme.darkTextPrimary,
                   fontSize: 15,
                   fontWeight: FontWeight.w800,
                 ),
@@ -1341,7 +1339,7 @@ class _NoInvolvementCard extends StatelessWidget {
             Text(
               current.name,
               style: const TextStyle(
-                color: Color(0xFF6B7280),
+                color: AppTheme.darkTextSecondary,
                 fontSize: 13.5,
                 fontWeight: FontWeight.w600,
                 height: 1.3,
@@ -1370,7 +1368,7 @@ class _InvolvementCard extends StatelessWidget {
           const Text(
             'Your next task',
             style: TextStyle(
-              color: Color(0xFF6B7280),
+              color: AppTheme.darkTextSecondary,
               fontSize: 12,
               fontWeight: FontWeight.w700,
             ),
@@ -1379,7 +1377,7 @@ class _InvolvementCard extends StatelessWidget {
           Text(
             involvement.name ?? 'Upcoming involvement',
             style: const TextStyle(
-              color: Color(0xFF111827),
+              color: AppTheme.darkTextPrimary,
               fontSize: 15.5,
               fontWeight: FontWeight.w800,
               height: 1.25,
@@ -1397,7 +1395,7 @@ class _InvolvementCard extends StatelessWidget {
             const Text(
               'Waiting for',
               style: TextStyle(
-                color: Color(0xFF6B7280),
+                color: AppTheme.darkTextSecondary,
                 fontSize: 12,
                 fontWeight: FontWeight.w700,
               ),
@@ -1411,13 +1409,13 @@ class _InvolvementCard extends StatelessWidget {
                   children: [
                     const Text('•  ',
                         style: TextStyle(
-                            color: Color(0xFF9CA3AF),
+                            color: AppTheme.darkTextSecondary,
                             fontWeight: FontWeight.w800)),
                     Expanded(
                       child: Text(
                         dep.name,
                         style: const TextStyle(
-                          color: Color(0xFF111827),
+                          color: AppTheme.darkTextPrimary,
                           fontSize: 13.5,
                           fontWeight: FontWeight.w600,
                           height: 1.3,
@@ -1435,7 +1433,7 @@ class _InvolvementCard extends StatelessWidget {
             Text(
               involvement.message!,
               style: const TextStyle(
-                color: Color(0xFF6B7280),
+                color: AppTheme.darkTextSecondary,
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
                 height: 1.35,
@@ -1466,7 +1464,7 @@ class _FlowChain extends StatelessWidget {
                 child: Icon(
                   Icons.arrow_downward_rounded,
                   size: 16,
-                  color: Color(0xFF9CA3AF),
+                  color: AppTheme.darkTextSecondary,
                 ),
               ),
           ],
@@ -1496,7 +1494,7 @@ class _FlowStep extends StatelessWidget {
           height: 10,
           margin: const EdgeInsets.only(top: 5),
           decoration: BoxDecoration(
-            color: isFirst ? AppTheme.accentBlue : const Color(0xFFD1D5DB),
+            color: isFirst ? const Color(0xFFC4B5FD) : AppTheme.border,
             shape: BoxShape.circle,
           ),
         ),
@@ -1508,7 +1506,7 @@ class _FlowStep extends StatelessWidget {
               Text(
                 item.name,
                 style: TextStyle(
-                  color: const Color(0xFF111827),
+                  color: AppTheme.darkTextPrimary,
                   fontSize: 14.5,
                   fontWeight: isFirst ? FontWeight.w800 : FontWeight.w700,
                   height: 1.3,
@@ -1519,7 +1517,7 @@ class _FlowStep extends StatelessWidget {
                 Text(
                   meta,
                   style: const TextStyle(
-                    color: Color(0xFF6B7280),
+                    color: AppTheme.darkTextSecondary,
                     fontSize: 12.5,
                     fontWeight: FontWeight.w600,
                   ),
@@ -1559,11 +1557,11 @@ class _OwnerLine extends StatelessWidget {
           width: 30,
           height: 30,
           decoration: BoxDecoration(
-            color: const Color(0xFFEEF2FF),
+            color: AppTheme.navy.withValues(alpha: 0.45),
             borderRadius: BorderRadius.circular(15),
           ),
           child: const Icon(Icons.person_rounded,
-              color: AppTheme.navy, size: 16),
+              color: Color(0xFFC4B5FD), size: 16),
         ),
         const SizedBox(width: 10),
         Expanded(
@@ -1573,7 +1571,7 @@ class _OwnerLine extends StatelessWidget {
               Text(
                 hasName ? name! : (hasRole ? role! : 'Unassigned'),
                 style: const TextStyle(
-                  color: Color(0xFF111827),
+                  color: AppTheme.darkTextPrimary,
                   fontSize: 14,
                   fontWeight: FontWeight.w800,
                 ),
@@ -1582,7 +1580,7 @@ class _OwnerLine extends StatelessWidget {
                 Text(
                   role!,
                   style: const TextStyle(
-                    color: Color(0xFF6B7280),
+                    color: AppTheme.darkTextSecondary,
                     fontSize: 12.5,
                     fontWeight: FontWeight.w600,
                   ),
@@ -1670,19 +1668,19 @@ class _ErrorBanner extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: const Color(0xFFFEF2F2),
+        color: const Color(0xFF2C1618),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFFECACA)),
+        border: Border.all(color: const Color(0xFF7F1D1D)),
       ),
       child: Row(
         children: [
-          const Icon(Icons.error_outline, color: Color(0xFFDC2626), size: 18),
+          const Icon(Icons.error_outline, color: Color(0xFFF87171), size: 18),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
               message,
               style: const TextStyle(
-                color: Color(0xFFB91C1C),
+                color: Color(0xFFFCA5A5),
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
               ),
@@ -1703,17 +1701,17 @@ class _FocusStatusStyle {
   factory _FocusStatusStyle.from(String status, {String? fallback}) {
     switch (status.toLowerCase().replaceAll(' ', '_')) {
       case 'ready':
-        return const _FocusStatusStyle(Color(0xFF16A34A), 'Ready to start');
+        return const _FocusStatusStyle(Color(0xFF34D399), 'Ready to start');
       case 'in_progress':
       case 'inprogress':
-        return const _FocusStatusStyle(Color(0xFF2563EB), 'In progress');
+        return const _FocusStatusStyle(AppTheme.accentBlue, 'In progress');
       case 'waiting':
-        return const _FocusStatusStyle(Color(0xFFB45309), 'Waiting');
+        return const _FocusStatusStyle(Color(0xFFFBBF24), 'Waiting');
       case 'not_started':
       case 'notstarted':
-        return const _FocusStatusStyle(Color(0xFF9CA3AF), 'Not started');
+        return const _FocusStatusStyle(AppTheme.darkTextSecondary, 'Not started');
       case 'blocked':
-        return const _FocusStatusStyle(Color(0xFFDC2626), 'Blocked');
+        return const _FocusStatusStyle(Color(0xFFF87171), 'Blocked');
       default:
         final text = (fallback != null && fallback.isNotEmpty)
             ? fallback
@@ -1721,7 +1719,7 @@ class _FocusStatusStyle {
                 ? ''
                 : status[0].toUpperCase() +
                     status.substring(1).replaceAll('_', ' '));
-        return _FocusStatusStyle(const Color(0xFF6B7280), text);
+        return _FocusStatusStyle(AppTheme.darkTextSecondary, text);
     }
   }
 }

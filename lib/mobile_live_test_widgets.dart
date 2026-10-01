@@ -202,7 +202,7 @@ Color mobileLiveTestActionColor(MobileLiveTestActionStyle style) {
     case MobileLiveTestActionStyle.negative:
       return const Color(0xFFDC2626);
     case MobileLiveTestActionStyle.neutral:
-      return AppTheme.navy;
+      return AppTheme.darkTextPrimary;
   }
 }
 

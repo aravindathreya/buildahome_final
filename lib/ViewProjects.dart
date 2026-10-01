@@ -77,7 +77,7 @@ class ViewProject extends StatelessWidget {
 
     return MaterialApp(
       title: appTitle,
-      theme: AppTheme.getLightTheme(),
+      theme: AppTheme.getDarkTheme(),
       home: Scaffold(
         key: _scaffoldKey, // ADD THIS LINE
         backgroundColor: AppTheme.getBackgroundPrimary(context),
@@ -88,16 +88,16 @@ class ViewProject extends StatelessWidget {
           title: Text(
             appTitle,
             style: const TextStyle(
-              color: AppTheme.navy,
+              color: AppTheme.darkTextPrimary,
               fontWeight: FontWeight.w800,
             ),
           ),
           leading: new IconButton(icon: new Icon(Icons.menu),
               onPressed: () => _scaffoldKey.currentState!.openDrawer()),
           backgroundColor: AppTheme.getBackgroundSecondary(context),
-          foregroundColor: AppTheme.navy,
+          foregroundColor: AppTheme.darkTextPrimary,
           elevation: 0,
-          iconTheme: const IconThemeData(color: AppTheme.navy),
+          iconTheme: const IconThemeData(color: AppTheme.darkTextPrimary),
         ),
         body: ViewProjectForm(),
       ),

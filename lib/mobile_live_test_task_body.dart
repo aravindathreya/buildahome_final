@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'app_theme.dart';
 
 import 'package:flutter/material.dart';
 
@@ -437,7 +438,7 @@ class _ActingAsFooterLine extends StatelessWidget {
         Text(
           'Acting as $actingLabel',
           style: const TextStyle(
-            color: kTaskNavy,
+            color: AppTheme.darkTextPrimary,
             fontSize: 12.5,
             fontWeight: FontWeight.w700,
           ),

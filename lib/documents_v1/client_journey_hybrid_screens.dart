@@ -163,12 +163,12 @@ class _ClientFloorPlanElevationScreenState
       backgroundColor: AppTheme.getBackgroundPrimary(context),
       appBar: AppBar(
         backgroundColor: AppTheme.getBackgroundSecondary(context),
-        foregroundColor: AppTheme.navy,
+        foregroundColor: AppTheme.darkTextPrimary,
         elevation: 0,
         title: const Text(
           'Floor Plan & Elevation',
           style: TextStyle(
-            color: AppTheme.navy,
+            color: AppTheme.darkTextPrimary,
             fontSize: 17,
             fontWeight: FontWeight.w800,
           ),
@@ -413,12 +413,12 @@ class _ClientDesignElementsScreenState
       backgroundColor: AppTheme.getBackgroundPrimary(context),
       appBar: AppBar(
         backgroundColor: AppTheme.getBackgroundSecondary(context),
-        foregroundColor: AppTheme.navy,
+        foregroundColor: AppTheme.darkTextPrimary,
         elevation: 0,
         title: const Text(
           'Design Elements',
           style: TextStyle(
-            color: AppTheme.navy,
+            color: AppTheme.darkTextPrimary,
             fontSize: 17,
             fontWeight: FontWeight.w800,
           ),

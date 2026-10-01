@@ -18,6 +18,7 @@ import 'checklist_categories.dart';
 import 'indents_screen.dart';
 import 'notifcations.dart';
 import 'project_picker.dart';
+import 'ProfileScreen.dart';
 import 'user_picker.dart';
 import 'services/app_logout.dart';
 import 'services/data_provider.dart';
@@ -44,15 +45,17 @@ import 'utilities/role_app_bar_color.dart';
 import 'widgets/dashboard_chrome.dart';
 import 'widgets/modern_task_card.dart';
 import 'widgets/opening_project_splash.dart';
+import 'widgets/searchable_select.dart';
 import 'services/staff_location_tracker.dart';
 import 'widgets/attendance_prompt_dialog.dart';
+import 'widgets/daily_update_prompt_dialog.dart';
 import 'widgets/profile_picture_dialog.dart';
-import 'widgets/background_location_banner.dart';
 import 'widgets/staff_check_in_card.dart';
 import 'AttendanceScreen.dart';
 import 'Payments.dart';
 import 'Scheduler.dart';
 import 'Gallery.dart' hide TimelineGallery;
+import 'TimelineGallery.dart';
 import 'chat_v1/chat_v1_app.dart';
 import 'RequestDrawing.dart';
 import 'InspectionRequest.dart';
@@ -71,9 +74,12 @@ class AdminDashboard extends StatefulWidget {
   _AdminDashboardState createState() => _AdminDashboardState();
 }
 
-class _AdminDashboardState extends State<AdminDashboard> {
-  static const Color _navy = Color(0xFF1B254B);
+class _AdminDashboardState extends State<AdminDashboard>
+    with WidgetsBindingObserver {
+  static const Color _navy = AppTheme.navy;
   static const Color _mutedGrey = Color(0xFF8A94A6);
+  bool _startupPromptsFinished = false;
+  int _startupPromptGeneration = 0;
 
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   final GlobalKey<AdminHomeState> _adminHomeKey = GlobalKey<AdminHomeState>();
@@ -84,6 +90,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     MobileBottomNavService.instance.revision
         .addListener(_onBottomNavConfigChanged);
     unawaited(MobileBottomNavService.instance.ensureSurface(
@@ -105,6 +112,8 @@ class _AdminDashboardState extends State<AdminDashboard> {
 
   @override
   void dispose() {
+    _startupPromptGeneration++;
+    WidgetsBinding.instance.removeObserver(this);
     StaffLocationTracker.instance.stop();
     MobileBottomNavService.instance.revision
         .removeListener(_onBottomNavConfigChanged);
@@ -131,30 +140,72 @@ class _AdminDashboardState extends State<AdminDashboard> {
     );
   }
 
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed &&
+        _startupPromptsFinished &&
+        mounted) {
+      unawaited(_maybeShowDailyUpdatePrompt());
+    }
+  }
+
   /// Wait for the login transition, then:
   /// 1) Attendance (if needed) — wait until that dialog is closed
-  /// 2) Profile picture (if missing)
+  /// 2) Daily update (coordinators and site engineers, once per day)
+  /// 3) Profile picture (if missing)
   Future<void> _promptStaffOnStartup() async {
-    await Future<void>.delayed(const Duration(milliseconds: 800));
-    if (!mounted) return;
+    final generation = _startupPromptGeneration;
+    bool aborted() =>
+        !mounted ||
+        generation != _startupPromptGeneration ||
+        ProfilePictureService.promptsSuppressed;
 
-    BuildContext dialogContext() =>
-        globalNavigatorKey.currentContext ?? context;
+    await Future<void>.delayed(const Duration(milliseconds: 800));
+    if (aborted()) return;
 
     try {
       // Do NOT put a short timeout around the dialog — that used to cut off
       // attendance mid-show and then the profile popup never appeared cleanly.
-      await maybePromptForAttendance(dialogContext());
+      // Use this State's context. The root navigator context stays mounted
+      // on the login screen and was presenting these dialogs after logout.
+      await maybePromptForAttendance(context);
     } catch (e) {
       debugPrint('[Startup] attendance prompt error: $e');
     }
 
     // Let the attendance route fully dismiss before opening the next dialog.
     await Future<void>.delayed(const Duration(milliseconds: 350));
-    if (!mounted) return;
-    await maybePromptForProfilePicture(dialogContext());
-    if (!mounted) return;
+    if (aborted()) return;
+    try {
+      await _maybeShowDailyUpdatePrompt();
+    } catch (e) {
+      debugPrint('[Startup] daily update prompt error: $e');
+    }
+
+    await Future<void>.delayed(const Duration(milliseconds: 350));
+    if (aborted()) return;
+    await maybePromptForProfilePicture(context);
+    if (aborted()) return;
+    _startupPromptsFinished = true;
     unawaited(StaffLocationTracker.instance.syncWithShift());
+  }
+
+  Future<void> _maybeShowDailyUpdatePrompt() async {
+    if (!mounted || ProfilePictureService.promptsSuppressed) return;
+    final addNow = await maybePromptForDailyUpdate(context);
+    if (!addNow || !mounted || ProfilePictureService.promptsSuppressed) return;
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted || ProfilePictureService.promptsSuppressed) return;
+    final role = prefs.getString('role');
+    await Navigator.of(context, rootNavigator: true).push(
+      MaterialPageRoute(
+        builder: (_) => DashboardChrome.wrap(
+          DashboardChromeStyle.admin,
+          const AddDailyUpdate(returnToAdminDashboard: true),
+          appBarColor: RoleAppBarColor.forRole(role),
+        ),
+      ),
+    );
   }
 
   Future<void> _onBottomNavTap(int index) async {
@@ -195,7 +246,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
 
     return Container(
       decoration: const BoxDecoration(
-        color: Colors.white,
+        color: AppTheme.darkBackgroundSecondary,
         border: Border(top: BorderSide(color: AppTheme.border)),
       ),
       child: SafeArea(
@@ -206,7 +257,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
             children: List.generate(items.length, (index) {
               final item = items[index];
               final selected = _bottomNavIndex == index;
-              final color = selected ? _navy : _mutedGrey;
+              final color = selected ? Colors.white : _mutedGrey;
               return Expanded(
                 child: InkWell(
                   onTap: () => _onBottomNavTap(index),
@@ -249,7 +300,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
   Widget build(BuildContext context) {
     return Scaffold(
       key: _scaffoldKey,
-      backgroundColor: AppTheme.lightBackgroundPrimary,
+      backgroundColor: AppTheme.darkBackgroundPrimary,
       drawer: NavMenuWidget(),
       appBar: null,
       body: GestureDetector(
@@ -384,9 +435,9 @@ class AdminHome extends StatefulWidget {
 }
 
 class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
-  static const Color _navy = Color(0xFF1B254B);
-  static const Color _mutedGrey = Color(0xFF8A94A6);
-  static const Color _cardBorder = Color(0xFFE8ECF1);
+  static const Color _navy = AppTheme.navy;
+  static const Color _mutedGrey = Color(0xFFA8B3C7);
+  static const Color _cardBorder = AppTheme.border;
   static const Color _softShadow = Color(0x14000000);
 
   var currentWidgetContext;
@@ -673,6 +724,15 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
         return;
       case 'site_visit_reports':
         await openSiteVisits();
+        return;
+      case 'gallery':
+        // Project photos live in Timeline Gallery. The catalog "Gallery" row
+        // still opens the older migrated-files screen from quick actions.
+        await _handleMenuTap(context, {
+          'title': 'Gallery',
+          'icon': Icons.photo_library,
+          'route': () => _routeForCurrentProject(() => const TimelineGallery()),
+        });
         return;
     }
 
@@ -1361,6 +1421,43 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
     return items;
   }
 
+  bool get _pinsDailyUpdateQuickAction {
+    final role = currentUserRole
+        .trim()
+        .toLowerCase()
+        .replaceAll(RegExp(r'\s+'), ' ');
+    return role == 'site engineer' ||
+        role == 'super admin' ||
+        role == 'admin';
+  }
+
+  /// Site engineers and super admins always get Daily Update on the home
+  /// grid, even when the backend action list omits it.
+  List<Map<String, dynamic>> _ensureDailyUpdateQuickAction(
+    List<Map<String, dynamic>> items,
+    List<Map<String, dynamic>> catalog,
+  ) {
+    if (!_pinsDailyUpdateQuickAction) return items;
+    if (items.any((item) => item['title'] == 'Daily Update')) return items;
+    Map<String, dynamic>? tile;
+    for (final item in catalog) {
+      if (item['title'] == 'Daily Update') {
+        tile = item;
+        break;
+      }
+    }
+    if (tile == null) return items;
+    final next = List<Map<String, dynamic>>.from(items);
+    final attendance =
+        next.indexWhere((item) => item['title'] == 'Attendance');
+    if (attendance >= 0) {
+      next.insert(attendance + 1, tile);
+    } else {
+      next.add(tile);
+    }
+    return next;
+  }
+
   List<Map<String, dynamic>> _visibleQuickActions(
       List<Map<String, dynamic>> items,
       {int max = 8}) {
@@ -1392,11 +1489,16 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
       snapshot: snapshot,
     );
     final usingBackend = snapshot?.configured == true;
-    final allQuickActions =
-        usingBackend ? resolvedActions : fallbackItems;
-    final visibleActions = usingBackend
-        ? resolvedActions.take(8).toList()
-        : _visibleQuickActions(fallbackItems);
+    final allQuickActions = _ensureDailyUpdateQuickAction(
+      usingBackend ? resolvedActions : fallbackItems,
+      catalogItems,
+    );
+    final visibleActions = _ensureDailyUpdateQuickAction(
+      usingBackend
+          ? resolvedActions.take(8).toList()
+          : _visibleQuickActions(fallbackItems),
+      catalogItems,
+    );
     final totalProjects = projects.length;
     final pendingCount = _tasks.where((task) {
       if (task is Map) {
@@ -1419,9 +1521,9 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
           StaffCheckInCard.refreshAll(),
         ]);
       },
-      color: _navy,
+      color: AppTheme.darkTextPrimary,
       child: Container(
-        color: AppTheme.lightBackgroundPrimary,
+        color: AppTheme.darkBackgroundPrimary,
         height: MediaQuery.of(context).size.height,
         width: MediaQuery.of(context).size.width,
         child: ListView(
@@ -1464,7 +1566,6 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
                       ),
                     ),
                   if (currentUserRole != 'Client') ...[
-                    const BackgroundLocationBanner(),
                     const StaffCheckInCard(),
                     const SizedBox(height: 18),
                     _buildOverviewCard(totalProjects, pendingCount),
@@ -1480,7 +1581,7 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
                         style: TextStyle(
                           fontSize: 15.5,
                           fontWeight: FontWeight.w800,
-                          color: _navy,
+                          color: AppTheme.darkTextPrimary,
                           height: 1.1,
                         ),
                       ),
@@ -1544,7 +1645,7 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
                               _quickActionLabel(title),
                               textAlign: TextAlign.center,
                               style: const TextStyle(
-                                color: _navy,
+                                color: AppTheme.darkTextPrimary,
                                 fontSize: 11.5,
                                 fontWeight: FontWeight.w600,
                                 height: 1.15,
@@ -1688,7 +1789,13 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
                     backgroundColor: Colors.white.withValues(alpha: 0.18),
                     foregroundColor: Colors.white,
                     borderColor: Colors.white.withValues(alpha: 0.35),
-                    onTap: () => Scaffold.of(context).openDrawer(),
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const ProfileScreen(),
+                        ),
+                      );
+                    },
                   );
                 },
               ),
@@ -1703,7 +1810,7 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppTheme.darkBackgroundSecondary,
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: _cardBorder),
         boxShadow: const [
@@ -1729,8 +1836,8 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
                   errorBuilder: (_, __, ___) => Container(
                     width: 56,
                     height: 56,
-                    color: const Color(0xFFEEF2FF),
-                    child: const Icon(Icons.apartment_rounded, color: _navy),
+                    color: AppTheme.darkBackgroundPrimaryLight,
+                    child: const Icon(Icons.apartment_rounded, color: AppTheme.darkTextPrimary),
                   ),
                 ),
               ),
@@ -1754,7 +1861,7 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
                           ? currentUserRole
                           : 'Team Dashboard',
                       style: const TextStyle(
-                        color: _navy,
+                        color: AppTheme.darkTextPrimary,
                         fontSize: 15,
                         fontWeight: FontWeight.w800,
                       ),
@@ -1785,7 +1892,7 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
                   label: 'Projects',
                   value: '$totalProjects',
                   color: const Color(0xFF2563EB),
-                  bg: const Color(0xFFDBEAFE),
+                  bg: const Color(0xFF1E3A5F),
                   icon: Icons.folder_special_rounded,
                   onTap: openProjectsPicker,
                 ),
@@ -1796,7 +1903,7 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
                   label: 'Pending',
                   value: '$pendingCount',
                   color: const Color(0xFFEAB308),
-                  bg: const Color(0xFFFFF1D6),
+                  bg: const Color(0xFF3D3420),
                   icon: Icons.pending_actions_rounded,
                   onTap: openTasksScreen,
                 ),
@@ -1822,7 +1929,7 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
         decoration: BoxDecoration(
-          color: const Color(0xFFF8FAFC),
+          color: AppTheme.darkBackgroundPrimaryLight,
           borderRadius: BorderRadius.circular(14),
           border: Border.all(color: _cardBorder),
         ),
@@ -1845,7 +1952,7 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
                   Text(
                     value,
                     style: const TextStyle(
-                      color: _navy,
+                      color: AppTheme.darkTextPrimary,
                       fontSize: 17,
                       fontWeight: FontWeight.w800,
                       height: 1.1,
@@ -1882,7 +1989,7 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: AppTheme.darkBackgroundSecondary,
             borderRadius: BorderRadius.circular(14),
             border: Border.all(color: _cardBorder),
             boxShadow: const [
@@ -1914,7 +2021,7 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
                   ),
                   child: const Icon(
                     Icons.folder_special_rounded,
-                    color: _navy,
+                    color: AppTheme.darkTextPrimary,
                     size: 18,
                   ),
                 ),
@@ -1926,7 +2033,7 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
                     Text(
                       'Select a project',
                       style: TextStyle(
-                        color: _navy,
+                        color: AppTheme.darkTextPrimary,
                         fontSize: 14,
                         fontWeight: FontWeight.w700,
                       ),
@@ -2054,7 +2161,7 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
       default:
         return {
           'bg': const Color(0xFFEEF2FF),
-          'fg': _navy,
+          'fg': AppTheme.darkTextPrimary,
         };
     }
   }
@@ -2180,7 +2287,7 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
   Future<void> _showAllQuickActions(List<Map<String, dynamic>> items) async {
     await showModalBottomSheet(
       context: context,
-      backgroundColor: Colors.white,
+      backgroundColor: AppTheme.darkBackgroundSecondary,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -2195,7 +2302,7 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
                 const Text(
                   'All Actions',
                   style: TextStyle(
-                    color: _navy,
+                    color: AppTheme.darkTextPrimary,
                     fontSize: 16,
                     fontWeight: FontWeight.w800,
                   ),
@@ -2244,7 +2351,7 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
                               _quickActionLabel(title),
                               textAlign: TextAlign.center,
                               style: const TextStyle(
-                                color: _navy,
+                                color: AppTheme.darkTextPrimary,
                                 fontSize: 11.5,
                                 fontWeight: FontWeight.w600,
                               ),
@@ -2750,7 +2857,7 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
                 style: TextStyle(
                   fontSize: 15.5,
                   fontWeight: FontWeight.w800,
-                  color: _navy,
+                  color: AppTheme.darkTextPrimary,
                 ),
               ),
             ),
@@ -2856,7 +2963,7 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
             width: double.infinity,
             padding: const EdgeInsets.all(24),
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: AppTheme.darkBackgroundSecondary,
               borderRadius: BorderRadius.circular(16),
               border: Border.all(color: _cardBorder),
             ),
@@ -2865,16 +2972,16 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: const BoxDecoration(
-                    color: Color(0xFFEEF2FF),
+                    color: AppTheme.darkBackgroundPrimaryLight,
                     shape: BoxShape.circle,
                   ),
-                  child: const Icon(Icons.task_alt, size: 28, color: _navy),
+                  child: const Icon(Icons.task_alt, size: 28, color: AppTheme.darkTextPrimary),
                 ),
                 const SizedBox(height: 12),
                 const Text(
                   'No tasks found',
                   style: TextStyle(
-                    color: _navy,
+                    color: AppTheme.darkTextPrimary,
                     fontSize: 14,
                     fontWeight: FontWeight.w700,
                   ),
@@ -3282,8 +3389,8 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
   }
 
   Widget _buildTaskCardSkeleton() {
-    final baseColor = const Color(0xFFE8ECF1);
-    final highlightColor = const Color(0xFFF8FAFC);
+    final baseColor = AppTheme.darkBackgroundPrimaryLight;
+    final highlightColor = AppTheme.darkBackgroundSecondary;
 
     return Shimmer.fromColors(
       baseColor: baseColor,
@@ -3293,6 +3400,7 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
         decoration: BoxDecoration(
           color: baseColor,
           borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppTheme.border),
         ),
       ),
     );
@@ -3597,6 +3705,8 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
                   ),
                   child: TextField(
                     controller: _searchController,
+                    textCapitalization: TextCapitalization.sentences,
+                    inputFormatters: const [FirstLetterCapitalFormatter()],
                     style: TextStyle(
                         color: AppTheme.getTextPrimary(context), fontSize: 14),
                     onChanged: (value) {
@@ -4300,6 +4410,8 @@ class DashboardState extends State<Dashboard> {
                   ),
                   child: TextField(
                     controller: _searchController,
+                    textCapitalization: TextCapitalization.sentences,
+                    inputFormatters: const [FirstLetterCapitalFormatter()],
                     style: TextStyle(
                         color: AppTheme.getTextPrimary(context), fontSize: 14),
                     onChanged: (value) {

@@ -12,6 +12,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
 import 'app_theme.dart';
+import 'services/camera_permission.dart';
 import 'AddDailyUpdate.dart'; // For FullScreenImage
 import 'services/data_provider.dart';
 import 'widgets/searchable_select.dart';
@@ -231,7 +232,7 @@ class _SiteVisitReportsScreenState extends State<SiteVisitReportsScreen> with Si
             mainAxisSize: MainAxisSize.min,
             children: [
               ListTile(
-                leading: Icon(Icons.camera_alt, color: AppTheme.navy),
+                leading: Icon(Icons.camera_alt, color: AppTheme.darkTextPrimary),
                 title: const Text('Take Photo'),
                 onTap: () {
                   Navigator.pop(context);
@@ -239,7 +240,7 @@ class _SiteVisitReportsScreenState extends State<SiteVisitReportsScreen> with Si
                 },
               ),
               ListTile(
-                leading: Icon(Icons.photo_library, color: AppTheme.navy),
+                leading: Icon(Icons.photo_library, color: AppTheme.darkTextPrimary),
                 title: const Text('Choose from Gallery'),
                 onTap: () {
                   Navigator.pop(context);
@@ -247,7 +248,7 @@ class _SiteVisitReportsScreenState extends State<SiteVisitReportsScreen> with Si
                 },
               ),
               ListTile(
-                leading: Icon(Icons.attach_file, color: AppTheme.navy),
+                leading: Icon(Icons.attach_file, color: AppTheme.darkTextPrimary),
                 title: const Text('Other Files'),
                 onTap: () {
                   Navigator.pop(context);
@@ -262,8 +263,9 @@ class _SiteVisitReportsScreenState extends State<SiteVisitReportsScreen> with Si
   }
 
   Future<void> _takePhotoFromCamera() async {
-    if (!await checkPermissionStatus(forCamera: true)) return;
-    
+    if (!await ensureCameraPermission(context)) return;
+    if (!mounted) return;
+
     final picker = ImagePicker();
     final pickedFile = await picker.pickImage(
       source: ImageSource.camera,
@@ -424,9 +426,9 @@ class _SiteVisitReportsScreenState extends State<SiteVisitReportsScreen> with Si
         return Theme(
           data: Theme.of(context).copyWith(
             colorScheme: ColorScheme.light(
-              primary: AppTheme.navy,
+              primary: AppTheme.darkTextPrimary,
               onPrimary: Colors.white,
-              onSurface: AppTheme.navy,
+              onSurface: AppTheme.darkTextPrimary,
             ),
           ),
           child: child!,
@@ -631,13 +633,13 @@ class _SiteVisitReportsScreenState extends State<SiteVisitReportsScreen> with Si
     return PreferredSize(
       preferredSize: const Size.fromHeight(66),
       child: Container(
-        color: Colors.white,
+        color: AppTheme.darkBackgroundSecondary,
         padding: const EdgeInsets.fromLTRB(18, 0, 18, 14),
         child: Container(
           height: 48,
           padding: const EdgeInsets.all(4),
           decoration: BoxDecoration(
-            color: const Color(0xFFF1F4F8),
+            color: AppTheme.darkBackgroundPrimaryLight,
             borderRadius: BorderRadius.circular(14),
           ),
           child: TabBar(
@@ -652,7 +654,7 @@ class _SiteVisitReportsScreenState extends State<SiteVisitReportsScreen> with Si
               borderRadius: BorderRadius.circular(11),
             ),
             labelColor: Colors.white,
-            unselectedLabelColor: AppTheme.mutedGrey,
+            unselectedLabelColor: AppTheme.darkTextSecondary,
             labelStyle: const TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w700,
@@ -677,12 +679,14 @@ class _SiteVisitReportsScreenState extends State<SiteVisitReportsScreen> with Si
     if (_tabController == null && !_isClient) {
       return const ThemedScaffold(
         title: 'Site Visit Reports',
+        headerDrop: 15,
         body: SkeletonListLoader(cardCount: 4),
       );
     }
 
     return ThemedScaffold(
       title: 'Site Visit Reports',
+      headerDrop: 15,
       bottom: _buildTabBottom(),
       body: _isClient
           ? _buildViewTab()
@@ -737,7 +741,7 @@ class _SiteVisitReportsScreenState extends State<SiteVisitReportsScreen> with Si
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 14),
       decoration: const BoxDecoration(
-        color: Colors.white,
+        color: AppTheme.darkBackgroundSecondary,
         border: Border(bottom: BorderSide(color: AppTheme.border)),
       ),
       child: Column(
@@ -758,7 +762,7 @@ class _SiteVisitReportsScreenState extends State<SiteVisitReportsScreen> with Si
               Text(
                 stepTitles[_currentStep],
                 style: const TextStyle(
-                  color: AppTheme.navy,
+                  color: AppTheme.darkTextPrimary,
                   fontSize: 13,
                   fontWeight: FontWeight.w800,
                 ),
@@ -771,7 +775,7 @@ class _SiteVisitReportsScreenState extends State<SiteVisitReportsScreen> with Si
             child: LinearProgressIndicator(
               value: progress,
               minHeight: 6,
-              backgroundColor: const Color(0xFFEEF2F7),
+              backgroundColor: AppTheme.darkBackgroundPrimaryLight,
               valueColor: const AlwaysStoppedAnimation<Color>(AppTheme.navy),
             ),
           ),
@@ -800,14 +804,14 @@ class _SiteVisitReportsScreenState extends State<SiteVisitReportsScreen> with Si
                       color: isActive
                           ? AppTheme.navy
                           : isCompleted
-                              ? const Color(0xFFDCFCE7)
-                              : const Color(0xFFF1F4F8),
+                              ? const Color(0xFF14532D)
+                              : AppTheme.darkBackgroundPrimaryLight,
                       borderRadius: BorderRadius.circular(999),
                       border: Border.all(
                         color: isActive
                             ? AppTheme.navy
                             : isCompleted
-                                ? const Color(0xFFBBF7D0)
+                                ? const Color(0xFF166534)
                                 : AppTheme.border,
                       ),
                     ),
@@ -815,8 +819,11 @@ class _SiteVisitReportsScreenState extends State<SiteVisitReportsScreen> with Si
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         if (isCompleted && !isActive) ...[
-                          const Icon(Icons.check_rounded,
-                              size: 14, color: Color(0xFF16A34A)),
+          const Icon(
+            Icons.check_rounded,
+            size: 14,
+            color: Color(0xFF86EFAC),
+          ),
                           const SizedBox(width: 4),
                         ] else ...[
                           Text(
@@ -835,7 +842,7 @@ class _SiteVisitReportsScreenState extends State<SiteVisitReportsScreen> with Si
                             color: isActive
                                 ? Colors.white
                                 : isCompleted
-                                    ? const Color(0xFF16A34A)
+                                    ? const Color(0xFF86EFAC)
                                     : AppTheme.mutedGrey,
                             fontSize: 12,
                             fontWeight: FontWeight.w700,
@@ -864,13 +871,13 @@ class _SiteVisitReportsScreenState extends State<SiteVisitReportsScreen> with Si
               height: 42,
               decoration: BoxDecoration(
                 color: isCompleted
-                    ? const Color(0xFFDCFCE7)
-                    : const Color(0xFFEEF2FF),
+                    ? const Color(0xFF14532D)
+                    : AppTheme.darkBackgroundPrimaryLight,
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Icon(
                 icon,
-                color: isCompleted ? const Color(0xFF16A34A) : AppTheme.navy,
+                color: isCompleted ? const Color(0xFF4ADE80) : AppTheme.darkTextPrimary,
                 size: 22,
               ),
             ),
@@ -884,7 +891,7 @@ class _SiteVisitReportsScreenState extends State<SiteVisitReportsScreen> with Si
                     style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.w800,
-                      color: isCompleted ? const Color(0xFF16A34A) : AppTheme.navy,
+                      color: isCompleted ? const Color(0xFF4ADE80) : AppTheme.darkTextPrimary,
                       letterSpacing: -0.2,
                     ),
                   ),
@@ -905,7 +912,7 @@ class _SiteVisitReportsScreenState extends State<SiteVisitReportsScreen> with Si
             if (isCompleted)
               const Icon(
                 Icons.check_circle_rounded,
-                color: Color(0xFF16A34A),
+                color: Color(0xFF4ADE80),
                 size: 22,
               ),
           ],
@@ -992,7 +999,7 @@ class _SiteVisitReportsScreenState extends State<SiteVisitReportsScreen> with Si
                           : 'Select a project',
                       style: TextStyle(
                         color: _createProject != null
-                            ? AppTheme.navy
+                            ? AppTheme.darkTextPrimary
                             : AppTheme.mutedGrey,
                         fontSize: 16,
                         fontWeight: _createProject != null
@@ -1004,7 +1011,7 @@ class _SiteVisitReportsScreenState extends State<SiteVisitReportsScreen> with Si
                   if (!widget.projectFixed)
                     Icon(
                       Icons.arrow_forward_ios,
-                      color: AppTheme.navy,
+                      color: AppTheme.darkTextPrimary,
                       size: 18,
                     ),
                 ],
@@ -1050,7 +1057,7 @@ class _SiteVisitReportsScreenState extends State<SiteVisitReportsScreen> with Si
               minLines: 4,
               maxLines: 8,
               enabled: !_submitting,
-              style: TextStyle(color: AppTheme.navy),
+              style: TextStyle(color: AppTheme.darkTextPrimary),
               onChanged: (value) {
                 setState(() {});
               },
@@ -1108,13 +1115,13 @@ class _SiteVisitReportsScreenState extends State<SiteVisitReportsScreen> with Si
               ),
               child: Row(
                 children: [
-                  Icon(Icons.add_a_photo, color: AppTheme.navy, size: 24),
+                  Icon(Icons.add_a_photo, color: AppTheme.darkTextPrimary, size: 24),
                   SizedBox(width: 12),
                   Expanded(
                     child: Text(
                       attachPictureButtonText,
                       style: TextStyle(
-                        color: AppTheme.navy,
+                        color: AppTheme.darkTextPrimary,
                         fontWeight: FontWeight.w600,
                         fontSize: 16,
                       ),
@@ -1217,10 +1224,10 @@ class _SiteVisitReportsScreenState extends State<SiteVisitReportsScreen> with Si
             ),
             child: SwitchListTile(
               contentPadding: EdgeInsets.zero,
-              activeColor: AppTheme.navy,
+              activeColor: AppTheme.darkTextPrimary,
               title: Text(
                 'This note requires action',
-                style: TextStyle(color: AppTheme.navy),
+                style: TextStyle(color: AppTheme.darkTextPrimary),
               ),
               subtitle: Text(
                 'Flag the visit note as a task for quick follow-up.',
@@ -1264,7 +1271,7 @@ class _SiteVisitReportsScreenState extends State<SiteVisitReportsScreen> with Si
                 ),
                 child: Row(
                   children: [
-                    Icon(Icons.calendar_month, color: AppTheme.navy, size: 24),
+                    Icon(Icons.calendar_month, color: AppTheme.darkTextPrimary, size: 24),
                     SizedBox(width: 12),
                     Expanded(
                       child: Text(
@@ -1272,7 +1279,7 @@ class _SiteVisitReportsScreenState extends State<SiteVisitReportsScreen> with Si
                             ? 'Select due date'
                             : DateFormat('d MMM yyyy').format(_dueDate!),
                         style: TextStyle(
-                          color: _dueDate == null ? AppTheme.mutedGrey : AppTheme.navy,
+                          color: _dueDate == null ? AppTheme.mutedGrey : AppTheme.darkTextPrimary,
                           fontWeight: _dueDate == null ? FontWeight.normal : FontWeight.w600,
                           fontSize: 16,
                         ),
@@ -1335,7 +1342,7 @@ class _SiteVisitReportsScreenState extends State<SiteVisitReportsScreen> with Si
               color: AppTheme.navy.withOpacity(0.1),
               borderRadius: BorderRadius.circular(10),
             ),
-            child: Icon(icon, color: AppTheme.navy, size: 20),
+            child: Icon(icon, color: AppTheme.darkTextPrimary, size: 20),
           ),
           SizedBox(width: 12),
           Expanded(
@@ -1355,7 +1362,7 @@ class _SiteVisitReportsScreenState extends State<SiteVisitReportsScreen> with Si
                   value,
                   style: TextStyle(
                     fontSize: 15,
-                    color: AppTheme.navy,
+                    color: AppTheme.darkTextPrimary,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -1371,7 +1378,7 @@ class _SiteVisitReportsScreenState extends State<SiteVisitReportsScreen> with Si
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 14, 20, 20),
       decoration: const BoxDecoration(
-        color: Colors.white,
+        color: AppTheme.darkBackgroundSecondary,
         border: Border(top: BorderSide(color: AppTheme.border)),
       ),
       child: Row(
@@ -1381,7 +1388,7 @@ class _SiteVisitReportsScreenState extends State<SiteVisitReportsScreen> with Si
               child: OutlinedButton(
                 onPressed: _previousStep,
                 style: OutlinedButton.styleFrom(
-                  foregroundColor: AppTheme.navy,
+                  foregroundColor: AppTheme.darkTextPrimary,
                   side: const BorderSide(color: AppTheme.border),
                   padding: const EdgeInsets.symmetric(vertical: 14),
                   shape: RoundedRectangleBorder(
@@ -1492,7 +1499,7 @@ class _SiteVisitReportsScreenState extends State<SiteVisitReportsScreen> with Si
                                 ? 'All projects'
                                 : _viewProject['name'] ?? 'Project #${_viewProject['id']}',
                             style: const TextStyle(
-                              color: AppTheme.navy,
+                              color: AppTheme.darkTextPrimary,
                               fontWeight: FontWeight.w800,
                               fontSize: 15,
                             ),
@@ -1527,12 +1534,12 @@ class _SiteVisitReportsScreenState extends State<SiteVisitReportsScreen> with Si
                     Divider(height: 24),
                     SwitchListTile(
                       contentPadding: EdgeInsets.zero,
-                      activeColor: AppTheme.navy,
+                      activeColor: AppTheme.darkTextPrimary,
                       thumbColor: MaterialStateProperty.all(Colors.white),
                       title: const Text(
                         'Only my reports',
                         style: TextStyle(
-                          color: AppTheme.navy,
+                          color: AppTheme.darkTextPrimary,
                           fontWeight: FontWeight.w700,
                         ),
                       ),
@@ -1624,7 +1631,7 @@ class _SectionHeader extends StatelessWidget {
       style: const TextStyle(
         fontWeight: FontWeight.w800,
         fontSize: 15.5,
-        color: AppTheme.navy,
+        color: AppTheme.darkTextPrimary,
         letterSpacing: -0.1,
       ),
     );
@@ -1643,7 +1650,7 @@ class _InputCard extends StatelessWidget {
       margin: const EdgeInsets.only(top: 12),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppTheme.darkBackgroundSecondary,
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: AppTheme.border),
         boxShadow: const [
@@ -1671,7 +1678,7 @@ class _EmptyState extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 20),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppTheme.darkBackgroundSecondary,
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: AppTheme.border),
       ),
@@ -1681,10 +1688,10 @@ class _EmptyState extends StatelessWidget {
             width: 64,
             height: 64,
             decoration: BoxDecoration(
-              color: const Color(0xFFEEF2FF),
+              color: AppTheme.darkBackgroundPrimaryLight,
               borderRadius: BorderRadius.circular(18),
             ),
-            child: Icon(icon, size: 28, color: AppTheme.navy),
+            child: Icon(icon, size: 28, color: AppTheme.darkTextPrimary),
           ),
           const SizedBox(height: 14),
           Text(
@@ -1774,7 +1781,7 @@ class _ReportTile extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppTheme.darkBackgroundSecondary,
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: AppTheme.border),
         boxShadow: const [
@@ -1796,7 +1803,7 @@ class _ReportTile extends StatelessWidget {
                   style: const TextStyle(
                     fontWeight: FontWeight.w800,
                     fontSize: 15,
-                    color: AppTheme.navy,
+                    color: AppTheme.darkTextPrimary,
                     letterSpacing: -0.1,
                   ),
                 ),
@@ -1823,7 +1830,7 @@ class _ReportTile extends StatelessWidget {
           Text(
             note,
             style: const TextStyle(
-              color: AppTheme.navy,
+              color: AppTheme.darkTextPrimary,
               fontSize: 14,
               fontWeight: FontWeight.w500,
               height: 1.4,
@@ -1901,7 +1908,7 @@ class _ReportTile extends StatelessWidget {
                 icon: const Icon(Icons.attach_file),
                 label: const Text('View attachment'),
                 style: OutlinedButton.styleFrom(
-                  foregroundColor: AppTheme.navy,
+                  foregroundColor: AppTheme.darkTextPrimary,
                   side: BorderSide(color: AppTheme.navy.withOpacity(0.5)),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 ),

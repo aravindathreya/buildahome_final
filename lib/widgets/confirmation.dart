@@ -24,7 +24,7 @@ class Confirmation extends StatelessWidget{
                 child: Container(
                   padding: EdgeInsets.all(10),
                   margin: EdgeInsets.only(right: 10),
-                  child: Text('Cancel', style: TextStyle(color: AppTheme.navy),)
+                  child: Text('Cancel', style: TextStyle(color: AppTheme.darkTextPrimary),)
                 ),
                 onTap: () {
                   Navigator.pop(context, 'Cancel');

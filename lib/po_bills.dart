@@ -101,7 +101,7 @@ class POAndBillObjectState extends State<POAndBillObject> {
                             child: Text(
                               children[x].toString(),
                               style: TextStyle(
-                                  color: AppTheme.navy,
+                                  color: AppTheme.darkTextPrimary,
                                   fontWeight: FontWeight.bold),
                             ),
                           ))
@@ -194,7 +194,7 @@ class POAndBillsState extends State<POAndBills> {
                           ' of ' +
                           purchase_orders[Index][1],
                       style: TextStyle(
-                          color: AppTheme.navy,
+                          color: AppTheme.darkTextPrimary,
                           fontWeight: FontWeight.w600),
                     ),
                   ),
@@ -232,7 +232,7 @@ class POAndBillsState extends State<POAndBills> {
                     child: Text(
                       work_orders[Index][4] + " work order",
                       style: TextStyle(
-                          color: AppTheme.navy,
+                          color: AppTheme.darkTextPrimary,
                           fontWeight: FontWeight.w600),
                     ),
                   ),
@@ -270,7 +270,7 @@ class POAndBillsState extends State<POAndBills> {
                     child: Text(
                       work_orders[Index][1],
                       style: TextStyle(
-                          color: AppTheme.navy,
+                          color: AppTheme.darkTextPrimary,
                           fontWeight: FontWeight.w600),
                     ),
                   ),

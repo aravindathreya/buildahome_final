@@ -1,4 +1,5 @@
 import 'package:cached_network_image/cached_network_image.dart';
+import 'app_theme.dart';
 import 'package:flutter/material.dart';
 import 'models/workflow_document.dart';
 import 'widgets/workflow_document_viewer.dart';
@@ -170,7 +171,7 @@ class _ClientChatbotPanelState extends State<ClientChatbotPanel> {
         child: Container(
           height: height,
           decoration: const BoxDecoration(
-            color: Colors.white,
+            color: AppTheme.darkBackgroundSecondary,
             borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
           ),
           child: Column(
@@ -180,7 +181,7 @@ class _ClientChatbotPanelState extends State<ClientChatbotPanel> {
                 width: 40,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: const Color(0xFFD7DEE8),
+                  color: const Color(0xFF334155),
                   borderRadius: BorderRadius.circular(99),
                 ),
               ),
@@ -204,7 +205,7 @@ class _ClientChatbotPanelState extends State<ClientChatbotPanel> {
                           Text(
                             'Home Assistant',
                             style: TextStyle(
-                              color: _navy,
+                              color: AppTheme.darkTextPrimary,
                               fontSize: 17,
                               fontWeight: FontWeight.w800,
                             ),
@@ -285,7 +286,7 @@ class _ClientChatbotPanelState extends State<ClientChatbotPanel> {
                       Material(
                         color: _botTyping
                             ? _navy.withValues(alpha: 0.45)
-                            : _navy,
+                            : AppTheme.darkTextPrimary,
                         shape: const CircleBorder(),
                         child: InkWell(
                           customBorder: const CircleBorder(),
@@ -387,12 +388,12 @@ class _MessageBlock extends StatelessWidget {
                       label: Text(
                         reply,
                         style: const TextStyle(
-                          color: Color(0xFF1B254B),
+                          color: AppTheme.darkTextPrimary,
                           fontSize: 12.5,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
-                      backgroundColor: Colors.white,
+                      backgroundColor: AppTheme.darkBackgroundSecondary,
                       side: const BorderSide(color: Color(0xFFD7DEE8)),
                       onPressed: () => onQuickReply(reply),
                     ),
@@ -451,7 +452,7 @@ class _StageCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFD7DEE8)),
+        border: Border.all(color: const Color(0xFF334155)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -460,7 +461,7 @@ class _StageCard extends StatelessWidget {
             Text(
               stage.name,
               style: const TextStyle(
-                color: Color(0xFF1B254B),
+                color: AppTheme.darkTextPrimary,
                 fontSize: 14,
                 fontWeight: FontWeight.w800,
               ),
@@ -487,7 +488,7 @@ class _StageCard extends StatelessWidget {
                       value: (percent / 100).clamp(0, 1),
                       minHeight: 6,
                       backgroundColor: const Color(0xFFEEF1F5),
-                      color: const Color(0xFF1B254B),
+                      color: AppTheme.darkTextPrimary,
                     ),
                   ),
                 ),
@@ -495,7 +496,7 @@ class _StageCard extends StatelessWidget {
                 Text(
                   '${percent.round()}%',
                   style: const TextStyle(
-                    color: Color(0xFF1B254B),
+                    color: AppTheme.darkTextPrimary,
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
                   ),
@@ -584,7 +585,7 @@ class _StageCard extends StatelessWidget {
                               color: Colors.white,
                               borderRadius: BorderRadius.circular(10),
                               border: Border.all(
-                                color: const Color(0xFFD7DEE8),
+                                color: const Color(0xFF334155),
                               ),
                             ),
                             child: const Icon(
@@ -605,7 +606,7 @@ class _StageCard extends StatelessWidget {
                                           ? stage.name
                                           : 'Document'),
                                   style: const TextStyle(
-                                    color: Color(0xFF1B254B),
+                                    color: AppTheme.darkTextPrimary,
                                     fontSize: 13.5,
                                     fontWeight: FontWeight.w700,
                                   ),

@@ -436,7 +436,7 @@ class _FilterChip extends StatelessWidget {
           child: Text(
             label,
             style: TextStyle(
-              color: selected ? Colors.white : AppTheme.navy,
+              color: selected ? Colors.white : AppTheme.darkTextPrimary,
               fontSize: 12,
               fontWeight: FontWeight.w800,
             ),
@@ -486,7 +486,7 @@ class _WorkOrderListCard extends StatelessWidget {
                         style: const TextStyle(
                           fontWeight: FontWeight.w800,
                           fontSize: 14.5,
-                          color: AppTheme.navy,
+                          color: AppTheme.darkTextPrimary,
                           height: 1.25,
                         ),
                       ),
@@ -527,7 +527,7 @@ class _WorkOrderListCard extends StatelessWidget {
                       style: const TextStyle(
                         fontWeight: FontWeight.w800,
                         fontSize: 14,
-                        color: AppTheme.navy,
+                        color: AppTheme.darkTextPrimary,
                       ),
                     ),
                     const SizedBox(height: 6),
@@ -644,7 +644,7 @@ class _WorkOrderDetailScreenState extends State<WorkOrderDetailScreen> {
       backgroundColor: AppTheme.getBackgroundPrimary(context),
       appBar: AppBar(
         backgroundColor: AppTheme.getBackgroundSecondary(context),
-        foregroundColor: AppTheme.navy,
+        foregroundColor: AppTheme.darkTextPrimary,
         elevation: 0,
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -654,7 +654,7 @@ class _WorkOrderDetailScreenState extends State<WorkOrderDetailScreen> {
               style: const TextStyle(
                 fontWeight: FontWeight.w800,
                 fontSize: 17,
-                color: AppTheme.navy,
+                color: AppTheme.darkTextPrimary,
               ),
             ),
             if (subtitle.isNotEmpty)
@@ -935,7 +935,7 @@ class _DocumentButton extends StatelessWidget {
                   style: const TextStyle(
                     fontWeight: FontWeight.w800,
                     fontSize: 14,
-                    color: AppTheme.navy,
+                    color: AppTheme.darkTextPrimary,
                   ),
                 ),
               ),
@@ -1024,7 +1024,7 @@ class _MilestoneRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final muted = milestone.isClearingBalance;
-    final color = muted ? const Color(0xFF9CA3AF) : AppTheme.navy;
+    final color = muted ? const Color(0xFF9CA3AF) : AppTheme.darkTextPrimary;
     final secondary = muted
         ? const Color(0xFFD1D5DB)
         : AppTheme.getTextSecondary(context);
@@ -1150,7 +1150,7 @@ class _NotesCard extends StatelessWidget {
                   style: const TextStyle(
                     fontSize: 13.5,
                     fontWeight: FontWeight.w600,
-                    color: AppTheme.navy,
+                    color: AppTheme.darkTextPrimary,
                     height: 1.4,
                   ),
                 ),
@@ -1224,7 +1224,7 @@ class _InlineMessage extends StatelessWidget {
               style: const TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.w800,
-                color: Color(0xFF111827),
+                color: AppTheme.darkTextPrimary,
               ),
             ),
             const SizedBox(height: 6),

@@ -23,22 +23,22 @@ KycDocVisual kycDocVisualFor({required String docKey, required String label}) {
   if (key.contains('aadhar') || key.contains('aadhaar') || name.contains('aadhaar')) {
     return const KycDocVisual(
       icon: Icons.badge_outlined,
-      iconBg: Color(0xFFECFDF5),
-      iconFg: Color(0xFF059669),
+      iconBg: Color(0xFF143028),
+      iconFg: Color(0xFF34D399),
     );
   }
   if (key.contains('pan') || name.contains('pan')) {
     return const KycDocVisual(
       icon: Icons.credit_card_outlined,
-      iconBg: Color(0xFFEFF6FF),
-      iconFg: Color(0xFF2563EB),
+      iconBg: Color(0xFF241A33),
+      iconFg: Color(0xFFC4B5FD),
     );
   }
   if (key.contains('sale') || name.contains('sale deed')) {
     return const KycDocVisual(
       icon: Icons.home_work_outlined,
-      iconBg: Color(0xFFF3E8FF),
-      iconFg: Color(0xFF9333EA),
+      iconBg: Color(0xFF241A33),
+      iconFg: Color(0xFFC4B5FD),
     );
   }
   if (key == 'ec' ||
@@ -47,42 +47,42 @@ KycDocVisual kycDocVisualFor({required String docKey, required String label}) {
       name.contains('ec (')) {
     return const KycDocVisual(
       icon: Icons.receipt_long_outlined,
-      iconBg: Color(0xFFFFF7ED),
-      iconFg: Color(0xFFEA580C),
+      iconBg: Color(0xFF2A2112),
+      iconFg: Color(0xFFFBBF24),
     );
   }
   if (key.contains('khata') || name.contains('khata')) {
     return const KycDocVisual(
       icon: Icons.article_outlined,
-      iconBg: Color(0xFFECFEFF),
-      iconFg: Color(0xFF0891B2),
+      iconBg: Color(0xFF142830),
+      iconFg: Color(0xFF67E8F9),
     );
   }
   if (key.contains('tax') || name.contains('tax')) {
     return const KycDocVisual(
       icon: Icons.receipt_outlined,
-      iconBg: Color(0xFFFEF3C7),
-      iconFg: Color(0xFFD97706),
+      iconBg: Color(0xFF2A2112),
+      iconFg: Color(0xFFFBBF24),
     );
   }
   if (key.contains('layout') || name.contains('layout')) {
     return const KycDocVisual(
       icon: Icons.map_outlined,
-      iconBg: Color(0xFFEEF2FF),
-      iconFg: Color(0xFF4F46E5),
+      iconBg: Color(0xFF2A2040),
+      iconFg: Color(0xFFC4B5FD),
     );
   }
   if (key.contains('photo') || name.contains('photograph')) {
     return const KycDocVisual(
       icon: Icons.photo_camera_outlined,
-      iconBg: Color(0xFFFDF2F8),
-      iconFg: Color(0xFFDB2777),
+      iconBg: Color(0xFF2A1624),
+      iconFg: Color(0xFFF9A8D4),
     );
   }
   return const KycDocVisual(
     icon: Icons.description_outlined,
-    iconBg: Color(0xFFF0F4FF),
-    iconFg: AppTheme.navy,
+    iconBg: Color(0xFF2A2040),
+    iconFg: AppTheme.darkTextPrimary,
   );
 }
 
@@ -112,12 +112,12 @@ class KycStatusCard extends StatelessWidget {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            Color(0xFFEFF6FF),
-            Color(0xFFF5F3FF),
+            Color(0xFF241A33),
+            Color(0xFF241A33),
           ],
         ),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFDBEAFE)),
+        border: Border.all(color: const Color(0xFF3A2A55)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -129,12 +129,12 @@ class KycStatusCard extends StatelessWidget {
                 width: 44,
                 height: 44,
                 decoration: BoxDecoration(
-                  color: const Color(0xFFEDE9FE),
+                  color: const Color(0xFF2A2040),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(
                   complete ? Icons.verified_user_rounded : Icons.shield_outlined,
-                  color: const Color(0xFF7C3AED),
+                  color: const Color(0xFFC4B5FD),
                   size: 24,
                 ),
               ),
@@ -148,7 +148,7 @@ class KycStatusCard extends StatelessWidget {
                       style: const TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w800,
-                        color: AppTheme.navy,
+                        color: AppTheme.darkTextPrimary,
                       ),
                     ),
                     const SizedBox(height: 3),
@@ -225,7 +225,7 @@ class _SegmentedProgress extends StatelessWidget {
             decoration: BoxDecoration(
               color: isFilled
                   ? ClientPortalDocTheme.accentBlue
-                  : const Color(0xFFDBEAFE),
+                  : const Color(0xFF3A2A55),
               borderRadius: BorderRadius.circular(4),
             ),
           ),
@@ -248,12 +248,12 @@ class KycSuccessBanner extends StatelessWidget {
           begin: Alignment.centerLeft,
           end: Alignment.centerRight,
           colors: [
-            Color(0xFFECFDF5),
-            Color(0xFFD1FAE5),
+            Color(0xFF143028),
+            Color(0xFF143028),
           ],
         ),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFA7F3D0)),
+        border: Border.all(color: const Color(0xFF065F46)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -262,12 +262,12 @@ class KycSuccessBanner extends StatelessWidget {
             width: 40,
             height: 40,
             decoration: BoxDecoration(
-              color: const Color(0xFF059669).withValues(alpha: 0.15),
+              color: const Color(0xFF34D399).withValues(alpha: 0.15),
               borderRadius: BorderRadius.circular(10),
             ),
             child: const Icon(
               Icons.verified_user_rounded,
-              color: Color(0xFF059669),
+              color: Color(0xFF34D399),
               size: 22,
             ),
           ),
@@ -281,7 +281,7 @@ class KycSuccessBanner extends StatelessWidget {
                   style: TextStyle(
                     fontWeight: FontWeight.w800,
                     fontSize: 14,
-                    color: AppTheme.navy,
+                    color: AppTheme.darkTextPrimary,
                   ),
                 ),
                 const SizedBox(height: 4),
@@ -299,7 +299,7 @@ class KycSuccessBanner extends StatelessWidget {
           ),
           const Icon(
             Icons.folder_open_rounded,
-            color: Color(0xFF059669),
+            color: Color(0xFF34D399),
             size: 36,
           ),
         ],
@@ -316,19 +316,19 @@ class KycUploadedBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
-        color: const Color(0xFFECFDF5),
+        color: const Color(0xFF143028),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFA7F3D0)),
+        border: Border.all(color: const Color(0xFF065F46)),
       ),
       child: const Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.check_circle_rounded, size: 14, color: Color(0xFF059669)),
+          Icon(Icons.check_circle_rounded, size: 14, color: Color(0xFF34D399)),
           SizedBox(width: 4),
           Text(
             'Uploaded',
             style: TextStyle(
-              color: Color(0xFF059669),
+              color: Color(0xFF34D399),
               fontWeight: FontWeight.w800,
               fontSize: 12,
             ),
@@ -389,7 +389,7 @@ class KycDetailRow extends StatelessWidget {
                   style: const TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w700,
-                    color: AppTheme.navy,
+                    color: AppTheme.darkTextPrimary,
                   ),
                 ),
               ],

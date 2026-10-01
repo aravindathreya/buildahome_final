@@ -103,12 +103,12 @@ class ClientPortalKycDocumentScreen extends StatelessWidget {
       backgroundColor: AppTheme.getBackgroundPrimary(context),
       appBar: AppBar(
         backgroundColor: AppTheme.getBackgroundSecondary(context),
-        foregroundColor: AppTheme.navy,
+        foregroundColor: AppTheme.darkTextPrimary,
         elevation: 0,
         title: Text(
           label,
           style: const TextStyle(
-            color: AppTheme.navy,
+            color: AppTheme.darkTextPrimary,
             fontSize: 17,
             fontWeight: FontWeight.w800,
           ),
@@ -163,7 +163,7 @@ class ClientPortalKycDocumentScreen extends StatelessWidget {
                     style: const TextStyle(
                       fontWeight: FontWeight.w800,
                       fontSize: 17,
-                      color: AppTheme.navy,
+                      color: AppTheme.darkTextPrimary,
                     ),
                   ),
                   const SizedBox(height: 10),
@@ -222,7 +222,7 @@ class ClientPortalKycDocumentScreen extends StatelessWidget {
               style: TextStyle(
                 fontWeight: FontWeight.w800,
                 fontSize: 16,
-                color: AppTheme.navy,
+                color: AppTheme.darkTextPrimary,
               ),
             ),
             const SizedBox(height: 8),
@@ -234,15 +234,15 @@ class ClientPortalKycDocumentScreen extends StatelessWidget {
                   if (uploadedAt != null)
                     KycDetailRow(
                       icon: Icons.calendar_today_outlined,
-                      iconBg: const Color(0xFFF3E8FF),
-                      iconFg: const Color(0xFF9333EA),
+                      iconBg: const Color(0xFF241A33),
+                      iconFg: const Color(0xFFC4B5FD),
                       label: 'Uploaded On',
                       value: uploadedAt,
                     ),
                   if (record.uploadedBy != null)
                     KycDetailRow(
                       icon: Icons.person_outline_rounded,
-                      iconBg: const Color(0xFFEFF6FF),
+                      iconBg: const Color(0xFF241A33),
                       iconFg: ClientPortalDocTheme.accentBlue,
                       label: 'Uploaded By',
                       value: record.uploadedBy!,
@@ -250,30 +250,30 @@ class ClientPortalKycDocumentScreen extends StatelessWidget {
                   if (record.filename != null)
                     KycDetailRow(
                       icon: Icons.insert_drive_file_outlined,
-                      iconBg: const Color(0xFFECFDF5),
-                      iconFg: const Color(0xFF059669),
+                      iconBg: const Color(0xFF143028),
+                      iconFg: const Color(0xFF34D399),
                       label: 'File Name',
                       value: record.filename!,
                     ),
                   if (record.fileTypeDisplay != null)
                     KycDetailRow(
                       icon: Icons.picture_as_pdf_outlined,
-                      iconBg: const Color(0xFFFFF7ED),
-                      iconFg: const Color(0xFFEA580C),
+                      iconBg: const Color(0xFF2A2112),
+                      iconFg: const Color(0xFFFBBF24),
                       label: 'File Type',
                       value: record.fileTypeDisplay!,
                     ),
                   if (record.fileSizeDisplay != null)
                     KycDetailRow(
                       icon: Icons.sd_storage_outlined,
-                      iconBg: const Color(0xFFF3E8FF),
-                      iconFg: const Color(0xFF9333EA),
+                      iconBg: const Color(0xFF241A33),
+                      iconFg: const Color(0xFFC4B5FD),
                       label: 'File Size',
                       value: record.fileSizeDisplay!,
                     ),
                   KycDetailRow(
                     icon: Icons.verified_user_outlined,
-                    iconBg: const Color(0xFFEFF6FF),
+                    iconBg: const Color(0xFF241A33),
                     iconFg: ClientPortalDocTheme.accentBlue,
                     label: 'Document Status',
                     value: status,

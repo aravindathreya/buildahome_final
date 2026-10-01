@@ -3,7 +3,7 @@ import '../app_theme.dart';
 
 get_button_decoration() {
   return BoxDecoration(
-    color: Colors.white,
+    color: AppTheme.darkBackgroundSecondary,
     border: Border.all(color: AppTheme.border),
     borderRadius: BorderRadius.circular(12),
     boxShadow: const [
@@ -20,7 +20,7 @@ get_button_text_style() {
   return const TextStyle(
     fontSize: 14,
     fontWeight: FontWeight.w700,
-    color: AppTheme.navy,
+    color: AppTheme.darkTextPrimary,
   );
 }
 
@@ -28,7 +28,7 @@ get_header_text_style() {
   return const TextStyle(
     fontSize: 18,
     fontWeight: FontWeight.w800,
-    color: AppTheme.navy,
+    color: AppTheme.darkTextPrimary,
     letterSpacing: -0.2,
   );
 }

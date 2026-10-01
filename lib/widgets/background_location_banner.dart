@@ -53,14 +53,14 @@ class _BackgroundLocationBannerState extends State<BackgroundLocationBanner>
       context: context,
       builder: (dialogContext) {
         return AlertDialog(
-          backgroundColor: Colors.white,
+          backgroundColor: AppTheme.darkBackgroundSecondary,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(20),
           ),
           title: const Text(
             'Turn off background location?',
             style: TextStyle(
-              color: AppTheme.navy,
+              color: AppTheme.darkTextPrimary,
               fontWeight: FontWeight.w800,
               fontSize: 18,
             ),
@@ -68,7 +68,7 @@ class _BackgroundLocationBannerState extends State<BackgroundLocationBanner>
           content: const Text(
             'Attendance monitoring uses background location. Turning this off may flag your attendance within the company',
             style: TextStyle(
-              color: AppTheme.navy,
+              color: AppTheme.darkTextPrimary,
               fontSize: 14.5,
               fontWeight: FontWeight.w500,
               height: 1.4,
@@ -219,7 +219,7 @@ class _BackgroundLocationBannerState extends State<BackgroundLocationBanner>
                             ? 'Background location is on'
                             : 'Location permission',
                         style: TextStyle(
-                          color: AppTheme.navy,
+                          color: AppTheme.darkTextPrimary,
                           fontSize: 13,
                           fontWeight: FontWeight.w800,
                           height: 1.2,

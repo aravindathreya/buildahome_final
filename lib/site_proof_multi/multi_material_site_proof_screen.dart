@@ -10,6 +10,7 @@ import 'package:intl/intl.dart';
 import '../app_theme.dart';
 import '../models/approved_po.dart';
 import '../models/multi_material_site_proof.dart';
+import '../services/camera_permission.dart';
 import '../services/location_service.dart';
 import '../services/capture_time.dart';
 import '../services/multi_material_site_proof_service.dart';
@@ -801,6 +802,8 @@ class _MultiMaterialSiteProofScreenState
   }
 
   Future<_LocalMedia?> _capturePhoto() async {
+    if (!await ensureCameraPermission(context)) return null;
+    if (!mounted) return null;
     final picked = await ImagePicker().pickImage(
       source: ImageSource.camera,
       imageQuality: 88,
@@ -819,6 +822,10 @@ class _MultiMaterialSiteProofScreenState
   }
 
   Future<_LocalMedia?> _recordVideo() async {
+    if (!await ensureCameraPermission(context, includeMicrophone: true)) {
+      return null;
+    }
+    if (!mounted) return null;
     final picked = await ImagePicker().pickVideo(
       source: ImageSource.camera,
       maxDuration: const Duration(seconds: 60),
@@ -968,7 +975,7 @@ class _MultiMaterialSiteProofScreenState
                     style: const TextStyle(
                       fontSize: 17,
                       fontWeight: FontWeight.w800,
-                      color: AppTheme.navy,
+                      color: AppTheme.darkTextPrimary,
                     ),
                   ),
                   const Spacer(),
@@ -1108,7 +1115,7 @@ class _MultiMaterialSiteProofScreenState
                           style: const TextStyle(
                             fontWeight: FontWeight.w800,
                             fontSize: 16,
-                            color: AppTheme.navy,
+                            color: AppTheme.darkTextPrimary,
                           ),
                         ),
                         const SizedBox(height: 4),
@@ -1140,7 +1147,7 @@ class _MultiMaterialSiteProofScreenState
                 'Quantity received today *',
                 style: TextStyle(
                   fontWeight: FontWeight.w700,
-                  color: AppTheme.navy,
+                  color: AppTheme.darkTextPrimary,
                 ),
               ),
               const SizedBox(height: 8),
@@ -1189,7 +1196,7 @@ class _MultiMaterialSiteProofScreenState
                 style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.w800,
-                  color: AppTheme.navy,
+                  color: AppTheme.darkTextPrimary,
                 ),
               ),
               const SizedBox(height: 4),
@@ -1207,7 +1214,7 @@ class _MultiMaterialSiteProofScreenState
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w800,
-                  color: AppTheme.navy,
+                  color: AppTheme.darkTextPrimary,
                 ),
               ),
               const SizedBox(height: 10),
@@ -1219,7 +1226,7 @@ class _MultiMaterialSiteProofScreenState
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w800,
-                  color: AppTheme.navy,
+                  color: AppTheme.darkTextPrimary,
                 ),
               ),
               const SizedBox(height: 4),
@@ -1284,7 +1291,7 @@ class _MultiMaterialSiteProofScreenState
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w800,
-                  color: AppTheme.navy,
+                  color: AppTheme.darkTextPrimary,
                 ),
               ),
               const SizedBox(height: 10),
@@ -1373,7 +1380,7 @@ class _MultiMaterialSiteProofScreenState
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w800,
-                  color: AppTheme.navy,
+                  color: AppTheme.darkTextPrimary,
                 ),
               ),
               const SizedBox(height: 8),
@@ -1452,7 +1459,7 @@ class _MultiMaterialSiteProofScreenState
                   style: const TextStyle(
                     fontWeight: FontWeight.w800,
                     fontSize: 16,
-                    color: AppTheme.navy,
+                    color: AppTheme.darkTextPrimary,
                   ),
                 ),
                 const SizedBox(height: 2),
@@ -1500,7 +1507,7 @@ class _MultiMaterialSiteProofScreenState
             style: TextStyle(
               fontSize: 22,
               fontWeight: FontWeight.w800,
-              color: AppTheme.navy,
+              color: AppTheme.darkTextPrimary,
             ),
           ),
           const SizedBox(height: 8),
@@ -1673,7 +1680,7 @@ class _MultiMaterialSiteProofScreenState
     return InputDecoration(
       hintText: hint,
       filled: true,
-      fillColor: Colors.white,
+      fillColor: AppTheme.darkBackgroundPrimaryLight,
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
         borderSide: const BorderSide(color: AppTheme.border),
@@ -1940,7 +1947,7 @@ class _QuantityStepperState extends State<_QuantityStepper> {
               decoration: InputDecoration(
                 suffixText: widget.unit,
                 filled: true,
-                fillColor: Colors.white,
+                fillColor: AppTheme.darkBackgroundPrimaryLight,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
@@ -2009,7 +2016,7 @@ class _MediaRow extends StatelessWidget {
           title,
           style: const TextStyle(
             fontWeight: FontWeight.w700,
-            color: AppTheme.navy,
+            color: AppTheme.darkTextPrimary,
             fontSize: 13,
           ),
         ),
@@ -2028,7 +2035,7 @@ class _MediaRow extends StatelessWidget {
                         ? Container(
                             width: 80,
                             height: 80,
-                            color: const Color(0xFF0F172A),
+                            color: AppTheme.darkTextPrimary,
                             child: const Column(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
@@ -2102,7 +2109,7 @@ class _MediaRow extends StatelessWidget {
                             ? Container(
                                 width: 80,
                                 height: 80,
-                                color: const Color(0xFF0F172A),
+                                color: AppTheme.darkTextPrimary,
                                 child: const Icon(
                                   Icons.play_circle_fill,
                                   color: Colors.white,

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../../services/camera_permission.dart';
 import '../chat_v1_api.dart';
 import '../chat_v1_controller.dart';
 import '../chat_v1_mapper.dart';
@@ -1048,6 +1049,10 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
   }
 
   Future<void> _pickImage(ImageSource source) async {
+    if (source == ImageSource.camera) {
+      final allowed = await ensureCameraPermission(context);
+      if (!allowed || !mounted) return;
+    }
     final picker = ImagePicker();
     final file = await picker.pickImage(
       source: source,

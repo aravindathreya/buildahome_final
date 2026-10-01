@@ -38,8 +38,7 @@ class AppLogout {
     MobileBottomNavService.instance.clearMemory();
     MobileDocumentsService.instance.clearMemory();
     AppDeepLinkService.instance.onLoggedOut();
-    ProfilePictureService.picturePathNotifier.value = null;
-    ProfilePictureService.promptShownThisSession = false;
+    ProfilePictureService.onLoggedOut();
     LoginScreenNew.preferFreshLogin = true;
   }
 
@@ -74,8 +73,7 @@ class AppLogout {
     try {
       await ProfilePictureService.clearStored();
     } catch (_) {
-      ProfilePictureService.picturePathNotifier.value = null;
-      ProfilePictureService.promptShownThisSession = false;
+      ProfilePictureService.onLoggedOut();
     }
 
     Map<String, bool> preservedTourFlags = const {};
@@ -136,6 +134,21 @@ class AppLogout {
           .pushAndRemoveUntil(_loginRoute(), (route) => false);
     }
 
+    _dismissDialogsAboveLogin();
     await clearLocalSession();
+    // A startup prompt may have been awaiting and pushed onto the login
+    // route after the first navigation. Drop it once the session is gone.
+    _dismissDialogsAboveLogin();
+  }
+
+  /// Login is the only route that should remain. Startup dialogs use the
+  /// root navigator and can land on top of it if they resume after logout.
+  static void _dismissDialogsAboveLogin() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!ProfilePictureService.promptsSuppressed) return;
+      final nav = globalNavigatorKey.currentState;
+      if (nav == null) return;
+      nav.popUntil((route) => route.isFirst);
+    });
   }
 }

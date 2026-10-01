@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../app_theme.dart';
 
 /// Features that existed on the client dashboard in commit `440e62a`
 /// ("Mac changes", Nov 2025). Everything else is treated as not-yet-ready
@@ -75,7 +76,7 @@ Future<void> showFeatureComingSoon(
           style: TextStyle(
             fontSize: 17,
             fontWeight: FontWeight.w800,
-            color: Color(0xFF1B254B),
+            color: AppTheme.darkTextPrimary,
           ),
         ),
         content: Text(
@@ -94,7 +95,7 @@ Future<void> showFeatureComingSoon(
               'OK',
               style: TextStyle(
                 fontWeight: FontWeight.w700,
-                color: Color(0xFF1B254B),
+                color: AppTheme.darkTextPrimary,
               ),
             ),
           ),

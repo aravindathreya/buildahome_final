@@ -166,21 +166,21 @@ class _ClientNoProjectScreenState extends State<ClientNoProjectScreen> {
       drawer: NavMenuWidget(),
       appBar: AppBar(
         backgroundColor: AppTheme.getBackgroundSecondary(context),
-        foregroundColor: AppTheme.navy,
+        foregroundColor: AppTheme.darkTextPrimary,
         elevation: 0,
         title: const Text(
           'Project Dashboard',
           style: TextStyle(
-            color: AppTheme.navy,
+            color: AppTheme.darkTextPrimary,
             fontSize: 18,
             fontWeight: FontWeight.w800,
           ),
         ),
-        iconTheme: const IconThemeData(color: AppTheme.navy),
-        actionsIconTheme: const IconThemeData(color: AppTheme.navy),
+        iconTheme: const IconThemeData(color: AppTheme.darkTextPrimary),
+        actionsIconTheme: const IconThemeData(color: AppTheme.darkTextPrimary),
         actions: [
           IconButton(
-            icon: const Icon(Icons.refresh, color: AppTheme.navy),
+            icon: const Icon(Icons.refresh, color: AppTheme.darkTextPrimary),
             onPressed: _loading ? null : _fetchSalesSopDetails,
           ),
         ],
@@ -1506,18 +1506,18 @@ class _InAppDocumentScreenState extends State<_InAppDocumentScreen> {
       backgroundColor: AppTheme.getBackgroundPrimary(context),
       appBar: AppBar(
         backgroundColor: AppTheme.getBackgroundSecondary(context),
-        foregroundColor: AppTheme.navy,
+        foregroundColor: AppTheme.darkTextPrimary,
         elevation: 0,
         title: Text(
           widget.title,
           style: const TextStyle(
-            color: AppTheme.navy,
+            color: AppTheme.darkTextPrimary,
             fontSize: 18,
             fontWeight: FontWeight.w800,
           ),
         ),
-        iconTheme: const IconThemeData(color: AppTheme.navy),
-        actionsIconTheme: const IconThemeData(color: AppTheme.navy),
+        iconTheme: const IconThemeData(color: AppTheme.darkTextPrimary),
+        actionsIconTheme: const IconThemeData(color: AppTheme.darkTextPrimary),
         actions: [
           IconButton(
             icon: Icon(Icons.open_in_new),

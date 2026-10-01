@@ -5,10 +5,13 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-const Color kTaskNavy = Color(0xFF1B254B);
-const Color kTaskMuted = Color(0xFF8A94A6);
-const Color kTaskBorder = Color(0xFFE8ECF1);
+import '../app_theme.dart';
+
+const Color kTaskNavy = AppTheme.navy;
+const Color kTaskMuted = Color(0xFFA8B3C7);
+const Color kTaskBorder = AppTheme.border;
 const Color kTaskSoftShadow = Color(0x14000000);
+const Color kTaskCardSurface = AppTheme.darkBackgroundSecondary;
 
 class TaskStatusStyle {
   final Color color;
@@ -30,51 +33,51 @@ TaskStatusStyle taskStatusStyle(String status) {
     case 'skipped':
     case 'approved':
       return const TaskStatusStyle(
-        color: Color(0xFF047857),
-        background: Color(0xFFECFDF5),
+        color: Color(0xFF34D399),
+        background: Color(0xFF14352B),
         icon: Icons.check_circle_outline_rounded,
       );
     case 'in_progress':
       return const TaskStatusStyle(
-        color: Color(0xFFB45309),
-        background: Color(0xFFFFF7ED),
+        color: Color(0xFFFBBF24),
+        background: Color(0xFF3A2F14),
         icon: Icons.timelapse_rounded,
       );
     case 'ready':
       return const TaskStatusStyle(
-        color: Color(0xFF2563EB),
-        background: Color(0xFFEFF4FF),
+        color: Color(0xFF60A5FA),
+        background: Color(0xFF1A2A45),
         icon: Icons.bolt_rounded,
       );
     case 'waiting_approval':
       return const TaskStatusStyle(
-        color: Color(0xFF243463),
-        background: Color(0xFFEEF2F7),
+        color: Color(0xFFA5B4FC),
+        background: AppTheme.darkBackgroundPrimaryLight,
         icon: Icons.rate_review_outlined,
       );
     case 'scheduled':
       return const TaskStatusStyle(
-        color: Color(0xFF1B254B),
-        background: Color(0xFFEEF2F7),
+        color: AppTheme.darkTextPrimary,
+        background: AppTheme.darkBackgroundPrimaryLight,
         icon: Icons.schedule_rounded,
       );
     case 'cancelled':
     case 'rejected':
       return const TaskStatusStyle(
-        color: Color(0xFFB91C1C),
-        background: Color(0xFFFEF2F2),
+        color: Color(0xFFF87171),
+        background: Color(0xFF3F1D24),
         icon: Icons.cancel_outlined,
       );
     case 'not_started':
       return const TaskStatusStyle(
-        color: Color(0xFF8A94A6),
-        background: Color(0xFFF7F8FB),
+        color: Color(0xFFA8B3C7),
+        background: AppTheme.darkBackgroundPrimary,
         icon: Icons.hourglass_empty_rounded,
       );
     default:
       return const TaskStatusStyle(
-        color: Color(0xFF243463),
-        background: Color(0xFFEEF2F7),
+        color: Color(0xFFA8B3C7),
+        background: AppTheme.darkBackgroundPrimaryLight,
         icon: Icons.pending_actions_outlined,
       );
   }
@@ -275,7 +278,7 @@ class TaskStatusChipSet extends StatelessWidget {
               Text(
                 label,
                 style: TextStyle(
-                  color: selected ? Colors.white : kTaskNavy,
+                  color: selected ? Colors.white : AppTheme.darkTextPrimary,
                   fontSize: 12.5,
                   fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
                 ),
@@ -360,7 +363,7 @@ class ModernTaskCard extends StatelessWidget {
 
     final card = Container(
       decoration: BoxDecoration(
-        color: tintedBackground ? cardBackground : Colors.white,
+        color: tintedBackground ? cardBackground : kTaskCardSurface,
         borderRadius: BorderRadius.circular(16),
         border: tintedBackground
             ? null
@@ -440,7 +443,7 @@ class ModernTaskCard extends StatelessWidget {
                                                 Text(
                                                   title,
                                                   style: const TextStyle(
-                                                    color: kTaskNavy,
+                                                    color: AppTheme.darkTextPrimary,
                                                     fontSize: 12.5,
                                                     fontWeight: FontWeight.normal,
                                                     height: 1.25,
@@ -870,18 +873,18 @@ class _SelectedTaskBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
       decoration: BoxDecoration(
-        color: const Color(0xFFDBEAFE),
+        color: const Color(0xFF1A2A45),
         borderRadius: BorderRadius.circular(999),
       ),
       child: const Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.near_me_rounded, size: 10, color: Color(0xFF2563EB)),
+          Icon(Icons.near_me_rounded, size: 10, color: Color(0xFF60A5FA)),
           SizedBox(width: 3),
           Text(
             'Selected',
             style: TextStyle(
-              color: Color(0xFF2563EB),
+              color: Color(0xFF60A5FA),
               fontSize: 10,
               fontWeight: FontWeight.w700,
               height: 1.1,
@@ -953,7 +956,7 @@ class TaskSummaryStatCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: kTaskCardSurface,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: kTaskBorder),
         boxShadow: const [
@@ -984,7 +987,7 @@ class TaskSummaryStatCard extends StatelessWidget {
                 Text(
                   value,
                   style: const TextStyle(
-                    color: kTaskNavy,
+                    color: AppTheme.darkTextPrimary,
                     fontSize: 16,
                     fontWeight: FontWeight.w800,
                     height: 1.1,
@@ -1011,17 +1014,22 @@ class TaskSummaryStatCard extends StatelessWidget {
 }
 
 class TaskHelpBanner extends StatelessWidget {
+  /// Temporarily hidden. Set to true to show the chat-with-expert banner again.
+  static const bool visible = false;
+
   final VoidCallback? onChat;
 
   const TaskHelpBanner({super.key, this.onChat});
 
   @override
   Widget build(BuildContext context) {
+    if (!visible) return const SizedBox.shrink();
+
     return Container(
       margin: const EdgeInsets.only(top: 8, bottom: 8),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: const Color(0xFFEFF3F8),
+        color: AppTheme.darkBackgroundPrimaryLight,
         borderRadius: BorderRadius.circular(16),
       ),
       child: Row(
@@ -1037,8 +1045,8 @@ class TaskHelpBanner extends StatelessWidget {
               errorBuilder: (_, __, ___) => Container(
                 width: 54,
                 height: 54,
-                color: const Color(0xFFDBEAFE),
-                child: const Icon(Icons.support_agent, color: kTaskNavy),
+                color: const Color(0xFF1A2A45),
+                child: const Icon(Icons.support_agent, color: AppTheme.darkTextPrimary),
               ),
             ),
           ),
@@ -1050,7 +1058,7 @@ class TaskHelpBanner extends StatelessWidget {
                 Text(
                   'Need Help with a Task?',
                   style: TextStyle(
-                    color: kTaskNavy,
+                    color: AppTheme.darkTextPrimary,
                     fontSize: 13.5,
                     fontWeight: FontWeight.w800,
                   ),

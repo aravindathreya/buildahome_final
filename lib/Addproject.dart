@@ -15,19 +15,19 @@ class AddProject extends StatelessWidget {
     final GlobalKey<ScaffoldState> _scaffoldKey = new GlobalKey<ScaffoldState>();
     return MaterialApp(
       title: appTitle,
-      theme: AppTheme.getLightTheme(),
+      theme: AppTheme.getDarkTheme(),
       home: Scaffold(
         key: _scaffoldKey, // ADD THIS LINE
-        backgroundColor: Colors.white,
+        backgroundColor: AppTheme.darkBackgroundSecondary,
         appBar: AppBar(
           automaticallyImplyLeading: false,
           title: Text(appTitle),
           leading: new IconButton(icon: new Icon(Icons.menu), onPressed: () => _scaffoldKey.currentState?.openDrawer()),
-          backgroundColor: Colors.white,
-          foregroundColor: AppTheme.navy,
+          backgroundColor: AppTheme.darkBackgroundSecondary,
+          foregroundColor: AppTheme.darkTextPrimary,
           elevation: 0,
-          iconTheme: const IconThemeData(color: AppTheme.navy),
-          titleTextStyle: const TextStyle(color: AppTheme.navy, fontSize: 18, fontWeight: FontWeight.w800),
+          iconTheme: const IconThemeData(color: AppTheme.darkTextPrimary),
+          titleTextStyle: const TextStyle(color: AppTheme.darkTextPrimary, fontSize: 18, fontWeight: FontWeight.w800),
         ),
 
         drawer: NavMenuWidget(),
@@ -180,7 +180,7 @@ class TaskBlockState extends State<TaskBlock> with SingleTickerProviderStateMixi
                               child: Container(
                                 child: Row(
                                   children: <Widget>[
-                                    Icon(Icons.calendar_today, size: 20, color: AppTheme.navy),
+                                    Icon(Icons.calendar_today, size: 20, color: AppTheme.darkTextPrimary),
                                     Container(
                                       decoration: BoxDecoration(
                                           border: Border(
@@ -193,7 +193,7 @@ class TaskBlockState extends State<TaskBlock> with SingleTickerProviderStateMixi
                                       padding: EdgeInsets.only(left: 5),
                                       child: Text(this.taskStartDate,
                                           style: TextStyle(
-                                              fontSize: 16, fontWeight: FontWeight.normal, color: Colors.black54)),
+                                              fontSize: 16, fontWeight: FontWeight.normal, color: AppTheme.darkTextSecondary)),
                                     ),
                                   ],
                                 ),
@@ -208,7 +208,7 @@ class TaskBlockState extends State<TaskBlock> with SingleTickerProviderStateMixi
                               child: Container(
                                 child: Row(
                                   children: <Widget>[
-                                    Icon(Icons.calendar_today, size: 20, color: AppTheme.navy),
+                                    Icon(Icons.calendar_today, size: 20, color: AppTheme.darkTextPrimary),
                                     Container(
                                       decoration: BoxDecoration(
                                           border: Border(
@@ -221,7 +221,7 @@ class TaskBlockState extends State<TaskBlock> with SingleTickerProviderStateMixi
                                       padding: EdgeInsets.only(left: 5),
                                       child: Text(this.taskFinishDate,
                                           style: TextStyle(
-                                              fontSize: 16, fontWeight: FontWeight.normal, color: Colors.black54)),
+                                              fontSize: 16, fontWeight: FontWeight.normal, color: AppTheme.darkTextSecondary)),
                                     ),
                                   ],
                                 ),
@@ -395,7 +395,7 @@ class AddProjectState extends State<AddProjectForm> {
                 padding: const EdgeInsets.only(top: 30, left: 20, right: 20, bottom: 10),
                 child: Text(
                   'Add a new project',
-                  style: TextStyle(fontSize: 20, color: Colors.black),
+                  style: TextStyle(fontSize: 20, color: AppTheme.darkTextPrimary),
                 ),
               ),
               Container(
@@ -485,7 +485,7 @@ class AddProjectState extends State<AddProjectForm> {
                       ),
                       child: Row(
                         children: <Widget>[
-                          Icon(Icons.calendar_today, color: AppTheme.navy),
+                          Icon(Icons.calendar_today, color: AppTheme.darkTextPrimary),
                           Container(
 //                            width: MediaQuery
 //                                .of(context)
@@ -493,7 +493,7 @@ class AddProjectState extends State<AddProjectForm> {
 //                                .width * .79,
                             padding: EdgeInsets.only(left: 20),
                             child: Text(_date,
-                                style: TextStyle(fontSize: 16, fontWeight: FontWeight.normal, color: Colors.black54)),
+                                style: TextStyle(fontSize: 16, fontWeight: FontWeight.normal, color: AppTheme.darkTextSecondary)),
                           ),
                         ],
                       ),
@@ -506,7 +506,7 @@ class AddProjectState extends State<AddProjectForm> {
                 padding: const EdgeInsets.only(top: 30, left: 20, right: 20, bottom: 10),
                 child: Text(
                   'Client Information',
-                  style: TextStyle(fontSize: 20, color: Colors.black),
+                  style: TextStyle(fontSize: 20, color: AppTheme.darkTextPrimary),
                 ),
               ),
               Container(
@@ -542,7 +542,7 @@ class AddProjectState extends State<AddProjectForm> {
                           Container(
                             decoration:
                                 BoxDecoration(borderRadius: BorderRadius.all(Radius.circular(50)), color: Colors.white),
-                            child: Icon(Icons.view_list, size: 25, color: AppTheme.navy),
+                            child: Icon(Icons.view_list, size: 25, color: AppTheme.darkTextPrimary),
                           ),
                           Container(
                               padding: EdgeInsets.only(left: 10),
@@ -608,7 +608,7 @@ class AddProjectState extends State<AddProjectForm> {
                 padding: const EdgeInsets.only(top: 30, left: 20, right: 20, bottom: 10),
                 child: Text(
                   'Project Tasks',
-                  style: TextStyle(fontSize: 20, color: Colors.black),
+                  style: TextStyle(fontSize: 20, color: AppTheme.darkTextPrimary),
                 ),
               ),
               Container(
@@ -665,7 +665,7 @@ class AddProjectState extends State<AddProjectForm> {
                 //height: 100,
                 child: InkWell(
                     onTap: () => submitForm(),
-                    splashColor: AppTheme.navy,
+                    splashColor: AppTheme.darkTextPrimary,
                     child: Container(
                         padding: EdgeInsets.all(7),
                         decoration: BoxDecoration(
@@ -680,10 +680,10 @@ class AddProjectState extends State<AddProjectForm> {
                               // Colors are easy thanks to Flutter's Colors class.
 
                               //Colors.blue,
-                              AppTheme.navy,
+                              AppTheme.darkTextPrimary,
                               AppTheme.navySoft,
                               AppTheme.navySoft,
-                              AppTheme.navy,
+                              AppTheme.darkTextPrimary,
                             ],
                           ),
                           borderRadius: BorderRadius.all(Radius.circular(5)),

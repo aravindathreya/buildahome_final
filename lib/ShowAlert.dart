@@ -35,7 +35,7 @@ class ShowAlert extends StatelessWidget{
                 Container(
                   padding: EdgeInsets.only(top: 20),
                   child: SpinKitThreeBounce(
-                    color: AppTheme.navy,
+                    color: AppTheme.darkTextPrimary,
                     size: 30.0,
                   ),
                 )

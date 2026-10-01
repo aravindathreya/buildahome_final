@@ -368,6 +368,29 @@ List<String> fallbackBottomNavKeysFor(MobileBottomNavSurface surface) {
   }
 }
 
+/// Project home always shows Payments. A role's saved bar can omit it
+/// (staff configs often do) even though the shared project home includes it.
+List<String> ensureProjectHomePaymentsTab(List<String> keys) {
+  if (keys.contains('payments')) return List<String>.from(keys);
+
+  final next = List<String>.from(keys);
+  final moreIndex = next.indexOf(kMobileBottomNavMoreKey);
+  next.insert(moreIndex >= 0 ? moreIndex : next.length, 'payments');
+
+  while (next.length > kMobileBottomNavHardMaxTabs) {
+    var dropAt = -1;
+    for (var i = next.length - 1; i >= 0; i--) {
+      final key = next[i];
+      if (key == 'payments' || isPinnedBottomNavKey(key)) continue;
+      dropAt = i;
+      break;
+    }
+    if (dropAt < 0) break;
+    next.removeAt(dropAt);
+  }
+  return next;
+}
+
 String canonicalizeMobileBottomNavKey(String? raw) {
   final slug = slugifyQuickActionKey(raw ?? '');
   if (slug.isEmpty) return '';

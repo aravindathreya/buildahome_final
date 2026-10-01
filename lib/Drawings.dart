@@ -86,7 +86,7 @@ class DocumentObjectState extends State<DocumentObject> {
                           child: const Icon(
                             Icons.folder_rounded,
                             size: 22,
-                            color: AppTheme.navy,
+                            color: AppTheme.darkTextPrimary,
                           ),
                         ),
                         const SizedBox(width: 12),
@@ -95,7 +95,7 @@ class DocumentObjectState extends State<DocumentObject> {
                           style: const TextStyle(
                             fontSize: 15.5,
                             fontWeight: FontWeight.w800,
-                            color: AppTheme.navy,
+                            color: AppTheme.darkTextPrimary,
                           ),
                         ),
                       ],
@@ -143,7 +143,7 @@ class DocumentObjectState extends State<DocumentObject> {
                                       padding: const EdgeInsets.all(14),
                                       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                                       decoration: BoxDecoration(
-                                        color: const Color(0xFFF7F8FB),
+                                        color: AppTheme.darkBackgroundPrimary,
                                         borderRadius: BorderRadius.circular(12),
                                         border: Border.all(color: AppTheme.border),
                                       ),
@@ -151,7 +151,7 @@ class DocumentObjectState extends State<DocumentObject> {
                                         children: [
                                           const Icon(
                                             Icons.description_outlined,
-                                            color: AppTheme.navy,
+                                            color: AppTheme.darkTextPrimary,
                                             size: 20,
                                           ),
                                           const SizedBox(width: 12),
@@ -159,7 +159,7 @@ class DocumentObjectState extends State<DocumentObject> {
                                             child: Text(
                                               children[x]['name'].toString() == 'null' ? children[x]['link'].toString() : children[x]['name'].toString(),
                                               style: const TextStyle(
-                                                color: AppTheme.navy,
+                                                color: AppTheme.darkTextPrimary,
                                                 fontWeight: FontWeight.w700,
                                                 fontSize: 14,
                                               ),
@@ -376,7 +376,7 @@ class DocumentsState extends State<Documents> {
                 style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.w800,
-                  color: AppTheme.navy,
+                  color: AppTheme.darkTextPrimary,
                   letterSpacing: -0.2,
                 ),
               ),
@@ -478,11 +478,11 @@ class DocumentsState extends State<Documents> {
       ),
       child: const Column(
         children: [
-          Icon(Icons.inventory_2_outlined, color: AppTheme.navy, size: 32),
+          Icon(Icons.inventory_2_outlined, color: AppTheme.darkTextPrimary, size: 32),
           SizedBox(height: 12),
           Text(
             'No documents shared yet',
-            style: TextStyle(fontWeight: FontWeight.w800, color: AppTheme.navy),
+            style: TextStyle(fontWeight: FontWeight.w800, color: AppTheme.darkTextPrimary),
           ),
           SizedBox(height: 4),
           Text(
@@ -512,7 +512,7 @@ class DocumentsState extends State<Documents> {
           const SizedBox(height: 12),
           const Text(
             'Something went wrong',
-            style: TextStyle(fontWeight: FontWeight.w800, color: AppTheme.navy),
+            style: TextStyle(fontWeight: FontWeight.w800, color: AppTheme.darkTextPrimary),
           ),
           const SizedBox(height: 8),
           Text(

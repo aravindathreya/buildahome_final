@@ -221,15 +221,15 @@ class _AttendancePromptDialogState extends State<_AttendancePromptDialog> {
     final inRange = _inRange != null;
 
     return AlertDialog(
-      backgroundColor: Colors.white,
+      backgroundColor: AppTheme.darkBackgroundSecondary,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       titlePadding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
-      contentPadding: const EdgeInsets.fromLTRB(24, 16, 24, 8),
+      contentPadding: const EdgeInsets.fromLTRB(24, 16, 24, 12),
       actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
       title: const Text(
         'Mark today’s attendance',
         style: TextStyle(
-          color: AppTheme.navy,
+          color: AppTheme.darkTextPrimary,
           fontWeight: FontWeight.w800,
           fontSize: 18,
         ),
@@ -273,69 +273,109 @@ class _AttendancePromptDialogState extends State<_AttendancePromptDialog> {
                     ),
                   ),
                 ],
+                const SizedBox(height: 20),
+                _promptActions(canCheckIn: canCheckIn, inRange: inRange),
               ],
             ),
-      actions: [
-        TextButton(
-          onPressed: _submitting ? null : () => Navigator.of(context).pop(),
-          child: const Text(
-            'Later',
-            style: TextStyle(
-              color: AppTheme.mutedGrey,
-              fontWeight: FontWeight.w700,
+    );
+  }
+
+  Widget _promptActions({
+    required bool canCheckIn,
+    required bool inRange,
+  }) {
+    final checkInEnabled =
+        !_loading && !_submitting && canCheckIn && inRange;
+    final showOverride = canCheckIn && !inRange && !_loading;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SizedBox(
+          height: 48,
+          child: ElevatedButton(
+            onPressed: checkInEnabled ? () => _checkIn() : null,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.navy,
+              foregroundColor: Colors.white,
+              disabledBackgroundColor: AppTheme.navy.withValues(alpha: 0.28),
+              disabledForegroundColor: Colors.white.withValues(alpha: 0.72),
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
             ),
+            child: _submitting
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.2,
+                      color: Colors.white,
+                    ),
+                  )
+                : const Text(
+                    'Check in',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 16,
+                    ),
+                  ),
           ),
         ),
-        TextButton(
-          onPressed: _submitting ? null : _openFullScreen,
-          child: const Text(
-            'Details',
-            style: TextStyle(
-              color: AppTheme.navy,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-        ),
-        if (canCheckIn && !inRange && !_loading)
-          TextButton(
-            onPressed: (_submitting || _locating)
-                ? null
-                : () => _checkIn(overrideLocation: true),
-            child: const Text(
-              'Override',
-              style: TextStyle(
-                color: AppTheme.navy,
-                fontWeight: FontWeight.w700,
+        if (showOverride) ...[
+          const SizedBox(height: 12),
+          SizedBox(
+            height: 46,
+            child: OutlinedButton(
+              onPressed: (_submitting || _locating)
+                  ? null
+                  : () => _checkIn(overrideLocation: true),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: const Color(0xFFFBBF24),
+                disabledForegroundColor:
+                    const Color(0xFFFBBF24).withValues(alpha: 0.45),
+                side: const BorderSide(color: Color(0xFFFBBF24), width: 1.4),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+              ),
+              child: const Text(
+                'Override',
+                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
               ),
             ),
           ),
-        ElevatedButton(
-          onPressed: (_loading || _submitting || !canCheckIn || !inRange)
-              ? null
-              : () => _checkIn(),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: AppTheme.navy,
-            foregroundColor: Colors.white,
-            disabledBackgroundColor: AppTheme.navy.withValues(alpha: 0.35),
-            elevation: 0,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
+        ],
+        const SizedBox(height: 12),
+        SizedBox(
+          height: 46,
+          child: OutlinedButton(
+            onPressed: _submitting ? null : _openFullScreen,
+            style: OutlinedButton.styleFrom(
+              foregroundColor: AppTheme.darkTextPrimary,
+              side: const BorderSide(color: AppTheme.border),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
             ),
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            child: const Text(
+              'Details',
+              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+            ),
           ),
-          child: _submitting
-              ? const SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2.2,
-                    color: Colors.white,
-                  ),
-                )
-              : const Text(
-                  'Check in',
-                  style: TextStyle(fontWeight: FontWeight.w800),
-                ),
+        ),
+        const SizedBox(height: 4),
+        TextButton(
+          onPressed: _submitting ? null : () => Navigator.of(context).pop(),
+          style: TextButton.styleFrom(
+            foregroundColor: AppTheme.mutedGrey,
+            padding: const EdgeInsets.symmetric(vertical: 12),
+          ),
+          child: const Text(
+            'Later',
+            style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+          ),
         ),
       ],
     );
@@ -399,7 +439,7 @@ class _AttendancePromptDialogState extends State<_AttendancePromptDialog> {
                 Text(
                   title,
                   style: const TextStyle(
-                    color: AppTheme.navy,
+                    color: AppTheme.darkTextPrimary,
                     fontWeight: FontWeight.w800,
                     fontSize: 14,
                   ),
@@ -418,7 +458,7 @@ class _AttendancePromptDialogState extends State<_AttendancePromptDialog> {
           ),
           IconButton(
             onPressed: (_locating || _submitting) ? null : _refreshLocation,
-            icon: const Icon(Icons.refresh_rounded, color: AppTheme.navy),
+            icon: const Icon(Icons.refresh_rounded, color: AppTheme.darkTextPrimary),
             tooltip: 'Refresh location',
           ),
         ],

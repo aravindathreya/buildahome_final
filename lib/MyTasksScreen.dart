@@ -31,6 +31,7 @@ import 'services/mobile_live_test_auto_runner.dart';
 import 'services/mobile_live_test_autoplay.dart';
 import 'services/mobile_live_test_access.dart';
 import 'services/capture_time.dart';
+import 'services/camera_permission.dart';
 import 'services/mobile_live_test_workflow.dart';
 import 'site_proof_multi/multi_material_site_proof_screen.dart';
 import 'widgets/searchable_select.dart';
@@ -45,10 +46,10 @@ import 'widgets/skeleton_loader.dart';
 import 'SlotsScreen.dart';
 
 const String _workflowApiBaseUrl = kProductionApiBaseUrl;
-const Color _premiumBackground = Color(0xFFF7F8FB);
-const Color _premiumSurface = Colors.white;
-const Color _premiumInk = Color(0xFF1B254B);
-const Color _premiumMuted = Color(0xFF8A94A6);
+const Color _premiumBackground = AppTheme.darkBackgroundPrimary;
+const Color _premiumSurface = AppTheme.darkBackgroundSecondary;
+const Color _premiumInk = AppTheme.darkTextPrimary;
+const Color _premiumMuted = AppTheme.darkTextSecondary;
 
 const Set<String> kCompletedTaskStatuses = {
   'completed',
@@ -1689,7 +1690,7 @@ class _MyTasksScreenState extends State<MyTasksScreen>
                   decoration: BoxDecoration(
                     color: selected
                         ? kTaskNavy.withValues(alpha: 0.12)
-                        : const Color(0xFFF1F4F8),
+                        : AppTheme.darkBackgroundPrimaryLight,
                     borderRadius: BorderRadius.circular(20),
                     border: Border.all(
                       color: selected
@@ -1703,13 +1704,13 @@ class _MyTasksScreenState extends State<MyTasksScreen>
                       Icon(
                         icon,
                         size: 14,
-                        color: selected ? kTaskNavy : _premiumMuted,
+                        color: selected ? AppTheme.darkTextPrimary : _premiumMuted,
                       ),
                       const SizedBox(width: 6),
                       Text(
                         label,
                         style: TextStyle(
-                          color: selected ? kTaskNavy : _premiumMuted,
+                          color: selected ? AppTheme.darkTextPrimary : _premiumMuted,
                           fontSize: 12,
                           fontWeight:
                               selected ? FontWeight.w700 : FontWeight.w500,
@@ -1724,7 +1725,7 @@ class _MyTasksScreenState extends State<MyTasksScreen>
             return Container(
               height: MediaQuery.of(context).size.height * 0.7,
               decoration: const BoxDecoration(
-                color: Colors.white,
+                color: AppTheme.darkBackgroundSecondary,
                 borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
               ),
               child: Column(
@@ -1737,7 +1738,7 @@ class _MyTasksScreenState extends State<MyTasksScreen>
                           width: 4,
                           height: 20,
                           decoration: BoxDecoration(
-                            color: kTaskNavy,
+                            color: AppTheme.navy,
                             borderRadius: BorderRadius.circular(2),
                           ),
                         ),
@@ -1850,7 +1851,7 @@ class _MyTasksScreenState extends State<MyTasksScreen>
                           decoration: BoxDecoration(
                             color: isSelected
                                 ? kTaskNavy.withValues(alpha: 0.08)
-                                : const Color(0xFFF7F8FB),
+                                : AppTheme.darkBackgroundPrimary,
                             borderRadius: BorderRadius.circular(12),
                             border: Border.all(
                               color: isSelected ? kTaskNavy : kTaskBorder,
@@ -1879,7 +1880,7 @@ class _MyTasksScreenState extends State<MyTasksScreen>
                                           ? Icons.clear_all_rounded
                                           : Icons.folder_special_outlined,
                                       size: 20,
-                                      color: kTaskNavy,
+                                      color: AppTheme.darkTextPrimary,
                                     ),
                                     const SizedBox(width: 12),
                                     Expanded(
@@ -1896,7 +1897,7 @@ class _MyTasksScreenState extends State<MyTasksScreen>
                                       const Icon(
                                         Icons.check_circle_rounded,
                                         size: 20,
-                                        color: kTaskNavy,
+                                        color: AppTheme.darkTextPrimary,
                                       ),
                                   ],
                                 ),
@@ -1985,9 +1986,7 @@ class _MyTasksScreenState extends State<MyTasksScreen>
     final pendingTasks = _pendingTasks;
     final completedTasks = _completedTasks;
 
-    final isAdminChrome =
-        DashboardChrome.of(context) == DashboardChromeStyle.admin;
-    final appBarFg = isAdminChrome ? Colors.white : _premiumInk;
+    final appBarFg = Colors.white;
 
     final hasSearchQuery = _searchController.text.trim().isNotEmpty;
     final emptyPendingMessage = hasSearchQuery || _hasActiveFilters
@@ -2030,7 +2029,7 @@ class _MyTasksScreenState extends State<MyTasksScreen>
                 height: 40,
                 padding: const EdgeInsets.all(3),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFF1F4F8),
+                  color: AppTheme.darkBackgroundPrimaryLight,
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: TabBar(
@@ -2041,7 +2040,7 @@ class _MyTasksScreenState extends State<MyTasksScreen>
                   overlayColor: WidgetStateProperty.all(Colors.transparent),
                   labelPadding: EdgeInsets.zero,
                   indicator: BoxDecoration(
-                    color: kTaskNavy,
+                    color: AppTheme.navy,
                     borderRadius: BorderRadius.circular(9),
                   ),
                   labelColor: Colors.white,
@@ -2070,6 +2069,7 @@ class _MyTasksScreenState extends State<MyTasksScreen>
 
     return ThemedScaffold(
       title: 'My tasks',
+      headerDrop: 15,
       automaticallyImplyLeading: !widget.embedded,
       backgroundColor: _premiumBackground,
       actions: [
@@ -2088,7 +2088,7 @@ class _MyTasksScreenState extends State<MyTasksScreen>
           icon: Badge(
             isLabelVisible: _hasActiveFilters,
             smallSize: 8,
-            backgroundColor: const Color(0xFF2563EB),
+            backgroundColor: AppTheme.navy,
             child: Icon(Icons.tune_rounded, color: appBarFg, size: 22),
           ),
         ),
@@ -2112,7 +2112,7 @@ class _MyTasksScreenState extends State<MyTasksScreen>
       bottom: PreferredSize(
         preferredSize: Size.fromHeight(_isSearchVisible ? 126 : 66),
         child: Container(
-          color: Colors.white,
+          color: AppTheme.darkBackgroundSecondary,
           padding: const EdgeInsets.fromLTRB(18, 0, 18, 14),
           child: Column(
             children: [
@@ -2122,7 +2122,7 @@ class _MyTasksScreenState extends State<MyTasksScreen>
                   focusNode: _searchFocusNode,
                   textInputAction: TextInputAction.search,
                   style: const TextStyle(
-                    color: _premiumInk,
+                    color: AppTheme.darkTextPrimary,
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
                   ),
@@ -2150,7 +2150,7 @@ class _MyTasksScreenState extends State<MyTasksScreen>
                           )
                         : null,
                     filled: true,
-                    fillColor: const Color(0xFFF1F4F8),
+                    fillColor: AppTheme.darkBackgroundPrimaryLight,
                     contentPadding: const EdgeInsets.symmetric(
                       horizontal: 12,
                       vertical: 10,
@@ -2167,7 +2167,7 @@ class _MyTasksScreenState extends State<MyTasksScreen>
                 height: 48,
                 padding: const EdgeInsets.all(4),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFF1F4F8),
+                  color: AppTheme.darkBackgroundPrimaryLight,
                   borderRadius: BorderRadius.circular(14),
                 ),
                 child: TabBar(
@@ -2178,7 +2178,7 @@ class _MyTasksScreenState extends State<MyTasksScreen>
                   overlayColor: WidgetStateProperty.all(Colors.transparent),
                   labelPadding: EdgeInsets.zero,
                   indicator: BoxDecoration(
-                    color: kTaskNavy,
+                    color: AppTheme.navy,
                     borderRadius: BorderRadius.circular(11),
                   ),
                   labelColor: Colors.white,
@@ -2260,7 +2260,7 @@ class _MyTasksScreenState extends State<MyTasksScreen>
                     label: 'Pending tasks',
                     icon: Icons.assignment_outlined,
                     iconColor: const Color(0xFFEAB308),
-                    iconBg: const Color(0xFFFFF1D6),
+                    iconBg: const Color(0xFF3A2F14),
                   ),
                 ),
                 const SizedBox(width: 10),
@@ -2269,8 +2269,8 @@ class _MyTasksScreenState extends State<MyTasksScreen>
                     value: '${completedTasks.length}',
                     label: 'Completed tasks',
                     icon: Icons.check_circle_outline_rounded,
-                    iconColor: const Color(0xFF16A34A),
-                    iconBg: const Color(0xFFDCFCE7),
+                    iconColor: const Color(0xFF34D399),
+                    iconBg: const Color(0xFF14352B),
                   ),
                 ),
               ],
@@ -2296,7 +2296,7 @@ class _MyTasksScreenState extends State<MyTasksScreen>
                     ),
                     if (widget.showCreateTask)
                       Material(
-                        color: kTaskNavy,
+                        color: AppTheme.navy,
                         borderRadius: BorderRadius.circular(10),
                         child: InkWell(
                           onTap: _openCreateTask,
@@ -5619,7 +5619,7 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
     const info = AppTheme.accentBlue;
     const primary = AppTheme.primaryColorConst;
     const secondary = AppTheme.navySoft;
-    const tertiary = Color(0xFF334155);
+    const tertiary = AppTheme.border;
 
     switch (type) {
       case 'upload':
@@ -6662,6 +6662,8 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
     double? deviceLongitude;
 
     Future<_SelectedUploadFile?> captureLiveImage() async {
+      if (!await ensureCameraPermission(context)) return null;
+      if (!mounted) return null;
       final picked = await ImagePicker().pickImage(
         source: ImageSource.camera,
         imageQuality: 88,
@@ -7339,6 +7341,8 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
     double? deviceLongitude;
 
     Future<_SelectedUploadFile?> captureLiveImage() async {
+      if (!await ensureCameraPermission(context)) return null;
+      if (!mounted) return null;
       final picked = await ImagePicker().pickImage(
         source: ImageSource.camera,
         imageQuality: 88,
@@ -12957,7 +12961,7 @@ class _UploadedProgressCarouselCard extends StatelessWidget {
               fit: StackFit.expand,
               children: [
                 ColoredBox(
-                  color: const Color(0xFF111827),
+                  color: AppTheme.darkTextPrimary,
                   child: absoluteUrl == null
                       ? Center(
                           child: Padding(
@@ -13030,7 +13034,7 @@ class _UploadedProgressCarouselCard extends StatelessWidget {
                       child: Text(
                         percentLabel!,
                         style: const TextStyle(
-                          color: Color(0xFF111827),
+                          color: AppTheme.darkTextPrimary,
                           fontSize: 11,
                           fontWeight: FontWeight.w900,
                         ),
@@ -13876,6 +13880,10 @@ Future<_SelectedUploadFile?> _recordWorkflowVideoFile({
 }) async {
   final extensions = _normalizeAllowedFormats(videoFormats);
   if (extensions.isEmpty) return null;
+  if (!await ensureCameraPermission(context, includeMicrophone: true)) {
+    return null;
+  }
+  if (context is! Element || !context.mounted) return null;
 
   final result = await Navigator.of(context).push<_WorkflowVideoRecordResult>(
     MaterialPageRoute(
@@ -14125,6 +14133,21 @@ class _WorkflowVideoRecorderPageState extends State<_WorkflowVideoRecorderPage> 
                           style: const TextStyle(color: Colors.white),
                         ),
                         const SizedBox(height: 16),
+                        TextButton(
+                          onPressed: () async {
+                            final allowed = await ensureCameraPermission(
+                              context,
+                              includeMicrophone: true,
+                            );
+                            if (!allowed || !mounted) return;
+                            setState(() {
+                              _initializing = true;
+                              _initError = null;
+                            });
+                            await _initCamera();
+                          },
+                          child: const Text('Try again'),
+                        ),
                         TextButton(
                           onPressed: () => Navigator.of(context).pop(),
                           child: const Text('Close'),
@@ -14615,7 +14638,7 @@ Future<_IndentPoSiteProofSubmitResult> _presentIndentPoSiteProofAction({
       !reviewOnly &&
       nearSiteError == null &&
       deviceLatitude != null) {
-    final captured = await _pickWorkflowCameraFile();
+    final captured = await _pickWorkflowCameraFile(context);
     if (captured != null) selectedFiles.add(captured);
   }
 
@@ -14655,7 +14678,7 @@ Future<_IndentPoSiteProofSubmitResult> _presentIndentPoSiteProofAction({
               );
               return;
             }
-            final captured = await _pickWorkflowCameraFile();
+            final captured = await _pickWorkflowCameraFile(context);
             if (captured == null || !sheetContext.mounted) return;
             setSheetState(() => selectedFiles.add(captured));
           }
@@ -15060,7 +15083,7 @@ Future<_NearSiteCheckResult> _applyDebugNearSiteOverrideIfNeeded(
     barrierDismissible: false,
     builder: (dialogContext) {
       return AlertDialog(
-        backgroundColor: Colors.white,
+        backgroundColor: AppTheme.darkBackgroundSecondary,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Text(
           'Debug: Override site check?',
@@ -15149,7 +15172,11 @@ Future<_NearSiteCheckResult> _applyDebugNearSiteOverrideIfNeeded(
   return result;
 }
 
-Future<_SelectedUploadFile?> _pickWorkflowCameraFile() async {
+Future<_SelectedUploadFile?> _pickWorkflowCameraFile(
+  BuildContext context,
+) async {
+  if (!await ensureCameraPermission(context)) return null;
+  if (context is! Element || !context.mounted) return null;
   final picked = await ImagePicker().pickImage(
     source: ImageSource.camera,
     imageQuality: 88,
@@ -15923,7 +15950,7 @@ class _UserChecklistFollowupSheetState
   }
 
   Future<void> _pickCamera(String itemId) async {
-    final picked = await _pickWorkflowCameraFile();
+    final picked = await _pickWorkflowCameraFile(context);
     if (picked == null) return;
     await _setSelectedFile(itemId, picked);
   }
@@ -17332,7 +17359,12 @@ class _PictureChoiceListSheetState extends State<_PictureChoiceListSheet> {
         ),
       ),
     );
-    if (source == null) return;
+    if (source == null || !mounted) return;
+    if (source == ImageSource.camera &&
+        !await ensureCameraPermission(context)) {
+      return;
+    }
+    if (!mounted) return;
 
     final picked = await ImagePicker().pickImage(
       source: source,
@@ -18840,7 +18872,7 @@ class _UserChecklistSheetState extends State<_UserChecklistSheet> {
   }
 
   Future<void> _pickCamera(_UserChecklistRow row) async {
-    final picked = await _pickWorkflowCameraFile();
+    final picked = await _pickWorkflowCameraFile(context);
     if (picked == null) return;
     await _setRowImage(row, picked);
   }

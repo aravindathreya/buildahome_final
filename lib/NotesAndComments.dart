@@ -14,6 +14,7 @@ import 'Gallery.dart';
 import 'Scheduler.dart';
 import 'ShowAlert.dart';
 import 'app_theme.dart';
+import 'services/camera_permission.dart';
 import 'services/data_provider.dart';
 import 'widgets/themed_scaffold.dart';
 import 'AddDailyUpdate.dart'; // For FullScreenImage if needed, or I can implement it here
@@ -206,7 +207,8 @@ class NotesAndCommentsState extends State<NotesAndComments> {
   }
 
   Future<void> _takePhotoFromCamera() async {
-    if (!await checkPermissionStatus(forCamera: true)) return;
+    if (!await ensureCameraPermission(context)) return;
+    if (!mounted) return;
     final picker = ImagePicker();
     final pickedFile = await picker.pickImage(source: ImageSource.camera, imageQuality: 85);
     if (pickedFile != null) _processImage(pickedFile);

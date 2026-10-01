@@ -50,9 +50,9 @@ class Gallery extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: "buildAhome",
-      theme: AppTheme.getLightTheme(),
+      theme: AppTheme.getDarkTheme(),
       home: Scaffold(
-        backgroundColor: Colors.white,
+        backgroundColor: AppTheme.darkBackgroundSecondary,
         drawer: NavMenuWidget(),
         appBar: AppBar(
           automaticallyImplyLeading: false,
@@ -62,16 +62,16 @@ class Gallery extends StatelessWidget {
               onPressed: () => {
                     Navigator.pop(context),
                   }),
-          backgroundColor: Colors.white,
-          foregroundColor: AppTheme.navy,
+          backgroundColor: AppTheme.darkBackgroundSecondary,
+          foregroundColor: AppTheme.darkTextPrimary,
           elevation: 0,
-          iconTheme: const IconThemeData(color: AppTheme.navy),
-          titleTextStyle: const TextStyle(color: AppTheme.navy, fontSize: 18, fontWeight: FontWeight.w800),
+          iconTheme: const IconThemeData(color: AppTheme.darkTextPrimary),
+          titleTextStyle: const TextStyle(color: AppTheme.darkTextPrimary, fontSize: 18, fontWeight: FontWeight.w800),
         ),
         body: GalleryForm(this.id, context),
         bottomNavigationBar: BottomNavigationBar(
           currentIndex: 2,
-          selectedItemColor: AppTheme.navy,
+          selectedItemColor: AppTheme.darkTextPrimary,
           onTap: (int index) {
             if (index == 0) {
               Navigator.pushReplacement(

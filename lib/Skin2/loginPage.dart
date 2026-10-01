@@ -11,6 +11,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 // Custom dart files
 import '../AdminDashboard.dart';
 import '../UserHome.dart';
+import '../app_theme.dart';
 import '../chat_v1/chat_v1_api.dart';
 import '../services/app_deep_link_service.dart';
 import '../services/client_generation_service.dart';
@@ -28,9 +29,10 @@ class LoginScreenNew extends StatefulWidget {
 
 class LoginScreenNewState extends State<LoginScreenNew>
     with TickerProviderStateMixin {
-  static const Color _navy = Color(0xFF1B254B);
-  static const Color _muted = Color(0xFF8A94A6);
-  static const Color _border = Color(0xFFE8ECF1);
+  static const Color _navy = AppTheme.navy;
+  static const Color _muted = Color(0xFFA8B3C7);
+  static const Color _border = Color(0xFF334155);
+  static const Color _formText = Color(0xFFF8FAFC);
   static const String _authBase = 'https://office1.buildahome.in';
 
   static const int _otpLength = 6;
@@ -120,8 +122,8 @@ class LoginScreenNewState extends State<LoginScreenNew>
     if (LoginScreenNew.preferFreshLogin) {
       LoginScreenNew.preferFreshLogin = false;
       // Don't wait on prefs here — AppLogout clears them after navigation.
+      // Leave prompts suppressed until the next successful login.
       ProfilePictureService.picturePathNotifier.value = null;
-      ProfilePictureService.promptShownThisSession = false;
       // Tiny beat so the splash paints once, then show the phone form.
       await Future.delayed(const Duration(milliseconds: 120));
       await _revealLoginForm();
@@ -143,7 +145,7 @@ class LoginScreenNewState extends State<LoginScreenNew>
           showSplash = true;
         });
       }
-      ProfilePictureService.promptShownThisSession = false;
+      ProfilePictureService.onLoggedIn();
       unawaited(ProfilePictureService.getStoredPath());
 
       // Paint Home immediately. Project resolve, generation, and DataProvider
@@ -276,7 +278,7 @@ class LoginScreenNewState extends State<LoginScreenNew>
       );
       await ProfilePictureService.clearStored();
     }
-    ProfilePictureService.promptShownThisSession = false;
+    ProfilePictureService.onLoggedIn();
   }
 
   void _startResendCooldown() {
@@ -638,13 +640,13 @@ class LoginScreenNewState extends State<LoginScreenNew>
             const Icon(
               Icons.arrow_back_ios_new_rounded,
               size: 14,
-              color: _navy,
+              color: _formText,
             ),
             const SizedBox(width: 6),
             Text(
               label,
               style: const TextStyle(
-                color: _navy,
+                color: _formText,
                 fontSize: 13,
                 fontWeight: FontWeight.w700,
               ),
@@ -803,16 +805,16 @@ class LoginScreenNewState extends State<LoginScreenNew>
         color: _muted,
         fontWeight: FontWeight.w500,
       ),
-      prefixIcon: Icon(icon, color: _navy),
+      prefixIcon: Icon(icon, color: _formText),
       prefixText: prefixText,
       prefixStyle: const TextStyle(
-        color: _navy,
+        color: _formText,
         fontSize: 15,
         fontWeight: FontWeight.w700,
       ),
       suffixIcon: suffix,
       filled: true,
-      fillColor: const Color(0xFFF7F8FB),
+      fillColor: AppTheme.darkBackgroundPrimaryLight,
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(14),
         borderSide: const BorderSide(color: _border),
@@ -866,7 +868,7 @@ class LoginScreenNewState extends State<LoginScreenNew>
             textInputAction: TextInputAction.done,
             textAlign: TextAlign.center,
             style: const TextStyle(
-              color: _navy,
+              color: _formText,
               fontSize: 20,
               fontWeight: FontWeight.w800,
             ),
@@ -876,7 +878,7 @@ class LoginScreenNewState extends State<LoginScreenNew>
             ],
             decoration: InputDecoration(
               filled: true,
-              fillColor: const Color(0xFFF7F8FB),
+              fillColor: AppTheme.darkBackgroundPrimaryLight,
               contentPadding: EdgeInsets.zero,
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
@@ -926,7 +928,7 @@ class LoginScreenNewState extends State<LoginScreenNew>
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: SystemUiOverlayStyle.light,
       child: Scaffold(
-      backgroundColor: const Color(0xFFF7F8FB),
+      backgroundColor: AppTheme.darkBackgroundPrimary,
       body: GestureDetector(
         onTap: _dismissKeyboard,
         behavior: HitTestBehavior.translucent,
@@ -1042,7 +1044,7 @@ class LoginScreenNewState extends State<LoginScreenNew>
                       width: double.infinity,
                       padding: const EdgeInsets.fromLTRB(18, 20, 18, 18),
                       decoration: BoxDecoration(
-                        color: Colors.white,
+                        color: AppTheme.darkBackgroundSecondary,
                         borderRadius: BorderRadius.circular(22),
                         border: Border.all(color: _border),
                         boxShadow: const [
@@ -1063,7 +1065,7 @@ class LoginScreenNewState extends State<LoginScreenNew>
                                     ? 'Phone number'
                                     : 'WhatsApp login',
                             style: const TextStyle(
-                              color: _navy,
+                              color: _formText,
                               fontSize: 18,
                               fontWeight: FontWeight.w800,
                             ),
@@ -1110,7 +1112,7 @@ class LoginScreenNewState extends State<LoginScreenNew>
                                           LengthLimitingTextInputFormatter(15),
                                         ],
                                         style: const TextStyle(
-                                          color: _navy,
+                                          color: _formText,
                                           fontSize: 15,
                                           fontWeight: FontWeight.w600,
                                         ),
@@ -1176,7 +1178,7 @@ class LoginScreenNewState extends State<LoginScreenNew>
                                                     : () =>
                                                         sendOtp(isResend: true),
                                                 style: TextButton.styleFrom(
-                                                  foregroundColor: _navy,
+                                                  foregroundColor: _formText,
                                                   disabledForegroundColor:
                                                       _muted,
                                                   padding: EdgeInsets.zero,
@@ -1203,7 +1205,7 @@ class LoginScreenNewState extends State<LoginScreenNew>
                                         key: const ValueKey('intro'),
                                         padding: const EdgeInsets.all(14),
                                         decoration: BoxDecoration(
-                                          color: const Color(0xFFF7F8FB),
+                                          color: AppTheme.darkBackgroundPrimary,
                                           borderRadius:
                                               BorderRadius.circular(14),
                                           border:
@@ -1237,7 +1239,7 @@ class LoginScreenNewState extends State<LoginScreenNew>
                             Row(
                               children: [
                                 const SpinKitRing(
-                                  color: _navy,
+                                  color: _formText,
                                   size: 18,
                                   lineWidth: 2,
                                 ),
@@ -1247,7 +1249,7 @@ class LoginScreenNewState extends State<LoginScreenNew>
                                       ? 'Verifying OTP...'
                                       : 'Sending WhatsApp OTP...',
                                   style: const TextStyle(
-                                    color: _navy,
+                                    color: _formText,
                                     fontSize: 13.5,
                                     fontWeight: FontWeight.w600,
                                   ),
@@ -1260,8 +1262,8 @@ class LoginScreenNewState extends State<LoginScreenNew>
                             width: double.infinity,
                             child: Material(
                               color: formBeingSubmitted
-                                  ? _navy.withValues(alpha: 0.7)
-                                  : _navy,
+                                  ? AppTheme.navy.withValues(alpha: 0.7)
+                                  : AppTheme.navy,
                               borderRadius: BorderRadius.circular(14),
                               child: InkWell(
                                 onTap:

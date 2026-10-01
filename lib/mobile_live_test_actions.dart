@@ -10,6 +10,7 @@ import 'app_theme.dart';
 import 'mobile_live_test_media.dart';
 import 'mobile_live_test_widgets.dart';
 import 'models/mobile_live_test.dart';
+import 'services/camera_permission.dart';
 import 'services/mobile_live_test_access.dart';
 import 'services/mobile_live_test_service.dart';
 
@@ -384,6 +385,10 @@ class _MobileLiveTestActionCardState extends State<MobileLiveTestActionCard> {
       widget.onError('Gallery is not allowed for this upload.');
       return;
     }
+    if (source == ImageSource.camera) {
+      final allowed = await ensureCameraPermission(context);
+      if (!allowed || !mounted) return;
+    }
     final picker = ImagePicker();
     final image = await picker.pickImage(source: source, imageQuality: 85);
     if (image == null) return;
@@ -756,7 +761,7 @@ class _MobileLiveTestActionCardState extends State<MobileLiveTestActionCard> {
             '$current%',
             style: const TextStyle(
               fontWeight: FontWeight.w800,
-              color: AppTheme.navy,
+              color: AppTheme.darkTextPrimary,
             ),
           ),
         ],
@@ -858,7 +863,7 @@ class _MobileLiveTestActionCardState extends State<MobileLiveTestActionCard> {
         const Text(
           'Progress is at 100%. Add a comment and finish this upload.',
           style: TextStyle(
-            color: AppTheme.navySoft,
+            color: AppTheme.darkTextPrimarySoft,
             fontWeight: FontWeight.w600,
           ),
         ),
@@ -946,7 +951,7 @@ class _MobileLiveTestActionCardState extends State<MobileLiveTestActionCard> {
             title,
             style: const TextStyle(
               fontWeight: FontWeight.w800,
-              color: AppTheme.navy,
+              color: AppTheme.darkTextPrimary,
             ),
           ),
           const SizedBox(height: 4),
@@ -1351,7 +1356,7 @@ class _MobileLiveTestCommentsSectionState
             '💬 Comments',
             style: TextStyle(
               fontWeight: FontWeight.w800,
-              color: AppTheme.navy,
+              color: AppTheme.darkTextPrimary,
             ),
           ),
         const SizedBox(height: 10),
@@ -1372,7 +1377,7 @@ class _MobileLiveTestCommentsSectionState
                       : 'Workflow comment',
                   style: const TextStyle(
                     fontWeight: FontWeight.w700,
-                    color: kTaskNavy,
+                    color: AppTheme.darkTextPrimary,
                   ),
                 ),
                 if (c.authorRole.isNotEmpty)
@@ -1394,7 +1399,7 @@ class _MobileLiveTestCommentsSectionState
                 const SizedBox(height: 4),
                 Text(
                   c.body,
-                  style: const TextStyle(color: kTaskNavy),
+                  style: const TextStyle(color: AppTheme.darkTextPrimary),
                 ),
               ],
             ),
@@ -1408,7 +1413,7 @@ class _MobileLiveTestCommentsSectionState
           decoration: InputDecoration(
             labelText: 'Write comment',
             filled: true,
-            fillColor: Colors.white,
+            fillColor: AppTheme.darkBackgroundPrimaryLight,
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
               borderSide: const BorderSide(color: kTaskBorder),
@@ -1422,7 +1427,7 @@ class _MobileLiveTestCommentsSectionState
           child: OutlinedButton(
             onPressed: _submitting || widget.busy ? null : _addComment,
             style: OutlinedButton.styleFrom(
-              foregroundColor: kTaskNavy,
+              foregroundColor: AppTheme.darkTextPrimary,
               side: const BorderSide(color: kTaskBorder),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(14),
@@ -1549,7 +1554,7 @@ class MobileLiveTestCompletionSection extends StatelessWidget {
               labelText: 'Comment (optional)',
               hintText: 'Add a note for this completion',
               filled: true,
-              fillColor: Colors.white,
+              fillColor: AppTheme.darkBackgroundPrimaryLight,
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
                 borderSide: const BorderSide(color: AppTheme.border),

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../app_theme.dart';
 import 'package:flutter/services.dart';
 
 import '../AttendanceScreen.dart';
@@ -110,7 +111,7 @@ class _CheckInSplashScene extends StatelessWidget {
       child: DecoratedBox(
         decoration: BoxDecoration(
           gradient: LinearGradient(
-            colors: [Color(0xFF1B254B), Color(0xFF2563EB)],
+            colors: [AppTheme.primaryColorConstDark, AppTheme.navySoft],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
@@ -251,7 +252,7 @@ class _Door extends StatelessWidget {
         children: [
           Container(
             decoration: BoxDecoration(
-              color: const Color(0xFFE8EEF9),
+              color: const Color(0xFFEDE7F6),
               borderRadius: BorderRadius.circular(16),
             ),
           ),
@@ -263,7 +264,7 @@ class _Door extends StatelessWidget {
                 Positioned.fill(
                   child: DecoratedBox(
                     decoration: BoxDecoration(
-                      color: const Color(0xFF93C5FD).withValues(
+                      color: AppTheme.accentBlue.withValues(
                         alpha: 0.35 + glow * 0.45,
                       ),
                       borderRadius: const BorderRadius.vertical(
@@ -300,7 +301,7 @@ class _Door extends StatelessWidget {
                           child: Container(
                             height: 36,
                             decoration: BoxDecoration(
-                              color: const Color(0xFFDBEAFE),
+                              color: const Color(0xFFE9D5FF),
                               borderRadius: BorderRadius.circular(6),
                             ),
                           ),
@@ -312,7 +313,7 @@ class _Door extends StatelessWidget {
                             width: 8,
                             height: 8,
                             decoration: const BoxDecoration(
-                              color: Color(0xFF1B254B),
+                              color: AppTheme.darkTextPrimary,
                               shape: BoxShape.circle,
                             ),
                           ),
@@ -412,7 +413,7 @@ class _Walker extends StatelessWidget {
       width: 7,
       height: 28,
       decoration: BoxDecoration(
-        color: const Color(0xFF1E3A8A),
+        color: AppTheme.primaryColorConstDark,
         borderRadius: BorderRadius.circular(6),
       ),
     );

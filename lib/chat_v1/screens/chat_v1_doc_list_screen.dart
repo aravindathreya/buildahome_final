@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../services/data_provider.dart';
 import '../chat_v1_controller.dart';
 import '../chat_v1_doc_store.dart';
 import '../chat_v1_models.dart';
@@ -26,6 +28,10 @@ class _ChatV1DocListScreenState extends State<ChatV1DocListScreen> {
   String _query = '';
   bool _loading = true;
   String? _error;
+  bool _roleReady = false;
+  bool _isClient = false;
+
+  bool get _showCreateDoc => _roleReady && !_isClient;
 
   String? get _sopId =>
       widget.salesSopId ?? ChatV1Controller.instance.salesSopId;
@@ -33,7 +39,24 @@ class _ChatV1DocListScreenState extends State<ChatV1DocListScreen> {
   @override
   void initState() {
     super.initState();
+    _resolveRole();
     _reload();
+  }
+
+  Future<void> _resolveRole() async {
+    final cached = (DataProvider().currentRole ?? '').trim();
+    if (cached.isNotEmpty) {
+      _isClient = cached.toLowerCase() == 'client';
+      _roleReady = true;
+      return;
+    }
+    final prefs = await SharedPreferences.getInstance();
+    final role = (prefs.getString('role') ?? '').trim().toLowerCase();
+    if (!mounted) return;
+    setState(() {
+      _isClient = role == 'client';
+      _roleReady = true;
+    });
   }
 
   @override
@@ -159,20 +182,23 @@ class _ChatV1DocListScreenState extends State<ChatV1DocListScreen> {
           ],
         ),
         actions: [
-          TextButton.icon(
-            onPressed: _openCreate,
-            icon: const Icon(Icons.add_rounded, size: 18),
-            label: const Text('Create DOC'),
-          ),
+          if (_showCreateDoc)
+            TextButton.icon(
+              onPressed: _openCreate,
+              icon: const Icon(Icons.add_rounded, size: 18),
+              label: const Text('Create DOC'),
+            ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _openCreate,
-        backgroundColor: ChatV1Theme.accent,
-        foregroundColor: Colors.white,
-        icon: const Icon(Icons.add_rounded),
-        label: const Text('Create DOC'),
-      ),
+      floatingActionButton: _showCreateDoc
+          ? FloatingActionButton.extended(
+              onPressed: _openCreate,
+              backgroundColor: ChatV1Theme.accent,
+              foregroundColor: Colors.white,
+              icon: const Icon(Icons.add_rounded),
+              label: const Text('Create DOC'),
+            )
+          : null,
       body: Column(
         children: [
           Padding(
@@ -205,7 +231,12 @@ class _ChatV1DocListScreenState extends State<ChatV1DocListScreen> {
                           physics: const AlwaysScrollableScrollPhysics(
                             parent: BouncingScrollPhysics(),
                           ),
-                          padding: const EdgeInsets.fromLTRB(14, 0, 14, 88),
+                          padding: EdgeInsets.fromLTRB(
+                            14,
+                            0,
+                            14,
+                            _showCreateDoc ? 88 : 16,
+                          ),
                           itemCount: docs.length,
                           itemBuilder: (_, i) => Padding(
                             padding: const EdgeInsets.only(bottom: 10),
@@ -233,7 +264,9 @@ class _ChatV1DocListScreenState extends State<ChatV1DocListScreen> {
             ),
             const SizedBox(height: 14),
             Text(
-              'Submit a Difference of Cost request to start a discussion thread.',
+              _showCreateDoc
+                  ? 'Submit a Difference of Cost request to start a discussion thread.'
+                  : 'No Difference of Cost requests yet.',
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: ChatV1Theme.textSecondary(context),
@@ -241,15 +274,17 @@ class _ChatV1DocListScreenState extends State<ChatV1DocListScreen> {
                 height: 1.4,
               ),
             ),
-            const SizedBox(height: 18),
-            FilledButton.icon(
-              onPressed: _openCreate,
-              icon: const Icon(Icons.add_rounded),
-              label: const Text('Create DOC'),
-              style: FilledButton.styleFrom(
-                backgroundColor: ChatV1Theme.accent,
+            if (_showCreateDoc) ...[
+              const SizedBox(height: 18),
+              FilledButton.icon(
+                onPressed: _openCreate,
+                icon: const Icon(Icons.add_rounded),
+                label: const Text('Create DOC'),
+                style: FilledButton.styleFrom(
+                  backgroundColor: ChatV1Theme.accent,
+                ),
               ),
-            ),
+            ],
           ],
         ),
       ),

@@ -85,7 +85,7 @@ class ViewUsers extends StatelessWidget {
 
     return MaterialApp(
       title: appTitle,
-      theme: AppTheme.getLightTheme(),
+      theme: AppTheme.getDarkTheme(),
       home: Scaffold(
         key: _scaffoldKey,
         backgroundColor: AppTheme.getBackgroundPrimary(context),
@@ -97,7 +97,7 @@ class ViewUsers extends StatelessWidget {
           title: Text(
             appTitle,
             style: const TextStyle(
-              color: AppTheme.navy,
+              color: AppTheme.darkTextPrimary,
               fontWeight: FontWeight.w800,
             ),
           ),
@@ -105,9 +105,9 @@ class ViewUsers extends StatelessWidget {
               icon: new Icon(Icons.menu),
               onPressed: () => _scaffoldKey.currentState!.openDrawer()),
           backgroundColor: AppTheme.getBackgroundSecondary(context),
-          foregroundColor: AppTheme.navy,
+          foregroundColor: AppTheme.darkTextPrimary,
           elevation: 0,
-          iconTheme: const IconThemeData(color: AppTheme.navy),
+          iconTheme: const IconThemeData(color: AppTheme.darkTextPrimary),
         ),
         bottomNavigationBar: BottomNavigationBar(
           items: const <BottomNavigationBarItem>[
@@ -124,7 +124,7 @@ class ViewUsers extends StatelessWidget {
           currentIndex: 1,
           onTap: _onItemTapped,
           backgroundColor: AppTheme.getBackgroundSecondary(context),
-          selectedItemColor: AppTheme.navy,
+          selectedItemColor: AppTheme.darkTextPrimary,
           unselectedItemColor: AppTheme.mutedGrey,
           type: BottomNavigationBarType.fixed,
         ),

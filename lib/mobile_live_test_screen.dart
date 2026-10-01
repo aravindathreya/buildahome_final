@@ -282,7 +282,7 @@ class _Header extends StatelessWidget {
       style: TextStyle(
         fontSize: 22,
         fontWeight: FontWeight.w800,
-        color: AppTheme.navy,
+        color: AppTheme.darkTextPrimary,
         letterSpacing: -0.3,
       ),
     );
@@ -331,7 +331,7 @@ class _EnableCard extends StatelessWidget {
             style: TextStyle(
               fontWeight: FontWeight.w800,
               fontSize: 16,
-              color: AppTheme.navy,
+              color: AppTheme.darkTextPrimary,
             ),
           ),
           const SizedBox(height: 8),
@@ -392,7 +392,7 @@ class _StatusCard extends StatelessWidget {
             'Status: $connectionLabel',
             style: const TextStyle(
               fontWeight: FontWeight.w800,
-              color: AppTheme.navy,
+              color: AppTheme.darkTextPrimary,
             ),
           ),
         ),
@@ -415,7 +415,7 @@ class _WaitingCard extends StatelessWidget {
             style: TextStyle(
               fontWeight: FontWeight.w800,
               fontSize: 16,
-              color: AppTheme.navy,
+              color: AppTheme.darkTextPrimary,
             ),
           ),
           SizedBox(height: 8),

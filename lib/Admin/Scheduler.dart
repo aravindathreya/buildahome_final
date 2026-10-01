@@ -46,10 +46,10 @@ class TaskWidget1 extends State<TaskWidget> {
         new GlobalKey<ScaffoldState>();
     return MaterialApp(
       title: appTitle,
-      theme: AppTheme.getLightTheme(),
+      theme: AppTheme.getDarkTheme(),
       home: Scaffold(
         key: _scaffoldKey,
-        backgroundColor: Colors.white,
+        backgroundColor: AppTheme.darkBackgroundSecondary,
         drawer: NavMenuWidget(),
         appBar: AppBar(
           automaticallyImplyLeading: false,
@@ -59,16 +59,16 @@ class TaskWidget1 extends State<TaskWidget> {
               onPressed: () => {
                     Navigator.pop(context),
                   }),
-          backgroundColor: Colors.white,
-          foregroundColor: AppTheme.navy,
+          backgroundColor: AppTheme.darkBackgroundSecondary,
+          foregroundColor: AppTheme.darkTextPrimary,
           elevation: 0,
-          iconTheme: const IconThemeData(color: AppTheme.navy),
-          titleTextStyle: const TextStyle(color: AppTheme.navy, fontSize: 18, fontWeight: FontWeight.w800),
+          iconTheme: const IconThemeData(color: AppTheme.darkTextPrimary),
+          titleTextStyle: const TextStyle(color: AppTheme.darkTextPrimary, fontSize: 18, fontWeight: FontWeight.w800),
         ),
         body: TaskScreenClass(this.id),
         bottomNavigationBar: BottomNavigationBar(
           currentIndex: 3,
-          selectedItemColor: AppTheme.navy,
+          selectedItemColor: AppTheme.darkTextPrimary,
           onTap: (int index) {
             if (index == 0) {
               Navigator.pushReplacement(
@@ -303,7 +303,7 @@ class TaskItemWidget extends State<TaskItem>
                                           .toString(),
                                       style: TextStyle(
                                         fontSize: 12,
-                                        color: Colors.black,
+                                        color: AppTheme.darkTextPrimary,
                                       ),
                                     )),
                                 Container(
@@ -315,7 +315,7 @@ class TaskItemWidget extends State<TaskItem>
                                           .toString(),
                                       style: TextStyle(
                                         fontSize: 12,
-                                        color: Colors.black,
+                                        color: AppTheme.darkTextPrimary,
                                       ),
                                     ))
                               ],
@@ -372,7 +372,7 @@ class TaskItemWidget extends State<TaskItem>
                                                         " : " +
                                                         task[0].toString(),
                                                     style: TextStyle(
-                                                        color: Colors.black),
+                                                        color: AppTheme.darkTextPrimary),
                                                   )),
                                             ],
                                           ),
@@ -384,7 +384,7 @@ class TaskItemWidget extends State<TaskItem>
                                                 child: Text(
                                                   notes[index],
                                                   style: TextStyle(
-                                                      color: Colors.black,
+                                                      color: AppTheme.darkTextPrimary,
                                                       fontWeight:
                                                           FontWeight.bold),
                                                 ))

@@ -430,7 +430,7 @@ class SlotsViewState extends State<SlotsView> {
     final row = _rowsFor(slot)[index];
     final selected = await showModalBottomSheet<SalesSopSlotTimeOption>(
       context: context,
-      backgroundColor: Colors.white,
+      backgroundColor: AppTheme.darkBackgroundSecondary,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
@@ -608,7 +608,7 @@ class SlotsViewState extends State<SlotsView> {
     final confirmed = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.white,
+      backgroundColor: AppTheme.darkBackgroundSecondary,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
@@ -668,7 +668,7 @@ class SlotsViewState extends State<SlotsView> {
   void _showHowItWorks() {
     showModalBottomSheet<void>(
       context: context,
-      backgroundColor: Colors.white,
+      backgroundColor: AppTheme.darkBackgroundSecondary,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
@@ -852,7 +852,7 @@ class SlotsViewState extends State<SlotsView> {
         ? const Text(
             'Slots',
             style: TextStyle(
-              color: AppTheme.navy,
+              color: AppTheme.darkTextPrimary,
               fontSize: 22,
               fontWeight: FontWeight.w800,
               letterSpacing: -0.3,
@@ -915,7 +915,7 @@ class _HowItWorksChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: const Color(0xFFEFF4FF),
+      color: AppTheme.darkBackgroundPrimaryLight,
       borderRadius: BorderRadius.circular(999),
       child: InkWell(
         onTap: onTap,
@@ -983,7 +983,7 @@ class _ProgressSummary extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 12, 10, 12),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppTheme.darkBackgroundSecondary,
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: AppTheme.border),
         boxShadow: const [
@@ -1004,11 +1004,11 @@ class _ProgressSummary extends StatelessWidget {
             animationDuration: 700,
             circularStrokeCap: CircularStrokeCap.round,
             progressColor: const Color(0xFF16A34A),
-            backgroundColor: const Color(0xFFE8ECF1),
+            backgroundColor: AppTheme.darkBackgroundPrimaryLight,
             center: Text(
               '$accepted/$total',
               style: const TextStyle(
-                color: AppTheme.navy,
+                color: AppTheme.darkTextPrimary,
                 fontSize: 11,
                 fontWeight: FontWeight.w800,
                 height: 1,
@@ -1023,7 +1023,7 @@ class _ProgressSummary extends StatelessWidget {
                 Text(
                   '$accepted accepted · $pending pending',
                   style: const TextStyle(
-                    color: AppTheme.navy,
+                    color: AppTheme.darkTextPrimary,
                     fontSize: 13.5,
                     fontWeight: FontWeight.w800,
                   ),
@@ -1054,7 +1054,7 @@ class _ProgressSummary extends StatelessWidget {
             const SizedBox(width: 8),
             Flexible(
               child: Material(
-                color: const Color(0xFFF0FDF4),
+                color: const Color(0xFF14532D),
                 borderRadius: BorderRadius.circular(14),
                 child: InkWell(
                   onTap: onNudge,
@@ -1066,7 +1066,7 @@ class _ProgressSummary extends StatelessWidget {
                         const Icon(
                           Icons.event_available_outlined,
                           size: 16,
-                          color: Color(0xFF047857),
+                          color: Color(0xFF86EFAC),
                         ),
                         const SizedBox(width: 6),
                         Expanded(
@@ -1076,7 +1076,7 @@ class _ProgressSummary extends StatelessWidget {
                               Text(
                                 title,
                                 style: const TextStyle(
-                                  color: Color(0xFF047857),
+                                  color: Color(0xFFBBF7D0),
                                   fontSize: 11,
                                   fontWeight: FontWeight.w800,
                                 ),
@@ -1086,7 +1086,7 @@ class _ProgressSummary extends StatelessWidget {
                                 maxLines: 2,
                                 overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(
-                                  color: Color(0xFF166534),
+                                  color: Color(0xFF86EFAC),
                                   fontSize: 10.5,
                                   height: 1.25,
                                   fontWeight: FontWeight.w600,
@@ -1186,7 +1186,7 @@ class _FilterRow extends StatelessWidget {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.swap_vert_rounded, size: 16, color: AppTheme.navy),
+              const Icon(Icons.swap_vert_rounded, size: 16, color: AppTheme.darkTextPrimary),
               const SizedBox(width: 4),
               Text(
                 sort == _VisitSort.name
@@ -1195,12 +1195,12 @@ class _FilterRow extends StatelessWidget {
                         ? 'Pending'
                         : 'Visit order',
                 style: const TextStyle(
-                  color: AppTheme.navy,
+                  color: AppTheme.darkTextPrimary,
                   fontSize: 11.5,
                   fontWeight: FontWeight.w800,
                 ),
               ),
-              const Icon(Icons.expand_more_rounded, size: 16, color: AppTheme.navy),
+              const Icon(Icons.expand_more_rounded, size: 16, color: AppTheme.darkTextPrimary),
             ],
           ),
         ),
@@ -1223,7 +1223,7 @@ class _FilterPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: selected ? AppTheme.navy : const Color(0xFFEEF2F7),
+      color: selected ? AppTheme.navy : AppTheme.darkBackgroundPrimaryLight,
       borderRadius: BorderRadius.circular(999),
       child: InkWell(
         onTap: onTap,
@@ -1233,7 +1233,7 @@ class _FilterPill extends StatelessWidget {
           child: Text(
             label,
             style: TextStyle(
-              color: selected ? Colors.white : AppTheme.navy,
+              color: selected ? Colors.white : AppTheme.darkTextPrimary,
               fontSize: 12,
               fontWeight: FontWeight.w800,
             ),
@@ -1378,7 +1378,7 @@ class _StepBadge extends StatelessWidget {
         shape: BoxShape.circle,
         boxShadow: [
           BoxShadow(
-            color: (selected ? const Color(0xFF16A34A) : AppTheme.navy)
+            color: (selected ? const Color(0xFF16A34A) : AppTheme.darkTextPrimary)
                 .withValues(alpha: 0.22),
             blurRadius: 8,
             offset: const Offset(0, 2),
@@ -1500,7 +1500,7 @@ class _VisitCard extends StatelessWidget {
       curve: Curves.easeOutCubic,
       width: double.infinity,
       decoration: BoxDecoration(
-        color: selected ? const Color(0xFFF4FBF6) : Colors.white,
+        color: selected ? const Color(0xFF14352B) : AppTheme.darkBackgroundSecondary,
         borderRadius: BorderRadius.circular(18),
         border: Border.all(
           color: selected ? const Color(0xFF86EFAC) : AppTheme.border,
@@ -1543,7 +1543,7 @@ class _VisitCard extends StatelessWidget {
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
-                            color: AppTheme.navy,
+                            color: AppTheme.darkTextPrimary,
                             fontSize: 14.5,
                             fontWeight: FontWeight.w800,
                             height: 1.2,
@@ -1651,7 +1651,7 @@ class _VisitCard extends StatelessWidget {
                 enabled: !confirming,
                 onChanged: onNoteChanged,
                 style: const TextStyle(
-                  color: AppTheme.navy,
+                  color: AppTheme.darkTextPrimary,
                   fontSize: 13,
                   fontWeight: FontWeight.w600,
                 ),
@@ -1660,7 +1660,7 @@ class _VisitCard extends StatelessWidget {
                       ? 'Add a required comment'
                       : 'Add a comment (optional)',
                   filled: true,
-                  fillColor: const Color(0xFFF8FAFC),
+                  fillColor: AppTheme.darkBackgroundPrimaryLight,
                   contentPadding: const EdgeInsets.all(12),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
@@ -1735,7 +1735,7 @@ _StatusLook _statusLook(
   if (slot.needsSelection) {
     return _StatusLook(
       label: slot.canSelect ? 'Pick times' : 'Needs slots',
-      background: const Color(0xFFEFF6FF),
+      background: const Color(0xFF1A2A45),
       foreground: AppTheme.accentBlue,
       icon: Icons.edit_calendar_outlined,
     );
@@ -1751,7 +1751,7 @@ _StatusLook _statusLook(
     }
     return _StatusLook(
       label: canPick ? 'Confirm' : 'Awaiting',
-      background: const Color(0xFFFFFBEB),
+      background: const Color(0xFF3A2F14),
       foreground: const Color(0xFFB45309),
       icon: Icons.schedule_rounded,
     );
@@ -1759,14 +1759,14 @@ _StatusLook _statusLook(
   if (slot.isSubmitted) {
     return const _StatusLook(
       label: 'Submitted',
-      background: Color(0xFFEEF2F7),
+      background: AppTheme.darkBackgroundPrimaryLight,
       foreground: AppTheme.mutedGrey,
       icon: Icons.hourglass_top_rounded,
     );
   }
   return _StatusLook(
     label: selected ? 'Selected' : (slot.statusLabel.isEmpty ? 'Pending' : slot.statusLabel),
-    background: selected ? const Color(0xFFDCFCE7) : const Color(0xFFEEF2F7),
+    background: selected ? const Color(0xFFDCFCE7) : AppTheme.darkBackgroundPrimaryLight,
     foreground: selected ? const Color(0xFF15803D) : AppTheme.mutedGrey,
     icon: selected ? Icons.check_rounded : Icons.schedule_rounded,
   );
@@ -1859,12 +1859,12 @@ class _PreferredSlotsForm extends StatelessWidget {
               margin: const EdgeInsets.only(bottom: 8),
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
-                color: const Color(0xFFF8FAFC),
+                color: AppTheme.darkBackgroundPrimaryLight,
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(
                   color: error == null
                       ? AppTheme.border
-                      : const Color(0xFFFECACA),
+                      : const Color(0xFF7F1D1D),
                 ),
               ),
               child: Column(
@@ -1873,7 +1873,7 @@ class _PreferredSlotsForm extends StatelessWidget {
                   Text(
                     'Slot ${index + 1}',
                     style: const TextStyle(
-                      color: AppTheme.navy,
+                      color: AppTheme.darkTextPrimary,
                       fontSize: 12,
                       fontWeight: FontWeight.w800,
                     ),
@@ -1930,7 +1930,7 @@ class _PreferredSlotsForm extends StatelessWidget {
               enabled: enabled && !submitting,
               onChanged: onNoteChanged,
               style: const TextStyle(
-                color: AppTheme.navy,
+                color: AppTheme.darkTextPrimary,
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
               ),
@@ -1939,7 +1939,7 @@ class _PreferredSlotsForm extends StatelessWidget {
                     ? 'Add a required comment'
                     : 'Add a comment (optional)',
                 filled: true,
-                fillColor: Colors.white,
+                fillColor: AppTheme.darkBackgroundPrimaryLight,
                 contentPadding: const EdgeInsets.all(12),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
@@ -2011,7 +2011,7 @@ class _PickerTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: Colors.white,
+      color: AppTheme.darkBackgroundSecondary,
       borderRadius: BorderRadius.circular(10),
       child: InkWell(
         onTap: enabled ? onTap : null,
@@ -2025,13 +2025,13 @@ class _PickerTile extends StatelessWidget {
           ),
           child: Row(
             children: [
-              Icon(icon, size: 16, color: AppTheme.navy),
+              Icon(icon, size: 16, color: AppTheme.darkTextPrimary),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
                   label,
                   style: const TextStyle(
-                    color: AppTheme.navy,
+                    color: AppTheme.darkTextPrimary,
                     fontSize: 12.5,
                     fontWeight: FontWeight.w700,
                   ),
@@ -2081,7 +2081,7 @@ class _TimeOptionSheet extends StatelessWidget {
             const Text(
               'Select time option',
               style: TextStyle(
-                color: AppTheme.navy,
+                color: AppTheme.darkTextPrimary,
                 fontSize: 16,
                 fontWeight: FontWeight.w800,
               ),
@@ -2100,8 +2100,8 @@ class _TimeOptionSheet extends StatelessWidget {
                   final isSelected = selected?.label == option.label;
                   return Material(
                     color: isSelected
-                        ? const Color(0xFFECFDF5)
-                        : const Color(0xFFF8FAFC),
+                        ? const Color(0xFF14532D)
+                        : AppTheme.darkBackgroundPrimaryLight,
                     borderRadius: BorderRadius.circular(12),
                     child: InkWell(
                       onTap: () => Navigator.pop(context, option),
@@ -2117,7 +2117,7 @@ class _TimeOptionSheet extends StatelessWidget {
                               child: Text(
                                 option.display,
                                 style: const TextStyle(
-                                  color: AppTheme.navy,
+                                  color: AppTheme.darkTextPrimary,
                                   fontSize: 13.5,
                                   fontWeight: FontWeight.w700,
                                 ),
@@ -2212,7 +2212,7 @@ class _SlotRadioCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final parts = _slotDisplay(option);
     final border = selected ? const Color(0xFF16A34A) : AppTheme.border;
-    final background = selected ? const Color(0xFFECFDF5) : Colors.white;
+    final background = selected ? const Color(0xFF14352B) : AppTheme.darkBackgroundSecondary;
 
     return Material(
       color: background,
@@ -2242,7 +2242,7 @@ class _SlotRadioCard extends StatelessWidget {
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      color: AppTheme.navy,
+                      color: AppTheme.darkTextPrimary,
                       fontSize: 11.5,
                       height: 1.2,
                       fontWeight: selected ? FontWeight.w800 : FontWeight.w700,
@@ -2288,7 +2288,7 @@ class _RadioDot extends StatelessWidget {
           color: selected ? const Color(0xFF16A34A) : const Color(0xFFD1D5DB),
           width: 1.6,
         ),
-        color: Colors.white,
+        color: AppTheme.darkBackgroundSecondary,
       ),
       child: selected
           ? Center(
@@ -2329,7 +2329,7 @@ class _SelectedFooter extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(12, 8, 10, 10),
       decoration: const BoxDecoration(
-        color: Color(0xFFECFDF5),
+        color: Color(0xFF14532D),
         borderRadius: BorderRadius.vertical(bottom: Radius.circular(17)),
       ),
       child: Row(
@@ -2337,7 +2337,7 @@ class _SelectedFooter extends StatelessWidget {
           const Icon(
             Icons.calendar_today_outlined,
             size: 14,
-            color: Color(0xFF047857),
+            color: Color(0xFF86EFAC),
           ),
           const SizedBox(width: 8),
           Expanded(
@@ -2346,7 +2346,7 @@ class _SelectedFooter extends StatelessWidget {
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(
-                color: AppTheme.navy,
+                color: AppTheme.darkTextPrimary,
                 fontSize: 11.5,
                 height: 1.3,
                 fontWeight: FontWeight.w700,
@@ -2397,7 +2397,7 @@ class _BottomActionBar extends StatelessWidget {
         : 'Confirm $selectedCount Selected Date${selectedCount == 1 ? '' : 's'}';
 
     return Material(
-      color: Colors.white,
+      color: AppTheme.darkBackgroundSecondary,
       elevation: 12,
       shadowColor: AppTheme.softShadow,
       child: Padding(
@@ -2414,8 +2414,8 @@ class _BottomActionBar extends StatelessWidget {
                     onPressed: confirming ? null : onSaveLater,
                     style: OutlinedButton.styleFrom(
                       foregroundColor: AppTheme.accentBlue,
-                      side: const BorderSide(color: Color(0xFFBFDBFE)),
-                      backgroundColor: const Color(0xFFEFF6FF),
+                      side: const BorderSide(color: AppTheme.accentBlue),
+                      backgroundColor: const Color(0xFF1A2A45),
                       padding: const EdgeInsets.symmetric(
                         vertical: 10,
                         horizontal: 8,
@@ -2524,7 +2524,7 @@ class _ConfirmSheet extends StatelessWidget {
             const Text(
               'Confirm visit dates',
               style: TextStyle(
-                color: AppTheme.navy,
+                color: AppTheme.darkTextPrimary,
                 fontSize: 18,
                 fontWeight: FontWeight.w800,
               ),
@@ -2554,7 +2554,7 @@ class _ConfirmSheet extends StatelessWidget {
                   return Text(
                     '${slot.title}  ·  ${parts == null ? 'Selected' : [parts.dateLine, parts.timeLine].where((e) => e.isNotEmpty).join(' · ')}',
                     style: const TextStyle(
-                      color: AppTheme.navy,
+                      color: AppTheme.darkTextPrimary,
                       fontSize: 13,
                       fontWeight: FontWeight.w700,
                     ),
@@ -2616,7 +2616,7 @@ class _HowItWorksSheet extends StatelessWidget {
             const Text(
               'How it works',
               style: TextStyle(
-                color: AppTheme.navy,
+                color: AppTheme.darkTextPrimary,
                 fontSize: 18,
                 fontWeight: FontWeight.w800,
               ),
@@ -2688,7 +2688,7 @@ class _HowStep extends StatelessWidget {
                 Text(
                   title,
                   style: const TextStyle(
-                    color: AppTheme.navy,
+                    color: AppTheme.darkTextPrimary,
                     fontSize: 14,
                     fontWeight: FontWeight.w800,
                   ),
@@ -2736,7 +2736,7 @@ class _FilterEmptyState extends StatelessWidget {
           Text(
             title,
             style: const TextStyle(
-              color: AppTheme.navy,
+              color: AppTheme.darkTextPrimary,
               fontSize: 15,
               fontWeight: FontWeight.w800,
             ),
@@ -2777,7 +2777,7 @@ class _SlotsEmptyState extends StatelessWidget {
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.w800,
-                color: AppTheme.navy,
+                color: AppTheme.darkTextPrimary,
               ),
             ),
             SizedBox(height: 8),
@@ -2829,7 +2829,7 @@ class _SlotsMessage extends StatelessWidget {
               style: const TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.w800,
-                color: AppTheme.navy,
+                color: AppTheme.darkTextPrimary,
               ),
             ),
             const SizedBox(height: 8),
@@ -2865,7 +2865,7 @@ class _QuoteBlock extends StatelessWidget {
       margin: const EdgeInsets.fromLTRB(10, 0, 10, 10),
       padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
       decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
+        color: AppTheme.darkBackgroundPrimaryLight,
         borderRadius: BorderRadius.circular(12),
       ),
       child: Row(
@@ -2900,7 +2900,7 @@ class _QuoteBlock extends StatelessWidget {
                     height: 1.4,
                     fontWeight: FontWeight.w600,
                     fontStyle: FontStyle.italic,
-                    color: Color(0xFF374151),
+                    color: AppTheme.darkTextPrimary,
                   ),
                 ),
               ],
@@ -2923,13 +2923,13 @@ class _WaitingBanner extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: const Color(0xFFFFFBEB),
+        color: const Color(0xFF422006),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFFDE68A)),
+        border: Border.all(color: const Color(0xFF92400E)),
       ),
       child: Row(
         children: [
-          const Icon(Icons.hourglass_top_rounded, size: 18, color: Color(0xFFD97706)),
+          const Icon(Icons.hourglass_top_rounded, size: 18, color: Color(0xFFFBBF24)),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
@@ -2937,7 +2937,7 @@ class _WaitingBanner extends StatelessWidget {
               style: const TextStyle(
                 fontSize: 12.5,
                 fontWeight: FontWeight.w700,
-                color: Color(0xFFB45309),
+                color: Color(0xFFFDE68A),
                 height: 1.35,
               ),
             ),
@@ -2965,55 +2965,55 @@ _VisitLook _visitLook(String title) {
   if (text.contains('wood')) {
     return const _VisitLook(
       icon: Icons.forest_outlined,
-      background: Color(0xFFF5E6D3),
+      background: Color(0xFF3A2F14),
       foreground: Color(0xFF9A3412),
     );
   }
   if (text.contains('paint')) {
     return const _VisitLook(
       icon: Icons.format_paint_outlined,
-      background: Color(0xFFEEF2FF),
+      background: Color(0xFF1A2A45),
       foreground: Color(0xFF4338CA),
     );
   }
   if (text.contains('tile')) {
     return const _VisitLook(
       icon: Icons.grid_view_rounded,
-      background: Color(0xFFECFEFF),
+      background: Color(0xFF14353A),
       foreground: Color(0xFF0F766E),
     );
   }
   if (text.contains('light')) {
     return const _VisitLook(
       icon: Icons.lightbulb_outline_rounded,
-      background: Color(0xFFFEF3C7),
+      background: Color(0xFF3A2F14),
       foreground: Color(0xFFB45309),
     );
   }
   if (text.contains('furniture') || text.contains('sofa')) {
     return const _VisitLook(
       icon: Icons.chair_outlined,
-      background: Color(0xFFF3E8FF),
+      background: Color(0xFF2A1F45),
       foreground: Color(0xFF6D28D9),
     );
   }
   if (text.contains('curtain') || text.contains('drape')) {
     return const _VisitLook(
       icon: Icons.curtains_outlined,
-      background: Color(0xFFFCE7F3),
+      background: Color(0xFF3F1D35),
       foreground: Color(0xFFBE185D),
     );
   }
   if (text.contains('inspect') || text.contains('site')) {
     return const _VisitLook(
       icon: Icons.fact_check_outlined,
-      background: Color(0xFFECFDF5),
+      background: Color(0xFF14352B),
       foreground: Color(0xFF047857),
     );
   }
   return const _VisitLook(
     icon: Icons.event_available_outlined,
-    background: Color(0xFFEEF2F7),
+    background: AppTheme.darkBackgroundPrimaryLight,
     foreground: AppTheme.navy,
   );
 }
@@ -3113,7 +3113,7 @@ List<Widget> _siteInspectionExtras(SalesSopSlot slot) {
           width: double.infinity,
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: const Color(0xFFF8FAFC),
+            color: AppTheme.darkBackgroundPrimaryLight,
             borderRadius: BorderRadius.circular(12),
           ),
           child: Column(

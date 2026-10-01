@@ -18,8 +18,8 @@ class CreateIndentLayout extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'buildAhome',
-      theme: AppTheme.getLightTheme(),
-      themeMode: ThemeMode.light,
+      theme: AppTheme.getDarkTheme(),
+      themeMode: ThemeMode.dark,
       home: Scaffold(
         backgroundColor: AppTheme.getBackgroundPrimary(context),
         appBar: AppBar(

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'app_theme.dart';
+import 'widgets/searchable_select.dart';
 import 'widgets/skeleton_loader.dart';
 
 class ProjectsModal extends StatefulWidget {
@@ -107,6 +108,8 @@ class ProjectsModalBody extends State<ProjectsModal> {
             Container(
               padding: EdgeInsets.all(16),
               child: TextField(
+                textCapitalization: TextCapitalization.sentences,
+                inputFormatters: const [FirstLetterCapitalFormatter()],
                 onChanged: (text) {
                   setState(() {
                     if (text.trim() == '') {

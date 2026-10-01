@@ -45,10 +45,10 @@ class UsersState extends State<Users> {
         new GlobalKey<ScaffoldState>();
     return MaterialApp(
       title: appTitle,
-      theme: AppTheme.getLightTheme(),
+      theme: AppTheme.getDarkTheme(),
       home: Scaffold(
         key: _scaffoldKey,
-        backgroundColor: Colors.white,
+        backgroundColor: AppTheme.darkBackgroundSecondary,
         // ADD THIS LINE
         appBar: AppBar(
           automaticallyImplyLeading: false,
@@ -56,11 +56,11 @@ class UsersState extends State<Users> {
           leading: new IconButton(
               icon: new Icon(Icons.menu),
               onPressed: () => _scaffoldKey.currentState?.openDrawer()),
-          backgroundColor: Colors.white,
-          foregroundColor: AppTheme.navy,
+          backgroundColor: AppTheme.darkBackgroundSecondary,
+          foregroundColor: AppTheme.darkTextPrimary,
           elevation: 0,
-          iconTheme: const IconThemeData(color: AppTheme.navy),
-          titleTextStyle: const TextStyle(color: AppTheme.navy, fontSize: 18, fontWeight: FontWeight.w800),
+          iconTheme: const IconThemeData(color: AppTheme.darkTextPrimary),
+          titleTextStyle: const TextStyle(color: AppTheme.darkTextPrimary, fontSize: 18, fontWeight: FontWeight.w800),
         ),
         drawer: NavMenuWidget(),
 
@@ -74,7 +74,7 @@ class UsersState extends State<Users> {
                       top: 15, left: 5, right: 5, bottom: 10),
                   child: Text(
                     'All Users',
-                    style: TextStyle(fontSize: 20, color: Colors.black),
+                    style: TextStyle(fontSize: 20, color: AppTheme.darkTextPrimary),
                   ),
                 ),
                 Container(
@@ -142,7 +142,7 @@ class UsersState extends State<Users> {
                         top: 30, left: 20, right: 20, bottom: 10),
                     child: Text(
                       'User Information',
-                      style: TextStyle(fontSize: 20, color: Colors.black),
+                      style: TextStyle(fontSize: 20, color: AppTheme.darkTextPrimary),
                     ),
                   ),
                   Container(
@@ -242,7 +242,7 @@ class UsersState extends State<Users> {
                               child: Text(
                                 "Select role",
                                 style:
-                                TextStyle(fontSize: 16, color: Colors.black54),
+                                TextStyle(fontSize: 16, color: AppTheme.darkTextSecondary),
                               ),
                             ),
                             Container(
@@ -253,10 +253,10 @@ class UsersState extends State<Users> {
                                   "Super Admin",
                                   "Client"
                                 ],
-                                activeColor: AppTheme.navy,
+                                activeColor: AppTheme.darkTextPrimary,
                                 onSelected: (String label) => role.text = label,
                                 labelStyle:
-                                TextStyle(fontSize: 16, color: Colors.black87),
+                                TextStyle(fontSize: 16, color: AppTheme.darkTextPrimary),
                               ),
                             ),
                           ],
@@ -287,10 +287,10 @@ class UsersState extends State<Users> {
                                 // Colors are easy thanks to Flutter's Colors class.
 
                                 //Colors.blue,
-                                AppTheme.navy,
+                                AppTheme.darkTextPrimary,
                                 AppTheme.navySoft,
                                 //AppTheme.navySoft,
-                                AppTheme.navy,
+                                AppTheme.darkTextPrimary,
                               ],
                             ),
                             border: Border.all(color: Colors.black, width: 1),

@@ -60,7 +60,11 @@ class _ChatV1CreateGroupSheetState extends State<ChatV1CreateGroupSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final bottom = MediaQuery.of(context).viewInsets.bottom;
+    final media = MediaQuery.of(context);
+    // Keyboard covers the nav bar, so only the larger inset is needed.
+    final bottom = media.viewInsets.bottom > media.padding.bottom
+        ? media.viewInsets.bottom
+        : media.padding.bottom;
     return Padding(
       padding: EdgeInsets.fromLTRB(16, 12, 16, 16 + bottom),
       child: Column(

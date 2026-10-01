@@ -1,5 +1,24 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../app_theme.dart';
+
+/// Uppercases the first character as the user types.
+class FirstLetterCapitalFormatter extends TextInputFormatter {
+  const FirstLetterCapitalFormatter();
+
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    final text = newValue.text;
+    if (text.isEmpty) return newValue;
+    final first = text.substring(0, 1);
+    final upper = first.toUpperCase();
+    if (first == upper) return newValue;
+    return newValue.copyWith(text: upper + text.substring(1));
+  }
+}
 
 class SearchableSelect {
   static Future<dynamic> show({
@@ -42,6 +61,9 @@ class SearchableSelect {
               }
               return item.toString();
             }
+
+            final capitalizeSearch =
+                title.toLowerCase().contains('project');
 
             return Column(
               children: [
@@ -101,6 +123,12 @@ class SearchableSelect {
                   ),
                   child: TextField(
                     controller: searchController,
+                    textCapitalization: capitalizeSearch
+                        ? TextCapitalization.sentences
+                        : TextCapitalization.none,
+                    inputFormatters: capitalizeSearch
+                        ? const [FirstLetterCapitalFormatter()]
+                        : null,
                     style: TextStyle(color: AppTheme.getTextPrimary(context), fontSize: 14),
                     onChanged: (value) {
                       setModalState(() {});

@@ -5,6 +5,8 @@ import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 
+import 'services/camera_permission.dart';
+
 /// Selected file for Mobile Live Test multipart uploads.
 class MobileLiveTestSelectedFile {
   final String path;
@@ -35,6 +37,10 @@ Future<MobileLiveTestSelectedFile?> recordMobileLiveTestVideo({
   int maxDurationSeconds = 60,
   int maxSizeMb = 50,
 }) async {
+  if (!await ensureCameraPermission(context, includeMicrophone: true)) {
+    return null;
+  }
+  if (context is! Element || !context.mounted) return null;
   final result = await Navigator.of(context).push<MobileLiveTestVideoRecordResult>(
     MaterialPageRoute(
       fullscreenDialog: true,
@@ -202,10 +208,31 @@ class _MobileLiveTestVideoRecorderPageState
               ? Center(
                   child: Padding(
                     padding: const EdgeInsets.all(24),
-                    child: Text(
-                      _initError!,
-                      style: const TextStyle(color: Colors.white),
-                      textAlign: TextAlign.center,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          _initError!,
+                          style: const TextStyle(color: Colors.white),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 16),
+                        TextButton(
+                          onPressed: () async {
+                            final allowed = await ensureCameraPermission(
+                              context,
+                              includeMicrophone: true,
+                            );
+                            if (!allowed || !mounted) return;
+                            setState(() {
+                              _initializing = true;
+                              _initError = null;
+                            });
+                            await _initCamera();
+                          },
+                          child: const Text('Try again'),
+                        ),
+                      ],
                     ),
                   ),
                 )

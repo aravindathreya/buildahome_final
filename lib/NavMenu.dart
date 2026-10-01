@@ -30,6 +30,7 @@ import 'app_navigator.dart';
 import 'indents_screen.dart';
 import 'notifcations.dart';
 import 'project_picker.dart';
+import 'ProfileScreen.dart';
 import 'services/app_logout.dart';
 import 'services/client_generation_service.dart';
 import 'services/data_provider.dart';
@@ -232,7 +233,7 @@ class NavMenuItem extends StatelessWidget {
             children: [
               Icon(
                 entry.icon,
-                color: isLogout ? const Color(0xFFDC2626) : AppTheme.navy,
+                color: isLogout ? const Color(0xFFDC2626) : AppTheme.darkTextPrimary,
                 size: 22,
               ),
               const SizedBox(width: 14),
@@ -258,13 +259,13 @@ class NavMenuItem extends StatelessWidget {
                   padding:
                       const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFEEF2F6),
+                    color: AppTheme.darkBackgroundPrimaryLight,
                     borderRadius: BorderRadius.circular(999),
                   ),
                   child: const Text(
                     'Soon',
                     style: TextStyle(
-                      color: Color(0xFF5B6578),
+                      color: Color(0xFFA8B3C7),
                       fontSize: 10,
                       fontWeight: FontWeight.w800,
                     ),
@@ -424,24 +425,13 @@ class NavMenuWidgetState extends State<NavMenuWidget> {
     });
   }
 
-  Future<void> _changeProfilePicture() async {
-    final path = await showProfilePictureDialog(
-      context,
-      currentPicturePath: profilePicture,
+  Future<void> _openProfile() async {
+    Navigator.of(context).pop(); // close drawer
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const ProfileScreen()),
     );
     if (!mounted) return;
-    if (path != null && path.isNotEmpty) {
-      // Keep header avatars in sync immediately.
-      ProfilePictureService.picturePathNotifier.value = path;
-      setState(() => profilePicture = path);
-    } else {
-      // Refresh in case it was saved but dialog returned null.
-      final stored = await ProfilePictureService.getStoredPath();
-      if (!mounted) return;
-      if (stored != profilePicture) {
-        setState(() => profilePicture = stored);
-      }
-    }
+    await _loadProfile();
   }
 
   Future<String?> _projectId() async {
@@ -627,25 +617,33 @@ class NavMenuWidgetState extends State<NavMenuWidget> {
       action: isClient ? null : _openAfterProjectPick(() => const SlotsScreen()),
     ));
 
-    if (rbac.canViewSync(currentRole, RBACService.payments)) {
+    // Payments is on the shared project home for clients and staff.
+    projectEntries.add(_NavEntry(
+      actionKey: 'payments',
+      title: 'Payments',
+      icon: Icons.payment_rounded,
+      route: isClient ? () => PaymentTaskWidget() : null,
+      action:
+          isClient ? null : _openAfterProjectPick(() => PaymentTaskWidget()),
+    ));
+    if (isClient || rbac.canViewSync(currentRole, RBACService.payments)) {
       projectEntries.add(_NavEntry(
-        actionKey: 'payments',
-        title: 'Payments',
-        icon: Icons.payment_rounded,
-        route: isClient ? () => PaymentTaskWidget() : null,
-        action:
-            isClient ? null : _openAfterProjectPick(() => PaymentTaskWidget()),
+        actionKey: 'nt_payments',
+        title: 'NT Payments',
+        icon: Icons.receipt_long_rounded,
+        route: isClient
+            ? () => const PaymentTaskWidget(
+                  initialCategory: PaymentCategory.nonTender,
+                )
+            : null,
+        action: isClient
+            ? null
+            : _openAfterProjectPick(
+                () => const PaymentTaskWidget(
+                  initialCategory: PaymentCategory.nonTender,
+                ),
+              ),
       ));
-      if (isClient) {
-        projectEntries.add(_NavEntry(
-          actionKey: 'nt_payments',
-          title: 'NT Payments',
-          icon: Icons.receipt_long_rounded,
-          route: () => const PaymentTaskWidget(
-            initialCategory: PaymentCategory.nonTender,
-          ),
-        ));
-      }
     }
 
     if (isClient) {
@@ -797,7 +795,7 @@ class NavMenuWidgetState extends State<NavMenuWidget> {
     );
 
     return Drawer(
-      backgroundColor: Colors.white,
+      backgroundColor: AppTheme.darkBackgroundSecondary,
       child: SafeArea(
         child: Column(
           children: [
@@ -822,12 +820,12 @@ class NavMenuWidgetState extends State<NavMenuWidget> {
                     backgroundColor: Colors.white.withValues(alpha: 0.12),
                     borderColor: Colors.white.withValues(alpha: 0.2),
                     showEditBadge: true,
-                    onTap: _changeProfilePicture,
+                    onTap: _openProfile,
                   ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: InkWell(
-                      onTap: _changeProfilePicture,
+                      onTap: _openProfile,
                       borderRadius: BorderRadius.circular(8),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -855,9 +853,7 @@ class NavMenuWidgetState extends State<NavMenuWidget> {
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            profilePicture == null || profilePicture!.isEmpty
-                                ? 'Tap to add photo'
-                                : 'Tap to change photo',
+                            'Tap to open profile',
                             style: TextStyle(
                               color: Colors.white.withValues(alpha: 0.7),
                               fontSize: 11.5,

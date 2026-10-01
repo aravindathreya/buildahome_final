@@ -218,7 +218,7 @@ class TaskScreen extends State<TaskScreenClass> {
         Text(
           'Home construction schedule',
           style: TextStyle(
-            color: AppTheme.navy,
+            color: AppTheme.darkTextPrimary,
             fontSize: 18,
             fontWeight: FontWeight.w800,
             letterSpacing: -0.2,
@@ -308,7 +308,7 @@ class TaskScreen extends State<TaskScreenClass> {
     return TextField(
       controller: _searchController,
       onChanged: (value) => setState(() => _searchQuery = value),
-      style: const TextStyle(color: AppTheme.navy, fontWeight: FontWeight.w600),
+      style: const TextStyle(color: AppTheme.darkTextPrimary, fontWeight: FontWeight.w600),
       decoration: InputDecoration(
         hintText: 'Search tasks, notes or dates',
         hintStyle: const TextStyle(
@@ -326,7 +326,7 @@ class TaskScreen extends State<TaskScreenClass> {
                 },
               ),
         filled: true,
-        fillColor: Colors.white,
+        fillColor: AppTheme.darkBackgroundPrimaryLight,
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
           borderSide: const BorderSide(color: AppTheme.border),
@@ -598,7 +598,7 @@ class _SummaryCard extends StatelessWidget {
       width: targetWidth < 120 ? double.infinity : targetWidth,
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppTheme.darkBackgroundSecondary,
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: AppTheme.border),
         boxShadow: const [
@@ -623,7 +623,7 @@ class _SummaryCard extends StatelessWidget {
                       : const Color(0xFFEEF2FF),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: Icon(icon, color: AppTheme.navy, size: 22),
+                child: Icon(icon, color: AppTheme.darkTextPrimary, size: 22),
               ),
               const Spacer(),
               Text(
@@ -642,7 +642,7 @@ class _SummaryCard extends StatelessWidget {
             style: const TextStyle(
               fontSize: 14.5,
               fontWeight: FontWeight.w800,
-              color: AppTheme.navy,
+              color: AppTheme.darkTextPrimary,
             ),
           ),
           const SizedBox(height: 4),

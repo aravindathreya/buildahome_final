@@ -205,6 +205,8 @@ class LegacyClientDashboardScreenState extends State<LegacyClientDashboardScreen
   var value = " ";
   String? completed;
   double docDelayDays = 0;
+  int? totalDays;
+  int? baseTotalDays;
   dynamic updateResponseBody;
   var blocked = false;
   var bolckReason = '';
@@ -332,6 +334,8 @@ class LegacyClientDashboardScreenState extends State<LegacyClientDashboardScreen
       location = nextLocation;
       completed = nextCompletion;
       docDelayDays = nextDocDelay;
+      totalDays = dataProvider.clientTotalDays;
+      baseTotalDays = dataProvider.clientBaseTotalDays;
       blocked = nextBlocked;
       bolckReason = nextBlockReason;
       value = nextValue;
@@ -866,6 +870,44 @@ class LegacyClientDashboardScreenState extends State<LegacyClientDashboardScreen
     await _navigateToWidget(PaymentTaskWidget(initialCategory: category));
   }
 
+  String _wholeNumber(num value) {
+    if (value == value.roundToDouble()) return value.round().toString();
+    return value.toString();
+  }
+
+  String _dayWord(num count) => count == 1 ? 'day' : 'days';
+
+  String? _percentText() {
+    final raw = completed?.replaceAll('%', '').trim();
+    if (raw == null || raw.isEmpty) return null;
+    final value = double.tryParse(raw);
+    if (value == null) return raw;
+    return _wholeNumber(value);
+  }
+
+  int? _remainingDays() {
+    final total = totalDays;
+    final percent = double.tryParse(_percentText() ?? '');
+    if (total == null || total < 0 || percent == null) return null;
+    final completedDays = (total * percent.clamp(0.0, 100.0) / 100).round();
+    final remaining = total - completedDays;
+    return remaining < 0 ? 0 : remaining;
+  }
+
+  String _progressLabel() {
+    final percent = _percentText();
+    if (percent == null) return '';
+    final duration = totalDays;
+    if (duration == null || duration <= 0) return '$percent% Complete';
+    return '$percent% · $duration days';
+  }
+
+  String? _pendingLabel() {
+    final remaining = _remainingDays();
+    if (remaining == null) return null;
+    return '$remaining ${_dayWord(remaining)} pending';
+  }
+
   Widget _buildSummarySection() {
     final summaryCard = TweenAnimationBuilder<double>(
       tween: Tween(begin: 0.0, end: 1.0),
@@ -942,20 +984,9 @@ class LegacyClientDashboardScreenState extends State<LegacyClientDashboardScreen
                           fontWeight: FontWeight.w500,
                         ),
                       ),
-                      if (docDelayDays > 0) ...[
-                        SizedBox(height: 2),
-                        Text(
-                          '+' + (docDelayDays % 1 == 0 ? docDelayDays.toInt().toString() : docDelayDays.toString()) + ' schedule days (DOC)',
-                          style: TextStyle(
-                            fontSize: 11.5,
-                            color: AppTheme.textSecondary,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ],
                       SizedBox(height: 4),
                       Text(
-                        "$completed% Complete",
+                        _progressLabel(),
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
@@ -963,6 +994,41 @@ class LegacyClientDashboardScreenState extends State<LegacyClientDashboardScreen
                           letterSpacing: 0.5,
                         ),
                       ),
+                      if (_pendingLabel() != null) ...[
+                        SizedBox(height: 2),
+                        Text(
+                          _pendingLabel()!,
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: AppTheme.textPrimary,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                      if (docDelayDays > 0) ...[
+                        SizedBox(height: 2),
+                        Text(
+                          '+${_wholeNumber(docDelayDays)} ${_dayWord(docDelayDays)} delay',
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            color: AppTheme.textSecondary,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                      if (docDelayDays > 0 &&
+                          baseTotalDays != null &&
+                          baseTotalDays! > 0) ...[
+                        SizedBox(height: 2),
+                        Text(
+                          'Planned $baseTotalDays days',
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            color: AppTheme.textSecondary,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -1223,8 +1289,8 @@ class LegacyClientDashboardScreenState extends State<LegacyClientDashboardScreen
   }
 
   Widget _buildLoadingState() {
-    final baseColor = AppTheme.textPrimary.withOpacity(0.6);
-    final highlightColor = Colors.white.withOpacity(0.35);
+    final baseColor = AppTheme.darkBackgroundSecondary;
+    final highlightColor = AppTheme.darkBackgroundPrimaryLight;
 
     return Container(
       color: AppTheme.backgroundPrimary,

@@ -10,6 +10,7 @@ import 'services/data_provider.dart';
 import 'task_display_title.dart';
 import 'indent_task_material.dart';
 import 'widgets/modern_task_card.dart';
+import 'widgets/searchable_select.dart';
 
 class TasksLayout extends StatefulWidget {
   final List<dynamic> initialTasks;
@@ -41,16 +42,16 @@ class _TasksLayoutState extends State<TasksLayout> with SingleTickerProviderStat
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF7F8FB),
+      backgroundColor: AppTheme.darkBackgroundPrimary,
       appBar: AppBar(
         automaticallyImplyLeading: true,
-        backgroundColor: Colors.white,
+        backgroundColor: AppTheme.darkBackgroundSecondary,
         elevation: 0,
-        iconTheme: const IconThemeData(color: kTaskNavy),
+        iconTheme: const IconThemeData(color: AppTheme.darkTextPrimary),
         title: const Text(
           'Tasks',
           style: TextStyle(
-            color: kTaskNavy,
+            color: AppTheme.darkTextPrimary,
             fontSize: 20,
             fontWeight: FontWeight.w800,
           ),
@@ -58,13 +59,13 @@ class _TasksLayoutState extends State<TasksLayout> with SingleTickerProviderStat
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(66),
           child: Container(
-            color: Colors.white,
+            color: AppTheme.darkBackgroundSecondary,
             padding: const EdgeInsets.fromLTRB(18, 0, 18, 14),
             child: Container(
               height: 48,
               padding: const EdgeInsets.all(4),
               decoration: BoxDecoration(
-                color: const Color(0xFFF1F4F8),
+                color: AppTheme.darkBackgroundPrimaryLight,
                 borderRadius: BorderRadius.circular(14),
               ),
               child: TabBar(
@@ -75,11 +76,11 @@ class _TasksLayoutState extends State<TasksLayout> with SingleTickerProviderStat
                 overlayColor: WidgetStateProperty.all(Colors.transparent),
                 labelPadding: EdgeInsets.zero,
                 indicator: BoxDecoration(
-                  color: kTaskNavy,
+                  color: AppTheme.navy,
                   borderRadius: BorderRadius.circular(11),
                 ),
                 labelColor: Colors.white,
-                unselectedLabelColor: kTaskMuted,
+                unselectedLabelColor: AppTheme.darkTextSecondary,
                 labelStyle:
                     const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
                 unselectedLabelStyle:
@@ -460,6 +461,8 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
                   ),
                   child: TextField(
                     controller: _searchController,
+                    textCapitalization: TextCapitalization.sentences,
+                    inputFormatters: const [FirstLetterCapitalFormatter()],
                     style: TextStyle(color: AppTheme.getTextPrimary(context), fontSize: 14),
                     onChanged: (value) {
                       setModalState(() {});

@@ -392,7 +392,7 @@ class _AttendanceScreenState extends State<AttendanceScreen>
   Widget build(BuildContext context) {
     final isAdminChrome =
         DashboardChrome.of(context) == DashboardChromeStyle.admin;
-    final appBarFg = isAdminChrome ? Colors.white : AppTheme.navy;
+    final appBarFg = isAdminChrome ? Colors.white : AppTheme.darkTextPrimary;
 
     return ThemedScaffold(
       title: 'Attendance',
@@ -406,13 +406,13 @@ class _AttendanceScreenState extends State<AttendanceScreen>
       bottom: PreferredSize(
         preferredSize: const Size.fromHeight(66),
         child: Container(
-          color: Colors.white,
+          color: AppTheme.darkBackgroundSecondary,
           padding: const EdgeInsets.fromLTRB(18, 0, 18, 14),
           child: Container(
             height: 48,
             padding: const EdgeInsets.all(4),
             decoration: BoxDecoration(
-              color: const Color(0xFFF1F4F8),
+              color: AppTheme.darkBackgroundPrimaryLight,
               borderRadius: BorderRadius.circular(14),
             ),
             child: TabBar(
@@ -490,7 +490,7 @@ class _AttendanceScreenState extends State<AttendanceScreen>
             _statusError!,
             textAlign: TextAlign.center,
             style: const TextStyle(
-              color: AppTheme.navy,
+              color: AppTheme.darkTextPrimary,
               fontWeight: FontWeight.w700,
             ),
           ),
@@ -532,7 +532,7 @@ class _AttendanceScreenState extends State<AttendanceScreen>
         const Text(
           'Assigned workspaces',
           style: TextStyle(
-            color: AppTheme.navy,
+            color: AppTheme.darkTextPrimary,
             fontWeight: FontWeight.w800,
             fontSize: 16,
           ),
@@ -571,7 +571,7 @@ class _AttendanceScreenState extends State<AttendanceScreen>
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppTheme.darkBackgroundSecondary,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: AppTheme.border),
       ),
@@ -599,7 +599,7 @@ class _AttendanceScreenState extends State<AttendanceScreen>
                 child: Text(
                   headline,
                   style: const TextStyle(
-                    color: AppTheme.navy,
+                    color: AppTheme.darkTextPrimary,
                     fontWeight: FontWeight.w800,
                     fontSize: 20,
                   ),
@@ -684,7 +684,7 @@ class _AttendanceScreenState extends State<AttendanceScreen>
                 Text(
                   title,
                   style: const TextStyle(
-                    color: AppTheme.navy,
+                    color: AppTheme.darkTextPrimary,
                     fontWeight: FontWeight.w800,
                     fontSize: 14,
                   ),
@@ -729,7 +729,7 @@ class _AttendanceScreenState extends State<AttendanceScreen>
         labelText: 'Note (optional)',
         hintText: 'Optional note for this attendance',
         filled: true,
-        fillColor: Colors.white,
+        fillColor: AppTheme.darkBackgroundPrimaryLight,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
           borderSide: const BorderSide(color: AppTheme.border),
@@ -755,7 +755,7 @@ class _AttendanceScreenState extends State<AttendanceScreen>
         icon: const Icon(Icons.logout_rounded, size: 18),
         label: const Text('Check out'),
         style: OutlinedButton.styleFrom(
-          foregroundColor: AppTheme.navy,
+          foregroundColor: AppTheme.darkTextPrimary,
           side: const BorderSide(color: AppTheme.navy),
           minimumSize: const Size.fromHeight(48),
           shape: RoundedRectangleBorder(
@@ -797,7 +797,7 @@ class _AttendanceScreenState extends State<AttendanceScreen>
       width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppTheme.darkBackgroundSecondary,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: AppTheme.border),
       ),
@@ -809,7 +809,7 @@ class _AttendanceScreenState extends State<AttendanceScreen>
               const Text(
                 'Today’s record',
                 style: TextStyle(
-                  color: AppTheme.navy,
+                  color: AppTheme.darkTextPrimary,
                   fontWeight: FontWeight.w800,
                   fontSize: 15,
                 ),
@@ -849,7 +849,7 @@ class _AttendanceScreenState extends State<AttendanceScreen>
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppTheme.darkBackgroundSecondary,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
           color: match?.withinRadius == true
@@ -866,7 +866,7 @@ class _AttendanceScreenState extends State<AttendanceScreen>
                 child: Text(
                   assignment.workspaceName,
                   style: const TextStyle(
-                    color: AppTheme.navy,
+                    color: AppTheme.darkTextPrimary,
                     fontWeight: FontWeight.w800,
                     fontSize: 15,
                   ),
@@ -942,7 +942,7 @@ class _AttendanceScreenState extends State<AttendanceScreen>
             _historyError!,
             textAlign: TextAlign.center,
             style: const TextStyle(
-              color: AppTheme.navy,
+              color: AppTheme.darkTextPrimary,
               fontWeight: FontWeight.w700,
             ),
           ),
@@ -990,7 +990,7 @@ class _AttendanceScreenState extends State<AttendanceScreen>
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppTheme.darkBackgroundSecondary,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: AppTheme.border),
       ),
@@ -1019,7 +1019,7 @@ class _AttendanceScreenState extends State<AttendanceScreen>
           Text(
             value,
             style: const TextStyle(
-              color: AppTheme.navy,
+              color: AppTheme.darkTextPrimary,
               fontWeight: FontWeight.w800,
               fontSize: 18,
             ),
@@ -1043,7 +1043,7 @@ class _AttendanceScreenState extends State<AttendanceScreen>
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppTheme.darkBackgroundSecondary,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: AppTheme.border),
       ),
@@ -1058,7 +1058,7 @@ class _AttendanceScreenState extends State<AttendanceScreen>
                       ? row.date
                       : '${row.dayName}, ${row.date}',
                   style: const TextStyle(
-                    color: AppTheme.navy,
+                    color: AppTheme.darkTextPrimary,
                     fontWeight: FontWeight.w800,
                     fontSize: 14,
                   ),
@@ -1110,7 +1110,7 @@ class _AttendanceScreenState extends State<AttendanceScreen>
         fg = const Color(0xFF4338CA);
         break;
       default:
-        bg = const Color(0xFFEEF2F7);
+        bg = AppTheme.darkBackgroundPrimaryLight;
         fg = AppTheme.mutedGrey;
     }
     return Container(
@@ -1151,7 +1151,7 @@ class _AttendanceScreenState extends State<AttendanceScreen>
             child: Text(
               value,
               style: const TextStyle(
-                color: AppTheme.navy,
+                color: AppTheme.darkTextPrimary,
                 fontWeight: FontWeight.w700,
                 fontSize: 13,
               ),
@@ -1186,7 +1186,7 @@ class _AttendanceScreenState extends State<AttendanceScreen>
       width: double.infinity,
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppTheme.darkBackgroundSecondary,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: AppTheme.border),
       ),
@@ -1249,12 +1249,12 @@ class _LocationOverrideDialogState extends State<_LocationOverrideDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      backgroundColor: Colors.white,
+      backgroundColor: AppTheme.darkBackgroundSecondary,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       title: const Text(
         'Override attendance?',
         style: TextStyle(
-          color: AppTheme.navy,
+          color: AppTheme.darkTextPrimary,
           fontWeight: FontWeight.w800,
           fontSize: 18,
         ),

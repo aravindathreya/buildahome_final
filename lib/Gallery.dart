@@ -249,10 +249,10 @@ class _GalleryState extends State<Gallery> {
       backgroundColor: AppTheme.getBackgroundPrimary(context),
       appBar: AppBar(
         backgroundColor: AppTheme.getBackgroundSecondary(context),
-        foregroundColor: AppTheme.navy,
+        foregroundColor: AppTheme.darkTextPrimary,
         elevation: 0,
-        iconTheme: const IconThemeData(color: AppTheme.navy),
-        actionsIconTheme: const IconThemeData(color: AppTheme.navy),
+        iconTheme: const IconThemeData(color: AppTheme.darkTextPrimary),
+        actionsIconTheme: const IconThemeData(color: AppTheme.darkTextPrimary),
         automaticallyImplyLeading: canPop,
         leading: canPop
             ? IconButton(
@@ -264,7 +264,7 @@ class _GalleryState extends State<Gallery> {
           'Gallery',
           style: theme.textTheme.headlineSmall?.copyWith(
             fontSize: 20,
-            color: AppTheme.navy,
+            color: AppTheme.darkTextPrimary,
             fontWeight: FontWeight.w800,
           ),
         ),
@@ -1288,10 +1288,10 @@ class _TimelineGalleryState extends State<TimelineGallery> {
       backgroundColor: AppTheme.getBackgroundPrimary(context),
       appBar: AppBar(
         backgroundColor: AppTheme.getBackgroundSecondary(context),
-        foregroundColor: AppTheme.navy,
+        foregroundColor: AppTheme.darkTextPrimary,
         elevation: 0,
-        iconTheme: const IconThemeData(color: AppTheme.navy),
-        actionsIconTheme: const IconThemeData(color: AppTheme.navy),
+        iconTheme: const IconThemeData(color: AppTheme.darkTextPrimary),
+        actionsIconTheme: const IconThemeData(color: AppTheme.darkTextPrimary),
         automaticallyImplyLeading: canPop,
         leading: canPop
             ? IconButton(
@@ -1303,7 +1303,7 @@ class _TimelineGalleryState extends State<TimelineGallery> {
           'Project Gallery',
           style: theme.textTheme.headlineSmall?.copyWith(
             fontSize: 20,
-            color: AppTheme.navy,
+            color: AppTheme.darkTextPrimary,
             fontWeight: FontWeight.w800,
           ),
         ),
@@ -1492,7 +1492,7 @@ class _TimelineGalleryState extends State<TimelineGallery> {
           onChanged: (value) => setState(() => _searchQuery = value),
           textInputAction: TextInputAction.search,
           style: const TextStyle(
-            color: AppTheme.navy,
+            color: AppTheme.darkTextPrimary,
             fontWeight: FontWeight.w600,
           ),
           decoration: InputDecoration(
@@ -1514,7 +1514,7 @@ class _TimelineGalleryState extends State<TimelineGallery> {
                     },
                   ),
             filled: true,
-            fillColor: Colors.white,
+            fillColor: AppTheme.darkBackgroundPrimaryLight,
             contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(14),
@@ -1615,7 +1615,7 @@ class _TimelineGalleryState extends State<TimelineGallery> {
           margin: const EdgeInsets.only(bottom: 22),
           padding: const EdgeInsets.all(18),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: AppTheme.darkBackgroundSecondary,
             borderRadius: BorderRadius.circular(24),
             border: Border.all(color: const Color(0xFFE8EDF4)),
             boxShadow: [
@@ -1651,7 +1651,7 @@ class _TimelineGalleryState extends State<TimelineGallery> {
                           overflow: TextOverflow.ellipsis,
                           style: theme.textTheme.titleMedium?.copyWith(
                             fontWeight: FontWeight.w800,
-                            color: const Color(0xFF111827),
+                            color: AppTheme.darkTextPrimary,
                             letterSpacing: -0.2,
                           ),
                         ),
@@ -1676,7 +1676,7 @@ class _TimelineGalleryState extends State<TimelineGallery> {
                     child: Text(
                       '${section.items.length} uploads',
                       style: const TextStyle(
-                        color: Color(0xFF374151),
+                        color: AppTheme.darkTextPrimary,
                         fontSize: 11,
                         fontWeight: FontWeight.w800,
                       ),
@@ -1786,7 +1786,7 @@ class _TimelineGalleryState extends State<TimelineGallery> {
   Widget _buildGalleryMediaPreview(_GalleryImage item) {
     if (item.isVideo) {
       return Container(
-        color: const Color(0xFF111827),
+        color: AppTheme.darkTextPrimary,
         child: const Center(
           child: Icon(
             Icons.videocam_rounded,
@@ -1819,7 +1819,7 @@ class _TimelineGalleryState extends State<TimelineGallery> {
           TextSpan(
             text: value,
             style: const TextStyle(
-              color: Color(0xFF111827),
+              color: AppTheme.darkTextPrimary,
               fontWeight: FontWeight.w900,
             ),
           ),
@@ -2283,10 +2283,10 @@ class _GallerySectionDetailScreenState
       backgroundColor: AppTheme.getBackgroundPrimary(context),
       appBar: AppBar(
         backgroundColor: AppTheme.getBackgroundSecondary(context),
-        foregroundColor: AppTheme.navy,
+        foregroundColor: AppTheme.darkTextPrimary,
         elevation: 0,
         scrolledUnderElevation: 0,
-        iconTheme: const IconThemeData(color: AppTheme.navy),
+        iconTheme: const IconThemeData(color: AppTheme.darkTextPrimary),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios_new_rounded),
           onPressed: () => Navigator.of(context).maybePop(),
@@ -2297,7 +2297,7 @@ class _GallerySectionDetailScreenState
           overflow: TextOverflow.ellipsis,
           style: const TextStyle(
             fontWeight: FontWeight.w800,
-            color: AppTheme.navy,
+            color: AppTheme.darkTextPrimary,
           ),
         ),
       ),
@@ -2383,7 +2383,7 @@ class _GallerySectionDetailScreenState
       onChanged: _onQueryChanged,
       textInputAction: TextInputAction.search,
       style: const TextStyle(
-        color: AppTheme.navy,
+        color: AppTheme.darkTextPrimary,
         fontWeight: FontWeight.w600,
       ),
       decoration: InputDecoration(
@@ -2405,7 +2405,7 @@ class _GallerySectionDetailScreenState
                 },
               ),
         filled: true,
-        fillColor: Colors.white,
+        fillColor: AppTheme.darkBackgroundPrimaryLight,
         contentPadding:
             const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
         enabledBorder: OutlineInputBorder(
@@ -2429,7 +2429,7 @@ class _GallerySectionDetailScreenState
       width: double.infinity,
       padding: const EdgeInsets.all(28),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppTheme.darkBackgroundSecondary,
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: const Color(0xFFE8EDF4)),
       ),
@@ -2441,7 +2441,7 @@ class _GallerySectionDetailScreenState
             'No matching photos',
             style: TextStyle(
               fontWeight: FontWeight.w800,
-              color: Color(0xFF111827),
+              color: AppTheme.darkTextPrimary,
             ),
           ),
           SizedBox(height: 4),
@@ -2462,7 +2462,7 @@ class _GallerySectionDetailScreenState
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppTheme.darkBackgroundSecondary,
         borderRadius: BorderRadius.circular(24),
         border: Border.all(color: const Color(0xFFE8EDF4)),
         boxShadow: [
@@ -2494,7 +2494,7 @@ class _GallerySectionDetailScreenState
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                    color: Color(0xFF111827),
+                    color: AppTheme.darkTextPrimary,
                     fontSize: 18,
                     fontWeight: FontWeight.w900,
                     letterSpacing: -0.2,
@@ -2523,7 +2523,7 @@ class _GallerySectionDetailScreenState
       borderRadius: BorderRadius.circular(22),
       child: Container(
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: AppTheme.darkBackgroundSecondary,
           borderRadius: BorderRadius.circular(22),
           border: Border.all(color: const Color(0xFFE8EDF4)),
           boxShadow: [
@@ -2546,7 +2546,7 @@ class _GallerySectionDetailScreenState
                   children: [
                     item.isVideo
                         ? Container(
-                            color: const Color(0xFF111827),
+                            color: AppTheme.darkTextPrimary,
                             child: const Center(
                               child: Icon(
                                 Icons.videocam_rounded,
@@ -2589,7 +2589,7 @@ class _GallerySectionDetailScreenState
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
-                      color: Color(0xFF111827),
+                      color: AppTheme.darkTextPrimary,
                       fontSize: 12,
                       fontWeight: FontWeight.w900,
                     ),

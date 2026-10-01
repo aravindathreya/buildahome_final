@@ -96,7 +96,7 @@ class DocumentObjectState extends State<DocumentObject> {
                             margin: EdgeInsets.only(top: 20),
                             child: Text(
                               children[x].toString(),
-                              style: TextStyle(color: AppTheme.navy, fontWeight: FontWeight.bold),
+                              style: TextStyle(color: AppTheme.darkTextPrimary, fontWeight: FontWeight.bold),
                             ),
                           ))
                   ],
@@ -172,10 +172,10 @@ class DocumentsState extends State<Documents> {
     final GlobalKey<ScaffoldState> _scaffoldKey = new GlobalKey<ScaffoldState>();
     return MaterialApp(
       title: appTitle,
-      theme: AppTheme.getLightTheme(),
+      theme: AppTheme.getDarkTheme(),
       home: Scaffold(
           key: _scaffoldKey,
-          backgroundColor: Colors.white,
+          backgroundColor: AppTheme.darkBackgroundSecondary,
           appBar: AppBar(
             automaticallyImplyLeading: false,
             title: Text(appTitle),
@@ -184,15 +184,15 @@ class DocumentsState extends State<Documents> {
                 onPressed: () => {
                       Navigator.pop(context),
                     }),
-            backgroundColor: Colors.white,
-            foregroundColor: AppTheme.navy,
+            backgroundColor: AppTheme.darkBackgroundSecondary,
+            foregroundColor: AppTheme.darkTextPrimary,
             elevation: 0,
-            iconTheme: const IconThemeData(color: AppTheme.navy),
-            titleTextStyle: const TextStyle(color: AppTheme.navy, fontSize: 18, fontWeight: FontWeight.w800),
+            iconTheme: const IconThemeData(color: AppTheme.darkTextPrimary),
+            titleTextStyle: const TextStyle(color: AppTheme.darkTextPrimary, fontSize: 18, fontWeight: FontWeight.w800),
           ),
           bottomNavigationBar: BottomNavigationBar(
             currentIndex: 1,
-            selectedItemColor: AppTheme.navy,
+            selectedItemColor: AppTheme.darkTextPrimary,
             onTap: (int index) {
               if (index == 0) {
                 Navigator.pushReplacement(

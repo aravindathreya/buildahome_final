@@ -6,8 +6,9 @@ import 'package:photo_view/photo_view.dart';
 import 'dart:async';
 import 'dart:io';
 import 'package:image_picker/image_picker.dart';
-import 'package:permission_handler/permission_handler.dart';
 import 'app_theme.dart';
+import 'services/camera_permission.dart';
+import 'services/daily_update_prompt_service.dart';
 import 'services/data_provider.dart';
 import 'widgets/searchable_select.dart';
 import 'widgets/full_screen_message.dart';
@@ -63,7 +64,7 @@ class AddDailyUpdate extends StatelessWidget {
   Widget build(BuildContext context) {
     return ThemedScaffold(
       title: 'Add Daily Update',
-      backgroundColor: const Color(0xFFF7F8FB),
+      backgroundColor: AppTheme.darkBackgroundPrimary,
       body: SafeArea(
         child: AddDailyUpdateForm(returnToAdminDashboard: returnToAdminDashboard),
       ),
@@ -83,11 +84,11 @@ class AddDailyUpdateForm extends StatefulWidget {
 }
 
 class AddDailyUpdateState extends State<AddDailyUpdateForm> {
-  static const Color _navy = AppTheme.navy;
+  static const Color _navy = Color(0xFF1B254B);
   static const Color _mutedGrey = AppTheme.mutedGrey;
   static const Color _cardBorder = AppTheme.border;
   static const Color _softShadow = AppTheme.softShadow;
-  static const Color _pageBg = Color(0xFFF7F8FB);
+  static const Color _pageBg = AppTheme.darkBackgroundPrimary;
   static const Color _success = Color(0xFF16A34A);
   static const Color _successBg = Color(0xFFDCFCE7);
 
@@ -182,126 +183,6 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
     setState(() {
       projects = DataProvider().projects;
     });
-  }
-
-  /// Camera needs an explicit permission. Gallery uses the system photo picker
-  /// (PHPicker / Android Photo Picker), so pre-checking Permission.photos is
-  /// unnecessary and incorrectly blocks Limited Photo Access on iOS.
-  Future<bool> checkPermissionStatus({required bool forCamera}) async {
-    if (!forCamera) return true;
-
-    try {
-      var status = await Permission.camera.status;
-      if (status.isGranted) return true;
-
-      status = await Permission.camera.request();
-      if (status.isGranted) return true;
-
-      if (mounted) {
-        await _showPermissionDeniedDialog(forCamera: true);
-      }
-      return false;
-    } catch (e) {
-      print('[AddDailyUpdate] Camera permission error: $e');
-      // Let image_picker attempt the request itself.
-      return true;
-    }
-  }
-
-  Future<void> _showPermissionDeniedDialog({required bool forCamera}) async {
-    if (!mounted) return;
-
-    final permissionStatus = forCamera
-        ? await Permission.camera.status
-        : await Permission.photos.status;
-    final isPermanentlyDenied = permissionStatus.isPermanentlyDenied;
-
-    await showDialog(
-      context: context,
-      builder: (BuildContext dialogContext) {
-        return AlertDialog(
-          backgroundColor: Colors.white,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          title: Row(
-            children: [
-              Icon(
-                forCamera ? Icons.photo_camera_rounded : Icons.photo_library_rounded,
-                color: const Color(0xFFEA580C),
-                size: 24,
-              ),
-              const SizedBox(width: 12),
-              const Expanded(
-                child: Text(
-                  'Permission Required',
-                  style: TextStyle(
-                    color: AppTheme.navy,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          content: Text(
-            forCamera
-                ? 'Camera permission is required to take photos. ${isPermanentlyDenied ? 'Please enable it in your device settings.' : 'Please allow camera access when prompted.'}'
-                : 'Photo access is needed to select images. ${isPermanentlyDenied ? 'Please enable it in your device settings.' : 'Please allow access when prompted.'}',
-            style: const TextStyle(
-              color: AppTheme.mutedGrey,
-              fontWeight: FontWeight.w500,
-              height: 1.4,
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(),
-              child: const Text(
-                'Cancel',
-                style: TextStyle(
-                  color: AppTheme.mutedGrey,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
-            if (!isPermanentlyDenied && forCamera)
-              TextButton(
-                onPressed: () async {
-                  Navigator.of(dialogContext).pop();
-                  final status = await Permission.camera.request();
-                  if (status.isGranted && mounted) {
-                    await _takePhotoFromCamera();
-                  } else if (mounted) {
-                    await openAppSettings();
-                  }
-                },
-                child: const Text(
-                  'Grant Permission',
-                  style: TextStyle(
-                    color: AppTheme.navy,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-            ElevatedButton(
-              onPressed: () async {
-                Navigator.of(dialogContext).pop();
-                await openAppSettings();
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.navy,
-                foregroundColor: Colors.white,
-                elevation: 0,
-                padding:
-                    const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-              child: const Text('Open Settings'),
-            ),
-          ],
-        );
-      },
-    );
   }
 
   bool _uploadDialogShown = false;
@@ -399,12 +280,12 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
       context: context,
       builder: (BuildContext context) {
         return AlertDialog(
-          backgroundColor: Colors.white,
+          backgroundColor: AppTheme.darkBackgroundSecondary,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
           title: const Text(
             'Select Image Source',
             style: TextStyle(
-              color: _navy,
+              color: AppTheme.darkTextPrimary,
               fontWeight: FontWeight.w800,
               fontSize: 17,
             ),
@@ -421,11 +302,11 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
                     color: const Color(0xFFEEF2FF),
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: const Icon(Icons.photo_camera_rounded, color: _navy, size: 20),
+                  child: const Icon(Icons.photo_camera_rounded, color: AppTheme.darkTextPrimary, size: 20),
                 ),
                 title: const Text(
                   'Take Photo',
-                  style: TextStyle(color: _navy, fontWeight: FontWeight.w700),
+                  style: TextStyle(color: AppTheme.darkTextPrimary, fontWeight: FontWeight.w700),
                 ),
                 onTap: () {
                   Navigator.pop(context);
@@ -441,11 +322,11 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
                     color: const Color(0xFFEEF2FF),
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: const Icon(Icons.photo_library_rounded, color: _navy, size: 20),
+                  child: const Icon(Icons.photo_library_rounded, color: AppTheme.darkTextPrimary, size: 20),
                 ),
                 title: const Text(
                   'Choose from Gallery',
-                  style: TextStyle(color: _navy, fontWeight: FontWeight.w700),
+                  style: TextStyle(color: AppTheme.darkTextPrimary, fontWeight: FontWeight.w700),
                 ),
                 onTap: () {
                   Navigator.pop(context);
@@ -462,12 +343,9 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
   Future<void> _takePhotoFromCamera() async {
     try {
       if (!mounted) return;
-      
-      // Check camera permission
-      final hasPermission = await checkPermissionStatus(forCamera: true);
-      if (!hasPermission) {
-        return;
-      }
+
+      if (!await ensureCameraPermission(context)) return;
+      if (!mounted) return;
 
       final picker = ImagePicker();
       final pickedFile = await picker.pickImage(
@@ -678,7 +556,7 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 14),
       decoration: const BoxDecoration(
-        color: Colors.white,
+        color: AppTheme.darkBackgroundSecondary,
         border: Border(bottom: BorderSide(color: _cardBorder)),
       ),
       child: Column(
@@ -699,7 +577,7 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
               Text(
                 stepTitles[_currentStep],
                 style: const TextStyle(
-                  color: _navy,
+                  color: AppTheme.darkTextPrimary,
                   fontSize: 13,
                   fontWeight: FontWeight.w800,
                 ),
@@ -712,7 +590,7 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
             child: LinearProgressIndicator(
               value: progress,
               minHeight: 6,
-              backgroundColor: const Color(0xFFEEF2F7),
+              backgroundColor: AppTheme.darkBackgroundPrimaryLight,
               valueColor: const AlwaysStoppedAnimation<Color>(_navy),
             ),
           ),
@@ -849,7 +727,7 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 14, 20, 20),
       decoration: const BoxDecoration(
-        color: Colors.white,
+        color: AppTheme.darkBackgroundSecondary,
         border: Border(top: BorderSide(color: _cardBorder)),
       ),
       child: Row(
@@ -859,7 +737,7 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
               child: OutlinedButton(
                 onPressed: _previousStep,
                 style: OutlinedButton.styleFrom(
-                  foregroundColor: _navy,
+                  foregroundColor: AppTheme.darkTextPrimary,
                   side: const BorderSide(color: _cardBorder),
                   padding: const EdgeInsets.symmetric(vertical: 14),
                   shape: RoundedRectangleBorder(
@@ -1013,6 +891,7 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
         });
 
         if (response.statusCode == 200) {
+          await DailyUpdatePromptService.markSubmittedToday();
           if (!mounted) return;
           setState(() {
             selectedPictures.clear();
@@ -1147,6 +1026,7 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
             );
 
             if (response.statusCode == 200) {
+              await DailyUpdatePromptService.markSubmittedToday();
               successfulImageUploadCount += 1;
               
               // Update progress
@@ -1376,7 +1256,7 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
                       color: const Color(0xFFEEF2FF),
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: const Icon(Icons.apartment_rounded, color: _navy),
+                    child: const Icon(Icons.apartment_rounded, color: AppTheme.darkTextPrimary),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -1398,7 +1278,7 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
                               ? (selectedProject['name'] ?? 'Unknown')
                               : 'Tap to select a project',
                           style: TextStyle(
-                            color: selectedProject != null ? _navy : _mutedGrey,
+                            color: selectedProject != null ? AppTheme.darkTextPrimary : _mutedGrey,
                             fontSize: 15.5,
                             fontWeight: selectedProject != null
                                 ? FontWeight.w800
@@ -1451,7 +1331,7 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
                     child: const Icon(
                       Icons.add_a_photo_rounded,
                       size: 22,
-                      color: _navy,
+                      color: AppTheme.darkTextPrimary,
                     ),
                   ),
                   const SizedBox(width: 14),
@@ -1464,7 +1344,7 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
                           style: const TextStyle(
                             fontSize: 15,
                             fontWeight: FontWeight.w800,
-                            color: _navy,
+                            color: AppTheme.darkTextPrimary,
                           ),
                         ),
                         const SizedBox(height: 3),
@@ -1493,7 +1373,7 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
                   style: const TextStyle(
                     fontSize: 14.5,
                     fontWeight: FontWeight.w800,
-                    color: _navy,
+                    color: AppTheme.darkTextPrimary,
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -1620,7 +1500,7 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
                       color: const Color(0xFFEEF2FF),
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: const Icon(Icons.groups_rounded, color: _navy),
+                    child: const Icon(Icons.groups_rounded, color: AppTheme.darkTextPrimary),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -1632,7 +1512,7 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
                               ? 'Tap to add tradesmen'
                               : '${selectedTradesmen.length} tradesmen selected',
                           style: TextStyle(
-                            color: selectedTradesmen.isEmpty ? _mutedGrey : _navy,
+                            color: selectedTradesmen.isEmpty ? _mutedGrey : AppTheme.darkTextPrimary,
                             fontSize: 15,
                             fontWeight: selectedTradesmen.isEmpty
                                 ? FontWeight.w600
@@ -1659,7 +1539,7 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
                                     Text(
                                       entry.key,
                                       style: const TextStyle(
-                                        color: _navy,
+                                        color: AppTheme.darkTextPrimary,
                                         fontSize: 12,
                                         fontWeight: FontWeight.w700,
                                       ),
@@ -1775,7 +1655,7 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
                   maxLines: 8,
                   style: const TextStyle(
                     fontSize: 15.5,
-                    color: _navy,
+                    color: AppTheme.darkTextPrimary,
                     fontWeight: FontWeight.w500,
                     height: 1.45,
                   ),
@@ -1904,7 +1784,7 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
                             Text(
                               entry.key,
                               style: const TextStyle(
-                                color: _navy,
+                                color: AppTheme.darkTextPrimary,
                                 fontSize: 12,
                                 fontWeight: FontWeight.w700,
                               ),
@@ -1983,7 +1863,7 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
                 child: Icon(
                   icon,
                   size: 20,
-                  color: isComplete ? _success : _navy,
+                  color: isComplete ? _success : AppTheme.darkTextPrimary,
                 ),
               ),
               const SizedBox(width: 12),
@@ -1993,7 +1873,7 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
                   style: const TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w800,
-                    color: _navy,
+                    color: AppTheme.darkTextPrimary,
                   ),
                 ),
               ),
@@ -2015,7 +1895,7 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
                 content,
                 style: const TextStyle(
                   fontSize: 14,
-                  color: _navy,
+                  color: AppTheme.darkTextPrimary,
                   height: 1.5,
                   fontWeight: FontWeight.w500,
                 ),
@@ -2026,7 +1906,7 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
               content,
               style: TextStyle(
                 fontSize: 14,
-                color: isComplete ? _navy : _mutedGrey,
+                color: isComplete ? AppTheme.darkTextPrimary : _mutedGrey,
                 fontWeight: isComplete ? FontWeight.w600 : FontWeight.w500,
               ),
             ),
@@ -2069,7 +1949,7 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
               child: Icon(
                 isCompleted ? Icons.check_rounded : icon,
                 size: 20,
-                color: isCompleted ? _success : _navy,
+                color: isCompleted ? _success : AppTheme.darkTextPrimary,
               ),
             ),
             const SizedBox(width: 12),
@@ -2079,7 +1959,7 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
                 style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.w800,
-                  color: isCompleted ? _success : _navy,
+                  color: isCompleted ? _success : AppTheme.darkTextPrimary,
                   letterSpacing: -0.2,
                 ),
               ),
@@ -2135,7 +2015,7 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
                             ),
                             child: const Icon(
                               Icons.groups_rounded,
-                              color: _navy,
+                              color: AppTheme.darkTextPrimary,
                               size: 22,
                             ),
                           ),
@@ -2144,7 +2024,7 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
                             child: Text(
                               tradesmenName,
                               style: const TextStyle(
-                                color: _navy,
+                                color: AppTheme.darkTextPrimary,
                                 fontSize: 18,
                                 fontWeight: FontWeight.w800,
                               ),
@@ -2166,7 +2046,7 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
                         controller: countController,
                         keyboardType: TextInputType.number,
                         style: const TextStyle(
-                          color: _navy,
+                          color: AppTheme.darkTextPrimary,
                           fontSize: 18,
                           fontWeight: FontWeight.w700,
                         ),

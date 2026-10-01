@@ -20,7 +20,15 @@ allprojects {
     }
 }
 
-rootProject.buildDir = '../build'
+// External volumes (ExFAT) store macOS provenance as AppleDouble `._*`
+// files, which makes AAPT fail release resource linking. Point
+// ANDROID_BUILD_DIR at an APFS directory to build off that volume.
+def androidBuildDir = findProperty('androidBuildDir') ?: System.getenv('ANDROID_BUILD_DIR')
+if (androidBuildDir != null && !androidBuildDir.trim().isEmpty()) {
+    rootProject.buildDir = androidBuildDir
+} else {
+    rootProject.buildDir = '../build'
+}
 subprojects {
     project.buildDir = "${rootProject.buildDir}/${project.name}"
 }
@@ -41,6 +49,7 @@ subprojects {
         }
     }
 }
+
 
 // Fix for AGP builds failing with:
 // "defaultConfig contains custom BuildConfig fields, but the feature is disabled."

@@ -63,8 +63,9 @@ class _AppState extends State<App> with WidgetsBindingObserver {
     return MaterialApp(
       title: appTitle,
       debugShowCheckedModeBanner: false,
-      theme: AppTheme.getLightTheme(),
-      themeMode: ThemeMode.light,
+      theme: AppTheme.getDarkTheme(),
+      darkTheme: AppTheme.getDarkTheme(),
+      themeMode: ThemeMode.dark,
       scrollBehavior: const AppScrollBehavior(),
       navigatorKey: globalNavigatorKey,
       scaffoldMessengerKey: globalScaffoldMessengerKey,

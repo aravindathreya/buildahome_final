@@ -23,7 +23,7 @@ class DprScreen extends StatefulWidget {
 }
 
 class DprState extends State<DprScreen> {
-  static const Color _navy = AppTheme.navy;
+  static const Color _navy = Color(0xFF1B254B);
   static const Color _mutedGrey = AppTheme.mutedGrey;
   static const Color _cardBorder = AppTheme.border;
 
@@ -127,12 +127,12 @@ class DprState extends State<DprScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        backgroundColor: Colors.white,
+        backgroundColor: AppTheme.darkBackgroundSecondary,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Text(
           'Delete update?',
           style: TextStyle(
-            color: _navy,
+            color: AppTheme.darkTextPrimary,
             fontWeight: FontWeight.w800,
             fontSize: 18,
           ),
@@ -180,7 +180,7 @@ class DprState extends State<DprScreen> {
 
     return ThemedScaffold(
       title: widget.title,
-      backgroundColor: const Color(0xFFF7F8FB),
+      backgroundColor: AppTheme.darkBackgroundPrimary,
       body: body,
     );
   }
@@ -251,13 +251,13 @@ class DprState extends State<DprScreen> {
                 width: 28,
                 height: 28,
                 decoration: BoxDecoration(
-                  color: const Color(0xFFEEF2F7),
+                  color: AppTheme.darkBackgroundPrimaryLight,
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: const Icon(
                   Icons.calendar_today_rounded,
                   size: 14,
-                  color: _navy,
+                  color: AppTheme.darkTextPrimary,
                 ),
               ),
               const SizedBox(width: 10),
@@ -265,7 +265,7 @@ class DprState extends State<DprScreen> {
                 child: Text(
                   date.trim().isEmpty ? 'Undated' : date,
                   style: const TextStyle(
-                    color: _navy,
+                    color: AppTheme.darkTextPrimary,
                     fontSize: 14.5,
                     fontWeight: FontWeight.w800,
                     letterSpacing: -0.1,
@@ -288,7 +288,7 @@ class DprState extends State<DprScreen> {
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.fromLTRB(14, 14, 10, 14),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppTheme.darkBackgroundSecondary,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: _cardBorder),
         boxShadow: const [
@@ -320,7 +320,7 @@ class DprState extends State<DprScreen> {
             child: Text(
               title,
               style: const TextStyle(
-                color: _navy,
+                color: AppTheme.darkTextPrimary,
                 fontSize: 14.5,
                 fontWeight: FontWeight.w600,
                 height: 1.35,
@@ -358,7 +358,7 @@ class DprState extends State<DprScreen> {
             height: 84,
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: const Color(0xFFEEF2F7),
+              color: AppTheme.darkBackgroundPrimaryLight,
               borderRadius: BorderRadius.circular(24),
             ),
             child: Icon(icon, size: 36, color: _mutedGrey),
@@ -369,7 +369,7 @@ class DprState extends State<DprScreen> {
           title,
           textAlign: TextAlign.center,
           style: const TextStyle(
-            color: _navy,
+            color: AppTheme.darkTextPrimary,
             fontSize: 18,
             fontWeight: FontWeight.w800,
           ),
