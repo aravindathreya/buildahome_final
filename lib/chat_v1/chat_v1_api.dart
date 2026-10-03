@@ -626,6 +626,31 @@ class ChatV1Api {
     await delete('$chatPrefix/conversations/$conversationId/pin');
   }
 
+  /// Best-effort. A missing endpoint must not block the local pin/mute/archive.
+  Future<void> tryUpdateConversation({
+    required String conversationId,
+    bool? isPinned,
+    bool? isMuted,
+    bool? isArchived,
+  }) async {
+    try {
+      await patch(
+        '$chatPrefix/conversations/$conversationId',
+        body: {
+          if (isPinned != null) 'is_pinned': isPinned,
+          if (isMuted != null) 'is_muted': isMuted,
+          if (isArchived != null) 'is_archived': isArchived,
+        },
+      );
+    } catch (_) {}
+  }
+
+  Future<void> tryLeaveConversation(String conversationId) async {
+    try {
+      await post('$chatPrefix/conversations/$conversationId/leave');
+    } catch (_) {}
+  }
+
   Future<Map<String, dynamic>> editMessage(
     String messageId, {
     required String body,

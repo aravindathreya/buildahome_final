@@ -1135,6 +1135,12 @@ class PaymentItem {
   });
 }
 
+Color _iconOnChip(Color background) {
+  return background.computeLuminance() > 0.45
+      ? const Color(0xFF1C1C1E)
+      : Colors.white;
+}
+
 class _SummaryCard extends StatelessWidget {
   final String title;
   final String subtitle;
@@ -1184,7 +1190,15 @@ class _SummaryCard extends StatelessWidget {
                       : const Color(0xFFEEF2FF),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: Icon(icon, size: 18, color: AppTheme.darkTextPrimary),
+                child: Icon(
+                  icon,
+                  size: 18,
+                  color: _iconOnChip(
+                    gradient.isNotEmpty
+                        ? gradient.first
+                        : const Color(0xFFEEF2FF),
+                  ),
+                ),
               ),
               const SizedBox(width: 8),
               Expanded(

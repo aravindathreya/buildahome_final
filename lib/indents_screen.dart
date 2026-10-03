@@ -1656,6 +1656,7 @@ class CreateIndentTabState extends State<CreateIndentTab> {
             ),
             child: TextFormField(
               controller: reasonCommentTextController,
+              minLines: 3,
               maxLines: 4,
               style: TextStyle(
                 fontSize: 16,
@@ -1668,7 +1669,7 @@ class CreateIndentTabState extends State<CreateIndentTab> {
                 hintText: 'Add an optional comment',
                 hintStyle: TextStyle(color: AppTheme.getTextSecondary(context)),
                 border: InputBorder.none,
-                contentPadding: EdgeInsets.symmetric(horizontal: 0, vertical: 0),
+                contentPadding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
               ),
             ),
           ),

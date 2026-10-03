@@ -125,7 +125,7 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
 
   BoxDecoration _surfaceCard({Color? borderColor}) {
     return BoxDecoration(
-      color: Colors.white,
+      color: AppTheme.darkBackgroundSecondary,
       borderRadius: BorderRadius.circular(18),
       border: Border.all(color: borderColor ?? _cardBorder),
       boxShadow: const [
@@ -299,7 +299,7 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
                   width: 40,
                   height: 40,
                   decoration: BoxDecoration(
-                    color: const Color(0xFFEEF2FF),
+                    color: AppTheme.darkBackgroundPrimaryLight,
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: const Icon(Icons.photo_camera_rounded, color: AppTheme.darkTextPrimary, size: 20),
@@ -319,7 +319,7 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
                   width: 40,
                   height: 40,
                   decoration: BoxDecoration(
-                    color: const Color(0xFFEEF2FF),
+                    color: AppTheme.darkBackgroundPrimaryLight,
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: const Icon(Icons.photo_library_rounded, color: AppTheme.darkTextPrimary, size: 20),
@@ -620,7 +620,7 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
                           ? _navy
                           : isCompleted
                               ? _successBg
-                              : const Color(0xFFF1F4F8),
+                              : AppTheme.darkBackgroundPrimaryLight,
                       borderRadius: BorderRadius.circular(999),
                       border: Border.all(
                         color: isActive
@@ -1253,7 +1253,7 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
                     width: 44,
                     height: 44,
                     decoration: BoxDecoration(
-                      color: const Color(0xFFEEF2FF),
+                      color: AppTheme.darkBackgroundPrimaryLight,
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: const Icon(Icons.apartment_rounded, color: AppTheme.darkTextPrimary),
@@ -1325,7 +1325,7 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
                     width: 48,
                     height: 48,
                     decoration: BoxDecoration(
-                      color: const Color(0xFFEEF2FF),
+                      color: AppTheme.darkBackgroundPrimaryLight,
                       borderRadius: BorderRadius.circular(14),
                     ),
                     child: const Icon(
@@ -1497,7 +1497,7 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
                     width: 44,
                     height: 44,
                     decoration: BoxDecoration(
-                      color: const Color(0xFFEEF2FF),
+                      color: AppTheme.darkBackgroundPrimaryLight,
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: const Icon(Icons.groups_rounded, color: AppTheme.darkTextPrimary),
@@ -1529,7 +1529,7 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
                                 padding: const EdgeInsets.symmetric(
                                     horizontal: 10, vertical: 6),
                                 decoration: BoxDecoration(
-                                  color: const Color(0xFFEEF2FF),
+                                  color: AppTheme.darkBackgroundPrimaryLight,
                                   borderRadius: BorderRadius.circular(999),
                                   border: Border.all(color: _cardBorder),
                                 ),
@@ -1624,7 +1624,7 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFF1F4F8),
+                        color: AppTheme.darkBackgroundPrimaryLight,
                         borderRadius: BorderRadius.circular(999),
                       ),
                       child: Row(
@@ -1774,7 +1774,7 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
                         padding: const EdgeInsets.symmetric(
                             horizontal: 10, vertical: 6),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFEEF2FF),
+                          color: AppTheme.darkBackgroundPrimaryLight,
                           borderRadius: BorderRadius.circular(999),
                           border: Border.all(color: _cardBorder),
                         ),
@@ -1857,7 +1857,7 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
                 width: 40,
                 height: 40,
                 decoration: BoxDecoration(
-                  color: isComplete ? _successBg : const Color(0xFFEEF2FF),
+                  color: isComplete ? _successBg : AppTheme.darkBackgroundPrimaryLight,
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(
@@ -1943,7 +1943,7 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
               width: 42,
               height: 42,
               decoration: BoxDecoration(
-                color: isCompleted ? _successBg : const Color(0xFFEEF2FF),
+                color: isCompleted ? _successBg : AppTheme.darkBackgroundPrimaryLight,
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Icon(
@@ -2010,7 +2010,7 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
                             width: 44,
                             height: 44,
                             decoration: BoxDecoration(
-                              color: const Color(0xFFEEF2FF),
+                              color: AppTheme.darkBackgroundPrimaryLight,
                               borderRadius: BorderRadius.circular(12),
                             ),
                             child: const Icon(

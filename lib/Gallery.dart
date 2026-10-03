@@ -1676,7 +1676,7 @@ class _TimelineGalleryState extends State<TimelineGallery> {
                     child: Text(
                       '${section.items.length} uploads',
                       style: const TextStyle(
-                        color: AppTheme.darkTextPrimary,
+                        color: Color(0xFF1F2937),
                         fontSize: 11,
                         fontWeight: FontWeight.w800,
                       ),

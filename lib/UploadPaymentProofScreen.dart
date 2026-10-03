@@ -723,9 +723,7 @@ class _PrimaryActionButton extends StatelessWidget {
               Icon(
                 icon,
                 size: 20,
-                color: filled
-                    ? Colors.white
-                    : _UploadPaymentProofScreenState._navyStart,
+                color: filled ? Colors.white : AppTheme.darkTextPrimary,
               ),
               const SizedBox(width: 8),
               Flexible(
@@ -733,9 +731,7 @@ class _PrimaryActionButton extends StatelessWidget {
                   label,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    color: filled
-                        ? Colors.white
-                        : _UploadPaymentProofScreenState._navyStart,
+                    color: filled ? Colors.white : AppTheme.darkTextPrimary,
                     fontWeight: FontWeight.w800,
                     fontSize: 13,
                   ),

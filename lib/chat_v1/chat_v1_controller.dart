@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -298,6 +300,113 @@ class ChatV1Controller extends ChangeNotifier {
     return salesSopId;
   }
 
+  /// Local pin / mute / archive so a refresh does not drop swipe actions.
+  static const String _flagsPrefsKey = 'chat_v1_conversation_flags_v1';
+  final Map<String, _SavedChatFlags> _localFlags = {};
+  bool _flagsLoaded = false;
+
+  Future<void> _ensureFlagsLoaded() async {
+    if (_flagsLoaded) return;
+    _localFlags
+      ..clear()
+      ..addAll(await _readFlags());
+    _flagsLoaded = true;
+  }
+
+  Future<Map<String, _SavedChatFlags>> _readFlags() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_flagsPrefsKey);
+    if (raw == null || raw.isEmpty) return {};
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map) return {};
+      final out = <String, _SavedChatFlags>{};
+      decoded.forEach((key, value) {
+        if (value is! Map) return;
+        out[key.toString()] = _SavedChatFlags(
+          pinned: value['p'] == true,
+          muted: value['m'] == true,
+          archived: value['a'] == true,
+        );
+      });
+      return out;
+    } catch (_) {
+      return {};
+    }
+  }
+
+  Future<void> _writeFlags() async {
+    final prefs = await SharedPreferences.getInstance();
+    final encoded = <String, Map<String, bool>>{};
+    _localFlags.forEach((id, flag) {
+      encoded[id] = {
+        'p': flag.pinned,
+        'm': flag.muted,
+        'a': flag.archived,
+      };
+    });
+    await prefs.setString(_flagsPrefsKey, jsonEncode(encoded));
+  }
+
+  void _applyLocalFlags() {
+    channels = _withLocalFlags(channels);
+    customGroups = _withLocalFlags(customGroups);
+    dms = _withLocalFlags(dms);
+  }
+
+  List<ChatV1ChatItem> _withLocalFlags(List<ChatV1ChatItem> items) {
+    if (_localFlags.isEmpty) return items;
+    final next = <ChatV1ChatItem>[];
+    for (final item in items) {
+      final flag = _localFlags[item.id];
+      if (flag == null) {
+        next.add(item);
+        continue;
+      }
+      if (flag.archived) continue;
+      next.add(item.copyWith(isPinned: flag.pinned, isMuted: flag.muted));
+    }
+    return next;
+  }
+
+  Future<void> setConversationFlag(
+    String id, {
+    bool? pinned,
+    bool? muted,
+    bool? archived,
+  }) async {
+    if (id.isEmpty) return;
+    await _ensureFlagsLoaded();
+    final live = findChatById(id);
+    final current = _localFlags[id] ??
+        _SavedChatFlags(
+          pinned: live?.isPinned ?? false,
+          muted: live?.isMuted ?? false,
+        );
+    final next = _SavedChatFlags(
+      pinned: pinned ?? current.pinned,
+      muted: muted ?? current.muted,
+      archived: archived ?? current.archived,
+    );
+    _localFlags[id] = next;
+    await _writeFlags();
+    _applyLocalFlags();
+    notifyListeners();
+    // ignore: unawaited_futures
+    _api.tryUpdateConversation(
+      conversationId: id,
+      isPinned: next.pinned,
+      isMuted: next.muted,
+      isArchived: next.archived,
+    );
+  }
+
+  Future<void> leaveConversation(String id) async {
+    await setConversationFlag(id, archived: true);
+    // ignore: unawaited_futures
+    _api.tryLeaveConversation(id);
+  }
+
   Future<void> loadProjectChat({String? salesSopIdOverride}) async {
     final hadCache = channels.isNotEmpty ||
         customGroups.isNotEmpty ||
@@ -305,7 +414,11 @@ class ChatV1Controller extends ChangeNotifier {
         allProjectTasks.isNotEmpty;
     loading = true;
     error = null;
+<<<<<<< HEAD
     final socketSession = _socket.sessionGeneration;
+=======
+    await _ensureFlagsLoaded();
+>>>>>>> 950d871 (Fix APK testing findings and ship 3.0.1 (41).)
     // Keep previous lists visible while refreshing so reopen feels instant.
     notifyListeners();
 
@@ -368,6 +481,7 @@ class ChatV1Controller extends ChangeNotifier {
       }
 
       _applyConversations(conversations);
+      _applyLocalFlags();
       loading = false;
       notifyListeners();
       print(
@@ -427,6 +541,7 @@ class ChatV1Controller extends ChangeNotifier {
         memberRows: settled[2],
         directRows: settled[3],
       );
+      _applyLocalFlags();
 
       print(
         '[ChatV1] Phase2 tasks=${taskConversations.length} '
@@ -452,6 +567,7 @@ class ChatV1Controller extends ChangeNotifier {
         workflowConversations = [];
       }
     } finally {
+      _applyLocalFlags();
       loading = false;
       notifyListeners();
     }
@@ -905,4 +1021,16 @@ class ChatV1Controller extends ChangeNotifier {
     }).toList();
     if (changed) notifyListeners();
   }
+}
+
+class _SavedChatFlags {
+  final bool pinned;
+  final bool muted;
+  final bool archived;
+
+  const _SavedChatFlags({
+    this.pinned = false,
+    this.muted = false,
+    this.archived = false,
+  });
 }

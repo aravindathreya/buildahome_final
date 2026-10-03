@@ -573,6 +573,12 @@ class TaskScreen extends State<TaskScreenClass> {
   }
 }
 
+Color _iconOnChip(Color background) {
+  return background.computeLuminance() > 0.45
+      ? const Color(0xFF1C1C1E)
+      : Colors.white;
+}
+
 class _SummaryCard extends StatelessWidget {
   final String title;
   final String subtitle;
@@ -623,7 +629,15 @@ class _SummaryCard extends StatelessWidget {
                       : const Color(0xFFEEF2FF),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: Icon(icon, color: AppTheme.darkTextPrimary, size: 22),
+                child: Icon(
+                  icon,
+                  size: 22,
+                  color: _iconOnChip(
+                    gradient.isNotEmpty
+                        ? gradient.first
+                        : const Color(0xFFEEF2FF),
+                  ),
+                ),
               ),
               const Spacer(),
               Text(

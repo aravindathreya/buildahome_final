@@ -589,6 +589,43 @@ class ClientPortalService {
     );
   }
 
+  /// POST /api/client_portal/documents/delete (fallback: /remove).
+  Future<Map<String, dynamic>> deleteCustomDocument({
+    String? id,
+    String? filename,
+    String? customDocName,
+  }) async {
+    final body = <String, dynamic>{
+      'doc_key': 'custom',
+      if (id != null && id.trim().isNotEmpty) 'id': id.trim(),
+      if (filename != null && filename.trim().isNotEmpty)
+        'filename': filename.trim(),
+      if (customDocName != null && customDocName.trim().isNotEmpty)
+        'custom_doc_name': customDocName.trim(),
+    };
+    if (body.length == 1) {
+      throw ClientPortalApiException(
+        'Could not identify the document to remove',
+        statusCode: 400,
+      );
+    }
+
+    Object? lastError;
+    for (final path in const [
+      '/api/client_portal/documents/delete',
+      '/api/client_portal/documents/remove',
+    ]) {
+      try {
+        return await _postJson(path, body);
+      } catch (e) {
+        lastError = e;
+        if (e is ClientPortalApiException && e.isUnauthorized) rethrow;
+        if (!_shouldTryDeleteFallback(e)) rethrow;
+      }
+    }
+    _throwLastError(lastError, 'Could not remove document');
+  }
+
   /// POST /api/client_portal/documents/comment
   Future<Map<String, dynamic>> saveComment(String comment) {
     return _postJson('/api/client_portal/documents/comment', {

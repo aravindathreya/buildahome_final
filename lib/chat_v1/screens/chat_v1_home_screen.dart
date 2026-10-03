@@ -259,10 +259,14 @@ class _ChatV1HomeScreenState extends State<ChatV1HomeScreen> {
           }
         });
       },
-      onPin: () =>
-          _updateItem(item.id, (e) => e.copyWith(isPinned: !e.isPinned)),
-      onMute: () =>
-          _updateItem(item.id, (e) => e.copyWith(isMuted: !e.isMuted)),
+      onPin: () => _ctrl.setConversationFlag(
+        item.id,
+        pinned: !item.isPinned,
+      ),
+      onMute: () => _ctrl.setConversationFlag(
+        item.id,
+        muted: !item.isMuted,
+      ),
       onMarkRead: () => _updateItem(item.id, (e) => e.copyWith(unread: 0)),
     ),
     );

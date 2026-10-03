@@ -461,8 +461,8 @@ class _SoftHousePainter extends CustomPainter {
       Paint()
         ..shader = RadialGradient(
           colors: [
-            Color.fromRGBO(90, 52, 140, 0.32 * glow),
-            const Color(0x007A52B8),
+            Color.fromRGBO(82, 61, 158, 0.32 * glow),
+            const Color(0x007063CC),
           ],
         ).createShader(Rect.fromCircle(center: const Offset(0, 18), radius: 108)),
     );

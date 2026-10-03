@@ -404,10 +404,10 @@ class _AttendanceScreenState extends State<AttendanceScreen>
         ),
       ],
       bottom: PreferredSize(
-        preferredSize: const Size.fromHeight(66),
+        preferredSize: const Size.fromHeight(84),
         child: Container(
           color: AppTheme.darkBackgroundSecondary,
-          padding: const EdgeInsets.fromLTRB(18, 0, 18, 14),
+          padding: const EdgeInsets.fromLTRB(18, 8, 18, 16),
           child: Container(
             height: 48,
             padding: const EdgeInsets.all(4),
@@ -510,7 +510,7 @@ class _AttendanceScreenState extends State<AttendanceScreen>
 
     return ListView(
       physics: const AlwaysScrollableScrollPhysics(),
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
+      padding: const EdgeInsets.fromLTRB(16, 22, 16, 28),
       children: [
         const BackgroundLocationBanner(),
         _statusHeader(status),
@@ -970,7 +970,7 @@ class _AttendanceScreenState extends State<AttendanceScreen>
 
     return ListView(
       physics: const AlwaysScrollableScrollPhysics(),
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
+      padding: const EdgeInsets.fromLTRB(16, 22, 16, 28),
       children: [
         if (history.summary.isNotEmpty) _summaryCard(history.summary),
         const SizedBox(height: 12),

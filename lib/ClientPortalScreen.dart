@@ -886,6 +886,38 @@ class _DocumentsKycScreenState extends State<_DocumentsKycScreen> {
     }
   }
 
+  Future<bool> _deleteCustom(KycDocumentRecord record) async {
+    setState(() => _saving = true);
+    try {
+      final result = await _portal.deleteCustomDocument(
+        id: record.id,
+        filename: record.filename,
+        customDocName: record.customLabel ?? record.displayLabel,
+      );
+      if (!mounted) return false;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            result['message']?.toString() ?? 'Document removed',
+          ),
+        ),
+      );
+      await _load(showLoader: false);
+      return true;
+    } catch (e) {
+      if (!mounted) return false;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e.toString().replaceFirst('Exception: ', '')),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return false;
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
   Future<void> _saveComment() async {
     setState(() => _saving = true);
     try {
@@ -921,6 +953,7 @@ class _DocumentsKycScreenState extends State<_DocumentsKycScreen> {
                 commentCtrl: _commentCtrl,
                 onUpload: _upload,
                 onUploadCustom: _uploadCustom,
+                onDeleteCustom: _deleteCustom,
                 onOpenUploaded: _openUploaded,
                 onSaveComment: _saveComment,
               );

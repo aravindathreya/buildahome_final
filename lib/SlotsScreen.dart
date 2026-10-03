@@ -723,7 +723,12 @@ class SlotsViewState extends State<SlotsView> {
             onRefresh: reload,
             child: ListView(
               physics: const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+              padding: EdgeInsets.fromLTRB(
+                16,
+                8,
+                16,
+                16 + MediaQuery.paddingOf(context).bottom,
+              ),
               children: [
                 _buildHeader(),
                 const SizedBox(height: 14),
@@ -1502,9 +1507,6 @@ class _VisitCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: selected ? const Color(0xFF14352B) : AppTheme.darkBackgroundSecondary,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-          color: selected ? const Color(0xFF86EFAC) : AppTheme.border,
-        ),
         boxShadow: const [
           BoxShadow(
             color: AppTheme.softShadow,
@@ -2211,7 +2213,6 @@ class _SlotRadioCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final parts = _slotDisplay(option);
-    final border = selected ? const Color(0xFF16A34A) : AppTheme.border;
     final background = selected ? const Color(0xFF14352B) : AppTheme.darkBackgroundSecondary;
 
     return Material(
@@ -2223,10 +2224,6 @@ class _SlotRadioCard extends StatelessWidget {
         child: Ink(
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: border,
-              width: selected ? 1.4 : 1,
-            ),
           ),
           child: ConstrainedBox(
             constraints: const BoxConstraints(minHeight: 72),

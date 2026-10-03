@@ -548,17 +548,33 @@ class _SiteVisitReportsScreenState extends State<SiteVisitReportsScreen> with Si
 
   Future<void> _fetchReports() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
-    final currentUserId = prefs.getString('userId') ?? prefs.getString('user_id');
+    final rawUserId =
+        (prefs.getString('userId') ?? prefs.getString('user_id') ?? '').trim();
+    final currentUserId = rawUserId.isEmpty || rawUserId.toLowerCase() == 'null'
+        ? null
+        : rawUserId;
 
     final Map<String, String> query = {};
 
-    // Only add project_id if a specific project is selected
     if (_viewProject != null) {
       query['project_id'] = _viewProject!['id'].toString();
     }
 
-    if (_myReportsOnly && currentUserId != null) {
+    // No project selected: the API still requires a user id ("View All Projects"
+    // means this user's reports across projects).
+    final includeUser = _myReportsOnly || _viewProject == null;
+    if (includeUser && currentUserId != null) {
       query['created_by_user_id'] = currentUserId;
+    }
+
+    if (query.isEmpty) {
+      setState(() {
+        _fetchingReports = false;
+        _reports = [];
+        _hasSearched = true;
+        _reportsError = 'Select a project to load site visit reports.';
+      });
+      return;
     }
 
     setState(() {
@@ -1376,7 +1392,12 @@ class _SiteVisitReportsScreenState extends State<SiteVisitReportsScreen> with Si
 
   Widget _buildNavigationButtons() {
     return Container(
-      padding: const EdgeInsets.fromLTRB(20, 14, 20, 20),
+      padding: EdgeInsets.fromLTRB(
+        20,
+        14,
+        20,
+        20 + MediaQuery.paddingOf(context).bottom,
+      ),
       decoration: const BoxDecoration(
         color: AppTheme.darkBackgroundSecondary,
         border: Border(top: BorderSide(color: AppTheme.border)),

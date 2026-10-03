@@ -15,6 +15,7 @@ class ClientPortalKycChecklist extends StatelessWidget {
   final TextEditingController commentCtrl;
   final Future<void> Function(String docKey) onUpload;
   final Future<bool> Function(String name) onUploadCustom;
+  final Future<bool> Function(KycDocumentRecord record) onDeleteCustom;
   final void Function(String label, KycDocumentRecord record) onOpenUploaded;
   final VoidCallback onSaveComment;
 
@@ -27,6 +28,7 @@ class ClientPortalKycChecklist extends StatelessWidget {
     required this.commentCtrl,
     required this.onUpload,
     required this.onUploadCustom,
+    required this.onDeleteCustom,
     required this.onOpenUploaded,
     required this.onSaveComment,
   });
@@ -89,6 +91,7 @@ class ClientPortalKycChecklist extends StatelessWidget {
           kycDocs: kycDocs,
           saving: saving,
           onUploadCustom: onUploadCustom,
+          onDeleteCustom: onDeleteCustom,
         ),
         if (allMandatoryDone) ...[
           const SizedBox(height: 8),
@@ -184,12 +187,14 @@ class _CustomDocumentsSection extends StatefulWidget {
   final List kycDocs;
   final bool saving;
   final Future<bool> Function(String name) onUploadCustom;
+  final Future<bool> Function(KycDocumentRecord record) onDeleteCustom;
 
   const _CustomDocumentsSection({
     required this.data,
     required this.kycDocs,
     required this.saving,
     required this.onUploadCustom,
+    required this.onDeleteCustom,
   });
 
   @override
@@ -240,6 +245,28 @@ class _CustomDocumentsSectionState extends State<_CustomDocumentsSection> {
       _nameCtrl.clear();
       setState(() => _nameError = null);
     }
+  }
+
+  Future<void> _delete(KycDocumentRecord record) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Remove document'),
+        content: Text('Remove "${record.displayLabel}"?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Remove'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    await widget.onDeleteCustom(record);
   }
 
   void _view(KycDocumentRecord record) {
@@ -393,6 +420,7 @@ class _CustomDocumentsSectionState extends State<_CustomDocumentsSection> {
                 child: _CustomUploadRow(
                   record: record,
                   onView: () => _view(record),
+                  onDelete: widget.saving ? null : () => _delete(record),
                 ),
               ),
             ),
@@ -406,10 +434,12 @@ class _CustomDocumentsSectionState extends State<_CustomDocumentsSection> {
 class _CustomUploadRow extends StatelessWidget {
   final KycDocumentRecord record;
   final VoidCallback onView;
+  final VoidCallback? onDelete;
 
   const _CustomUploadRow({
     required this.record,
     required this.onView,
+    this.onDelete,
   });
 
   @override
@@ -474,6 +504,13 @@ class _CustomUploadRow extends StatelessWidget {
                   style: TextStyle(fontWeight: FontWeight.w800),
                 ),
               ),
+              if (onDelete != null)
+                IconButton(
+                  tooltip: 'Remove',
+                  onPressed: onDelete,
+                  icon: const Icon(Icons.delete_outline_rounded, size: 20),
+                  color: const Color(0xFFF87171),
+                ),
             ],
           ),
         ),

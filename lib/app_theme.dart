@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 class AppTheme {
-  // Brand tokens — deep purple
-  static const Color navy = Color(0xFF43266F);
-  static const Color navySoft = Color(0xFF5A348C);
-  static const Color accentBlue = Color(0xFF7A52B8);
+  // Brand tokens — between indigo and purple
+  static const Color navy = Color(0xFF3B2A7D);
+  static const Color navySoft = Color(0xFF523D9E);
+  static const Color accentBlue = Color(0xFF7063CC);
   static const Color mutedGrey = Color(0xFFA1A1AA);
   static const Color border = Color(0xFF3F3F46);
   static const Color softShadow = Color(0x14000000);
@@ -24,10 +24,10 @@ class AppTheme {
   static const Color darkTextPrimary = Color(0xFFF4F4F5);
   static const Color darkTextSecondary = Color(0xFFA1A1AA);
 
-  // Primary color — deep purple
+  // Primary color — between indigo and purple
   static const Color primaryColorConst = navy;
-  static const Color primaryColorConstDark = Color(0xFF2C184C);
-  static const Color primaryColorConstLight = Color(0xFF55308A);
+  static const Color primaryColorConstDark = Color(0xFF271B54);
+  static const Color primaryColorConstLight = Color(0xFF4C3894);
 
   // Legacy colors — app is dark-mode-only; these map to dark tokens
   static Color get backgroundPrimary => darkBackgroundPrimary;
