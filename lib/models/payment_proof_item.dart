@@ -20,6 +20,7 @@ class PaymentProofItem {
   final int? index;
   final bool rejectedFlag;
   final bool? canDeleteFlag;
+  final String clearedBillsText;
 
   const PaymentProofItem({
     required this.url,
@@ -36,6 +37,7 @@ class PaymentProofItem {
     this.index,
     this.rejectedFlag = false,
     this.canDeleteFlag,
+    this.clearedBillsText = '',
   });
 
   bool get isNotABill =>
@@ -144,6 +146,7 @@ class PaymentProofItem {
       canDeleteFlag: _asBool(flat['can_delete']) ??
           _asBool(flat['can_remove']) ??
           _asBool(flat['deletable']),
+      clearedBillsText: resolveClearedBillsText(flat),
     );
   }
 
@@ -231,6 +234,7 @@ class PaymentProofItem {
           note: '',
           index: _indexFromUrl(unique[i]) ?? (i + 1),
           canDeleteFlag: null,
+          clearedBillsText: '',
         ),
     ];
   }
@@ -249,6 +253,33 @@ class PaymentProofItem {
       sum += item.receiptTotal!.toDouble();
     }
     return sum;
+  }
+
+  /// Plain lines under the screenshot: NT bill, then staged bill.
+  /// Uses API `cleared_bills_text` when present, else `finance_applied_bills`.
+  static String resolveClearedBillsText(Map<String, dynamic> json) {
+    final flat = _flattenProofJson(json);
+    final direct = (_asString(flat['cleared_bills_text']) ?? '').trim();
+    if (direct.isNotEmpty) return direct;
+    final raw = flat['cleared_bills'] ?? flat['finance_applied_bills'];
+    if (raw is! List) return '';
+    return formatClearedBillLines(raw);
+  }
+
+  static String formatClearedBillLines(List<dynamic> raw) {
+    final nt = <String>[];
+    final staged = <String>[];
+    for (final entry in raw) {
+      if (entry is! Map) continue;
+      final row = Map<String, dynamic>.from(entry);
+      final kind = _clearedBillKind(row['kind']);
+      if (kind == 'nt') {
+        nt.add(_clearedBillLine('NT bill', row));
+      } else if (kind == 'staged') {
+        staged.add(_clearedBillLine('Staged bill', row));
+      }
+    }
+    return [...nt, ...staged].where((line) => line.isNotEmpty).join('\n');
   }
 }
 
@@ -577,4 +608,43 @@ num? _asNum(dynamic value) {
     return num.tryParse(match.group(0)!);
   }
   return null;
+}
+
+String _clearedBillKind(dynamic value) {
+  final kind = (value ?? '').toString().trim().toLowerCase().replaceAll(' ', '_');
+  if (kind == 'nt' || kind == 'non_tender' || kind == 'non-tender') return 'nt';
+  if (kind == 'raised' ||
+      kind == 'stage' ||
+      kind == 'staged' ||
+      kind == 'stage_bill' ||
+      kind == 'staged_bill') {
+    return 'staged';
+  }
+  return '';
+}
+
+String _clearedBillLine(String label, Map<String, dynamic> row) {
+  final bits = <String>[label];
+  final id = row['id'];
+  final idText = id == null ? '' : id.toString().trim();
+  if (idText.isNotEmpty) bits.add('#$idText');
+  final number = (_asString(row['bill_number']) ?? '').trim();
+  final name = (_asString(row['name']) ?? '').trim();
+  if (number.isNotEmpty && number != idText) bits.add(number);
+  if (name.isNotEmpty && name != number && name != idText) bits.add(name);
+  var text = bits.join(' ');
+  final money = _clearedBillMoney(row['amount']);
+  if (money.isNotEmpty) text = '$text — $money';
+  if (row['partial'] == true) text = '$text (partial)';
+  return text;
+}
+
+String _clearedBillMoney(dynamic amount) {
+  final value = _asNum(amount);
+  if (value == null || value <= 0) return '';
+  return NumberFormat.currency(
+    locale: 'en_IN',
+    symbol: '₹',
+    decimalDigits: 2,
+  ).format(value);
 }

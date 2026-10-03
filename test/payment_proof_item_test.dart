@@ -418,4 +418,45 @@ void main() {
       expect(notABill.displayAmount, '—');
     });
   });
+
+  group('PaymentProofItem cleared bills under the screenshot', () {
+    test('shows NT and staged lines from the API text', () {
+      final item = PaymentProofItem.fromJson({
+        'filename': 'upi.jpg',
+        'url': 'https://office.buildahome.in/serve_sales_sop_payment/1?index=0',
+        'is_bill': true,
+        'receipt_total': 35000,
+        'status': 'approved',
+        'note': '',
+        'cleared_bills_text':
+            'NT bill #12 Extra civil — ₹15,000.00\nStaged bill #8 Foundation — ₹20,000.00',
+      });
+      expect(item.clearedBillsText, contains('NT bill #12'));
+      expect(item.clearedBillsText, contains('Staged bill #8'));
+      expect(item.isApproved, isTrue);
+    });
+
+    test('builds only the staged line when NT was not applied', () {
+      final text = PaymentProofItem.resolveClearedBillsText({
+        'finance_applied_bills': [
+          {'id': 3, 'name': 'Slab', 'kind': 'raised', 'amount': 500.5, 'partial': true},
+        ],
+      });
+      expect(text, contains('Staged bill #3 Slab'));
+      expect(text, contains('(partial)'));
+      expect(text.contains('NT bill'), isFalse);
+    });
+
+    test('hides the line when the proof has no linked bill', () {
+      final item = PaymentProofItem.fromJson({
+        'filename': 'upi.jpg',
+        'url': 'https://office.buildahome.in/serve_sales_sop_payment/1?index=0',
+        'is_bill': true,
+        'receipt_total': 1000,
+        'status': 'pending',
+        'note': '',
+      });
+      expect(item.clearedBillsText, isEmpty);
+    });
+  });
 }

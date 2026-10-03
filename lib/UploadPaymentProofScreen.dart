@@ -864,7 +864,9 @@ class _ProofCard extends StatelessWidget {
                       10,
                       10,
                       10,
-                      rejectText.isNotEmpty ? 6 : 12,
+                      rejectText.isNotEmpty || item.clearedBillsText.isNotEmpty
+                          ? 6
+                          : 12,
                     ),
                     child: Text(
                       item.displayAmount,
@@ -879,6 +881,27 @@ class _ProofCard extends StatelessWidget {
                       ),
                     ),
                   ),
+                  if (item.clearedBillsText.isNotEmpty)
+                    Padding(
+                      padding: EdgeInsets.fromLTRB(
+                        10,
+                        0,
+                        10,
+                        rejectText.isNotEmpty ? 6 : 12,
+                      ),
+                      child: Text(
+                        item.clearedBillsText,
+                        textAlign: TextAlign.left,
+                        style: TextStyle(
+                          color: rejected
+                              ? _UploadPaymentProofScreenState._rejectMuted
+                              : const Color(0xFF334155),
+                          fontWeight: FontWeight.w700,
+                          fontSize: 12,
+                          height: 1.35,
+                        ),
+                      ),
+                    ),
                   if (rejectText.isNotEmpty)
                     Padding(
                       padding: const EdgeInsets.fromLTRB(10, 0, 10, 12),
