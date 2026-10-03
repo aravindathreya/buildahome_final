@@ -414,11 +414,8 @@ class ChatV1Controller extends ChangeNotifier {
         allProjectTasks.isNotEmpty;
     loading = true;
     error = null;
-<<<<<<< HEAD
     final socketSession = _socket.sessionGeneration;
-=======
     await _ensureFlagsLoaded();
->>>>>>> 950d871 (Fix APK testing findings and ship 3.0.1 (41).)
     // Keep previous lists visible while refreshing so reopen feels instant.
     notifyListeners();
 
