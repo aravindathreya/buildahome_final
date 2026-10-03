@@ -45,6 +45,18 @@ class ClientPortalService {
 
   String? _sessionCookie;
 
+  /// Super Admin "For me": attach current `project_id` so APIs return that
+  /// client's portal instead of the staff user's (empty) client binding.
+  int _clientImpersonationDepth = 0;
+
+  bool get isImpersonatingClient => _clientImpersonationDepth > 0;
+
+  void beginClientImpersonation() => _clientImpersonationDepth++;
+
+  void endClientImpersonation() {
+    if (_clientImpersonationDepth > 0) _clientImpersonationDepth--;
+  }
+
   // ── Auth ──────────────────────────────────────────────────────────────────
 
   Future<String?> _apiToken() async {
@@ -54,6 +66,23 @@ class ClientPortalService {
       return null;
     }
     return token;
+  }
+
+  /// Project scope for staff impersonation of the selected client's portal.
+  Future<Map<String, String>> _impersonationQuery() async {
+    if (!isImpersonatingClient) return const {};
+    final prefs = await SharedPreferences.getInstance();
+    final projectId = (prefs.getString('project_id') ?? '').trim();
+    if (projectId.isEmpty) return const {};
+    return {'project_id': projectId};
+  }
+
+  Future<Map<String, String>> _mergeQuery(Map<String, String>? query) async {
+    final merged = <String, String>{
+      ...await _impersonationQuery(),
+      if (query != null) ...query,
+    };
+    return merged;
   }
 
   Future<void> _ensureCookieLoaded() async {
@@ -189,13 +218,18 @@ class ClientPortalService {
         statusCode: 401,
       );
     }
+    final effectiveQuery = await _mergeQuery(query);
 
     Object? lastError;
     for (final alias in _pathAliases(path)) {
       try {
         final response = await http
             .get(
-              _uri(alias, query: query, apiToken: token),
+              _uri(
+                alias,
+                query: effectiveQuery.isEmpty ? null : effectiveQuery,
+                apiToken: token,
+              ),
               headers: await _headers(apiToken: token),
             )
             .timeout(const Duration(seconds: 25));
@@ -221,13 +255,18 @@ class ClientPortalService {
         statusCode: 401,
       );
     }
+    final effectiveQuery = await _mergeQuery(query);
 
     Object? lastError;
     for (final alias in _pathAliases(path)) {
       try {
         final response = await http
             .delete(
-              _uri(alias, query: query, apiToken: token),
+              _uri(
+                alias,
+                query: effectiveQuery.isEmpty ? null : effectiveQuery,
+                apiToken: token,
+              ),
               headers: await _headers(apiToken: token),
             )
             .timeout(const Duration(seconds: 25));
@@ -256,14 +295,23 @@ class ClientPortalService {
         statusCode: 401,
       );
     }
-    final payload = <String, dynamic>{...body, 'api_token': token};
+    final impersonation = await _impersonationQuery();
+    final payload = <String, dynamic>{
+      ...body,
+      ...impersonation,
+      'api_token': token,
+    };
 
     Object? lastError;
     for (final alias in _pathAliases(path)) {
       try {
         final response = await http
             .post(
-              _uri(alias, apiToken: token),
+              _uri(
+                alias,
+                query: impersonation.isEmpty ? null : impersonation,
+                apiToken: token,
+              ),
               headers: await _headers(apiToken: token, jsonBody: true),
               body: jsonEncode(payload),
             )
@@ -297,18 +345,27 @@ class ClientPortalService {
         statusCode: 401,
       );
     }
+    final impersonation = await _impersonationQuery();
 
     Object? lastError;
     for (final alias in _pathAliases(path)) {
       try {
         final request = http.MultipartRequest(
           'POST',
-          _uri(alias, apiToken: token),
+          _uri(
+            alias,
+            query: impersonation.isEmpty ? null : impersonation,
+            apiToken: token,
+          ),
         );
         request.headers.addAll(
           await _headers(apiToken: token, multipart: true),
         );
-        request.fields.addAll({...fields, 'api_token': token});
+        request.fields.addAll({
+          ...fields,
+          ...impersonation,
+          'api_token': token,
+        });
         request.files.add(
           await http.MultipartFile.fromPath(
             fileField,
@@ -353,18 +410,27 @@ class ClientPortalService {
         statusCode: 401,
       );
     }
+    final impersonation = await _impersonationQuery();
 
     Object? lastError;
     for (final alias in _pathAliases(path)) {
       try {
         final request = http.MultipartRequest(
           'POST',
-          _uri(alias, apiToken: token),
+          _uri(
+            alias,
+            query: impersonation.isEmpty ? null : impersonation,
+            apiToken: token,
+          ),
         );
         request.headers.addAll(
           await _headers(apiToken: token, multipart: true),
         );
-        request.fields.addAll({...fields, 'api_token': token});
+        request.fields.addAll({
+          ...fields,
+          ...impersonation,
+          'api_token': token,
+        });
         for (final file in files) {
           request.files.add(
             await http.MultipartFile.fromPath(

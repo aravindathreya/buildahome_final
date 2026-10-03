@@ -11,9 +11,9 @@ import '../services/profile_picture_service.dart';
 
 /// Shows a startup prompt if the user has no profile picture yet.
 ///
-/// Staff / non-client users may skip with "Maybe later" only
-/// [ProfilePictureService.maxStartupSkips] times; after that the dialog is
-/// required until a photo is uploaded.
+/// Clients are never prompted. Staff / other roles may skip with
+/// "Maybe later" only [ProfilePictureService.maxStartupSkips] times;
+/// after that the dialog is required until a photo is uploaded.
 Future<void> maybePromptForProfilePicture(BuildContext context) async {
   if (!_canShowStartupPrompt(context)) {
     debugPrint('[ProfilePic] skip — logged out or already shown');
@@ -42,14 +42,14 @@ Future<void> maybePromptForProfilePicture(BuildContext context) async {
     final role = (prefs.getString('role') ?? '').trim().toLowerCase();
     final userId =
         (prefs.getString('userId') ?? prefs.getString('user_id') ?? '').trim();
-    final isClient = role == 'client';
+    // Clients must never see the startup upload prompt.
+    if (role == 'client') {
+      debugPrint('[ProfilePic] SKIPPED for client userId=$userId');
+      return;
+    }
 
-    // Clients keep a soft optional prompt; other roles get the skip limit.
-    final enforceSkipLimit = !isClient;
-    final remaining = enforceSkipLimit
-        ? await ProfilePictureService.remainingSkips()
-        : ProfilePictureService.maxStartupSkips;
-    final requirePhoto = enforceSkipLimit && remaining <= 0;
+    final remaining = await ProfilePictureService.remainingSkips();
+    final requirePhoto = remaining <= 0;
 
     // Re-check after every await. Logout clears the session and the root
     // navigator context stays mounted, which used to present this dialog

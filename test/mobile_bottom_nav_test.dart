@@ -168,7 +168,9 @@ void main() {
           ],
         ),
       );
-      expect(keys, ['home', 'updates', 'chatbox', 'more']);
+      expect(keys, ['home', 'more']);
+      expect(keys.contains('updates'), isFalse);
+      expect(keys.contains('chatbox'), isFalse);
     });
 
     test('caps middle tabs so total stays at hard max including pins', () {
@@ -233,11 +235,11 @@ void main() {
       expect(keys, [
         'home',
         'my_tasks',
-        'updates',
-        'chatbox',
         'payments',
         'more',
       ]);
+      expect(keys.contains('updates'), isFalse);
+      expect(keys.contains('chatbox'), isFalse);
       expect(keys.length, lessThanOrEqualTo(kMobileBottomNavHardMaxTabs));
     });
 
@@ -245,20 +247,20 @@ void main() {
       final keys = ensureProjectHomePaymentsTab([
         'home',
         'my_tasks',
-        'updates',
-        'chatbox',
         'gallery',
         'scheduler',
+        'documents',
+        'indents',
         'more',
       ]);
       expect(keys.first, 'home');
       expect(keys.last, 'more');
       expect(keys.contains('payments'), isTrue);
       expect(keys.length, kMobileBottomNavHardMaxTabs);
-      expect(keys.contains('scheduler'), isFalse);
+      expect(keys.contains('indents'), isFalse);
     });
 
-    test('client project_new save without chatbox drops Chat', () {
+    test('client project_new save excludes chat and updates from the bar', () {
       final snapshot = parseMobileBottomNavPayload(
         {
           'success': true,
@@ -270,20 +272,41 @@ void main() {
             {'key': 'home', 'sort_order': 1},
             {'key': 'my_tasks', 'sort_order': 2},
             {'key': 'updates', 'sort_order': 3},
-            {'key': 'more', 'sort_order': 4},
+            {'key': 'chatbox', 'sort_order': 4},
+            {'key': 'more', 'sort_order': 5},
           ],
         },
         surface: MobileBottomNavSurface.projectNew,
       );
       expect(snapshot!.configured, isTrue);
-      expect(snapshot.actionKeys, ['home', 'my_tasks', 'updates', 'more']);
+      expect(snapshot.actionKeys, [
+        'home',
+        'my_tasks',
+        'updates',
+        'chatbox',
+        'more',
+      ]);
 
       final keys = resolveMobileBottomNavActionKeys(
         surface: MobileBottomNavSurface.projectNew,
         fallbackKeys: kMobileBottomNavProjectFallback,
         snapshot: snapshot,
       );
-      expect(keys, ['home', 'my_tasks', 'updates', 'more']);
+      expect(keys, ['home', 'my_tasks', 'more']);
+      expect(keys.contains('chatbox'), isFalse);
+      expect(keys.contains('updates'), isFalse);
+    });
+
+    test('project fallback omits updates and chat', () {
+      expect(kMobileBottomNavProjectFallback.contains('updates'), isFalse);
+      expect(kMobileBottomNavProjectFallback.contains('chatbox'), isFalse);
+      final keys = resolveMobileBottomNavActionKeys(
+        surface: MobileBottomNavSurface.projectNew,
+        fallbackKeys: kMobileBottomNavProjectFallback,
+        snapshot: null,
+      );
+      expect(keys, kMobileBottomNavProjectFallback);
+      expect(keys.contains('updates'), isFalse);
       expect(keys.contains('chatbox'), isFalse);
     });
   });

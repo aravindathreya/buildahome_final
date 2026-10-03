@@ -562,7 +562,9 @@ class DataProvider {
         await _cacheSalesSopIdFromPayload(decoded, projectId);
 
         clientTimelineTasks = _sortTimelineTasks(
-          _parsePendingTaskList(decoded['timeline_tasks']),
+          _enrichTimelineMainCriticalFields(
+            _parsePendingTaskList(decoded['timeline_tasks']),
+          ),
         );
         clientTimelineTaskCount =
             int.tryParse(decoded['timeline_task_count']?.toString() ?? '') ??
@@ -575,6 +577,8 @@ class DataProvider {
             int.tryParse(decoded['completed_count']?.toString() ?? '') ?? 0;
         clientTimelineUpcomingCount =
             int.tryParse(decoded['upcoming_count']?.toString() ?? '') ?? 0;
+
+        _logTimelineDurationFields(clientTimelineTasks);
 
         _applyPendingTasksFromPayload(decoded, null);
         clientTimelineLoaded = true;
@@ -1050,6 +1054,142 @@ class DataProvider {
       return aIdx.compareTo(bIdx);
     });
     return sorted;
+  }
+
+  static const _mainCriticalKeys = [
+    'is_main_critical',
+    'main_critical_duration',
+    'main_critical_duration_unit',
+    'assigned_days',
+    'assigned_duration_label',
+  ];
+
+  bool _isTruthyFlag(dynamic value) {
+    if (value == true || value == 1) return true;
+    final text = value?.toString().trim().toLowerCase();
+    return text == '1' || text == 'true' || text == 'yes';
+  }
+
+  String? _nonEmptyString(dynamic value) {
+    final text = value?.toString().trim();
+    if (text == null || text.isEmpty || text.toLowerCase() == 'null') {
+      return null;
+    }
+    return text;
+  }
+
+  String? _timelineTaskMatchKey(Map task) {
+    final runId = _nonEmptyString(task['workflow_item_run_id']);
+    if (runId != null) return 'run:$runId';
+    final id = _nonEmptyString(task['id']);
+    if (id != null) {
+      if (id.startsWith('-')) return 'run:${id.substring(1)}';
+      return 'id:$id';
+    }
+    final name = _nonEmptyString(task['task_name']) ??
+        _nonEmptyString(task['note']) ??
+        _nonEmptyString(task['name']);
+    if (name != null) return 'name:${name.toLowerCase()}';
+    return null;
+  }
+
+  void _copyMainCriticalFields(Map source, Map<String, dynamic> target) {
+    for (final key in _mainCriticalKeys) {
+      final incoming = source[key];
+      if (incoming == null) continue;
+      final asText = incoming.toString().trim().toLowerCase();
+      if (asText.isEmpty || asText == 'null') continue;
+      final existing = target[key];
+      final existingText = existing?.toString().trim().toLowerCase();
+      final missing = existing == null ||
+          existingText == null ||
+          existingText.isEmpty ||
+          existingText == 'null';
+      if (missing) {
+        target[key] = incoming;
+      }
+    }
+
+    // Build a label if API only sent numeric duration fields.
+    if (_nonEmptyString(target['assigned_duration_label']) == null) {
+      final labelFromDays = _nonEmptyString(target['assigned_days']);
+      final amount = _nonEmptyString(target['main_critical_duration']);
+      final unit = _nonEmptyString(target['main_critical_duration_unit']);
+      if (amount != null && unit != null) {
+        target['assigned_duration_label'] = '$amount $unit';
+      } else if (labelFromDays != null) {
+        final days = double.tryParse(labelFromDays);
+        if (days != null) {
+          target['assigned_duration_label'] =
+              days == days.roundToDouble() ? '${days.toInt()} days' : '$days days';
+        } else {
+          target['assigned_duration_label'] = '$labelFromDays days';
+        }
+      }
+    }
+  }
+
+  /// Fill Main Critical duration fields from pending tasks / get_tasks cache
+  /// when the timeline row is missing them.
+  List<Map<String, dynamic>> _enrichTimelineMainCriticalFields(
+    List<Map<String, dynamic>> tasks,
+  ) {
+    final sources = <Map>[
+      ...clientPendingTasks,
+      ...cachedUserTasks.whereType<Map>(),
+    ];
+    if (sources.isEmpty) return tasks;
+
+    final byKey = <String, Map>{};
+    for (final source in sources) {
+      final key = _timelineTaskMatchKey(source);
+      if (key == null) continue;
+      byKey[key] = source;
+    }
+    if (byKey.isEmpty) return tasks;
+
+    return tasks.map((task) {
+      final enriched = Map<String, dynamic>.from(task);
+      final key = _timelineTaskMatchKey(enriched);
+      final match = key == null ? null : byKey[key];
+      if (match != null) {
+        _copyMainCriticalFields(match, enriched);
+      }
+
+      // Normalize label from whatever the timeline row already had.
+      _copyMainCriticalFields(enriched, enriched);
+      return enriched;
+    }).toList();
+  }
+
+  void _logTimelineDurationFields(List<Map<String, dynamic>> tasks) {
+    final withDuration = tasks.where((t) {
+      final label = _nonEmptyString(t['assigned_duration_label']);
+      final days = t['assigned_days'];
+      return label != null ||
+          _isTruthyFlag(t['is_main_critical']) ||
+          days != null;
+    }).take(5).toList();
+
+    print(
+      '[DataProvider] Timeline duration debug: '
+      'total=${tasks.length}, withDurationSignals=${withDuration.length}',
+    );
+    if (tasks.isEmpty) return;
+
+    final sample = withDuration.isNotEmpty ? withDuration : tasks.take(2);
+    for (final t in sample) {
+      print(
+        '[DataProvider] Timeline task duration fields: '
+        'name=${t['task_name'] ?? t['note']}, '
+        'is_main_critical=${t['is_main_critical']}, '
+        'assigned_duration_label=${t['assigned_duration_label']}, '
+        'assigned_days=${t['assigned_days']}, '
+        'main_critical_duration=${t['main_critical_duration']}, '
+        'main_critical_duration_unit=${t['main_critical_duration_unit']}, '
+        'keys=${t.keys.toList()}',
+      );
+    }
   }
 
   String? _timelineErrorMessage(http.Response response) {

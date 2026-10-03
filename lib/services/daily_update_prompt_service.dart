@@ -10,14 +10,18 @@ class DailyUpdatePromptService {
   static const String _submittedPrefix = 'daily_update_submitted_date_';
 
   static const Set<String> eligibleRoles = {
-    'Project Coordinator',
-    'Assistant Project Coordinator',
     'Site Engineer',
+    'Super Admin',
   };
 
   static bool isEligibleRole(String? role) {
     final normalized = RBACService().normalizeRole(role);
-    return eligibleRoles.contains(normalized);
+    if (normalized == null || normalized.isEmpty) return false;
+    if (eligibleRoles.contains(normalized)) return true;
+    // Super Admin is not always present in RBAC roleMapping; match case-insensitively.
+    final lower =
+        normalized.toLowerCase().trim().replaceAll(RegExp(r'\s+'), ' ');
+    return eligibleRoles.any((r) => r.toLowerCase() == lower);
   }
 
   /// IST calendar date (`yyyy-MM-dd`) so the reminder follows the work day.

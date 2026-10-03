@@ -214,39 +214,39 @@ const Map<String, IconData> kMobileBottomNavActiveIcons = {
   'mobile_live_test': Icons.phonelink_setup_rounded,
 };
 
-/// Inactive (outlined) icons for each tab.
+/// Inactive icons for each tab (rounded, matching the active set).
 const Map<String, IconData> kMobileBottomNavOutlinedIcons = {
-  kMobileBottomNavHomeKey: Icons.home_outlined,
+  kMobileBottomNavHomeKey: Icons.home_rounded,
   kMobileBottomNavMoreKey: Icons.menu_rounded,
-  'my_tasks': Icons.pending_actions_outlined,
-  'projects': Icons.folder_special_outlined,
-  'site_visit_reports': Icons.location_on_outlined,
-  'updates': Icons.description_outlined,
-  'chatbox': Icons.chat_bubble_outline_rounded,
-  'documents': Icons.folder_copy_outlined,
-  'documents_v1': Icons.folder_copy_outlined,
-  'gallery': Icons.photo_library_outlined,
-  'scheduler': Icons.calendar_today_outlined,
-  'payments': Icons.payments_outlined,
-  'nt_payments': Icons.receipt_long_outlined,
-  'upload_payment_proof': Icons.cloud_upload_outlined,
-  'indents': Icons.request_quote_outlined,
-  'approved_pos': Icons.receipt_long_outlined,
-  'work_orders': Icons.engineering_outlined,
-  'client_portal': Icons.dashboard_customize_outlined,
-  'project_timeline': Icons.timeline_outlined,
-  'slots': Icons.event_available_outlined,
+  'my_tasks': Icons.pending_actions_rounded,
+  'projects': Icons.folder_special_rounded,
+  'site_visit_reports': Icons.location_on_rounded,
+  'updates': Icons.description_rounded,
+  'chatbox': Icons.chat_bubble_rounded,
+  'documents': Icons.folder_copy_rounded,
+  'documents_v1': Icons.folder_copy_rounded,
+  'gallery': Icons.photo_library_rounded,
+  'scheduler': Icons.calendar_today_rounded,
+  'payments': Icons.payments_rounded,
+  'nt_payments': Icons.receipt_long_rounded,
+  'upload_payment_proof': Icons.cloud_upload_rounded,
+  'indents': Icons.request_quote_rounded,
+  'approved_pos': Icons.receipt_long_rounded,
+  'work_orders': Icons.engineering_rounded,
+  'client_portal': Icons.dashboard_customize_rounded,
+  'project_timeline': Icons.timeline_rounded,
+  'slots': Icons.event_available_rounded,
   'attendance': Icons.fingerprint_rounded,
-  'notifications': Icons.notifications_none_rounded,
-  'stock_report': Icons.inventory_2_outlined,
-  'test_reports': Icons.science_outlined,
-  'inspection_requests': Icons.fact_check_outlined,
-  'project_status': Icons.flag_outlined,
-  'virtual_tour': Icons.view_in_ar_outlined,
+  'notifications': Icons.notifications_rounded,
+  'stock_report': Icons.inventory_2_rounded,
+  'test_reports': Icons.science_rounded,
+  'inspection_requests': Icons.fact_check_rounded,
+  'project_status': Icons.flag_rounded,
+  'virtual_tour': Icons.view_in_ar_rounded,
   'checklist': Icons.checklist_rtl_rounded,
-  'request_drawings': Icons.architecture_outlined,
-  'create_indent': Icons.add_box_outlined,
-  'mobile_live_test': Icons.phonelink_setup_outlined,
+  'request_drawings': Icons.architecture_rounded,
+  'create_indent': Icons.add_box_rounded,
+  'mobile_live_test': Icons.phonelink_setup_rounded,
 };
 
 /// Canonical key → Flutter Quick Action / menu `title` used for navigation.
@@ -342,10 +342,15 @@ const List<String> kMobileBottomNavStaffFallback = [
 const List<String> kMobileBottomNavProjectFallback = [
   kMobileBottomNavHomeKey,
   'my_tasks',
-  'updates',
-  'chatbox',
+  'documents',
   kMobileBottomNavMoreKey,
 ];
+
+/// Tabs intentionally excluded from the bottom bar (still available elsewhere).
+const Set<String> kMobileBottomNavExcludedKeys = {
+  'updates',
+  'chatbox',
+};
 
 /// Staff home bar vs project home bar (new/old by client generation).
 MobileBottomNavSurface bottomNavSurfaceFor({
@@ -389,6 +394,52 @@ List<String> ensureProjectHomePaymentsTab(List<String> keys) {
     next.removeAt(dropAt);
   }
   return next;
+}
+
+/// Staff/project home shows Docs for non-clients. Clients never get this tab.
+List<String> ensureProjectHomeDocsTab(List<String> keys) {
+  if (keys.contains('documents') || keys.contains('documents_v1')) {
+    return List<String>.from(keys);
+  }
+
+  final next = List<String>.from(keys);
+  // Prefer a stable slot after Tasks / Payments so Docs stays visible.
+  final paymentsIndex = next.indexOf('payments');
+  final tasksIndex = next.indexOf('my_tasks');
+  final moreIndex = next.indexOf(kMobileBottomNavMoreKey);
+  final insertAt = paymentsIndex >= 0
+      ? paymentsIndex + 1
+      : tasksIndex >= 0
+          ? tasksIndex + 1
+          : moreIndex >= 0
+              ? moreIndex
+              : next.length;
+  next.insert(insertAt, 'documents');
+
+  while (next.length > kMobileBottomNavHardMaxTabs) {
+    var dropAt = -1;
+    for (var i = next.length - 1; i >= 0; i--) {
+      final key = next[i];
+      if (key == 'documents' ||
+          key == 'documents_v1' ||
+          key == 'payments' ||
+          isPinnedBottomNavKey(key)) {
+        continue;
+      }
+      dropAt = i;
+      break;
+    }
+    if (dropAt < 0) break;
+    next.removeAt(dropAt);
+  }
+  return next;
+}
+
+/// Remove Docs tabs (clients must not see them on the project home bar).
+List<String> withoutProjectHomeDocsTabs(List<String> keys) {
+  return keys
+      .where((key) => key != 'documents' && key != 'documents_v1')
+      .toList();
 }
 
 String canonicalizeMobileBottomNavKey(String? raw) {
@@ -487,7 +538,8 @@ List<String> resolveMobileBottomNavActionKeys({
   Set<String>? catalogKeys,
 }) {
   if (snapshot == null || !snapshot.configured) {
-    return List<String>.from(fallbackKeys);
+    return List<String>.from(fallbackKeys)
+      ..removeWhere(kMobileBottomNavExcludedKeys.contains);
   }
 
   final allowed = catalogKeys ?? kMobileBottomNavCanonicalKeys;
@@ -499,6 +551,7 @@ List<String> resolveMobileBottomNavActionKeys({
 
   void addIfAllowed(String key, {required bool isMiddle}) {
     if (key.isEmpty) return;
+    if (kMobileBottomNavExcludedKeys.contains(key)) return;
     if (!allowed.contains(key)) return;
     if (!isKnownBottomNavKeyOnSurface(surface, key)) return;
     if (seen.contains(key)) return;

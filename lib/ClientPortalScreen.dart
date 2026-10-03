@@ -22,7 +22,13 @@ import 'widgets/skeleton_loader.dart';
 
 /// Client Portal hub — pre-construction documents, design, site prep & inspection.
 class ClientPortalScreen extends StatefulWidget {
-  const ClientPortalScreen({super.key});
+  /// When true (Super Admin), load this project's client portal as the client.
+  final bool impersonatingClient;
+
+  const ClientPortalScreen({
+    super.key,
+    this.impersonatingClient = false,
+  });
 
   @override
   State<ClientPortalScreen> createState() => _ClientPortalScreenState();
@@ -36,11 +42,23 @@ class _ClientPortalScreenState extends State<ClientPortalScreen> {
   Map<String, dynamic>? _project;
   bool _tutorialDone = false;
   WorkflowDocumentLibrary? _docLibrary;
+  String _impersonatedClientName = '';
 
   @override
   void initState() {
     super.initState();
+    if (widget.impersonatingClient) {
+      _portal.beginClientImpersonation();
+    }
     _bootstrap();
+  }
+
+  @override
+  void dispose() {
+    if (widget.impersonatingClient) {
+      _portal.endClientImpersonation();
+    }
+    super.dispose();
   }
 
   Future<void> _bootstrap() async {
@@ -51,6 +69,20 @@ class _ClientPortalScreenState extends State<ClientPortalScreen> {
     try {
       final prefs = await SharedPreferences.getInstance();
       _tutorialDone = prefs.getBool('client_portal_tutorial_done') ?? false;
+      if (widget.impersonatingClient) {
+        _impersonatedClientName =
+            (prefs.getString('client_name') ?? '').trim();
+        final projectId = (prefs.getString('project_id') ?? '').trim();
+        if (projectId.isEmpty) {
+          if (!mounted) return;
+          setState(() {
+            _loading = false;
+            _project = null;
+            _error = 'Select a project before viewing as the client.';
+          });
+          return;
+        }
+      }
 
       // Prefer project section; fall back to full portal payload.
       Map<String, dynamic> payload;
@@ -91,6 +123,9 @@ class _ClientPortalScreenState extends State<ClientPortalScreen> {
       final name = project['client_name']?.toString();
       if (name != null && name.isNotEmpty) {
         await prefs.setString('client_name', name);
+        if (widget.impersonatingClient) {
+          _impersonatedClientName = name.trim();
+        }
       }
 
       // Tutorial flag may also come from API.
@@ -164,15 +199,20 @@ class _ClientPortalScreenState extends State<ClientPortalScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final title = widget.impersonatingClient
+        ? (_impersonatedClientName.isNotEmpty
+            ? 'For me · $_impersonatedClientName'
+            : 'For me · Client view')
+        : 'Client Portal';
     return Scaffold(
       backgroundColor: AppTheme.getBackgroundPrimary(context),
       appBar: AppBar(
         backgroundColor: AppTheme.getBackgroundSecondary(context),
         foregroundColor: AppTheme.darkTextPrimary,
         elevation: 0,
-        title: const Text(
-          'Client Portal',
-          style: TextStyle(
+        title: Text(
+          title,
+          style: const TextStyle(
             color: AppTheme.darkTextPrimary,
             fontSize: 18,
             fontWeight: FontWeight.w800,
@@ -186,6 +226,40 @@ class _ClientPortalScreenState extends State<ClientPortalScreen> {
         ],
       ),
       body: SafeArea(child: _buildBody()),
+    );
+  }
+
+  Widget _impersonationBanner() {
+    final name = _impersonatedClientName.isNotEmpty
+        ? _impersonatedClientName
+        : 'this client';
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFEEF2FF),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFC7D2FE)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.visibility_outlined,
+              size: 18, color: Color(0xFF4F46E5)),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'Viewing as $name — client portal details',
+              style: const TextStyle(
+                color: Color(0xFF3730A3),
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                height: 1.3,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -219,31 +293,41 @@ class _ClientPortalScreenState extends State<ClientPortalScreen> {
       );
     }
 
-    return RefreshIndicator(
-      color: AppTheme.navy,
-      onRefresh: _bootstrap,
-      child: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
-        children: [
-          if (!_tutorialDone) ...[
-            _TutorialBanner(onComplete: _completeTutorial),
-            const SizedBox(height: 14),
-          ],
-          ...pinned.map((section) => hubCard(section, journeyStyle: true)),
-          if (catalog.isNotEmpty) ...[
-            if (pinned.isNotEmpty) const SizedBox(height: 6),
-            const ClientPortalSectionHeading(label: 'Document Categories'),
-            const SizedBox(height: 10),
-            ...catalog.map((section) => hubCard(section, journeyStyle: false)),
-          ],
-          if (steps.isNotEmpty) ...[
-            if (pinned.isNotEmpty || catalog.isNotEmpty) const SizedBox(height: 6),
-            const ClientPortalSectionHeading(label: 'Site'),
-            const SizedBox(height: 10),
-            ...steps.map((section) => hubCard(section, journeyStyle: true)),
-          ],
-        ],
-      ),
+    return Column(
+      children: [
+        if (widget.impersonatingClient) _impersonationBanner(),
+        Expanded(
+          child: RefreshIndicator(
+            color: AppTheme.navy,
+            onRefresh: _bootstrap,
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
+              children: [
+                if (!_tutorialDone && !widget.impersonatingClient) ...[
+                  _TutorialBanner(onComplete: _completeTutorial),
+                  const SizedBox(height: 14),
+                ],
+                ...pinned.map((section) => hubCard(section, journeyStyle: true)),
+                if (catalog.isNotEmpty) ...[
+                  if (pinned.isNotEmpty) const SizedBox(height: 6),
+                  const ClientPortalSectionHeading(label: 'Document Categories'),
+                  const SizedBox(height: 10),
+                  ...catalog
+                      .map((section) => hubCard(section, journeyStyle: false)),
+                ],
+                if (steps.isNotEmpty) ...[
+                  if (pinned.isNotEmpty || catalog.isNotEmpty)
+                    const SizedBox(height: 6),
+                  const ClientPortalSectionHeading(label: 'Site'),
+                  const SizedBox(height: 10),
+                  ...steps
+                      .map((section) => hubCard(section, journeyStyle: true)),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ],
     );
   }
 

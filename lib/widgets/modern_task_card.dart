@@ -316,6 +316,8 @@ class ModernTaskCard extends StatelessWidget {
   final String? materialLabel;
   final String? assigneeName;
   final String? dateLabel;
+  /// Main Critical duration text, e.g. "7 days" or "12 hours".
+  final String? durationLabel;
   final String status;
   final String? statusLabel;
   final int accentIndex;
@@ -339,6 +341,7 @@ class ModernTaskCard extends StatelessWidget {
     this.materialLabel,
     this.assigneeName,
     this.dateLabel,
+    this.durationLabel,
     this.statusLabel,
     this.accentIndex = 0,
     this.isSelected = false,
@@ -497,6 +500,22 @@ class ModernTaskCard extends StatelessWidget {
                                             fontWeight: FontWeight.w700,
                                           ),
                                           maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ],
+                                      if (durationLabel != null &&
+                                          durationLabel!
+                                              .trim()
+                                              .isNotEmpty) ...[
+                                        const SizedBox(height: 3),
+                                        Text(
+                                          'Complete in ${durationLabel!.trim()}',
+                                          style: const TextStyle(
+                                            color: Color(0xFFFBBF24),
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w800,
+                                          ),
+                                          maxLines: 1,
                                           overflow: TextOverflow.ellipsis,
                                         ),
                                       ],

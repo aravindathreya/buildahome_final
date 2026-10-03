@@ -42,8 +42,9 @@ class ThemedScaffold extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final canPop = Navigator.of(context).canPop();
-    final shouldImplyLeading = automaticallyImplyLeading && canPop;
+    // Always show a back control when requested so screens opened from Home
+    // are never missing a way back (canPop can be briefly wrong on rebuild).
+    final shouldImplyLeading = automaticallyImplyLeading;
     final isAdminChrome =
         DashboardChrome.of(context) == DashboardChromeStyle.admin;
 
@@ -66,7 +67,15 @@ class ThemedScaffold extends StatelessWidget {
               ? IconButton(
                   icon: const Icon(Icons.arrow_back_rounded),
                   color: appBarFg,
-                  onPressed: () => Navigator.of(context).maybePop(),
+                  tooltip: 'Back',
+                  onPressed: () {
+                    final nav = Navigator.of(context);
+                    if (nav.canPop()) {
+                      nav.pop();
+                    } else {
+                      nav.popUntil((route) => route.isFirst);
+                    }
+                  },
                 )
               : null),
       iconTheme: IconThemeData(color: appBarFg),

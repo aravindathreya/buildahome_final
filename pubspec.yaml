@@ -52,6 +52,7 @@ dependencies:
   model_viewer_plus: ^1.10.0
   webview_flutter: ^4.13.0
   pdfx: ^2.9.2
+  package_info_plus: ^8.3.0
 
 dependency_overrides:
   win32: 5.15.0
@@ -77,6 +78,7 @@ flutter:
   assets:
     - assets/images/
     - assets/images/chatbot/
+    - assets/images/Logos/
     - assets/models/nihira_bedroom.glb
   # The following line ensures that the Material Icons font is
   # included with your application, so that you can use the icons in

@@ -7,25 +7,27 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   group('DailyUpdatePromptService.isEligibleRole', () {
-    test('includes coordinator, assistant coordinator, and site engineer', () {
-      expect(
-        DailyUpdatePromptService.isEligibleRole('Project Coordinator'),
-        isTrue,
-      );
-      expect(
-        DailyUpdatePromptService.isEligibleRole('Project Co-ordinator'),
-        isTrue,
-      );
-      expect(
-        DailyUpdatePromptService.isEligibleRole('Assistant Project Coordinator'),
-        isTrue,
-      );
-      expect(DailyUpdatePromptService.isEligibleRole('APCC'), isTrue);
+    test('includes site engineer and super admin only', () {
       expect(DailyUpdatePromptService.isEligibleRole('Site Engineer'), isTrue);
       expect(DailyUpdatePromptService.isEligibleRole('site engineer'), isTrue);
+      expect(DailyUpdatePromptService.isEligibleRole('Super Admin'), isTrue);
+      expect(DailyUpdatePromptService.isEligibleRole('super admin'), isTrue);
     });
 
     test('excludes other roles', () {
+      expect(
+        DailyUpdatePromptService.isEligibleRole('Project Coordinator'),
+        isFalse,
+      );
+      expect(
+        DailyUpdatePromptService.isEligibleRole('Project Co-ordinator'),
+        isFalse,
+      );
+      expect(
+        DailyUpdatePromptService.isEligibleRole('Assistant Project Coordinator'),
+        isFalse,
+      );
+      expect(DailyUpdatePromptService.isEligibleRole('APCC'), isFalse);
       expect(DailyUpdatePromptService.isEligibleRole('Admin'), isFalse);
       expect(DailyUpdatePromptService.isEligibleRole('Project Manager'), isFalse);
       expect(DailyUpdatePromptService.isEligibleRole('Client'), isFalse);

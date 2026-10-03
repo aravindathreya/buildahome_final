@@ -1,8 +1,11 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:photo_view/photo_view.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:image/image.dart' as img;
 import 'dart:async';
 import 'dart:io';
 import 'package:image_picker/image_picker.dart';
@@ -16,6 +19,25 @@ import 'widgets/full_screen_progress.dart';
 import 'widgets/full_screen_error_summary.dart';
 import 'widgets/themed_scaffold.dart';
 import 'AdminDashboard.dart';
+
+/// Bake EXIF orientation into pixels and resize for upload.
+/// Top-level so it can run in a background isolate via [compute].
+Uint8List? _normalizeDailyUpdateImage(Uint8List bytes) {
+  final decoded = img.decodeImage(bytes);
+  if (decoded == null) return null;
+
+  var image = img.bakeOrientation(decoded);
+  const maxSide = 1000;
+  if (image.width > maxSide || image.height > maxSide) {
+    if (image.width >= image.height) {
+      image = img.copyResize(image, width: maxSide);
+    } else {
+      image = img.copyResize(image, height: maxSide);
+    }
+  }
+
+  return Uint8List.fromList(img.encodeJpg(image, quality: 85));
+}
 
 class FullScreenImage extends StatefulWidget {
   final id;
@@ -57,8 +79,15 @@ class ImageOnly extends StatelessWidget {
 
 class AddDailyUpdate extends StatelessWidget {
   final bool returnToAdminDashboard;
-  
-  const AddDailyUpdate({Key? key, this.returnToAdminDashboard = false}) : super(key: key);
+  final String? initialProjectId;
+  final String? initialProjectName;
+
+  const AddDailyUpdate({
+    Key? key,
+    this.returnToAdminDashboard = false,
+    this.initialProjectId,
+    this.initialProjectName,
+  }) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
@@ -66,7 +95,11 @@ class AddDailyUpdate extends StatelessWidget {
       title: 'Add Daily Update',
       backgroundColor: AppTheme.darkBackgroundPrimary,
       body: SafeArea(
-        child: AddDailyUpdateForm(returnToAdminDashboard: returnToAdminDashboard),
+        child: AddDailyUpdateForm(
+          returnToAdminDashboard: returnToAdminDashboard,
+          initialProjectId: initialProjectId,
+          initialProjectName: initialProjectName,
+        ),
       ),
     );
   }
@@ -74,8 +107,15 @@ class AddDailyUpdate extends StatelessWidget {
 
 class AddDailyUpdateForm extends StatefulWidget {
   final bool returnToAdminDashboard;
-  
-  const AddDailyUpdateForm({Key? key, this.returnToAdminDashboard = false}) : super(key: key);
+  final String? initialProjectId;
+  final String? initialProjectName;
+
+  const AddDailyUpdateForm({
+    Key? key,
+    this.returnToAdminDashboard = false,
+    this.initialProjectId,
+    this.initialProjectName,
+  }) : super(key: key);
 
   @override
   AddDailyUpdateState createState() {
@@ -101,9 +141,6 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
   var selectedPictureFilenames = [];
   var selectedPictureFilePaths = [];
 
-  final maxImageHeight = 1000;
-  final maxImageWidth = 1000;
-
   var selectedProject;
   var projectId;
   var projects = [];
@@ -123,11 +160,13 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
   int _currentStep = 0;
   final int _totalSteps = 5;
 
-  BoxDecoration _surfaceCard({Color? borderColor}) {
+  BoxDecoration _surfaceCard({Color? borderColor, bool showBorder = true}) {
     return BoxDecoration(
       color: AppTheme.darkBackgroundSecondary,
       borderRadius: BorderRadius.circular(18),
-      border: Border.all(color: borderColor ?? _cardBorder),
+      border: showBorder
+          ? Border.all(color: borderColor ?? _cardBorder)
+          : null,
       boxShadow: const [
         BoxShadow(
           color: _softShadow,
@@ -180,8 +219,44 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
 
   void loadProjects() async {
     await DataProvider().reloadData();
+    if (!mounted) return;
+    final loaded = DataProvider().projects;
     setState(() {
-      projects = DataProvider().projects;
+      projects = loaded;
+    });
+    await _applyInitialProject();
+  }
+
+  Future<void> _applyInitialProject() async {
+    if (selectedProject != null) return;
+
+    final wantedId = (widget.initialProjectId ?? '').trim();
+    if (wantedId.isEmpty) return;
+
+    dynamic match;
+    for (final project in projects) {
+      if (project is! Map) continue;
+      if (project['id']?.toString() == wantedId) {
+        match = project;
+        break;
+      }
+    }
+
+    final prefs = await SharedPreferences.getInstance();
+    final fallbackName = (widget.initialProjectName ??
+            prefs.getString('client_name') ??
+            prefs.getString('project_name') ??
+            'Selected project')
+        .trim();
+
+    if (!mounted) return;
+    setState(() {
+      selectedProject = match ??
+          {
+            'id': wantedId,
+            'name': fallbackName.isEmpty ? 'Selected project' : fallbackName,
+          };
+      projectId = wantedId;
     });
   }
 
@@ -259,13 +334,28 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
 
   Future<bool> processSelectedPicture(XFile picture) async {
     try {
-      // Process synchronously - FileImage is lazy-loaded anyway
-      // Don't check file existence as it can hang on some devices
-      // The file picker already ensures the file exists
-      
-      selectedPictures.insert(0, FileImage(File(picture.path)));
-      selectedPictureFilenames.insert(0, picture.name);
-      selectedPictureFilePaths.add(picture.path);
+      // iPhone photos often store pixels in landscape with an EXIF orientation
+      // tag. Bake that into the pixels so uploads/display stay upright everywhere.
+      final originalBytes = await picture.readAsBytes();
+      final normalizedBytes = await compute(
+        _normalizeDailyUpdateImage,
+        originalBytes,
+      );
+      if (normalizedBytes == null || normalizedBytes.isEmpty) {
+        print('[AddDailyUpdate] Failed to decode/normalize image');
+        return false;
+      }
+
+      final tempDir = await getTemporaryDirectory();
+      final safeName =
+          'dpr_${DateTime.now().millisecondsSinceEpoch}_${selectedPictures.length}.jpg';
+      final outPath = '${tempDir.path}/$safeName';
+      final outFile = File(outPath);
+      await outFile.writeAsBytes(normalizedBytes, flush: true);
+
+      selectedPictures.insert(0, FileImage(outFile));
+      selectedPictureFilenames.insert(0, safeName);
+      selectedPictureFilePaths.insert(0, outPath);
       return true;
     } catch (e) {
       print('[AddDailyUpdate] Error processing picture: $e');
@@ -348,11 +438,11 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
       if (!mounted) return;
 
       final picker = ImagePicker();
+      // Avoid picker-side resize so EXIF orientation is preserved for baking.
       final pickedFile = await picker.pickImage(
         source: ImageSource.camera,
-        maxWidth: maxImageWidth.toDouble(),
-        maxHeight: maxImageHeight.toDouble(),
-        imageQuality: 85,
+        imageQuality: 95,
+        requestFullMetadata: true,
       );
 
       if (pickedFile == null) {
@@ -362,11 +452,11 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
 
       if (!mounted) return;
 
-      // Process the image immediately (should be very fast)
+      // Normalize orientation + resize (can take a few seconds on large iPhone photos)
       bool success = false;
       try {
         success = await processSelectedPicture(pickedFile).timeout(
-          Duration(seconds: 5),
+          const Duration(seconds: 30),
           onTimeout: () {
             print('[AddDailyUpdate] Image processing timeout');
             return false;
@@ -429,10 +519,10 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
       // Do not pre-check Permission.photos — the system gallery picker handles
       // access, and a strict photos check incorrectly fails for Limited Access.
       final picker = ImagePicker();
+      // Avoid picker-side resize so EXIF orientation is preserved for baking.
       final pickedFiles = await picker.pickMultiImage(
-        maxWidth: maxImageWidth.toDouble(),
-        maxHeight: maxImageHeight.toDouble(),
-        imageQuality: 85,
+        imageQuality: 95,
+        requestFullMetadata: true,
       );
 
       if (pickedFiles.isEmpty) {
@@ -442,12 +532,12 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
 
       if (!mounted) return;
 
-      // Process all images (should be very fast)
+      // Normalize orientation + resize for each selected image
       int successCount = 0;
       for (var i = 0; i < pickedFiles.length; i++) {
         try {
           final success = await processSelectedPicture(pickedFiles[i]).timeout(
-            Duration(seconds: 5),
+            const Duration(seconds: 30),
             onTimeout: () {
               print('[AddDailyUpdate] Image processing timeout for image ${i + 1}');
               return false;
@@ -1742,7 +1832,6 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
                           width: 96,
                           decoration: BoxDecoration(
                             borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: _cardBorder),
                           ),
                           child: ClipRRect(
                             borderRadius: BorderRadius.circular(12),
@@ -1776,7 +1865,6 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
                         decoration: BoxDecoration(
                           color: AppTheme.darkBackgroundPrimaryLight,
                           borderRadius: BorderRadius.circular(999),
-                          border: Border.all(color: _cardBorder),
                         ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
@@ -1845,9 +1933,7 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
   }) {
     return Container(
       padding: const EdgeInsets.all(16),
-      decoration: _surfaceCard(
-        borderColor: isComplete ? const Color(0xFFBBF7D0) : _cardBorder,
-      ),
+      decoration: _surfaceCard(showBorder: false),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1889,7 +1975,6 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
               decoration: BoxDecoration(
                 color: _pageBg,
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: _cardBorder),
               ),
               child: Text(
                 content,

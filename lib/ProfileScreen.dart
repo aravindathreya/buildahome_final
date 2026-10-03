@@ -2,9 +2,11 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app_theme.dart';
+import 'services/app_logout.dart';
 import 'services/location_service.dart';
 import 'services/profile_picture_service.dart';
 import 'widgets/profile_picture_dialog.dart';
@@ -25,6 +27,9 @@ class _ProfileScreenState extends State<ProfileScreen>
   String? _picturePath;
   bool? _backgroundLocationOn;
   bool _loading = true;
+  /// Fallback matches pubspec `version:` when PackageInfo is unavailable
+  /// (e.g. before a full rebuild after adding the plugin).
+  String _appVersion = 'Version 3.0.1';
 
   bool get _showLocationControls {
     final role = _role.trim().toLowerCase();
@@ -79,6 +84,18 @@ class _ProfileScreenState extends State<ProfileScreen>
       backgroundOn = await LocationService.hasBackgroundAccess();
     }
 
+    String appVersion = _appVersion;
+    try {
+      final info = await PackageInfo.fromPlatform();
+      final version = info.version.trim();
+      final build = info.buildNumber.trim();
+      if (version.isNotEmpty) {
+        appVersion = build.isNotEmpty ? 'Version $version ($build)' : 'Version $version';
+      }
+    } catch (_) {
+      // Keep any previously loaded version label.
+    }
+
     if (!mounted) return;
     setState(() {
       _displayName = displayName;
@@ -86,6 +103,7 @@ class _ProfileScreenState extends State<ProfileScreen>
       _phone = phone;
       _picturePath = picture;
       _backgroundLocationOn = backgroundOn;
+      _appVersion = appVersion;
       _loading = false;
     });
   }
@@ -117,6 +135,62 @@ class _ProfileScreenState extends State<ProfileScreen>
 
   Future<void> _openLocationSettings() async {
     await LocationService.openBackgroundLocationSettings();
+  }
+
+  Future<void> _confirmLogout() async {
+    final shouldLogout = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          backgroundColor: AppTheme.darkBackgroundSecondary,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          title: const Text(
+            'Log out?',
+            style: TextStyle(
+              color: AppTheme.darkTextPrimary,
+              fontWeight: FontWeight.w800,
+              fontSize: 18,
+            ),
+          ),
+          content: const Text(
+            'Are you sure you want to log out of this account?',
+            style: TextStyle(
+              color: AppTheme.darkTextSecondary,
+              fontSize: 14.5,
+              fontWeight: FontWeight.w500,
+              height: 1.4,
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text(
+                'Cancel',
+                style: TextStyle(
+                  color: AppTheme.mutedGrey,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text(
+                'Log out',
+                style: TextStyle(
+                  color: Color(0xFFDC2626),
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+    if (shouldLogout == true && mounted) {
+      await AppLogout.logoutAndGoToLogin(context: context);
+    }
   }
 
   Future<void> _confirmTurnOffLocation() async {
@@ -204,22 +278,68 @@ class _ProfileScreenState extends State<ProfileScreen>
             ? const Center(
                 child: CircularProgressIndicator(color: AppTheme.accentBlue),
               )
-            : RefreshIndicator(
-                color: AppTheme.accentBlue,
-                onRefresh: _load,
-                child: ListView(
-                  padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
-                  children: [
-                    _buildIdentityCard(),
-                    const SizedBox(height: 16),
-                    _buildPhoneCard(),
-                    if (_showLocationControls) ...[
-                      const SizedBox(height: 16),
-                      _buildLocationCard(),
-                    ],
-                  ],
-                ),
+            : Column(
+                children: [
+                  Expanded(
+                    child: RefreshIndicator(
+                      color: AppTheme.accentBlue,
+                      onRefresh: _load,
+                      child: ListView(
+                        padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
+                        children: [
+                          _buildIdentityCard(),
+                          const SizedBox(height: 16),
+                          _buildPhoneCard(),
+                          if (_showLocationControls) ...[
+                            const SizedBox(height: 16),
+                            _buildLocationCard(),
+                          ],
+                          const SizedBox(height: 16),
+                          _buildLogoutButton(),
+                        ],
+                      ),
+                    ),
+                  ),
+                  SafeArea(
+                    top: false,
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
+                      child: Center(
+                        child: Text(
+                          _appVersion,
+                          style: const TextStyle(
+                            color: AppTheme.mutedGrey,
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
+      ),
+    );
+  }
+
+  Widget _buildLogoutButton() {
+    return SizedBox(
+      width: double.infinity,
+      child: OutlinedButton.icon(
+        onPressed: _confirmLogout,
+        icon: const Icon(Icons.logout_rounded, size: 18),
+        label: const Text(
+          'Log out',
+          style: TextStyle(fontWeight: FontWeight.w800),
+        ),
+        style: OutlinedButton.styleFrom(
+          foregroundColor: const Color(0xFFDC2626),
+          side: const BorderSide(color: Color(0xFF7F1D1D)),
+          padding: const EdgeInsets.symmetric(vertical: 14),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
       ),
     );
   }

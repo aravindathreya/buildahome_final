@@ -43,6 +43,7 @@ import 'UploadPaymentProofScreen.dart';
 import 'documents_v1/documents_v1_home_screen.dart';
 import 'VirtualTour.dart';
 import 'widgets/virtual_tour_embed.dart';
+import 'widgets/buildahome_brand_row.dart';
 import 'NavMenu.dart';
 import 'ProfileScreen.dart';
 import 'notifcations.dart';
@@ -58,6 +59,7 @@ import 'utilities/role_app_bar_color.dart';
 import 'widgets/client_home_tour.dart';
 import 'widgets/dashboard_chrome.dart';
 import 'widgets/floating_client_chatbot.dart';
+import 'widgets/floating_glass_bottom_nav.dart';
 import 'widgets/modern_task_card.dart';
 import 'widgets/profile_picture_dialog.dart';
 
@@ -346,16 +348,33 @@ class UserDashboardLayoutState extends State<UserDashboardLayout> {
     if (mounted) setState(() {});
   }
 
+  bool get _layoutIsClientUser =>
+      (_userRole ?? '').trim().toLowerCase() == 'client';
+
+  bool get _layoutIsSuperAdmin {
+    final role =
+        (_userRole ?? '').trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
+    return role == 'super admin' || role == 'admin';
+  }
+
   List<String> _resolvedBottomNavKeys() {
     final surface = _bottomNavSurface;
     final snapshot = MobileBottomNavService.instance.snapshot(surface);
-    final keys = ensureProjectHomePaymentsTab(
+    var keys = ensureProjectHomePaymentsTab(
       resolveMobileBottomNavActionKeys(
         surface: surface,
         fallbackKeys: fallbackBottomNavKeysFor(surface),
         snapshot: snapshot,
       ),
     );
+    // Docs tab: staff only (never clients).
+    keys = _layoutIsClientUser
+        ? withoutProjectHomeDocsTabs(keys)
+        : ensureProjectHomeDocsTab(keys);
+    // "For me" / client portal: clients + Super Admin only.
+    if (!_layoutIsClientUser && !_layoutIsSuperAdmin) {
+      keys = keys.where((key) => key != 'client_portal').toList();
+    }
     final previous = _lastLoggedBottomNavKeys;
     if (previous == null ||
         previous.length != keys.length ||
@@ -363,6 +382,7 @@ class UserDashboardLayoutState extends State<UserDashboardLayout> {
       _lastLoggedBottomNavKeys = List<String>.from(keys);
       print(
         '[MobileBottomNav] ui surface=${surface.apiName} '
+        'role=${_userRole ?? ''} client=$_layoutIsClientUser '
         'configured=${snapshot?.configured == true} keys=$keys',
       );
     }
@@ -391,14 +411,11 @@ class UserDashboardLayoutState extends State<UserDashboardLayout> {
       final role = _userRole ??
           (await SharedPreferences.getInstance()).getString('role');
       final isClient = (role ?? '').trim().toLowerCase() == 'client';
-      if (!isClient || ClientGenerationService.instance.isLegacy) {
-        maybePromptForProfilePicture(context);
-        return;
-      }
-      if (await ClientHomeTour.hasCompleted()) {
-        if (mounted) maybePromptForProfilePicture(context);
-        return;
-      }
+      // UserDashboard is the client project home. Never prompt for a profile
+      // picture here — staff prompts live on AdminDashboard only.
+      if (!isClient) return;
+      if (ClientGenerationService.instance.isLegacy) return;
+      if (await ClientHomeTour.hasCompleted()) return;
 
       for (var i = 0; i < 16; i++) {
         if (_userDashboardKey.currentState?.isReadyForTour == true) break;
@@ -407,10 +424,7 @@ class UserDashboardLayoutState extends State<UserDashboardLayout> {
       }
       await Future<void>.delayed(const Duration(milliseconds: 180));
       if (!mounted || _tourActive) return;
-      if (await ClientHomeTour.hasCompleted()) {
-        maybePromptForProfilePicture(context);
-        return;
-      }
+      if (await ClientHomeTour.hasCompleted()) return;
       // Mark done as soon as it opens so login/rebuild/logout cannot replay it.
       await ClientHomeTour.markCompleted();
       if (!mounted || _tourActive) return;
@@ -422,7 +436,6 @@ class UserDashboardLayoutState extends State<UserDashboardLayout> {
 
   Future<void> _finishTour() async {
     if (mounted) setState(() => _tourActive = false);
-    if (mounted) maybePromptForProfilePicture(context);
   }
 
   Future<void> _revealTourTarget(GlobalKey key) async {
@@ -453,11 +466,11 @@ class UserDashboardLayoutState extends State<UserDashboardLayout> {
   void _goBackToDashboard() {
     final nav = Navigator.of(context);
     if (nav.canPop()) {
-      nav.pop();
+      // Project Home may sit above intermediate screens (e.g. My Tasks).
+      // Always return to the root dashboard, not the previous route.
+      nav.popUntil((route) => route.isFirst);
       return;
     }
-    final role = (_userRole ?? '').trim().toLowerCase();
-    if (role == 'client') return;
     Navigator.pushReplacement(
       context,
       MaterialPageRoute(builder: (context) => AdminDashboard()),
@@ -707,76 +720,24 @@ class UserDashboardLayoutState extends State<UserDashboardLayout> {
 
   Widget _buildBottomNav([List<String>? resolvedKeys]) {
     final keys = resolvedKeys ?? _resolvedBottomNavKeys();
-    final items = <_DashNavItem>[
-      for (final key in keys)
-        _DashNavItem(
-          activeIconForMobileBottomNav(key) ?? Icons.circle,
-          outlinedIconForMobileBottomNav(key) ?? Icons.circle_outlined,
-          labelForMobileBottomNav(key) ?? key,
-        ),
-    ];
-
-    return Container(
-      key: _tourBottomNavKey,
-      decoration: BoxDecoration(
-        color: AppTheme.darkBackgroundSecondary,
-        border: Border(
-          top: BorderSide(
-            color: AppTheme.border,
+    return FloatingGlassBottomNav(
+      navKey: _tourBottomNavKey,
+      items: [
+        for (var index = 0; index < keys.length; index++)
+          FloatingGlassBottomNavItem(
+            activeIcon:
+                activeIconForMobileBottomNav(keys[index]) ?? Icons.circle_rounded,
+            icon: outlinedIconForMobileBottomNav(keys[index]) ??
+                Icons.circle_rounded,
+            label: (_restrictLegacyClientFeatures && keys[index] == 'my_tasks')
+                ? 'Soon'
+                : (labelForMobileBottomNav(keys[index]) ?? keys[index]),
+            selected: _bottomNavIndex == index,
+            disabled:
+                _restrictLegacyClientFeatures && keys[index] == 'my_tasks',
+            onTap: () => _onBottomNavTap(index),
           ),
-        ),
-      ),
-      child: SafeArea(
-        top: false,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
-          child: Row(
-            children: List.generate(items.length, (index) {
-              final item = items[index];
-              final key = keys[index];
-              final selected = _bottomNavIndex == index;
-              final comingSoon =
-                  _restrictLegacyClientFeatures && key == 'my_tasks';
-              final color = comingSoon
-                  ? const Color(0xFF6B7280)
-                  : (selected
-                      ? Colors.white
-                      : _mutedGrey);
-              return Expanded(
-                child: InkWell(
-                  onTap: () => _onBottomNavTap(index),
-                  borderRadius: BorderRadius.circular(12),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 6),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          selected ? item.activeIcon : item.icon,
-                          color: color,
-                          size: 24,
-                        ),
-                        const SizedBox(height: 3),
-                        Text(
-                          comingSoon ? 'Soon' : item.label,
-                          style: TextStyle(
-                            color: color,
-                            fontSize: 10.5,
-                            fontWeight:
-                                selected ? FontWeight.w700 : FontWeight.w500,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              );
-            }),
-          ),
-        ),
-      ),
+      ],
     );
   }
 
@@ -790,17 +751,14 @@ class UserDashboardLayoutState extends State<UserDashboardLayout> {
       canPop: !widget.fromAdminDashboard,
       onPopInvokedWithResult: (didPop, _) {
         if (didPop || !widget.fromAdminDashboard) return;
-        // A screen pushed on top (chat, tasks, …) owns this back press.
-        final route = ModalRoute.of(context);
-        if (route != null && !route.isCurrent) return;
-        final nav = Navigator.of(context);
-        if (nav.canPop()) nav.pop();
+        _goBackToDashboard();
       },
       child: Stack(
         children: [
           Scaffold(
             key: _scaffoldKey,
             backgroundColor: AppTheme.darkBackgroundPrimary,
+            extendBody: true,
             drawer: NavMenuWidget(),
             body: Column(
               children: [
@@ -864,9 +822,9 @@ class UserDashboardLayoutState extends State<UserDashboardLayout> {
                     holePadding: const EdgeInsets.fromLTRB(6, 4, 6, 8),
                   ),
                   ClientTourStep(
-                    title: 'Tasks, updates, and chat',
+                    title: 'Tasks, payments, and more',
                     body:
-                        'Use the bar below for your tasks, site updates, chat, and the full menu.',
+                        'Use the bar below for your tasks, payments, and the full menu.',
                     targetKey: _tourBottomNavKey,
                     holeRadius: 16,
                     holePadding: const EdgeInsets.fromLTRB(4, 4, 4, 2),
@@ -888,13 +846,6 @@ class UserDashboardLayoutState extends State<UserDashboardLayout> {
       ),
     );
   }
-}
-
-class _DashNavItem {
-  final IconData activeIcon;
-  final IconData icon;
-  final String label;
-  const _DashNavItem(this.activeIcon, this.icon, this.label);
 }
 
 class UserDashboardScreen extends StatefulWidget {
@@ -1343,6 +1294,17 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
   bool get _isClientUser =>
       (_currentRole ?? '').trim().toLowerCase() == 'client';
 
+  /// Super Admin is often stored as `Admin` in prefs.
+  bool get _isSuperAdminUser {
+    final role = (_currentRole ?? '')
+        .trim()
+        .toLowerCase()
+        .replaceAll(RegExp(r'\s+'), ' ');
+    return role == 'super admin' || role == 'admin';
+  }
+
+  bool get _canSeeForMe => _isClientUser || _isSuperAdminUser;
+
   bool get isReadyForTour => !_shouldShowInitialPageSkeleton;
 
   Future<void> revealTourTarget(GlobalKey key) async {
@@ -1410,8 +1372,6 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
                       color: _ink,
                       fontSize: 14,
                       fontWeight: FontWeight.w600,
-                      decoration: TextDecoration.underline,
-                      decorationColor: _ink,
                     ),
                   ),
                 ],
@@ -1488,99 +1448,297 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
         ],
       );
 
-  Widget _buildHighlightedChatCard() {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(18),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x332563EB),
-            blurRadius: 18,
-            offset: Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Material(
-        color: Colors.transparent,
-        borderRadius: BorderRadius.circular(18),
-        clipBehavior: Clip.antiAlias,
-        child: Ink(
-          decoration: const BoxDecoration(
-            borderRadius: BorderRadius.all(Radius.circular(18)),
-            gradient: LinearGradient(
-              colors: [AppTheme.navy, AppTheme.accentBlue],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
+  static const double _chatUpdateCardMinHeight = 168;
+
+  Widget _buildChatAndDailyUpdateRow() {
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(
+            child: KeyedSubtree(
+              key: widget.tourChatKey,
+              child: _buildHighlightedChatCard(),
             ),
           ),
-          child: InkWell(
-            onTap: _openChat,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 16, 14, 16),
-              child: Row(
-                children: [
-                  Container(
-                    width: 52,
-                    height: 52,
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.18),
-                      shape: BoxShape.circle,
+          const SizedBox(width: 12),
+          Expanded(child: _buildLatestDailyUpdateCard()),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHighlightedChatCard() {
+    return ConstrainedBox(
+      constraints: const BoxConstraints(minHeight: _chatUpdateCardMinHeight),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(18),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x332563EB),
+              blurRadius: 18,
+              offset: Offset(0, 8),
+            ),
+          ],
+        ),
+        child: Material(
+          color: Colors.transparent,
+          borderRadius: BorderRadius.circular(18),
+          clipBehavior: Clip.antiAlias,
+          child: Ink(
+            decoration: const BoxDecoration(
+              borderRadius: BorderRadius.all(Radius.circular(18)),
+              gradient: LinearGradient(
+                colors: [AppTheme.navy, AppTheme.accentBlue],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+            ),
+            child: InkWell(
+              onTap: _openChat,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(14, 14, 12, 14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.18),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(
+                            Icons.chat_bubble_rounded,
+                            color: Colors.white,
+                            size: 20,
+                          ),
+                        ),
+                        const Spacer(),
+                        Icon(
+                          Icons.arrow_forward_rounded,
+                          color: Colors.white.withValues(alpha: 0.9),
+                          size: 20,
+                        ),
+                      ],
                     ),
-                    child: const Icon(
-                      Icons.chat_bubble_rounded,
-                      color: Colors.white,
-                      size: 26,
-                    ),
-                  ),
-                  const SizedBox(width: 14),
-                  const Expanded(
-                    child: Column(
+                    const SizedBox(height: 18),
+                    Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
+                        const Text(
                           'Chat',
                           style: TextStyle(
                             color: Colors.white,
-                            fontSize: 20,
+                            fontSize: 18,
                             fontWeight: FontWeight.w800,
                             letterSpacing: -0.3,
                             height: 1.1,
                           ),
                         ),
-                        SizedBox(height: 4),
+                        const SizedBox(height: 4),
                         Text(
-                          'Message your project team',
+                          'Message your team',
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                            color: Color(0xE6FFFFFF),
-                            fontSize: 13.5,
+                            color: Colors.white.withValues(alpha: 0.9),
+                            fontSize: 12.5,
                             fontWeight: FontWeight.w500,
                             height: 1.25,
                           ),
                         ),
                       ],
                     ),
-                  ),
-                  const SizedBox(width: 10),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 10,
-                    ),
-                    decoration: BoxDecoration(
-                      color: AppTheme.darkBackgroundSecondary,
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                    child: const Text(
-                      'Open',
-                      style: TextStyle(
-                        color: AppTheme.darkTextPrimary,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                ],
+                  ],
+                ),
               ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLatestDailyUpdateCard() {
+    final updates = dailyUpdateList
+        .map((item) => item.toString().trim())
+        .where((item) => item.isNotEmpty)
+        .take(2)
+        .toList();
+    final dateLabel = updatePostedOnDate.toString().trim();
+    final showSkeleton = _isLoadingUpdates && !_hasLoadedUpdates;
+    final emptyMessage = updates.isEmpty ||
+            (updates.length == 1 &&
+                updates.first == 'Stay tuned for updates about your home')
+        ? 'Stay tuned for updates about your home'
+        : null;
+
+    return ConstrainedBox(
+      constraints: const BoxConstraints(minHeight: _chatUpdateCardMinHeight),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: _openAllDailyUpdates,
+          borderRadius: BorderRadius.circular(18),
+          child: Ink(
+            decoration: _dashboardSurfaceDecoration.copyWith(
+              borderRadius: BorderRadius.circular(18),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(14, 14, 12, 14),
+              child: showSkeleton
+                  ? Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Container(
+                          width: 36,
+                          height: 36,
+                          decoration: BoxDecoration(
+                            color: _hairline.withValues(alpha: 0.55),
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Container(
+                              height: 14,
+                              width: 96,
+                              decoration: BoxDecoration(
+                                color: _hairline.withValues(alpha: 0.55),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Container(
+                              height: 12,
+                              width: double.infinity,
+                              decoration: BoxDecoration(
+                                color: _hairline.withValues(alpha: 0.4),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    )
+                  : Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Container(
+                              width: 40,
+                              height: 40,
+                              decoration: BoxDecoration(
+                                color: AppTheme.accentBlue
+                                    .withValues(alpha: 0.16),
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(
+                                Icons.today_rounded,
+                                color: AppTheme.accentBlue,
+                                size: 20,
+                              ),
+                            ),
+                            const Spacer(),
+                            GestureDetector(
+                              onTap: _openAllDailyUpdates,
+                              behavior: HitTestBehavior.opaque,
+                              child: const Padding(
+                                padding: EdgeInsets.symmetric(
+                                  horizontal: 2,
+                                  vertical: 4,
+                                ),
+                                child: Text(
+                                  'View all',
+                                  style: TextStyle(
+                                    color: _ink,
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        const Text(
+                          'Daily update',
+                          style: TextStyle(
+                            color: _ink,
+                            fontSize: 18,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: -0.3,
+                            height: 1.1,
+                          ),
+                        ),
+                        if (dateLabel.isNotEmpty && dateLabel != ' ') ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            dateLabel,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: _airbnbMuted,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                        const SizedBox(height: 8),
+                        if (emptyMessage != null)
+                          Text(
+                            emptyMessage,
+                            maxLines: 3,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: _airbnbMuted,
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w400,
+                              height: 1.35,
+                            ),
+                          )
+                        else
+                          for (var i = 0; i < updates.length; i++) ...[
+                            if (i > 0) const SizedBox(height: 6),
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Container(
+                                  width: 5,
+                                  height: 5,
+                                  margin: const EdgeInsets.only(top: 5),
+                                  decoration: const BoxDecoration(
+                                    color: AppTheme.accentBlue,
+                                    shape: BoxShape.circle,
+                                  ),
+                                ),
+                                const SizedBox(width: 7),
+                                Expanded(
+                                  child: Text(
+                                    updates[i],
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      color: _ink,
+                                      fontSize: 12.5,
+                                      fontWeight: FontWeight.w500,
+                                      height: 1.3,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                      ],
+                    ),
             ),
           ),
         ),
@@ -1590,6 +1748,10 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
 
   void _openChat() {
     openChat();
+  }
+
+  void _openAllDailyUpdates() {
+    _navigateToWidget(const DprScreen(title: 'Updates'));
   }
 
   bool get _shouldShowMyPendingTasksSection =>
@@ -1656,6 +1818,9 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
         : dateParts[1] == null
             ? dateParts[0]
             : '${dateParts[0]} · ${dateParts[1]}';
+    final showPaymentProofMenu =
+        (_currentRole ?? '').trim().toLowerCase() == 'client' &&
+            isClientUploadStagePaymentProofTask(task);
 
     return ModernTaskCard(
       title: _dashboardPendingTaskTitle(task),
@@ -1668,6 +1833,29 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
       accentIndex: index,
       tintedBackground: true,
       onTap: () => _openTaskDetails(task),
+      menu: showPaymentProofMenu
+          ? PopupMenuButton<String>(
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+              iconSize: 20,
+              icon: const Icon(
+                Icons.more_horiz_rounded,
+                color: kTaskMuted,
+                size: 20,
+              ),
+              onSelected: (value) {
+                if (value == 'payment_proof') {
+                  _navigateToWidget(const UploadPaymentProofScreen());
+                }
+              },
+              itemBuilder: (context) => const [
+                PopupMenuItem(
+                  value: 'payment_proof',
+                  child: Text('Go to payment proof'),
+                ),
+              ],
+            )
+          : null,
     );
   }
 
@@ -2088,14 +2276,11 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
   }
 
   void _openAllTasks() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => MyTasksScreen(
-          tasks: _tasks,
-          onRefresh: _refreshTasksForMyTasks,
-          initialTabIndex: 0,
-        ),
+    _navigateToWidget(
+      MyTasksScreen(
+        tasks: _tasks,
+        onRefresh: _refreshTasksForMyTasks,
+        initialTabIndex: 0,
       ),
     );
   }
@@ -2115,14 +2300,11 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
       }
       return;
     }
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => MyTasksScreen(
-          tasks: _tasks,
-          onRefresh: _refreshTasksForMyTasks,
-          focusTaskId: task['id']?.toString(),
-        ),
+    _navigateToWidget(
+      MyTasksScreen(
+        tasks: _tasks,
+        onRefresh: _refreshTasksForMyTasks,
+        focusTaskId: task['id']?.toString(),
       ),
     );
   }
@@ -2666,12 +2848,16 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
     final rbac = RBACService();
 
     if (_currentRole != 'Billing') {
-      // Same project home tiles a client sees after login.
-      menuItems.add({
-        'title': 'Client Portal',
-        'icon': Icons.dashboard_customize_outlined,
-        'route': () => const ClientPortalScreen(),
-      });
+      // "For me" / Client Portal: clients always; Super Admin can impersonate.
+      if (_canSeeForMe) {
+        menuItems.add({
+          'title': 'Client Portal',
+          'icon': Icons.dashboard_customize_outlined,
+          'route': () => ClientPortalScreen(
+                impersonatingClient: _isSuperAdminUser && !_isClientUser,
+              ),
+        });
+      }
       menuItems.add({
         'title': 'My tasks',
         'icon': Icons.pending_actions,
@@ -3074,47 +3260,23 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
             ],
             if (!_restrictLegacyClientFeatures) ...[
               const SizedBox(height: 20),
-              KeyedSubtree(
-                key: widget.tourChatKey,
-                child: _buildHighlightedChatCard(),
-              ),
+              _buildChatAndDailyUpdateRow(),
             ],
-            const SizedBox(height: 28),
             KeyedSubtree(
               key: widget.tourActionsKey,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      const Text(
-                        'Quick actions',
-                        style: TextStyle(
-                          fontSize: 22,
-                          fontWeight: FontWeight.w600,
-                          color: _ink,
-                          letterSpacing: -0.4,
-                          height: 1.1,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 6),
-                  GridView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: _restrictLegacyClientFeatures ? 3 : 4,
-                crossAxisSpacing: 12,
-                mainAxisSpacing: 18,
-                childAspectRatio: _restrictLegacyClientFeatures ? 0.72 : 0.62,
-              ),
-              itemCount: pinnedActions.length,
-              itemBuilder: (BuildContext context, int index) {
-                return _buildAirbnbQuickAction(pinnedActions[index]);
-              },
-            ),
-                ],
+              child: GridView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 3,
+                  crossAxisSpacing: 12,
+                  mainAxisSpacing: 8,
+                  childAspectRatio: 0.9,
+                ),
+                itemCount: pinnedActions.length,
+                itemBuilder: (BuildContext context, int index) {
+                  return _buildAirbnbQuickAction(pinnedActions[index]);
+                },
               ),
             ),
           ],
@@ -3162,6 +3324,7 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        const BuildAhomeBrandRow(),
         KeyedSubtree(
           key: widget.tourProgressKey,
           child: VirtualTourEmbed(
@@ -3211,9 +3374,6 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
     final durationLabel =
         hasDuration ? '$percentLabel · $duration days' : null;
     final remaining = _remainingDays();
-    final pendingLabel = remaining == null
-        ? null
-        : '$remaining ${_dayWord(remaining)} pending to completion';
     final delayLabel = docDelayDays > 0
         ? '+${_wholeNumber(docDelayDays)} ${_dayWord(docDelayDays)} delay'
         : null;
@@ -3225,25 +3385,38 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
     final progressColor = _ink;
     final trackColor = const Color(0xFF2A2A2D);
 
+    const titleStyle = TextStyle(
+      color: _ink,
+      fontSize: 18,
+      fontWeight: FontWeight.w700,
+      height: 1.2,
+      letterSpacing: -0.3,
+    );
+
+    final title = remaining != null
+        ? TweenAnimationBuilder<int>(
+            tween: IntTween(begin: 0, end: remaining),
+            duration: const Duration(milliseconds: 1100),
+            curve: Curves.easeOutCubic,
+            builder: (context, value, _) {
+              return Text(
+                '$value ${_dayWord(value)} pending to completion',
+                style: titleStyle,
+              );
+            },
+          )
+        : Text(
+            hasDuration ? durationLabel! : 'Project completion',
+            style: titleStyle,
+          );
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Expanded(
-              child: Text(
-                pendingLabel ??
-                    (hasDuration ? durationLabel! : 'Project completion'),
-                style: const TextStyle(
-                  color: _ink,
-                  fontSize: 18,
-                  fontWeight: FontWeight.w700,
-                  height: 1.2,
-                  letterSpacing: -0.3,
-                ),
-              ),
-            ),
+            Expanded(child: title),
             if (location.isNotEmpty)
               InkWell(
                 onTap: () async {
@@ -3270,8 +3443,6 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
                           color: _ink,
                           fontSize: 14,
                           fontWeight: FontWeight.w600,
-                          decoration: TextDecoration.underline,
-                          decorationColor: _ink,
                         ),
                       ),
                     ],
@@ -3280,18 +3451,6 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
               ),
           ],
         ),
-        if (pendingLabel != null && durationLabel != null) ...[
-          const SizedBox(height: 4),
-          Text(
-            durationLabel,
-            style: const TextStyle(
-              color: _ink,
-              fontSize: 15,
-              fontWeight: FontWeight.w600,
-              height: 1.2,
-            ),
-          ),
-        ],
         if (delayLabel != null) ...[
           const SizedBox(height: 4),
           Text(
@@ -3677,6 +3836,16 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
       );
       return;
     }
+    // Docs tab is staff-only on the project home bar.
+    if (canonical == 'documents' || canonical == 'documents_v1') {
+      if (_isClientUser) return;
+      await _navigateToWidget(
+        const DocumentsV1HomeScreen(clientMode: false),
+        chromeStyle: chromeStyle,
+        appBarColor: appBarColor,
+      );
+      return;
+    }
 
     final title = flutterTitleForMobileBottomNav(surface, canonical);
     if (title == null) return;
@@ -3709,10 +3878,9 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
   }
 
   Future<void> openDocuments() async {
+    if (_isClientUser) return;
     await _navigateToWidget(
-      _isClientUser
-          ? const DocumentsV1HomeScreen(clientMode: true)
-          : Documents(),
+      const DocumentsV1HomeScreen(clientMode: false),
     );
   }
 
@@ -3720,7 +3888,6 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
     final title = item['title'].toString();
     final comingSoon =
         _restrictLegacyClientFeatures && !_isLegacyFeatureAllowed(title);
-    final colors = _quickActionColors(title);
     final badge = _quickActionBadgeCount(title);
     final label = _restrictLegacyClientFeatures && title == 'ChatBox'
         ? 'Notes & Comments'
@@ -3728,7 +3895,7 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
 
     return InkWell(
       onTap: () => _handleMenuTap(item),
-      borderRadius: BorderRadius.circular(16),
+      borderRadius: BorderRadius.circular(999),
       child: Opacity(
         opacity: comingSoon ? 0.55 : 1,
         child: Column(
@@ -3738,16 +3905,32 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
               clipBehavior: Clip.none,
               children: [
                 Container(
-                  width: 56,
-                  height: 56,
+                  width: 72,
+                  height: 72,
                   decoration: BoxDecoration(
-                    color: colors['bg'],
-                    borderRadius: BorderRadius.circular(16),
+                    color: AppTheme.darkBackgroundSecondary,
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: AppTheme.navy.withValues(alpha: 0.75),
+                      width: 1.2,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppTheme.navy.withValues(alpha: 0.55),
+                        blurRadius: 0.5,
+                        spreadRadius: 1,
+                      ),
+                      BoxShadow(
+                        color: AppTheme.navy.withValues(alpha: 0.25),
+                        blurRadius: 6,
+                        spreadRadius: 0,
+                      ),
+                    ],
                   ),
                   child: Icon(
                     _quickActionIcon(title, item['icon'] as IconData),
-                    size: 26,
-                    color: colors['fg'],
+                    size: 36,
+                    color: _ink,
                   ),
                 ),
                 if (!comingSoon && badge != null)
@@ -3818,117 +4001,6 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
         ),
       ),
     );
-  }
-
-  Map<String, Color> _quickActionColors(String title) {
-    switch (title.toLowerCase()) {
-      case 'gallery':
-      case 'timeline gallery':
-        return {
-          'bg': const Color(0xFFF3E8FF),
-          'fg': const Color(0xFF7C3AED),
-        };
-      case 'project timeline':
-      case 'timeline':
-        return {
-          'bg': const Color(0xFFDCFCE7),
-          'fg': const Color(0xFF16A34A),
-        };
-      case 'project status':
-      case 'status':
-        return {
-          'bg': const Color(0xFFDBEAFE),
-          'fg': const Color(0xFF2563EB),
-        };
-      case 'my tasks':
-      case 'tasks':
-        return {
-          'bg': const Color(0xFFFFF1D6),
-          'fg': const Color(0xFFEAB308),
-        };
-      case 'payments':
-      case 'nt payments':
-      case 'non tender payments':
-        return {
-          'bg': const Color(0xFFFFE4E6),
-          'fg': const Color(0xFFE11D48),
-        };
-      case 'upload proof':
-        return {
-          'bg': const Color(0xFFE0F2FE),
-          'fg': const Color(0xFF0369A1),
-        };
-      case 'scheduler':
-      case 'schedule':
-        return {
-          'bg': const Color(0xFFDBEAFE),
-          'fg': const Color(0xFF2563EB),
-        };
-      case 'documents':
-      case 'updates':
-        return {
-          'bg': const Color(0xFFCCFBF1),
-          'fg': const Color(0xFF0D9488),
-        };
-      case 'chatbox':
-      case 'chat':
-      case 'chat v1':
-        return {
-          'bg': const Color(0xFFE0E7FF),
-          'fg': const Color(0xFF4F46E5),
-        };
-      case 'checklist':
-        return {
-          'bg': const Color(0xFFF5E6D3),
-          'fg': const Color(0xFFB45309),
-        };
-      case 'indents':
-        return {
-          'bg': const Color(0xFFFFEDD5),
-          'fg': const Color(0xFFEA580C),
-        };
-      case 'approved pos':
-        return {
-          'bg': const Color(0xFFE0E7FF),
-          'fg': const Color(0xFF4338CA),
-        };
-      case 'work orders':
-        return {
-          'bg': const Color(0xFFEDE9FE),
-          'fg': const Color(0xFF6D28D9),
-        };
-      case 'documents v1':
-        return {
-          'bg': const Color(0xFFCCFBF1),
-          'fg': const Color(0xFF0D9488),
-        };
-      case 'site visit reports':
-      case 'upcoming visits':
-        return {
-          'bg': const Color(0xFFE0F2FE),
-          'fg': const Color(0xFF0284C7),
-        };
-      case '3d house tour':
-        return {
-          'bg': const Color(0xFFE0E7FF),
-          'fg': const Color(0xFF4338CA),
-        };
-      case 'client portal':
-        return {
-          'bg': const Color(0xFFE0E7FF),
-          'fg': AppTheme.navy,
-        };
-      case 'slots':
-        return {
-          'bg': const Color(0xFFEEF2FF),
-          'fg': const Color(0xFF4F46E5),
-        };
-      default:
-        return {
-          'bg': const Color(0xFFEEF2FF),
-          'fg': AppTheme.darkTextPrimary,
-        };
-    }
   }
 
   String _quickActionLabel(String title) {

@@ -44,12 +44,14 @@ class _ChatV1DocListScreenState extends State<ChatV1DocListScreen> {
   }
 
   Future<void> _resolveRole() async {
+    final cached = (DataProvider().currentRole ?? '').trim();
+    if (cached.isNotEmpty) {
+      _isClient = cached.toLowerCase() == 'client';
+      _roleReady = true;
+      return;
+    }
     final prefs = await SharedPreferences.getInstance();
-    final prefRole = (prefs.getString('role') ?? '').trim().toLowerCase();
-    final cached = (DataProvider().currentRole ?? '').trim().toLowerCase();
-    // Prefs are the login source of truth. A stale in-memory role must not
-    // keep Create DOC visible after a client signs in.
-    final role = prefRole.isNotEmpty ? prefRole : cached;
+    final role = (prefs.getString('role') ?? '').trim().toLowerCase();
     if (!mounted) return;
     setState(() {
       _isClient = role == 'client';
@@ -107,7 +109,6 @@ class _ChatV1DocListScreenState extends State<ChatV1DocListScreen> {
   }
 
   Future<void> _openCreate() async {
-    if (_isClient) return;
     final sop = _sopId;
     if (sop == null || sop.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(

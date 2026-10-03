@@ -44,6 +44,7 @@ import 'widgets/modern_task_card.dart';
 import 'widgets/themed_scaffold.dart';
 import 'widgets/skeleton_loader.dart';
 import 'SlotsScreen.dart';
+import 'UploadPaymentProofScreen.dart';
 
 const String _workflowApiBaseUrl = kProductionApiBaseUrl;
 const Color _premiumBackground = AppTheme.darkBackgroundPrimary;
@@ -131,6 +132,25 @@ String workflowStatusDisplayLabel(Map task) {
 bool isWorkflowReviewerTask(Map task) {
   return task['can_approve_workflow_task'] == true ||
       task['is_workflow_approval_task'] == true;
+}
+
+/// Client payment-stage task: category `client_upload_stage_payment_proof`.
+bool isClientUploadStagePaymentProofTask(Map task) {
+  for (final key in const [
+    'task_category',
+    'category',
+    'erp_category',
+    'source_erp_category',
+  ]) {
+    final raw = task[key]?.toString().trim().toLowerCase() ?? '';
+    if (raw.isEmpty) continue;
+    final normalized = raw.replaceAll(RegExp(r'[\s-]+'), '_');
+    if (normalized == 'client_upload_stage_payment_proof' ||
+        normalized.contains('client_upload_stage_payment_proof')) {
+      return true;
+    }
+  }
+  return false;
 }
 
 bool shouldShowWorkflowApprovalButtons(Map task) {
@@ -313,6 +333,42 @@ bool _taskHasApprovedPoSiteProofFlag(Map task) {
     if (raw is Map && truthy(raw['indent_approved_po_site_proof'])) return true;
   }
   return false;
+}
+
+String? mainCriticalDurationLabel(Map task) {
+  bool truthy(dynamic v) =>
+      v == true ||
+      v == 1 ||
+      v?.toString() == '1' ||
+      v?.toString().toLowerCase() == 'true';
+
+  String? clean(dynamic value) {
+    final text = value?.toString().trim();
+    if (text == null || text.isEmpty || text.toLowerCase() == 'null') {
+      return null;
+    }
+    return text;
+  }
+
+  final isMainCritical = truthy(task['is_main_critical']);
+  final label = clean(task['assigned_duration_label']);
+  if (label != null && (isMainCritical || task['assigned_days'] != null)) {
+    return label;
+  }
+  if (!isMainCritical && label == null) return null;
+
+  final amount = clean(task['main_critical_duration']);
+  final unit = clean(task['main_critical_duration_unit']);
+  if (amount != null && unit != null) return '$amount $unit';
+
+  final days = clean(task['assigned_days']);
+  if (days != null) {
+    final parsed = double.tryParse(days);
+    if (parsed == null) return '$days days';
+    if (parsed == parsed.roundToDouble()) return '${parsed.toInt()} days';
+    return '$parsed days';
+  }
+  return label;
 }
 
 bool isIndentPoSiteProofTask(Map task) {
@@ -2070,7 +2126,20 @@ class _MyTasksScreenState extends State<MyTasksScreen>
     return ThemedScaffold(
       title: 'My tasks',
       headerDrop: 15,
-      automaticallyImplyLeading: !widget.embedded,
+      automaticallyImplyLeading: false,
+      leading: IconButton(
+        tooltip: 'Back to Home',
+        icon: Icon(Icons.arrow_back_rounded, color: appBarFg),
+        onPressed: () {
+          final nav = Navigator.of(context);
+          if (nav.canPop()) {
+            nav.pop();
+          } else {
+            // Ensure users are never stranded on Tasks with no Home route.
+            nav.popUntil((route) => route.isFirst);
+          }
+        },
+      ),
       backgroundColor: _premiumBackground,
       actions: [
         IconButton(
@@ -2523,6 +2592,7 @@ class _TaskCardState extends State<_TaskCard> {
   bool _isDeleting = false;
   bool _isSwipeCompleting = false;
   String? _currentUserId;
+  String? _currentUserRole;
 
   @override
   void initState() {
@@ -2538,7 +2608,72 @@ class _TaskCardState extends State<_TaskCard> {
     setState(() {
       _currentUserId =
           prefs.getString('userId') ?? prefs.getString('user_id');
+      _currentUserRole = prefs.getString('role');
     });
+  }
+
+  bool get _isClientUser => _currentUserRole == 'Client';
+
+  bool get _showPaymentProofMenu =>
+      _isClientUser && isClientUploadStagePaymentProofTask(_task);
+
+  Future<void> _openPaymentProofScreen() async {
+    if (!mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => const UploadPaymentProofScreen(),
+      ),
+    );
+  }
+
+  Widget? _buildTaskOverflowMenu({
+    required String taskId,
+    required bool isCreatedByMe,
+  }) {
+    final showPaymentProof = _showPaymentProofMenu;
+    if (_isWorkflowTask && !showPaymentProof) return null;
+
+    return PopupMenuButton<String>(
+      padding: EdgeInsets.zero,
+      constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+      iconSize: 20,
+      icon: const Icon(
+        Icons.more_horiz_rounded,
+        color: kTaskMuted,
+        size: 20,
+      ),
+      onSelected: (value) {
+        if (value == 'payment_proof') {
+          _openPaymentProofScreen();
+        } else if (value == 'delete') {
+          _deleteTask(int.tryParse(taskId) ?? 0);
+        } else if (value == 'change_status') {
+          setState(() {
+            _statusExpanded = !_statusExpanded;
+          });
+        }
+      },
+      itemBuilder: (context) => [
+        if (showPaymentProof)
+          const PopupMenuItem(
+            value: 'payment_proof',
+            child: Text('Go to payment proof'),
+          ),
+        if (!_isWorkflowTask)
+          const PopupMenuItem(
+            value: 'change_status',
+            child: Text('Change status'),
+          ),
+        if (!_isWorkflowTask && isCreatedByMe)
+          const PopupMenuItem(
+            value: 'delete',
+            child: Text(
+              'Delete task',
+              style: TextStyle(color: Colors.red),
+            ),
+          ),
+      ],
+    );
   }
 
   String _taskIdentity(Map task) {
@@ -2773,6 +2908,7 @@ class _TaskCardState extends State<_TaskCard> {
       materialLabel: materialLabel,
       assigneeName: assignedToName,
       dateLabel: createdAt.isNotEmpty ? _formatDate(createdAt) : null,
+      durationLabel: mainCriticalDurationLabel(task),
       // Delayed → pending/scheduled chip styling, never Ready.
       status: delayGated ? 'pending' : status,
       statusLabel: statusLabel,
@@ -2785,38 +2921,10 @@ class _TaskCardState extends State<_TaskCard> {
       swipeCompleteLabel: completeAction == null
           ? 'Swipe to complete'
           : _swipeCompleteLabel(completeAction),
-      menu: _isWorkflowTask
-          ? null
-          : PopupMenuButton<String>(
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-              iconSize: 20,
-              icon: const Icon(Icons.more_horiz_rounded,
-                  color: kTaskMuted, size: 20),
-              onSelected: (value) {
-                if (value == 'delete') {
-                  _deleteTask(int.tryParse(taskId) ?? 0);
-                } else if (value == 'change_status') {
-                  setState(() {
-                    _statusExpanded = !_statusExpanded;
-                  });
-                }
-              },
-              itemBuilder: (context) => [
-                const PopupMenuItem(
-                  value: 'change_status',
-                  child: Text('Change status'),
-                ),
-                if (isCreatedByMe)
-                  const PopupMenuItem(
-                    value: 'delete',
-                    child: Text(
-                      'Delete task',
-                      style: TextStyle(color: Colors.red),
-                    ),
-                  ),
-              ],
-            ),
+      menu: _buildTaskOverflowMenu(
+        taskId: taskId,
+        isCreatedByMe: isCreatedByMe,
+      ),
       footer: footerChildren.isEmpty
           ? null
           : Column(

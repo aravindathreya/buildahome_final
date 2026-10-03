@@ -12,8 +12,14 @@ import 'services/data_provider.dart';
 
 class Home extends StatefulWidget {
   final bool fromAdminDashboard;
+  /// Called once the home shell is resolved and ready to paint.
+  final VoidCallback? onReady;
 
-  Home({Key? key, this.fromAdminDashboard = false}) : super(key: key);
+  Home({
+    Key? key,
+    this.fromAdminDashboard = false,
+    this.onReady,
+  }) : super(key: key);
 
   @override
   State<Home> createState() => _HomeState();
@@ -22,6 +28,7 @@ class Home extends StatefulWidget {
 class _HomeState extends State<Home> {
   bool _resolving = true;
   bool _useLegacyProjectUi = false;
+  bool _isClientUser = false;
 
   @override
   void initState() {
@@ -49,13 +56,17 @@ class _HomeState extends State<Home> {
     }
   }
 
+  /// Legacy shell is only for Client logins. Staff (e.g. Project Coordinator)
+  /// always get the project home bar that includes Docs.
+  bool get _useLegacyShell => _useLegacyProjectUi && _isClientUser;
+
   Future<void> _resolveHome() async {
     final prefs = await SharedPreferences.getInstance();
     final role = prefs.getString('role');
+    final isClient = (role ?? '').trim().toLowerCase() == 'client';
     var projectId = prefs.getString('project_id')?.trim();
 
-    if ((role ?? '').trim().toLowerCase() == 'client' &&
-        (projectId == null || projectId.isEmpty)) {
+    if (isClient && (projectId == null || projectId.isEmpty)) {
       projectId = await DataProvider().ensureClientProjectSelected();
     }
 
@@ -63,9 +74,15 @@ class _HomeState extends State<Home> {
     await ClientGenerationService.instance.ensureLoaded(projectId: projectId);
     if (!mounted) return;
     setState(() {
+      _isClientUser = isClient;
       _useLegacyProjectUi =
           ClientGenerationService.instance.shouldUseLegacyProjectUi;
       _resolving = false;
+    });
+    // Let the first real frame paint before announcing ready (avoids black flash).
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      widget.onReady?.call();
     });
     unawaited(AppDeepLinkService.instance.onAppReady());
   }
@@ -85,7 +102,7 @@ class _HomeState extends State<Home> {
       );
     }
 
-    if (_useLegacyProjectUi) {
+    if (_useLegacyShell) {
       return LegacyClientHome(fromAdminDashboard: widget.fromAdminDashboard);
     }
 

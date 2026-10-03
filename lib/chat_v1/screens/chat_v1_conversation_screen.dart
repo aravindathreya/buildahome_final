@@ -34,8 +34,7 @@ class ChatV1ConversationScreen extends StatefulWidget {
       _ChatV1ConversationScreenState();
 }
 
-class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen>
-    with WidgetsBindingObserver {
+class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
   final _composer = TextEditingController();
   final _scroll = ScrollController();
   final _stickKey = GlobalKey<Cv1StickToBottomState>();
@@ -82,8 +81,9 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen>
       _messageKeys.putIfAbsent(id, GlobalKey.new);
 
   String get _typingLabel {
-    final names =
-        _typingUserIds.map((id) => _typingNames[id] ?? 'Someone').toList();
+    final names = _typingUserIds
+        .map((id) => _typingNames[id] ?? 'Someone')
+        .toList();
     if (names.isEmpty) return '';
     if (names.length == 1) return '${names.first} is typing…';
     if (names.length == 2) return '${names[0]} and ${names[1]} are typing…';
@@ -93,188 +93,17 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen>
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this);
-    _composer.addListener(_updateMentionQuery);
     _scroll.addListener(_onScroll);
     // Warm open: restore cache before first frame (no full-screen spinner).
-    final cached = ChatV1Controller.instance.cachedMessages(_conversationId);
+    final cached =
+        ChatV1Controller.instance.cachedMessages(_conversationId);
     if (cached != null && cached.isNotEmpty) {
       _messages = _enrichReplyPreviews(cached);
       _loading = false;
     }
-    _load().whenComplete(() {
-      if (mounted) {
-        _catchUpPending = false;
-        _catchUpMessages();
-      }
-    });
+    _load();
     _bindSocket();
     if (_isErpTask) _loadErpDetails();
-  }
-
-  bool _catchingUp = false;
-  bool _catchUpPending = false;
-  bool _loadingParticipants = false;
-  bool _participantsLoaded = false;
-  String? _mentionQuery;
-  String? _mentionError;
-  int _mentionStart = -1;
-  List<Map<String, dynamic>> _mentionParticipants = [];
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
-      _resumeChat();
-    }
-  }
-
-  Future<void> _resumeChat() async {
-    // Logout owns the socket. Resume must not start a new session.
-    if (_socket.state == ChatV1SocketState.loggedOut) return;
-    await _socket.connect();
-    if (mounted && _socket.isConnected) _catchUpMessages();
-  }
-
-  void _onSocketConnected(dynamic _) => _catchUpMessages();
-
-  Future<void> _catchUpMessages() async {
-    if (!mounted) return;
-    if (_loading || _catchingUp) {
-      _catchUpPending = true;
-      return;
-    }
-    _catchingUp = true;
-    try {
-      // One bounded read sequence per reconnect/resume, never periodic polling.
-      // Keep a private cursor so concurrent socket messages cannot skip a gap.
-      String? cursor = _messages.isEmpty ? null : _messages.last.id;
-      print(
-        '[ChatV1] CHAT SOCKET message catch-up conversation=$_conversationId '
-        'after=${cursor ?? 'start'}',
-      );
-      while (mounted) {
-        final rows = await _api.listMessages(
-          _conversationId,
-          afterId: cursor,
-          pageSize: 100,
-        );
-        if (!mounted || rows.isEmpty) break;
-        final mapped = rows
-            .map((row) => ChatV1Mapper.messageFromJson(
-                  row,
-                  currentUserId: _userId,
-                ))
-            .toList();
-        final next = mapped.last.id;
-        setState(() {
-          _messages = _enrichReplyPreviews(
-            ChatV1Controller.instance
-                .mergeConversationMessages(_messages, mapped),
-          );
-        });
-        _persistMessagesCache();
-        if (cursor == null || next == cursor || rows.length < 100) break;
-        cursor = next;
-      }
-    } catch (_) {
-      // Retry on the next connection/resume; do not start a request loop.
-    } finally {
-      _catchingUp = false;
-      if (_catchUpPending && mounted && !_loading) {
-        _catchUpPending = false;
-        _catchUpMessages();
-      }
-    }
-  }
-
-  void _updateMentionQuery() {
-    final value = _composer.value;
-    final caret = value.selection.baseOffset;
-    final match =
-        caret >= 0 && caret <= value.text.length && value.selection.isCollapsed
-            ? RegExp(r'(^|\s)@([^\s@]*)$')
-                .firstMatch(value.text.substring(0, caret))
-            : null;
-    final query = match?.group(2);
-    if (!mounted) return;
-    setState(() {
-      _mentionQuery = query;
-      _mentionStart = match == null ? -1 : match.start + match.group(1)!.length;
-    });
-    if (query != null &&
-        !_participantsLoaded &&
-        !_loadingParticipants &&
-        _mentionError == null) {
-      _loadMentionParticipants();
-    }
-  }
-
-  Future<void> _loadMentionParticipants() async {
-    setState(() {
-      _loadingParticipants = true;
-      _mentionError = null;
-    });
-    try {
-      final rows = await _api.listMentionParticipants(_conversationId);
-      if (!mounted) return;
-      setState(() {
-        _mentionParticipants = rows
-            .where((row) =>
-                '${row['user_id']}' != _userId &&
-                (row['name'] ?? '').toString().trim().isNotEmpty)
-            .toList();
-        _participantsLoaded = true;
-      });
-    } catch (_) {
-      if (mounted)
-        setState(() => _mentionError = 'Could not load people. Tap to retry.');
-    } finally {
-      if (mounted) setState(() => _loadingParticipants = false);
-    }
-  }
-
-  void _insertMention(Map<String, dynamic> participant) {
-    final value = _composer.value;
-    if (_mentionStart < 0 || value.selection.baseOffset < _mentionStart) return;
-    final name =
-        participant['name'].toString().trim().replaceAll(RegExp(r'\s+'), '');
-    final replacement = '@$name ';
-    final start = _mentionStart;
-    _composer.value = TextEditingValue(
-      text: value.text
-          .replaceRange(start, value.selection.baseOffset, replacement),
-      selection: TextSelection.collapsed(offset: start + replacement.length),
-    );
-  }
-
-  Widget _mentionPicker() {
-    final query = (_mentionQuery ?? '').toLowerCase();
-    final rows = _mentionParticipants
-        .where((row) => '${row['name']} ${row['email'] ?? ''}'
-            .toLowerCase()
-            .contains(query))
-        .toList();
-    if (_loadingParticipants) return const LinearProgressIndicator();
-    if (_mentionError != null) {
-      return TextButton(
-          onPressed: _loadMentionParticipants, child: Text(_mentionError!));
-    }
-    return ConstrainedBox(
-      constraints: const BoxConstraints(maxHeight: 180),
-      child: rows.isEmpty
-          ? const Padding(
-              padding: EdgeInsets.all(12), child: Text('No matching people'))
-          : ListView.builder(
-              shrinkWrap: true,
-              itemCount: rows.length,
-              itemBuilder: (context, index) => ListTile(
-                dense: true,
-                title: Text(rows[index]['name'].toString()),
-                subtitle: Text((rows[index]['role'] ?? '').toString()),
-                onTap: () => _insertMention(rows[index]),
-              ),
-            ),
-    );
   }
 
   void _onScroll() {
@@ -320,7 +149,9 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen>
       if (!mounted) return;
 
       final merged = _enrichReplyPreviews(
-        ctrl.mergeConversationMessages(_messages, mapped),
+        hadCache
+            ? ctrl.mergeConversationMessages(_messages, mapped)
+            : mapped,
       );
 
       if (!hadCache) {
@@ -467,12 +298,14 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen>
       );
       if (rows.isEmpty) return;
       final mapped = rows
-          .map((r) => ChatV1Mapper.messageFromJson(r, currentUserId: _userId))
+          .map((r) =>
+              ChatV1Mapper.messageFromJson(r, currentUserId: _userId))
           .toList();
       if (!mounted) return;
       final existing = _messages.map((m) => m.id).toSet();
-      final older = mapped.where((m) => !existing.contains(m.id)).toList()
-        ..sort((a, b) => a.sentAt.compareTo(b.sentAt));
+      final older =
+          mapped.where((m) => !existing.contains(m.id)).toList()
+            ..sort((a, b) => a.sentAt.compareTo(b.sentAt));
       if (older.isEmpty) return;
 
       final pos = _scroll.hasClients ? _scroll.position : null;
@@ -531,7 +364,6 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen>
   }
 
   Future<void> _bindSocket() async {
-    _socket.on('connected', _onSocketConnected);
     _socket.on('message_created', _onMessageCreated);
     _socket.on('attachment_uploaded', _onAttachmentUploaded);
     _socket.on('typing_started', _onTypingStart);
@@ -582,7 +414,8 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen>
     final msg = Map<String, dynamic>.from(unwrapped['message'] as Map);
     // Extras default to empty in the mapper. Do NOT fan-out HTTP for
     // attachments/reactions/mentions/reads — attachment_uploaded refreshes one msg.
-    final mapped = ChatV1Mapper.messageFromJson(msg, currentUserId: _userId);
+    final mapped =
+        ChatV1Mapper.messageFromJson(msg, currentUserId: _userId);
     if (!mounted) return;
 
     // Clear typing for this sender.
@@ -599,7 +432,8 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen>
   void _onAttachmentUploaded(dynamic data) async {
     final map = ChatV1Socket.asMap(data);
     if (map == null) return;
-    final messageId = (map['message_id'] ?? map['messageId'] ?? '').toString();
+    final messageId =
+        (map['message_id'] ?? map['messageId'] ?? '').toString();
     if (messageId.isEmpty) return;
     final idx = _messages.indexWhere((m) => m.id == messageId);
     if (idx < 0) return;
@@ -756,8 +590,7 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen>
 
     final emoji = _emojiFromReactionPayload(map);
     if (emoji == null) return;
-    final uid =
-        (map['user_id'] ?? map['userId'] ?? map['sender_id'])?.toString();
+    final uid = (map['user_id'] ?? map['userId'] ?? map['sender_id'])?.toString();
     final mine = uid != null && uid.isNotEmpty && uid == _userId;
     _applyReaction(messageId, emoji, add: true, mine: mine);
   }
@@ -772,8 +605,7 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen>
 
     final emoji = _emojiFromReactionPayload(map);
     if (emoji == null) return;
-    final uid =
-        (map['user_id'] ?? map['userId'] ?? map['sender_id'])?.toString();
+    final uid = (map['user_id'] ?? map['userId'] ?? map['sender_id'])?.toString();
     final mine = uid != null && uid.isNotEmpty && uid == _userId;
     _applyReaction(messageId, emoji, add: false, mine: mine);
   }
@@ -878,11 +710,12 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen>
 
   Future<void> _reactToMessage(ChatV1Message msg, String emoji) async {
     final latest = _messages.cast<ChatV1Message?>().firstWhere(
-              (m) => m?.id == msg.id,
-              orElse: () => msg,
-            ) ??
+          (m) => m?.id == msg.id,
+          orElse: () => msg,
+        ) ??
         msg;
-    final alreadyMine = latest.reactions.any((r) => r.emoji == emoji && r.mine);
+    final alreadyMine =
+        latest.reactions.any((r) => r.emoji == emoji && r.mine);
     // Optimistic UI so the chip shows immediately.
     _applyReaction(latest.id, emoji, add: !alreadyMine, mine: true);
     try {
@@ -902,9 +735,6 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen>
 
   @override
   void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    _composer.removeListener(_updateMentionQuery);
-    _socket.off('connected', _onSocketConnected);
     _scroll.removeListener(_onScroll);
     _stopMyTyping();
     _typingDebounce?.cancel();
@@ -1034,8 +864,9 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen>
     final hasFile = fileBytes != null && fileName != null;
     if ((text.isEmpty && !hasFile) || _sending) return;
     setState(() => _sending = true);
-    final body =
-        text.isNotEmpty ? text : (hasFile ? 'Uploaded: $fileName' : '');
+    final body = text.isNotEmpty
+        ? text
+        : (hasFile ? 'Uploaded: $fileName' : '');
     final replyParentId = _replyToId;
     final parentMsg = replyParentId == null
         ? null
@@ -1089,10 +920,10 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen>
                 apiPreview == null ||
                 apiPreview.isEmpty);
         mapped = mapped.copyWith(
-          parentMessageId: (mapped.parentMessageId == null ||
-                  mapped.parentMessageId!.isEmpty)
-              ? replyParentId
-              : mapped.parentMessageId,
+          parentMessageId:
+              (mapped.parentMessageId == null || mapped.parentMessageId!.isEmpty)
+                  ? replyParentId
+                  : mapped.parentMessageId,
           replyPreview: useLocal ? replyPreviewLocal : apiPreview,
         );
       }
@@ -1104,8 +935,9 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen>
         final url = ChatV1Utils.resolveMediaUrl(
           _extractUploadUrl(upload) ?? '',
         );
-        final name = (upload?['filename'] ?? upload?['file_name'] ?? fileName)
-            .toString();
+        final name =
+            (upload?['filename'] ?? upload?['file_name'] ?? fileName)
+                .toString();
         if (url.isNotEmpty) {
           final contentType = _guessContentType(name);
           await _api.attachMessageFiles(mapped.id, [
@@ -1383,7 +1215,6 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen>
                   ),
                 ),
               Expanded(child: _body(context)),
-              if (_mentionQuery != null) _mentionPicker(),
               ChatComposer(
                 controller: _composer,
                 onSend: () => _send(),
@@ -1456,7 +1287,8 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen>
                           label: d.statusDisplay, color: ChatV1Theme.accent),
                       if (d.assigneeLabel.isNotEmpty)
                         Cv1Badge(
-                            label: d.assigneeLabel, color: ChatV1Theme.mention),
+                            label: d.assigneeLabel,
+                            color: ChatV1Theme.mention),
                     ],
                   ),
                 ],
@@ -1493,59 +1325,58 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen>
       key: _stickKey,
       controller: _scroll,
       child: ListView.builder(
-        controller: _scroll,
-        physics: const BouncingScrollPhysics(),
-        padding: const EdgeInsets.only(top: 8, bottom: 12),
-        itemCount: _messages.length +
-            (_othersTyping ? 2 : 1) +
-            (_loadingOlder ? 1 : 0),
-        itemBuilder: (_, i) {
-          var index = i;
-          if (_loadingOlder) {
-            if (index == 0) {
-              return const Padding(
-                padding: EdgeInsets.all(12),
-                child: Center(
-                  child: SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  ),
-                ),
-              );
-            }
-            index -= 1;
-          }
+      controller: _scroll,
+      physics: const BouncingScrollPhysics(),
+      padding: const EdgeInsets.only(top: 8, bottom: 12),
+      itemCount: _messages.length + (_othersTyping ? 2 : 1) + (_loadingOlder ? 1 : 0),
+      itemBuilder: (_, i) {
+        var index = i;
+        if (_loadingOlder) {
           if (index == 0) {
-            final label = _messages.isEmpty
-                ? 'Start of conversation'
-                : ChatV1Utils.dateLabel(_messages.first.sentAt);
-            return _dateChip(context, label);
+            return const Padding(
+              padding: EdgeInsets.all(12),
+              child: Center(
+                child: SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              ),
+            );
           }
-          final msgIndex = index - 1;
-          if (_othersTyping && msgIndex == _messages.length) {
-            return _typingRow(context);
-          }
-          if (msgIndex >= _messages.length) return const SizedBox.shrink();
-          final msg = _messages[msgIndex];
-          final showAuthor =
-              msgIndex == 0 || _messages[msgIndex - 1].authorId != msg.authorId;
-          return RepaintBoundary(
-            child: Cv1MessageBubble(
-              message: msg,
-              showAuthor: showAuthor,
-              highlighted: _highlightMessageId == msg.id,
-              messageKey: _keyForMessage(msg.id),
-              onLongPress: () => _messageActions(context, msg),
-              onReplyTap:
-                  msg.parentMessageId == null || msg.parentMessageId!.isEmpty
-                      ? null
-                      : () => _scrollToMessage(msg.parentMessageId!),
-              onReactionTap:
-                  msg.isDeleted ? null : (emoji) => _reactToMessage(msg, emoji),
-            ),
-          );
-        },
+          index -= 1;
+        }
+        if (index == 0) {
+          final label = _messages.isEmpty
+              ? 'Start of conversation'
+              : ChatV1Utils.dateLabel(_messages.first.sentAt);
+          return _dateChip(context, label);
+        }
+        final msgIndex = index - 1;
+        if (_othersTyping && msgIndex == _messages.length) {
+          return _typingRow(context);
+        }
+        if (msgIndex >= _messages.length) return const SizedBox.shrink();
+        final msg = _messages[msgIndex];
+        final showAuthor = msgIndex == 0 ||
+            _messages[msgIndex - 1].authorId != msg.authorId;
+        return RepaintBoundary(
+          child: Cv1MessageBubble(
+          message: msg,
+          showAuthor: showAuthor,
+          highlighted: _highlightMessageId == msg.id,
+          messageKey: _keyForMessage(msg.id),
+          onLongPress: () => _messageActions(context, msg),
+          onReplyTap: msg.parentMessageId == null ||
+                  msg.parentMessageId!.isEmpty
+              ? null
+              : () => _scrollToMessage(msg.parentMessageId!),
+          onReactionTap: msg.isDeleted
+              ? null
+              : (emoji) => _reactToMessage(msg, emoji),
+        ),
+        );
+      },
       ),
     );
   }
@@ -1639,7 +1470,8 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen>
       // +1 accounts for the leading date chip in the list.
       final itemIndex = idx + 1 + (_loadingOlder ? 1 : 0);
       final ratio = itemIndex / (_messages.length + 2);
-      final target = (ratio * _scroll.position.maxScrollExtent).clamp(
+      final target =
+          (ratio * _scroll.position.maxScrollExtent).clamp(
         0.0,
         _scroll.position.maxScrollExtent,
       );
@@ -1701,9 +1533,7 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen>
         setState(() {
           _messages = [
             for (final m in _messages)
-              m.id == msg.id
-                  ? m.copyWith(isPinned: false)
-                  : m.copyWith(isPinned: false),
+              m.id == msg.id ? m.copyWith(isPinned: false) : m.copyWith(isPinned: false),
           ];
         });
         _persistMessagesCache();
@@ -1813,9 +1643,10 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen>
   Future<void> _shareToGeneral(ChatV1Message msg) async {
     try {
       final result = await _api.shareMessageToGeneral(msg.id);
-      final generalId =
-          (result['general_conversation_id'] ?? result['conversation_id'] ?? '')
-              .toString();
+      final generalId = (result['general_conversation_id'] ??
+              result['conversation_id'] ??
+              '')
+          .toString();
       _toast(
         'Shared to General',
         action: generalId.isEmpty

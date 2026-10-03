@@ -328,15 +328,39 @@ class _BrandMark extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Image.asset(
-      'assets/images/new logo.png',
-      height: 42,
-      fit: BoxFit.contain,
-      filterQuality: FilterQuality.high,
-      errorBuilder: (_, __, ___) => const Icon(
-        Icons.home_rounded,
-        color: AppTheme.darkTextPrimary,
-        size: 32,
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: SizedBox(
+        height: 88,
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            Container(
+              width: 96,
+              height: 96,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: RadialGradient(
+                  colors: [
+                    AppTheme.darkTextPrimary.withValues(alpha: 0.18),
+                    AppTheme.darkTextPrimary.withValues(alpha: 0),
+                  ],
+                ),
+              ),
+            ),
+            Image.asset(
+              'assets/images/Logos/Hands Sheltering a Home Icon.png',
+              height: 80,
+              fit: BoxFit.contain,
+              filterQuality: FilterQuality.high,
+              errorBuilder: (_, __, ___) => const Icon(
+                Icons.home_rounded,
+                color: AppTheme.darkTextPrimary,
+                size: 64,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

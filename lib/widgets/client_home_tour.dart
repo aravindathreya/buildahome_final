@@ -178,8 +178,10 @@ class _ClientHomeTourOverlayState extends State<ClientHomeTourOverlay>
 
   @override
   Widget build(BuildContext context) {
-    final size = MediaQuery.sizeOf(context);
     final padding = MediaQuery.paddingOf(context);
+    final safeTop = padding.top + 16;
+    final safeBottom = padding.bottom + 16;
+    const sideInset = 20.0;
 
     return Material(
       color: Colors.transparent,
@@ -202,12 +204,30 @@ class _ClientHomeTourOverlayState extends State<ClientHomeTourOverlay>
           Positioned.fill(
             child: Padding(
               padding: EdgeInsets.fromLTRB(
-                20,
-                padding.top + 16,
-                20,
-                padding.bottom + 16,
+                sideInset,
+                safeTop,
+                sideInset,
+                safeBottom,
               ),
-              child: _buildCard(size),
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  return _buildCard(
+                    available: Size(constraints.maxWidth, constraints.maxHeight),
+                    // Hole is in overlay coords; convert into the padded area.
+                    localHole: _hole == null
+                        ? null
+                        : Rect.fromLTRB(
+                            _hole!.left - sideInset,
+                            _hole!.top - safeTop,
+                            _hole!.right - sideInset,
+                            _hole!.bottom - safeTop,
+                          ).intersect(
+                            Offset.zero &
+                                Size(constraints.maxWidth, constraints.maxHeight),
+                          ),
+                  );
+                },
+              ),
             ),
           ),
         ],
@@ -215,7 +235,10 @@ class _ClientHomeTourOverlayState extends State<ClientHomeTourOverlay>
     );
   }
 
-  Widget _buildCard(Size size) {
+  Widget _buildCard({
+    required Size available,
+    required Rect? localHole,
+  }) {
     final card = _TourCard(
       step: _step,
       index: _index,
@@ -225,22 +248,42 @@ class _ClientHomeTourOverlayState extends State<ClientHomeTourOverlay>
       onNext: () => _goTo(_index + 1),
     );
 
-    if (_hole == null) {
-      return Center(child: card);
+    if (localHole == null || localHole.isEmpty) {
+      return Center(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: available.height),
+          child: card,
+        ),
+      );
     }
 
-    final hole = _hole!;
-    final spaceBelow = size.height - hole.bottom;
-    final placeBelow = spaceBelow > 230 || hole.top < 210;
+    const gap = 16.0;
+    final spaceBelow = available.height - localHole.bottom - gap;
+    final spaceAbove = localHole.top - gap;
+    // Prefer the side with enough room for the card; fall back to the larger side.
+    final preferBelow =
+        spaceBelow >= 200 || (spaceBelow >= spaceAbove && spaceBelow > 120);
 
-    if (placeBelow) {
+    final maxCardHeight = preferBelow
+        ? spaceBelow.clamp(0.0, available.height)
+        : spaceAbove.clamp(0.0, available.height);
+
+    final positionedCard = ConstrainedBox(
+      constraints: BoxConstraints(
+        maxWidth: available.width,
+        maxHeight: maxCardHeight > 0 ? maxCardHeight : available.height,
+      ),
+      child: card,
+    );
+
+    if (preferBelow) {
       return Align(
         alignment: Alignment.topCenter,
         child: Padding(
           padding: EdgeInsets.only(
-            top: (hole.bottom + 16).clamp(0, size.height - 220),
+            top: (localHole.bottom + gap).clamp(0.0, available.height),
           ),
-          child: card,
+          child: positionedCard,
         ),
       );
     }
@@ -249,9 +292,10 @@ class _ClientHomeTourOverlayState extends State<ClientHomeTourOverlay>
       alignment: Alignment.topCenter,
       child: Padding(
         padding: EdgeInsets.only(
-          top: (hole.top - 196).clamp(0, size.height - 220),
+          top: (localHole.top - gap - maxCardHeight)
+              .clamp(0.0, available.height),
         ),
-        child: card,
+        child: positionedCard,
       ),
     );
   }
@@ -293,110 +337,130 @@ class _TourCard extends StatelessWidget {
         ),
         child: Padding(
           padding: const EdgeInsets.fromLTRB(20, 18, 20, 16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF2A2040),
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                    child: Text(
-                      '${index + 1} / $total',
-                      style: const TextStyle(
-                        color: Color(0xFFC4B5FD),
-                        fontSize: 11.5,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ),
-                  const Spacer(),
-                  if (!isLast)
-                    TextButton(
-                      onPressed: onSkip,
-                      style: TextButton.styleFrom(
-                        foregroundColor: AppTheme.mutedGrey,
-                        padding: const EdgeInsets.symmetric(horizontal: 8),
-                        minimumSize: Size.zero,
-                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      ),
-                      child: const Text(
-                        'Skip',
-                        style: TextStyle(fontWeight: FontWeight.w700),
-                      ),
-                    ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Text(
-                step.title,
-                style: const TextStyle(
-                  color: AppTheme.darkTextPrimary,
-                  fontSize: 18,
-                  fontWeight: FontWeight.w800,
-                  height: 1.2,
-                  letterSpacing: -0.2,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                step.body,
-                style: const TextStyle(
-                  color: AppTheme.darkTextSecondary,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
-                  height: 1.45,
-                ),
-              ),
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  Expanded(
-                    child: Row(
-                      children: List.generate(total, (i) {
-                        final active = i == index;
-                        return AnimatedContainer(
-                          duration: const Duration(milliseconds: 220),
-                          margin: const EdgeInsets.only(right: 5),
-                          width: active ? 16 : 7,
-                          height: 7,
-                          decoration: BoxDecoration(
-                            color: active
-                                ? const Color(0xFFC4B5FD)
-                                : AppTheme.border,
-                            borderRadius: BorderRadius.circular(999),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              return SingleChildScrollView(
+                physics: const ClampingScrollPhysics(),
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(minWidth: constraints.maxWidth),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF2A2040),
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                            child: Text(
+                              '${index + 1} / $total',
+                              style: const TextStyle(
+                                color: Color(0xFFC4B5FD),
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
                           ),
-                        );
-                      }),
-                    ),
-                  ),
-                  FilledButton(
-                    onPressed: onNext,
-                    style: FilledButton.styleFrom(
-                      backgroundColor: AppTheme.navy,
-                      foregroundColor: Colors.white,
-                      elevation: 0,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 18,
-                        vertical: 12,
+                          const Spacer(),
+                          if (!isLast)
+                            TextButton(
+                              onPressed: onSkip,
+                              style: TextButton.styleFrom(
+                                foregroundColor: AppTheme.mutedGrey,
+                                padding:
+                                    const EdgeInsets.symmetric(horizontal: 8),
+                                minimumSize: Size.zero,
+                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              ),
+                              child: const Text(
+                                'Skip',
+                                style: TextStyle(fontWeight: FontWeight.w700),
+                              ),
+                            ),
+                        ],
                       ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
+                      const SizedBox(height: 12),
+                      Text(
+                        step.title,
+                        style: const TextStyle(
+                          color: AppTheme.darkTextPrimary,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w800,
+                          height: 1.2,
+                          letterSpacing: -0.2,
+                        ),
                       ),
-                    ),
-                    child: Text(
-                      isLast ? 'Got it' : 'Next',
-                      style: const TextStyle(fontWeight: FontWeight.w800),
-                    ),
+                      const SizedBox(height: 8),
+                      Text(
+                        step.body,
+                        style: const TextStyle(
+                          color: AppTheme.darkTextSecondary,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                          height: 1.45,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: SingleChildScrollView(
+                              scrollDirection: Axis.horizontal,
+                              physics: const ClampingScrollPhysics(),
+                              child: Row(
+                                children: List.generate(total, (i) {
+                                  final active = i == index;
+                                  return AnimatedContainer(
+                                    duration:
+                                        const Duration(milliseconds: 220),
+                                    margin: const EdgeInsets.only(right: 5),
+                                    width: active ? 16 : 7,
+                                    height: 7,
+                                    decoration: BoxDecoration(
+                                      color: active
+                                          ? const Color(0xFFC4B5FD)
+                                          : AppTheme.border,
+                                      borderRadius: BorderRadius.circular(999),
+                                    ),
+                                  );
+                                }),
+                              ),
+                            ),
+                          ),
+                          FilledButton(
+                            onPressed: onNext,
+                            style: FilledButton.styleFrom(
+                              backgroundColor: AppTheme.navy,
+                              foregroundColor: Colors.white,
+                              elevation: 0,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 18,
+                                vertical: 12,
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                            child: Text(
+                              isLast ? 'Got it' : 'Next',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
-                ],
-              ),
-            ],
+                ),
+              );
+            },
           ),
         ),
       ),

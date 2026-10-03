@@ -130,110 +130,113 @@ class TaskBlockState extends State<TaskBlock> with SingleTickerProviderStateMixi
     }
 
     return Container(
-        padding: EdgeInsets.only(top: 20),
-        child: AnimatedContainer(
-            duration: Duration(milliseconds: 100),
-            height: animation.value * 140,
-            padding: EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              border: Border.all(width: 1.0, color: Colors.black),
-              borderRadius: BorderRadius.all(Radius.circular(5)),
-              boxShadow: [
-                new BoxShadow(
-                  color: Colors.grey[500]!,
-                  blurRadius: 15,
-                  spreadRadius: 2,
-                )
-              ],
-            ),
-            child: Opacity(
-                opacity: animation.value,
-                child: Column(
-                  children: <Widget>[
-                    Container(
-                        padding: const EdgeInsets.all(10),
-                        child: TextFormField(
-                          controller: taskName,
-                          decoration: InputDecoration(
-                            border: OutlineInputBorder(
-                              borderSide: BorderSide(color: Colors.greenAccent, width: 15.0),
-                            ),
-                            labelText: "Task name",
-                            labelStyle: TextStyle(
-                              fontSize: 18,
-                            ),
-                            contentPadding: EdgeInsets.all(12),
-                          ),
-                          validator: (value) {
-                            if (value!.isEmpty) {
-                              return 'This field cannot be empty';
-                            }
-                            return null;
-                          },
-                        )),
-                    Row(
-                      children: <Widget>[
-                        Visibility(
-                          child: Row(mainAxisAlignment: MainAxisAlignment.start, children: <Widget>[
-                            ElevatedButton(
-                              child: Container(
-                                child: Row(
-                                  children: <Widget>[
-                                    Icon(Icons.calendar_today, size: 20, color: AppTheme.darkTextPrimary),
-                                    Container(
-                                      decoration: BoxDecoration(
-                                          border: Border(
-                                        bottom: BorderSide(width: 0.8, color: Colors.black),
-                                      )),
-//                                width: MediaQuery
-//                                    .of(context)
-//                                    .size
-//                                    .width * .68,
-                                      padding: EdgeInsets.only(left: 5),
-                                      child: Text(this.taskStartDate,
-                                          style: TextStyle(
-                                              fontSize: 16, fontWeight: FontWeight.normal, color: AppTheme.darkTextSecondary)),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              onPressed: _selectStartDate,
-                            ),
-                          ]),
-                        ),
-                        Visibility(
-                          child: Row(mainAxisAlignment: MainAxisAlignment.start, children: <Widget>[
-                            ElevatedButton(
-                              child: Container(
-                                child: Row(
-                                  children: <Widget>[
-                                    Icon(Icons.calendar_today, size: 20, color: AppTheme.darkTextPrimary),
-                                    Container(
-                                      decoration: BoxDecoration(
-                                          border: Border(
-                                        bottom: BorderSide(width: 0.8, color: Colors.black),
-                                      )),
-//                                width: MediaQuery
-//                                    .of(context)
-//                                    .size
-//                                    .width * .68,
-                                      padding: EdgeInsets.only(left: 5),
-                                      child: Text(this.taskFinishDate,
-                                          style: TextStyle(
-                                              fontSize: 16, fontWeight: FontWeight.normal, color: AppTheme.darkTextSecondary)),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              onPressed: _selectFinishDate,
-                            ),
-                          ]),
-                        ),
-                      ],
+      padding: const EdgeInsets.only(top: 20),
+      child: Opacity(
+        opacity: animation.value.clamp(0.0, 1.0),
+        child: Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            border: Border.all(width: 1.0, color: Colors.black),
+            borderRadius: const BorderRadius.all(Radius.circular(5)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.grey[500]!,
+                blurRadius: 15,
+                spreadRadius: 2,
+              )
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              Padding(
+                padding: const EdgeInsets.all(10),
+                child: TextFormField(
+                  controller: taskName,
+                  decoration: const InputDecoration(
+                    border: OutlineInputBorder(
+                      borderSide: BorderSide(color: Colors.greenAccent, width: 15.0),
                     ),
-                  ],
-                ))));
+                    labelText: 'Task name',
+                    labelStyle: TextStyle(
+                      fontSize: 18,
+                    ),
+                    contentPadding: EdgeInsets.all(12),
+                  ),
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'This field cannot be empty';
+                    }
+                    return null;
+                  },
+                ),
+              ),
+              Row(
+                children: <Widget>[
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: _selectStartDate,
+                      child: Row(
+                        children: <Widget>[
+                          const Icon(
+                            Icons.calendar_today,
+                            size: 18,
+                            color: AppTheme.darkTextPrimary,
+                          ),
+                          const SizedBox(width: 4),
+                          Expanded(
+                            child: Text(
+                              '$taskStartDate',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.normal,
+                                color: AppTheme.darkTextSecondary,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: _selectFinishDate,
+                      child: Row(
+                        children: <Widget>[
+                          const Icon(
+                            Icons.calendar_today,
+                            size: 18,
+                            color: AppTheme.darkTextPrimary,
+                          ),
+                          const SizedBox(width: 4),
+                          Expanded(
+                            child: Text(
+                              '$taskFinishDate',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.normal,
+                                color: AppTheme.darkTextSecondary,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 

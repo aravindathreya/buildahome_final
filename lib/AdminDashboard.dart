@@ -43,6 +43,7 @@ import 'NavMenu.dart';
 import 'ProjectFocusScreen.dart';
 import 'utilities/role_app_bar_color.dart';
 import 'widgets/dashboard_chrome.dart';
+import 'widgets/floating_glass_bottom_nav.dart';
 import 'widgets/modern_task_card.dart';
 import 'widgets/opening_project_splash.dart';
 import 'widgets/searchable_select.dart';
@@ -51,6 +52,7 @@ import 'widgets/attendance_prompt_dialog.dart';
 import 'widgets/daily_update_prompt_dialog.dart';
 import 'widgets/profile_picture_dialog.dart';
 import 'widgets/staff_check_in_card.dart';
+import 'widgets/buildahome_brand_row.dart';
 import 'AttendanceScreen.dart';
 import 'Payments.dart';
 import 'Scheduler.dart';
@@ -70,14 +72,17 @@ import 'VirtualTour.dart';
 import 'Dpr.dart';
 
 class AdminDashboard extends StatefulWidget {
+  /// Called once the staff shell has painted its first frame.
+  final VoidCallback? onReady;
+
+  const AdminDashboard({Key? key, this.onReady}) : super(key: key);
+
   @override
   _AdminDashboardState createState() => _AdminDashboardState();
 }
 
 class _AdminDashboardState extends State<AdminDashboard>
     with WidgetsBindingObserver {
-  static const Color _navy = AppTheme.navy;
-  static const Color _mutedGrey = Color(0xFF8A94A6);
   bool _startupPromptsFinished = false;
   int _startupPromptGeneration = 0;
 
@@ -106,6 +111,7 @@ class _AdminDashboardState extends State<AdminDashboard>
       }
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      widget.onReady?.call();
       _promptStaffOnStartup();
     });
   }
@@ -151,7 +157,7 @@ class _AdminDashboardState extends State<AdminDashboard>
 
   /// Wait for the login transition, then:
   /// 1) Attendance (if needed) — wait until that dialog is closed
-  /// 2) Daily update (coordinators and site engineers, once per day)
+  /// 2) Daily update (site engineers and super admins, once per day)
   /// 3) Profile picture (if missing)
   Future<void> _promptStaffOnStartup() async {
     final generation = _startupPromptGeneration;
@@ -184,7 +190,15 @@ class _AdminDashboardState extends State<AdminDashboard>
 
     await Future<void>.delayed(const Duration(milliseconds: 350));
     if (aborted()) return;
-    await maybePromptForProfilePicture(context);
+    final role =
+        ((await SharedPreferences.getInstance()).getString('role') ?? '')
+            .trim()
+            .toLowerCase();
+    if (role != 'client') {
+      await maybePromptForProfilePicture(context);
+    } else {
+      debugPrint('[Startup] skip profile picture — client role');
+    }
     if (aborted()) return;
     _startupPromptsFinished = true;
     unawaited(StaffLocationTracker.instance.syncWithShift());
@@ -235,64 +249,19 @@ class _AdminDashboardState extends State<AdminDashboard>
 
   Widget _buildBottomNav([List<String>? resolvedKeys]) {
     final keys = resolvedKeys ?? _resolvedBottomNavKeys();
-    final items = <_AdminDashNavItem>[
-      for (final key in keys)
-        _AdminDashNavItem(
-          activeIconForMobileBottomNav(key) ?? Icons.circle,
-          outlinedIconForMobileBottomNav(key) ?? Icons.circle_outlined,
-          labelForMobileBottomNav(key) ?? key,
-        ),
-    ];
-
-    return Container(
-      decoration: const BoxDecoration(
-        color: AppTheme.darkBackgroundSecondary,
-        border: Border(top: BorderSide(color: AppTheme.border)),
-      ),
-      child: SafeArea(
-        top: false,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
-          child: Row(
-            children: List.generate(items.length, (index) {
-              final item = items[index];
-              final selected = _bottomNavIndex == index;
-              final color = selected ? Colors.white : _mutedGrey;
-              return Expanded(
-                child: InkWell(
-                  onTap: () => _onBottomNavTap(index),
-                  borderRadius: BorderRadius.circular(12),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 6),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          selected ? item.activeIcon : item.icon,
-                          color: color,
-                          size: 24,
-                        ),
-                        const SizedBox(height: 3),
-                        Text(
-                          item.label,
-                          style: TextStyle(
-                            color: color,
-                            fontSize: 10.5,
-                            fontWeight:
-                                selected ? FontWeight.w700 : FontWeight.w500,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              );
-            }),
+    return FloatingGlassBottomNav(
+      items: [
+        for (var index = 0; index < keys.length; index++)
+          FloatingGlassBottomNavItem(
+            activeIcon:
+                activeIconForMobileBottomNav(keys[index]) ?? Icons.circle_rounded,
+            icon: outlinedIconForMobileBottomNav(keys[index]) ??
+                Icons.circle_rounded,
+            label: labelForMobileBottomNav(keys[index]) ?? keys[index],
+            selected: _bottomNavIndex == index,
+            onTap: () => _onBottomNavTap(index),
           ),
-        ),
-      ),
+      ],
     );
   }
 
@@ -301,6 +270,7 @@ class _AdminDashboardState extends State<AdminDashboard>
     return Scaffold(
       key: _scaffoldKey,
       backgroundColor: AppTheme.darkBackgroundPrimary,
+      extendBody: true,
       drawer: NavMenuWidget(),
       appBar: null,
       body: GestureDetector(
@@ -333,14 +303,6 @@ class _AdminDashboardState extends State<AdminDashboard>
     );
   }
 }
-
-class _AdminDashNavItem {
-  final IconData activeIcon;
-  final IconData icon;
-  final String label;
-  const _AdminDashNavItem(this.activeIcon, this.icon, this.label);
-}
-
 
 class _LogoutButton extends StatelessWidget {
   Future<void> _handleLogout(BuildContext context) async {
@@ -1566,6 +1528,9 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
                       ),
                     ),
                   if (currentUserRole != 'Client') ...[
+                    const BuildAhomeBrandRow(
+                      padding: EdgeInsets.fromLTRB(0, 12, 0, 14),
+                    ),
                     const StaffCheckInCard(),
                     const SizedBox(height: 18),
                     _buildOverviewCard(totalProjects, pendingCount),
@@ -1573,91 +1538,48 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
                   const SizedBox(height: 18),
                   if (currentUserRole != 'Billing') _buildTasksSection(),
                   if (allQuickActions.isNotEmpty) ...[
-                  const SizedBox(height: 22),
-                  Row(
-                    children: [
-                      const Text(
-                        'Quick Actions',
-                        style: TextStyle(
-                          fontSize: 15.5,
-                          fontWeight: FontWeight.w800,
-                          color: AppTheme.darkTextPrimary,
-                          height: 1.1,
-                        ),
-                      ),
-                      const Spacer(),
-                      if (allQuickActions.length > visibleActions.length)
-                        GestureDetector(
-                          onTap: () => _showAllQuickActions(allQuickActions),
-                          child: const Text(
-                            'View all',
-                            style: TextStyle(
-                              fontSize: 13.5,
-                              fontWeight: FontWeight.w700,
-                              color: Color(0xFF2563EB),
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
-                  const SizedBox(height: 6),
                   GridView.builder(
                     shrinkWrap: true,
                     physics: const NeverScrollableScrollPhysics(),
                     gridDelegate:
                         const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 4,
-                      crossAxisSpacing: 10,
-                      mainAxisSpacing: 14,
-                      childAspectRatio: 0.78,
+                      crossAxisCount: 3,
+                      crossAxisSpacing: 12,
+                      mainAxisSpacing: 8,
+                      childAspectRatio: 0.9,
                     ),
                     itemCount: visibleActions.length,
                     itemBuilder: (BuildContext context, int index) {
-                      final item = visibleActions[index];
-                      final title = item['title'].toString();
-                      final colors = _quickActionColors(title);
-                      return InkWell(
+                      return _buildQuickActionTile(
+                        visibleActions[index],
                         onTap: _isNavigating
                             ? null
                             : () async {
-                                await _handleMenuTap(context, item);
+                                await _handleMenuTap(
+                                  context,
+                                  visibleActions[index],
+                                );
                               },
-                        borderRadius: BorderRadius.circular(16),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.start,
-                          children: [
-                            Container(
-                              width: 56,
-                              height: 56,
-                              decoration: BoxDecoration(
-                                color: colors['bg'],
-                                borderRadius: BorderRadius.circular(16),
-                              ),
-                              child: Icon(
-                                _quickActionIcon(
-                                    title, item['icon'] as IconData),
-                                size: 24,
-                                color: colors['fg'],
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              _quickActionLabel(title),
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(
-                                color: AppTheme.darkTextPrimary,
-                                fontSize: 11.5,
-                                fontWeight: FontWeight.w600,
-                                height: 1.15,
-                              ),
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ],
-                        ),
                       );
                     },
                   ),
+                  if (allQuickActions.length > visibleActions.length) ...[
+                    const SizedBox(height: 4),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: GestureDetector(
+                        onTap: () => _showAllQuickActions(allQuickActions),
+                        child: const Text(
+                          'View all',
+                          style: TextStyle(
+                            fontSize: 13.5,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFF2563EB),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                   ],
                 ],
               ),
@@ -2062,108 +1984,62 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
     );
   }
 
-  Map<String, Color> _quickActionColors(String title) {
-    switch (title.toLowerCase()) {
-      case 'projects':
-        return {
-          'bg': const Color(0xFFDBEAFE),
-          'fg': const Color(0xFF2563EB),
-        };
-      case 'my tasks':
-      case 'tasks':
-        return {
-          'bg': const Color(0xFFFFF1D6),
-          'fg': const Color(0xFFEAB308),
-        };
-      case 'attendance':
-        return {
-          'bg': const Color(0xFFDCFCE7),
-          'fg': const Color(0xFF059669),
-        };
-      case 'daily update':
-        return {
-          'bg': const Color(0xFFE0E7FF),
-          'fg': const Color(0xFF4F46E5),
-        };
-      case 'indents':
-        return {
-          'bg': const Color(0xFFFFEDD5),
-          'fg': const Color(0xFFEA580C),
-        };
-      case 'stock report':
-        return {
-          'bg': const Color(0xFFCCFBF1),
-          'fg': const Color(0xFF0D9488),
-        };
-      case 'site visits':
-        return {
-          'bg': const Color(0xFFE0F2FE),
-          'fg': const Color(0xFF0284C7),
-        };
-      case 'test reports':
-        return {
-          'bg': const Color(0xFFF3E8FF),
-          'fg': const Color(0xFF7C3AED),
-        };
-      case 'checklist':
-        return {
-          'bg': const Color(0xFFF5E6D3),
-          'fg': const Color(0xFFB45309),
-        };
-      case 'chatbox':
-      case 'chat':
-      case 'chat v1':
-        return {
-          'bg': const Color(0xFFE0E7FF),
-          'fg': const Color(0xFF4F46E5),
-        };
-      case 'my notifications':
-        return {
-          'bg': const Color(0xFFFFE4E6),
-          'fg': const Color(0xFFE11D48),
-        };
-      case 'mobile live test':
-        return {
-          'bg': const Color(0xFFECFDF5),
-          'fg': const Color(0xFF047857),
-        };
-      case 'payments':
-      case 'nt payments':
-        return {
-          'bg': const Color(0xFFFFE4E6),
-          'fg': const Color(0xFFE11D48),
-        };
-      case 'gallery':
-        return {
-          'bg': const Color(0xFFF3E8FF),
-          'fg': const Color(0xFF7C3AED),
-        };
-      case 'project timeline':
-        return {
-          'bg': const Color(0xFFDCFCE7),
-          'fg': const Color(0xFF16A34A),
-        };
-      case 'documents':
-        return {
-          'bg': const Color(0xFFE0F2FE),
-          'fg': const Color(0xFF0284C7),
-        };
-      case 'scheduler':
-        return {
-          'bg': const Color(0xFFDBEAFE),
-          'fg': const Color(0xFF2563EB),
-        };
-      case 'client portal':
-        return {
-          'bg': const Color(0xFFEEF2FF),
-          'fg': const Color(0xFF4F46E5),
-        };
-      default:
-        return {
-          'bg': const Color(0xFFEEF2FF),
-          'fg': AppTheme.darkTextPrimary,
-        };
-    }
+  Widget _buildQuickActionTile(
+    Map<String, dynamic> item, {
+    VoidCallback? onTap,
+  }) {
+    final title = item['title'].toString();
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(999),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.start,
+        children: [
+          Container(
+            width: 72,
+            height: 72,
+            decoration: BoxDecoration(
+              color: AppTheme.darkBackgroundSecondary,
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: AppTheme.navy.withValues(alpha: 0.75),
+                width: 1.2,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: AppTheme.navy.withValues(alpha: 0.55),
+                  blurRadius: 0.5,
+                  spreadRadius: 1,
+                ),
+                BoxShadow(
+                  color: AppTheme.navy.withValues(alpha: 0.25),
+                  blurRadius: 6,
+                  spreadRadius: 0,
+                ),
+              ],
+            ),
+            child: Icon(
+              _quickActionIcon(title, item['icon'] as IconData),
+              size: 36,
+              color: AppTheme.darkTextPrimary,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            _quickActionLabel(title),
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: AppTheme.darkTextPrimary,
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+              height: 1.2,
+            ),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
+      ),
+    );
   }
 
   String _quickActionLabel(String title) {
@@ -2313,53 +2189,20 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
                     shrinkWrap: true,
                     gridDelegate:
                         const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 4,
-                      crossAxisSpacing: 10,
-                      mainAxisSpacing: 14,
-                      childAspectRatio: 0.78,
+                      crossAxisCount: 3,
+                      crossAxisSpacing: 12,
+                      mainAxisSpacing: 8,
+                      childAspectRatio: 0.9,
                     ),
                     itemCount: items.length,
                     itemBuilder: (_, index) {
                       final item = items[index];
-                      final title = item['title'].toString();
-                      final colors = _quickActionColors(title);
-                      return InkWell(
+                      return _buildQuickActionTile(
+                        item,
                         onTap: () {
                           Navigator.pop(ctx);
                           _handleMenuTap(context, item);
                         },
-                        borderRadius: BorderRadius.circular(16),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.start,
-                          children: [
-                            Container(
-                              width: 56,
-                              height: 56,
-                              decoration: BoxDecoration(
-                                color: colors['bg'],
-                                borderRadius: BorderRadius.circular(16),
-                              ),
-                              child: Icon(
-                                _quickActionIcon(
-                                    title, item['icon'] as IconData),
-                                size: 24,
-                                color: colors['fg'],
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              _quickActionLabel(title),
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(
-                                color: AppTheme.darkTextPrimary,
-                                fontSize: 11.5,
-                                fontWeight: FontWeight.w600,
-                              ),
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ],
-                        ),
                       );
                     },
                   ),

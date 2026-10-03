@@ -13,6 +13,52 @@ const Color _muted = AppTheme.darkTextSecondary;
 
 enum _TimelineFilter { all, completed, pending, upcoming }
 
+bool _timelineTruthy(dynamic value) {
+  if (value == true || value == 1) return true;
+  final text = value?.toString().trim().toLowerCase();
+  return text == '1' || text == 'true' || text == 'yes';
+}
+
+dynamic _timelineField(Map<String, dynamic> task, String key) {
+  if (task[key] != null) return task[key];
+  for (final nestKey in const [
+    'main_critical',
+    'meta',
+    'context',
+    'context_json',
+  ]) {
+    final nest = task[nestKey];
+    if (nest is Map && nest[key] != null) return nest[key];
+  }
+  return null;
+}
+
+String? _timelineDurationLabel(Map<String, dynamic> task) {
+  String? clean(dynamic value) {
+    final text = value?.toString().trim();
+    if (text == null || text.isEmpty || text.toLowerCase() == 'null') {
+      return null;
+    }
+    return text;
+  }
+
+  final direct = clean(_timelineField(task, 'assigned_duration_label'));
+  if (direct != null) return direct;
+
+  final amount = clean(_timelineField(task, 'main_critical_duration'));
+  final unit = clean(_timelineField(task, 'main_critical_duration_unit'));
+  if (amount != null && unit != null) return '$amount $unit';
+
+  final days = clean(_timelineField(task, 'assigned_days'));
+  if (days != null) {
+    final parsed = double.tryParse(days);
+    if (parsed == null) return '$days days';
+    if (parsed == parsed.roundToDouble()) return '${parsed.toInt()} days';
+    return '$parsed days';
+  }
+  return null;
+}
+
 class ProjectTimelineScreen extends StatefulWidget {
   const ProjectTimelineScreen({super.key});
 
@@ -465,9 +511,16 @@ class _TimelineTaskCard extends StatelessWidget {
         _value('status') ??
         'Pending';
     final completedAt = _value('completed_at_display');
-    final isWorkflow = task['is_workflow_task'] == true;
+    final isWorkflow = _timelineTruthy(task['is_workflow_task']);
     final workflowName = _value('workflow_name');
     final triggerLabel = _value('workflow_trigger_label');
+    final isMainCritical = _timelineTruthy(_timelineField(task, 'is_main_critical'));
+    final durationLabel = _timelineDurationLabel(task);
+    final showDuration = durationLabel != null &&
+        (isMainCritical ||
+            _timelineField(task, 'assigned_days') != null ||
+            _timelineField(task, 'main_critical_duration') != null ||
+            _timelineField(task, 'assigned_duration_label') != null);
     final isCompleted = task['is_completed'] == true;
     final isCancelled = task['is_cancelled'] == true;
     final isRedoPending = task['is_redo_pending'] == true;
@@ -610,6 +663,39 @@ class _TimelineTaskCard extends StatelessWidget {
                   ),
                 ],
               ),
+              if (showDuration) ...[
+                const SizedBox(height: 10),
+                Container(
+                  width: double.infinity,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF3B2A14),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: const Color(0xFF92400E)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(
+                        Icons.schedule_rounded,
+                        size: 15,
+                        color: Color(0xFFFBBF24),
+                      ),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          'Complete in $durationLabel',
+                          style: const TextStyle(
+                            color: Color(0xFFFBBF24),
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
               const SizedBox(height: 12),
               Text(
                 '$assigneeName · $assigneeRole',
@@ -711,7 +797,13 @@ class _TimelineTaskDetailSheet extends StatelessWidget {
     final assigneeRole =
         _value('assigned_role') ?? _value('assigned_to_role') ?? '—';
     final completedAt = _value('completed_at_display');
-    final isWorkflow = task['is_workflow_task'] == true;
+    final isWorkflow = _timelineTruthy(task['is_workflow_task']);
+    final durationLabel = _timelineDurationLabel(task);
+    final showDuration = durationLabel != null &&
+        (_timelineTruthy(_timelineField(task, 'is_main_critical')) ||
+            _timelineField(task, 'assigned_days') != null ||
+            _timelineField(task, 'main_critical_duration') != null ||
+            _timelineField(task, 'assigned_duration_label') != null);
 
     return DraggableScrollableSheet(
       initialChildSize: 0.55,
@@ -752,6 +844,8 @@ class _TimelineTaskDetailSheet extends StatelessWidget {
                     _detailLine('Status', timelineStatus),
                     _detailLine('Assigned to', assigneeName),
                     _detailLine('Role', assigneeRole),
+                    if (showDuration)
+                      _detailLine('Duration', 'Complete in $durationLabel'),
                     if (completedAt != null && completedAt != '—')
                       _detailLine('Completed', completedAt),
                     if (isWorkflow) ...[

@@ -12,31 +12,7 @@ import 'screens/chat_v1_group_info_screen.dart';
 import 'screens/chat_v1_home_screen.dart';
 import 'screens/chat_v1_search_screen.dart';
 import 'screens/chat_v1_task_list_screen.dart';
-
-/// Notifies when the chat navigator pushes or pops an inner screen.
-class _ChatInnerObserver extends NavigatorObserver {
-  _ChatInnerObserver(this.onChanged);
-
-  final VoidCallback onChanged;
-
-  void _notify() {
-    WidgetsBinding.instance.addPostFrameCallback((_) => onChanged());
-  }
-
-  @override
-  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) => _notify();
-
-  @override
-  void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) => _notify();
-
-  @override
-  void didRemove(Route<dynamic> route, Route<dynamic>? previousRoute) =>
-      _notify();
-
-  @override
-  void didReplace({Route<dynamic>? newRoute, Route<dynamic>? oldRoute}) =>
-      _notify();
-}
+import 'widgets/chat_v1_opening_splash.dart';
 
 /// ChatV1 entry — wired to `/api/v1/chat` + Socket.IO.
 class ChatV1App extends StatefulWidget {
@@ -45,11 +21,12 @@ class ChatV1App extends StatefulWidget {
   const ChatV1App({super.key, this.salesSopId});
 
   /// Sync open — no network await before the route pushes.
-  /// Prefer this from menus so Chat appears immediately.
-  static ChatV1App openQuick({
+  /// Prefer this from menus so Chat appears immediately (with open splash).
+  static Widget openQuick({
     String? erpProjectId,
     Map<String, dynamic>? project,
     Iterable<dynamic>? tasksHint,
+    bool withSplash = true,
   }) {
     final dp = DataProvider();
     // Prefer last successful chat session, then DataProvider memory.
@@ -98,12 +75,14 @@ class ChatV1App extends StatefulWidget {
     }
 
     print('[ChatV1App] openQuick sales_sop_id=$sopId (sync, no await)');
-    return ChatV1App(salesSopId: sopId);
+    final app = ChatV1App(salesSopId: sopId);
+    if (!withSplash) return app;
+    return ChatV1OpenSplash(child: app);
   }
 
   /// Resolve sales_sop_id (may hit network) then build ChatV1.
   /// Prefer [openQuick] for menu taps; keep this for deep links that need certainty.
-  static Future<ChatV1App> openResolved({
+  static Future<Widget> openResolved({
     String? erpProjectId,
     Map<String, dynamic>? project,
     Iterable<dynamic>? tasksHint,
@@ -120,7 +99,13 @@ class ChatV1App extends StatefulWidget {
       project: project,
       tasksHint: tasksHint,
     );
-    if (quick.salesSopId != null && quick.salesSopId!.isNotEmpty) {
+    String? resolvedFromQuick;
+    if (quick is ChatV1OpenSplash && quick.child is ChatV1App) {
+      resolvedFromQuick = (quick.child as ChatV1App).salesSopId;
+    } else if (quick is ChatV1App) {
+      resolvedFromQuick = quick.salesSopId;
+    }
+    if (resolvedFromQuick != null && resolvedFromQuick.isNotEmpty) {
       return quick;
     }
 
@@ -172,7 +157,7 @@ class ChatV1App extends StatefulWidget {
       '[ChatV1App] openResolved role=$role erpProjectId=$projectId '
       'sales_sop_id=$sopId',
     );
-    return ChatV1App(salesSopId: sopId);
+    return ChatV1OpenSplash(child: ChatV1App(salesSopId: sopId));
   }
 
   @override
@@ -180,54 +165,15 @@ class ChatV1App extends StatefulWidget {
 }
 
 class _ChatV1AppState extends State<ChatV1App> {
-  final _navKey = GlobalKey<NavigatorState>();
-  late final NavigatorObserver _innerObserver = _ChatInnerObserver(_syncInner);
-  bool _innerCanPop = false;
-
-  void _syncInner() {
-    final next = _navKey.currentState?.canPop() ?? false;
-    if (!mounted || next == _innerCanPop) return;
-    setState(() => _innerCanPop = next);
-  }
-
-  /// A thread, task list, or search closes first.
-  /// From the chat list, back returns to the screen that opened chat.
-  void _handleBack() {
-    final nested = _navKey.currentState;
-    if (nested != null && nested.canPop()) {
-      nested.pop();
-      return;
-    }
-    final nav = Navigator.of(context);
-    if (nav.canPop()) nav.pop();
-  }
-
   @override
   Widget build(BuildContext context) {
-    return PopScope(
-      // Only the chat list may leave this route. An open thread stays inside chat.
-      canPop: !_innerCanPop,
-      onPopInvokedWithResult: (didPop, _) {
-        if (didPop) return;
-        _navKey.currentState?.pop();
-      },
-      child: Theme(
-        data: ChatV1Theme.data(dark: true),
-        child: Navigator(
-          key: _navKey,
-          observers: [_innerObserver],
-          onGenerateRoute: (settings) {
-            return MaterialPageRoute<void>(
-              settings: settings,
-              builder: (routeContext) => ChatV1HomeScreen(
-                salesSopId: widget.salesSopId,
-                onBack: _handleBack,
-                onOpenChat: (item) => _openChat(routeContext, item),
-                onOpenSearch: () =>
-                    _open(routeContext, const ChatV1SearchScreen()),
-              ),
-            );
-          },
+    return Theme(
+      data: ChatV1Theme.data(dark: true),
+      child: Builder(
+        builder: (context) => ChatV1HomeScreen(
+          salesSopId: widget.salesSopId,
+          onOpenChat: (item) => _openChat(context, item),
+          onOpenSearch: () => _open(context, const ChatV1SearchScreen()),
         ),
       ),
     );

@@ -6,8 +6,8 @@ import '../services/daily_update_prompt_service.dart';
 
 bool _dailyUpdatePromptInFlight = false;
 
-/// Once per IST day, asks Project Coordinators, Assistant Project
-/// Coordinators, and Site Engineers to add today's daily update.
+/// Once per IST day, asks Site Engineers and Super Admins to add
+/// today's daily update.
 ///
 /// Returns true when the user chooses Add now.
 Future<bool> maybePromptForDailyUpdate(BuildContext context) async {

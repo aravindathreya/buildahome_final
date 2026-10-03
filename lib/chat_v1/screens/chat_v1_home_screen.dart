@@ -8,7 +8,6 @@ import '../chat_v1_models.dart';
 import '../chat_v1_theme.dart';
 import '../widgets/chat_v1_chat_tile.dart';
 import '../widgets/chat_v1_common.dart';
-import '../widgets/chat_v1_opening_splash.dart';
 import 'chat_v1_create_group_sheet.dart';
 
 class ChatV1HomeScreen extends StatefulWidget {
@@ -36,20 +35,11 @@ class _ChatV1HomeScreenState extends State<ChatV1HomeScreen> {
   Timer? _searchDebounce;
   ChatV1Filter _filter = ChatV1Filter.all;
   final Set<String> _selected = {};
-  /// True until the first cold load finishes (no cached chats yet).
-  bool _showOpeningSplash = false;
-
-  bool get _hasCachedChats =>
-      _ctrl.channels.isNotEmpty ||
-      _ctrl.customGroups.isNotEmpty ||
-      _ctrl.dms.isNotEmpty ||
-      _ctrl.allProjectTasks.isNotEmpty;
 
   @override
   void initState() {
     super.initState();
     _ctrl.addListener(_onCtrl);
-    _showOpeningSplash = !_hasCachedChats;
     _reload();
   }
 
@@ -63,11 +53,6 @@ class _ChatV1HomeScreenState extends State<ChatV1HomeScreen> {
 
   void _onCtrl() {
     if (!mounted) return;
-    // Dismiss branded splash once first load completes or cache appears.
-    if (_showOpeningSplash && (!_ctrl.loading || _hasCachedChats)) {
-      setState(() => _showOpeningSplash = false);
-      return;
-    }
     setState(() {});
   }
 
@@ -120,12 +105,6 @@ class _ChatV1HomeScreenState extends State<ChatV1HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_showOpeningSplash) {
-      return const ChatV1OpeningSplash(
-        subtitle: 'Loading your project conversations…',
-      );
-    }
-
     final channels = _apply(_ctrl.channels);
     final hubs = _apply([
       if (_ctrl.channels.isNotEmpty || _ctrl.allProjectTasks.isNotEmpty)

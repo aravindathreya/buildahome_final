@@ -875,7 +875,7 @@ class _ProofCard extends StatelessWidget {
                       style: TextStyle(
                         color: rejected
                             ? _UploadPaymentProofScreenState._rejectMuted
-                            : _UploadPaymentProofScreenState._navyStart,
+                            : _UploadPaymentProofScreenState._textPrimary,
                         fontWeight: FontWeight.w800,
                         fontSize: 15,
                       ),

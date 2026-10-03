@@ -59,21 +59,34 @@ class LoginScreenNewState extends State<LoginScreenNew>
   Timer? _resendTimer;
   int _resendSecondsLeft = 0;
 
-  late AnimationController _splashFadeController;
+  static const Color _splashBackground = Color(0xFFD1D1D1);
+  static const String _splashAsset =
+      'assets/images/buildahome_splash_android_720.jpg';
+  static const Duration _minSplashDuration = Duration(seconds: 3);
+
+  late AnimationController _splashEnterController;
+  late AnimationController _splashExitController;
   late AnimationController _formFadeController;
-  late Animation<double> _splashFade;
   late Animation<double> _formFade;
+  /// App-launch splash only — not project/attendance/login-success handoffs.
+  late final Future<void> _minSplashFuture;
+
+  /// Destination mounted under the splash so it loads while branding shows.
+  Widget? _preloadedDestination;
+  final GlobalKey _destinationKey = GlobalKey();
+  Completer<void>? _destinationReady;
 
   @override
   void initState() {
     super.initState();
-    _splashFadeController = AnimationController(
+    _minSplashFuture = Future<void>.delayed(_minSplashDuration);
+    _splashEnterController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 750),
+      duration: const Duration(milliseconds: 900),
     );
-    _splashFade = CurvedAnimation(
-      parent: _splashFadeController,
-      curve: Curves.easeOutCubic,
+    _splashExitController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 720),
     );
 
     _formFadeController = AnimationController(
@@ -85,15 +98,16 @@ class LoginScreenNewState extends State<LoginScreenNew>
       curve: Curves.easeOutCubic,
     );
 
-    // Smooth fade-in as soon as the Flutter splash appears.
-    _splashFadeController.forward();
+    // Smooth scale + fade in as soon as the Flutter splash appears.
+    _splashEnterController.forward();
     checkIfAlreadyLoggedIn();
   }
 
   @override
   void dispose() {
     _resendTimer?.cancel();
-    _splashFadeController.dispose();
+    _splashEnterController.dispose();
+    _splashExitController.dispose();
     _formFadeController.dispose();
     phoneFocusNode.dispose();
     phoneTextController.dispose();
@@ -106,16 +120,66 @@ class LoginScreenNewState extends State<LoginScreenNew>
     super.dispose();
   }
 
+  Future<void> _exitSplash() async {
+    if (!mounted || !showSplash) return;
+    // Lock enter at full size, then punch through with an exaggerated zoom-in.
+    _splashEnterController.value = 1.0;
+    await _splashExitController.forward(from: 0);
+  }
+
   Future<void> _revealLoginForm() async {
     if (!mounted) return;
-    // Soft fade-out of splash, then fade-in form.
-    await _splashFadeController.reverse();
+    // Put the login UI under the splash so the zoom reveals it (no black hold).
+    setState(() {
+      showLoginForm = true;
+    });
+    await Future.wait<void>([
+      _exitSplash(),
+      _formFadeController.forward(from: 0),
+    ]);
     if (!mounted) return;
     setState(() {
       showSplash = false;
-      showLoginForm = true;
     });
-    await _formFadeController.forward(from: 0);
+  }
+
+  void _markDestinationReady() {
+    final ready = _destinationReady;
+    if (ready != null && !ready.isCompleted) {
+      ready.complete();
+    }
+  }
+
+  Future<void> _waitForDestinationReady() async {
+    final ready = _destinationReady;
+    if (ready == null) return;
+    try {
+      await ready.future.timeout(const Duration(seconds: 8));
+    } on TimeoutException {
+      // Still hand off — better to show a partial shell than hang on splash.
+    }
+  }
+
+  Future<void> _promotePreloadedDestination() async {
+    final destination = _preloadedDestination;
+    if (!mounted || destination == null) return;
+
+    await _exitSplash();
+    if (!mounted) return;
+    setState(() {
+      showSplash = false;
+    });
+
+    // Same GlobalKey widget moves from under-splash into the route, keeping State.
+    await Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
+      PageRouteBuilder(
+        transitionDuration: Duration.zero,
+        reverseTransitionDuration: Duration.zero,
+        pageBuilder: (context, animation, secondaryAnimation) => destination,
+      ),
+      (route) => false,
+    );
+    await AppDeepLinkService.instance.onAppReady();
   }
 
   checkIfAlreadyLoggedIn() async {
@@ -124,8 +188,7 @@ class LoginScreenNewState extends State<LoginScreenNew>
       // Don't wait on prefs here — AppLogout clears them after navigation.
       // Leave prompts suppressed until the next successful login.
       ProfilePictureService.picturePathNotifier.value = null;
-      // Tiny beat so the splash paints once, then show the phone form.
-      await Future.delayed(const Duration(milliseconds: 120));
+      await _minSplashFuture;
       await _revealLoginForm();
       return;
     }
@@ -148,21 +211,34 @@ class LoginScreenNewState extends State<LoginScreenNew>
       ProfilePictureService.onLoggedIn();
       unawaited(ProfilePictureService.getStoredPath());
 
-      // Paint Home immediately. Project resolve, generation, and DataProvider
-      // boot continue on the destination screens (cache-first + SWR).
       final isClient = (role ?? '').trim().toLowerCase() == 'client';
-      unawaited(ClientGenerationService.instance.ensureLoaded());
-      unawaited(DataProvider().initializeData(force: false));
 
-      if (!mounted) return;
-      if (isClient) {
-        await _openAppScreen(Home());
-      } else {
-        await _openAppScreen(AdminDashboard());
+      // Warm caches and mount the real destination under the splash so it
+      // finishes loading before the zoom-out handoff.
+      final prepFuture = Future.wait<void>([
+        ClientGenerationService.instance.ensureLoaded(),
+        DataProvider().initializeData(force: false),
+      ]);
+
+      _destinationReady = Completer<void>();
+      final destination = isClient
+          ? Home(key: _destinationKey, onReady: _markDestinationReady)
+          : AdminDashboard(key: _destinationKey, onReady: _markDestinationReady);
+      if (mounted) {
+        setState(() {
+          _preloadedDestination = destination;
+        });
       }
+
+      await Future.wait<void>([
+        _minSplashFuture,
+        prepFuture,
+        _waitForDestinationReady(),
+      ]);
+      if (!mounted) return;
+      await _promotePreloadedDestination();
     } else {
-      // Keep splash visible briefly so the fade-in can be seen, then reveal form.
-      await Future.delayed(const Duration(milliseconds: 350));
+      await _minSplashFuture;
       await _revealLoginForm();
     }
   }
@@ -170,11 +246,15 @@ class LoginScreenNewState extends State<LoginScreenNew>
   Future<void> _openAppScreen(Widget destination) async {
     _dismissKeyboard();
 
-    // Fade the login/splash out first so the handoff is always visible.
+    // Exit login form first so the handoff is always visible.
     if (showLoginForm && _formFadeController.value > 0) {
       await _formFadeController.reverse();
-    } else if (showSplash && _splashFadeController.value > 0) {
-      await _splashFadeController.reverse();
+    } else if (showSplash) {
+      await _exitSplash();
+      if (!mounted) return;
+      setState(() {
+        showSplash = false;
+      });
     }
     if (!mounted) return;
 
@@ -926,48 +1006,53 @@ class LoginScreenNewState extends State<LoginScreenNew>
         imageContainerShrinked ? topPad + 168 : topPad + 260;
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: SystemUiOverlayStyle.light,
+      value: (showSplash && !showLoginForm)
+          ? SystemUiOverlayStyle.dark.copyWith(
+              statusBarColor: Colors.transparent,
+              systemNavigationBarColor: _splashBackground,
+              systemNavigationBarIconBrightness: Brightness.dark,
+            )
+          : SystemUiOverlayStyle.light,
       child: Scaffold(
-      backgroundColor: AppTheme.darkBackgroundPrimary,
+      backgroundColor: (showSplash && !showLoginForm)
+          ? _splashBackground
+          : AppTheme.darkBackgroundPrimary,
       body: GestureDetector(
         onTap: _dismissKeyboard,
         behavior: HitTestBehavior.translucent,
         child: Stack(
         children: [
+          // Preload home/admin under the splash so it paints before handoff.
+          if (_preloadedDestination != null)
+            Positioned.fill(child: _preloadedDestination!),
           // Solid navy header — avoids white-on-light and muddy fade gradients.
-          if (showLoginForm || showSplash)
+          if (showLoginForm)
             AnimatedPositioned(
               duration: const Duration(milliseconds: 350),
               curve: Curves.easeInOutCubic,
               top: 0,
               left: 0,
               right: 0,
-              height: showSplash
-                  ? MediaQuery.of(context).size.height
-                  : headerHeight,
+              height: headerHeight,
               child: Container(
-                decoration: BoxDecoration(
+                decoration: const BoxDecoration(
                   color: _navy,
-                  borderRadius: showSplash
-                      ? BorderRadius.zero
-                      : const BorderRadius.only(
-                          bottomLeft: Radius.circular(28),
-                          bottomRight: Radius.circular(28),
-                        ),
+                  borderRadius: BorderRadius.only(
+                    bottomLeft: Radius.circular(28),
+                    bottomRight: Radius.circular(28),
+                  ),
                 ),
-                child: showLoginForm
-                    ? Align(
-                        alignment: Alignment.topRight,
-                        child: Padding(
-                          padding: const EdgeInsets.only(top: 24, right: 8),
-                          child: Icon(
-                            Icons.home_work_outlined,
-                            size: imageContainerShrinked ? 120 : 160,
-                            color: Colors.white.withValues(alpha: 0.06),
-                          ),
-                        ),
-                      )
-                    : null,
+                child: Align(
+                  alignment: Alignment.topRight,
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: 24, right: 8),
+                    child: Icon(
+                      Icons.home_work_outlined,
+                      size: imageContainerShrinked ? 120 : 160,
+                      color: Colors.white.withValues(alpha: 0.06),
+                    ),
+                  ),
+                ),
               ),
             ),
           if (showLoginForm)
@@ -1063,7 +1148,7 @@ class LoginScreenNewState extends State<LoginScreenNew>
                                 ? 'Enter OTP'
                                 : showPhoneField
                                     ? 'Phone number'
-                                    : 'WhatsApp login',
+                                    : 'Kick off',
                             style: const TextStyle(
                               color: _formText,
                               fontSize: 18,
@@ -1234,29 +1319,6 @@ class LoginScreenNewState extends State<LoginScreenNew>
                                         ),
                                       ),
                           ),
-                          if (formBeingSubmitted) ...[
-                            const SizedBox(height: 16),
-                            Row(
-                              children: [
-                                const SpinKitRing(
-                                  color: _formText,
-                                  size: 18,
-                                  lineWidth: 2,
-                                ),
-                                const SizedBox(width: 10),
-                                Text(
-                                  showOtpField
-                                      ? 'Verifying OTP...'
-                                      : 'Sending WhatsApp OTP...',
-                                  style: const TextStyle(
-                                    color: _formText,
-                                    fontSize: 13.5,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
                           const SizedBox(height: 18),
                           SizedBox(
                             width: double.infinity,
@@ -1326,33 +1388,86 @@ class LoginScreenNewState extends State<LoginScreenNew>
               ),
             ),
           if (showSplash)
-            FadeTransition(
-              opacity: _splashFade,
-              child: Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Image.asset(
-                      'assets/images/LOGO WHITE.png',
-                      height: 56,
-                      fit: BoxFit.contain,
-                      filterQuality: FilterQuality.high,
-                      errorBuilder: (_, __, ___) => const Text(
-                        'buildAhome',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 28,
-                          fontWeight: FontWeight.w800,
-                        ),
+            Positioned.fill(
+              child: AnimatedBuilder(
+                animation: Listenable.merge([
+                  _splashEnterController,
+                  _splashExitController,
+                ]),
+                builder: (context, child) {
+                  final enterT = Curves.easeOutCubic
+                      .transform(_splashEnterController.value);
+                  final exitT = Curves.easeInCubic
+                      .transform(_splashExitController.value);
+                  // Enter: subtle scale-up. Exit: exaggerated zoom-through.
+                  final scale =
+                      (0.88 + (0.12 * enterT)) * (1.0 + (1.25 * exitT));
+                  // Fade the whole layer so exit never lands on a plain hold.
+                  final opacity = enterT * (1.0 - exitT);
+                  return Opacity(
+                    opacity: opacity.clamp(0.0, 1.0),
+                    child: ColoredBox(
+                      color: _splashBackground,
+                      child: Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          Transform.scale(
+                            scale: scale,
+                            filterQuality: FilterQuality.high,
+                            child: child,
+                          ),
+                          // Keep status UI outside the zoom so it stays readable.
+                          Positioned(
+                            left: 24,
+                            right: 24,
+                            bottom: MediaQuery.paddingOf(context).bottom + 36,
+                            child: Opacity(
+                              opacity: enterT.clamp(0.0, 1.0),
+                              child: const Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  SizedBox(
+                                    width: 14,
+                                    height: 14,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Color(0xFF4A4A4A),
+                                    ),
+                                  ),
+                                  SizedBox(width: 10),
+                                  Text(
+                                    'Setting up',
+                                    style: TextStyle(
+                                      color: Color(0xFF4A4A4A),
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600,
+                                      letterSpacing: 0.2,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                    const SizedBox(height: 28),
-                    const SpinKitRing(
-                      color: Colors.white,
-                      size: 26,
-                      lineWidth: 2.5,
+                  );
+                },
+                child: Image.asset(
+                  _splashAsset,
+                  fit: BoxFit.contain,
+                  alignment: Alignment.center,
+                  filterQuality: FilterQuality.high,
+                  errorBuilder: (_, __, ___) => const Center(
+                    child: Text(
+                      'buildAhome',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 28,
+                        fontWeight: FontWeight.w800,
+                      ),
                     ),
-                  ],
+                  ),
                 ),
               ),
             ),

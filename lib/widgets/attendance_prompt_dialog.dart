@@ -3,13 +3,11 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 
-import '../AttendanceScreen.dart';
 import '../app_theme.dart';
 import '../services/attendance_service.dart';
 import '../services/location_service.dart';
 import '../services/staff_location_tracker.dart';
 import '../widgets/attendance_note_sheet.dart';
-import '../widgets/dashboard_chrome.dart';
 
 /// Once per IST day, prompts staff who still need to check in.
 Future<void> maybePromptForAttendance(BuildContext context) async {
@@ -203,18 +201,6 @@ class _AttendancePromptDialogState extends State<_AttendancePromptDialog> {
     }
   }
 
-  void _openFullScreen() {
-    Navigator.of(context).pop();
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => DashboardChrome.wrap(
-          DashboardChromeStyle.admin,
-          const AttendanceScreen(),
-        ),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final canCheckIn = _status?.canCheckIn == true;
@@ -284,97 +270,68 @@ class _AttendancePromptDialogState extends State<_AttendancePromptDialog> {
     required bool canCheckIn,
     required bool inRange,
   }) {
-    final checkInEnabled =
-        !_loading && !_submitting && canCheckIn && inRange;
-    final showOverride = canCheckIn && !inRange && !_loading;
+    final proceedEnabled =
+        !_loading && !_submitting && !_locating && canCheckIn && _position != null;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
+    return Row(
       children: [
-        SizedBox(
-          height: 48,
-          child: ElevatedButton(
-            onPressed: checkInEnabled ? () => _checkIn() : null,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppTheme.navy,
-              foregroundColor: Colors.white,
-              disabledBackgroundColor: AppTheme.navy.withValues(alpha: 0.28),
-              disabledForegroundColor: Colors.white.withValues(alpha: 0.72),
-              elevation: 0,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(14),
-              ),
-            ),
-            child: _submitting
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2.2,
-                      color: Colors.white,
-                    ),
-                  )
-                : const Text(
-                    'Check in',
-                    style: TextStyle(
-                      fontWeight: FontWeight.w800,
-                      fontSize: 16,
-                    ),
-                  ),
-          ),
-        ),
-        if (showOverride) ...[
-          const SizedBox(height: 12),
-          SizedBox(
-            height: 46,
+        Expanded(
+          child: SizedBox(
+            height: 48,
             child: OutlinedButton(
-              onPressed: (_submitting || _locating)
-                  ? null
-                  : () => _checkIn(overrideLocation: true),
+              onPressed:
+                  _submitting ? null : () => Navigator.of(context).pop(),
               style: OutlinedButton.styleFrom(
-                foregroundColor: const Color(0xFFFBBF24),
+                foregroundColor: AppTheme.accentBlue,
                 disabledForegroundColor:
-                    const Color(0xFFFBBF24).withValues(alpha: 0.45),
-                side: const BorderSide(color: Color(0xFFFBBF24), width: 1.4),
+                    AppTheme.accentBlue.withValues(alpha: 0.45),
+                side: const BorderSide(color: AppTheme.accentBlue, width: 1.4),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(14),
                 ),
               ),
               child: const Text(
-                'Override',
+                'Later',
                 style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
               ),
             ),
           ),
-        ],
-        const SizedBox(height: 12),
-        SizedBox(
-          height: 46,
-          child: OutlinedButton(
-            onPressed: _submitting ? null : _openFullScreen,
-            style: OutlinedButton.styleFrom(
-              foregroundColor: AppTheme.darkTextPrimary,
-              side: const BorderSide(color: AppTheme.border),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(14),
-              ),
-            ),
-            child: const Text(
-              'Details',
-              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
-            ),
-          ),
         ),
-        const SizedBox(height: 4),
-        TextButton(
-          onPressed: _submitting ? null : () => Navigator.of(context).pop(),
-          style: TextButton.styleFrom(
-            foregroundColor: AppTheme.mutedGrey,
-            padding: const EdgeInsets.symmetric(vertical: 12),
-          ),
-          child: const Text(
-            'Later',
-            style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+        const SizedBox(width: 12),
+        Expanded(
+          child: SizedBox(
+            height: 48,
+            child: ElevatedButton(
+              onPressed: proceedEnabled
+                  ? () => _checkIn(overrideLocation: !inRange)
+                  : null,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.navy,
+                foregroundColor: Colors.white,
+                disabledBackgroundColor: AppTheme.navy.withValues(alpha: 0.28),
+                disabledForegroundColor: Colors.white.withValues(alpha: 0.72),
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+              ),
+              child: _submitting
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Text(
+                      'Proceed',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 16,
+                      ),
+                    ),
+            ),
           ),
         ),
       ],
