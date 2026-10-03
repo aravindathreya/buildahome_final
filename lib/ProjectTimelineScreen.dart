@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 
 import 'ProjectFocusScreen.dart';
+import 'ProjectTimelineStatusScreen.dart';
 import 'app_theme.dart';
 import 'services/data_provider.dart';
 import 'widgets/project_situation_switcher.dart';
 import 'widgets/skeleton_loader.dart';
+import 'widgets/tentative_handover_card.dart';
 
 const Color _pageBackground = AppTheme.darkBackgroundPrimary;
 const Color _cardSurface = AppTheme.darkBackgroundSecondary;
@@ -59,6 +61,15 @@ String? _timelineDurationLabel(Map<String, dynamic> task) {
   return null;
 }
 
+bool _isMainCriticalTask(Map<String, dynamic> task) {
+  return _timelineTruthy(_timelineField(task, 'is_main_critical'));
+}
+
+bool _isClientRole([String? role]) {
+  final value = (role ?? DataProvider().currentRole ?? '').trim().toLowerCase();
+  return value == 'client';
+}
+
 class ProjectTimelineScreen extends StatefulWidget {
   const ProjectTimelineScreen({super.key});
 
@@ -72,6 +83,7 @@ class _ProjectTimelineScreenState extends State<ProjectTimelineScreen> {
   int _pendingCount = 0;
   int _completedCount = 0;
   int _upcomingCount = 0;
+  int? _remainingDays;
   _TimelineFilter _filter = _TimelineFilter.all;
   bool _isLoading = true;
   String? _errorMessage;
@@ -85,6 +97,7 @@ class _ProjectTimelineScreenState extends State<ProjectTimelineScreen> {
 
   void _hydrateFromProvider() {
     final provider = DataProvider();
+    _remainingDays = provider.clientRemainingDays;
     if (!provider.clientTimelineLoaded) return;
     setState(() {
       _applyProviderData(provider);
@@ -93,11 +106,18 @@ class _ProjectTimelineScreenState extends State<ProjectTimelineScreen> {
   }
 
   void _applyProviderData(DataProvider provider) {
-    _tasks = List<Map<String, dynamic>>.from(provider.clientTimelineTasks);
-    _timelineTaskCount = provider.clientTimelineTaskCount;
-    _pendingCount = provider.clientTimelinePendingCount;
-    _completedCount = provider.clientTimelineCompletedCount;
-    _upcomingCount = provider.clientTimelineUpcomingCount;
+    final allTasks =
+        List<Map<String, dynamic>>.from(provider.clientTimelineTasks);
+    // Clients only ever see Main Critical construction timeline tasks.
+    final tasks = _isClientRole(provider.currentRole)
+        ? allTasks.where(_isMainCriticalTask).toList()
+        : allTasks;
+    _tasks = tasks;
+    _timelineTaskCount = tasks.length;
+    _pendingCount = tasks.where((t) => t['is_pending'] == true).length;
+    _completedCount = tasks.where((t) => t['is_completed'] == true).length;
+    _upcomingCount = tasks.where((t) => t['is_upcoming'] == true).length;
+    _remainingDays = provider.clientRemainingDays;
   }
 
   Future<void> _loadTimeline({bool showLoader = true}) async {
@@ -109,7 +129,10 @@ class _ProjectTimelineScreenState extends State<ProjectTimelineScreen> {
     }
 
     try {
-      await DataProvider().loadProjectTimeline(force: true);
+      await Future.wait([
+        DataProvider().loadProjectTimeline(force: true),
+        DataProvider().refreshProjectPercentage(),
+      ]);
       if (!mounted) return;
       setState(() {
         _applyProviderData(DataProvider());
@@ -119,6 +142,7 @@ class _ProjectTimelineScreenState extends State<ProjectTimelineScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() {
+        _applyProviderData(DataProvider());
         _isLoading = false;
         _errorMessage = e.toString().replaceFirst('Exception: ', '');
       });
@@ -188,13 +212,21 @@ class _ProjectTimelineScreenState extends State<ProjectTimelineScreen> {
         bottom: ProjectSituationSwitcher(
           selected: ProjectSituationTab.timeline,
           onChanged: (tab) {
-            if (tab == ProjectSituationTab.focus) {
-              Navigator.of(context).pushReplacement(
-                MaterialPageRoute(
-                  builder: (_) => ProjectFocusScreen.openQuick(),
-                ),
-              );
+            if (tab == ProjectSituationTab.timeline) return;
+            final Widget page;
+            switch (tab) {
+              case ProjectSituationTab.focus:
+                page = ProjectFocusScreen.openQuick();
+                break;
+              case ProjectSituationTab.status:
+                page = const ProjectTimelineStatusScreen();
+                break;
+              case ProjectSituationTab.timeline:
+                return;
             }
+            Navigator.of(context).pushReplacement(
+              MaterialPageRoute(builder: (_) => page),
+            );
           },
         ),
         actions: [
@@ -227,7 +259,18 @@ class _ProjectTimelineScreenState extends State<ProjectTimelineScreen> {
     }
 
     if (_timelineTaskCount == 0 && _tasks.isEmpty) {
-      return _buildEmptyTimelineState();
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (_remainingDays != null)
+            TentativeHandoverCard(
+              remainingDays: _remainingDays!,
+              margin: const EdgeInsets.fromLTRB(18, 4, 18, 12),
+              compact: true,
+            ),
+          Expanded(child: _buildEmptyTimelineState()),
+        ],
+      );
     }
 
     final filtered = _filteredTasks;
@@ -267,6 +310,8 @@ class _ProjectTimelineScreenState extends State<ProjectTimelineScreen> {
   }
 
   Widget _buildSummaryBanner() {
+    final remaining = _remainingDays;
+
     return Container(
       margin: const EdgeInsets.fromLTRB(18, 4, 18, 12),
       padding: const EdgeInsets.all(16),
@@ -282,30 +327,42 @@ class _ProjectTimelineScreenState extends State<ProjectTimelineScreen> {
           ),
         ],
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              color: AppTheme.getPrimaryColor(context).withOpacity(0.1),
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: Icon(Icons.timeline_rounded,
-                color: AppTheme.getPrimaryColor(context), size: 24),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              '$_pendingCount pending · $_completedCount completed · $_upcomingCount upcoming',
-              style: const TextStyle(
-                color: _ink,
-                fontSize: 13.5,
-                fontWeight: FontWeight.w700,
-                height: 1.35,
+          Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: AppTheme.getPrimaryColor(context).withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(Icons.timeline_rounded,
+                    color: AppTheme.getPrimaryColor(context), size: 24),
               ),
-            ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  '$_pendingCount pending · $_completedCount completed · $_upcomingCount upcoming',
+                  style: const TextStyle(
+                    color: _ink,
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w700,
+                    height: 1.35,
+                  ),
+                ),
+              ),
+            ],
           ),
+          if (remaining != null) ...[
+            const SizedBox(height: 14),
+            TentativeHandoverCard(
+              remainingDays: remaining,
+              compact: true,
+            ),
+          ],
         ],
       ),
     );
@@ -366,19 +423,23 @@ class _ProjectTimelineScreenState extends State<ProjectTimelineScreen> {
             Icon(Icons.timeline_outlined,
                 size: 56, color: AppTheme.getTextSecondary(context)),
             const SizedBox(height: 20),
-            const Text(
-              'No timeline tasks yet',
-              style: TextStyle(
+            Text(
+              _isClientRole()
+                  ? 'No critical timeline tasks yet'
+                  : 'No timeline tasks yet',
+              style: const TextStyle(
                 color: _ink,
                 fontSize: 22,
                 fontWeight: FontWeight.w800,
               ),
             ),
             const SizedBox(height: 8),
-            const Text(
-              'Project timeline tasks will appear here once they are created.',
+            Text(
+              _isClientRole()
+                  ? 'Main Critical construction tasks will appear here once they are available.'
+                  : 'Project timeline tasks will appear here once they are created.',
               textAlign: TextAlign.center,
-              style: TextStyle(
+              style: const TextStyle(
                 color: _muted,
                 fontSize: 14,
                 fontWeight: FontWeight.w500,
@@ -502,6 +563,8 @@ class _TimelineTaskCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isClient =
+        (DataProvider().currentRole ?? '').trim().toLowerCase() == 'client';
     final orderIdx = int.tryParse(task['order_idx']?.toString() ?? '');
     final taskName = _value('task_name') ?? 'Task';
     final assigneeName = _value('assigned_to_name') ?? '—';
@@ -512,7 +575,6 @@ class _TimelineTaskCard extends StatelessWidget {
         'Pending';
     final completedAt = _value('completed_at_display');
     final isWorkflow = _timelineTruthy(task['is_workflow_task']);
-    final workflowName = _value('workflow_name');
     final triggerLabel = _value('workflow_trigger_label');
     final isMainCritical = _timelineTruthy(_timelineField(task, 'is_main_critical'));
     final durationLabel = _timelineDurationLabel(task);
@@ -526,6 +588,8 @@ class _TimelineTaskCard extends StatelessWidget {
     final isRedoPending = task['is_redo_pending'] == true;
     final isBlocked = task['is_flow_blocked'] == true;
     final isUpcoming = task['is_upcoming'] == true || task['is_not_started'] == true;
+    final showWorkflowMeta = !isClient && isWorkflow;
+    final showAssignee = !isClient;
     final statusColor = _timelineStatusColor(
       timelineStatus,
       isCompleted: isCompleted,
@@ -590,7 +654,7 @@ class _TimelineTaskCard extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        if (isWorkflow)
+                        if (showWorkflowMeta)
                           Container(
                             margin: const EdgeInsets.only(bottom: 6),
                             padding: const EdgeInsets.symmetric(
@@ -696,27 +760,18 @@ class _TimelineTaskCard extends StatelessWidget {
                   ),
                 ),
               ],
-              const SizedBox(height: 12),
-              Text(
-                '$assigneeName · $assigneeRole',
-                style: const TextStyle(
-                  color: _muted,
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              if (isWorkflow && workflowName != null) ...[
-                const SizedBox(height: 6),
+              if (showAssignee) ...[
+                const SizedBox(height: 12),
                 Text(
-                  workflowName,
+                  '$assigneeName · $assigneeRole',
                   style: const TextStyle(
-                    color: AppTheme.accentBlue,
-                    fontSize: 12,
+                    color: _muted,
+                    fontSize: 12.5,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
               ],
-              if (triggerLabel != null) ...[
+              if (showWorkflowMeta && triggerLabel != null) ...[
                 const SizedBox(height: 6),
                 Text(
                   triggerLabel,
@@ -791,6 +846,8 @@ class _TimelineTaskDetailSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isClient =
+        (DataProvider().currentRole ?? '').trim().toLowerCase() == 'client';
     final taskName = _value('task_name') ?? 'Task';
     final timelineStatus = _value('timeline_status') ?? _value('status') ?? '—';
     final assigneeName = _value('assigned_to_name') ?? '—';
@@ -842,13 +899,15 @@ class _TimelineTaskDetailSheet extends StatelessWidget {
                     ),
                     const SizedBox(height: 12),
                     _detailLine('Status', timelineStatus),
-                    _detailLine('Assigned to', assigneeName),
-                    _detailLine('Role', assigneeRole),
+                    if (!isClient) ...[
+                      _detailLine('Assigned to', assigneeName),
+                      _detailLine('Role', assigneeRole),
+                    ],
                     if (showDuration)
                       _detailLine('Duration', 'Complete in $durationLabel'),
                     if (completedAt != null && completedAt != '—')
                       _detailLine('Completed', completedAt),
-                    if (isWorkflow) ...[
+                    if (!isClient && isWorkflow) ...[
                       if (_value('workflow_name') != null)
                         _detailLine('Workflow', _value('workflow_name')!),
                       if (_value('workflow_trigger_label') != null)
@@ -856,7 +915,9 @@ class _TimelineTaskDetailSheet extends StatelessWidget {
                       if (_value('workflow_status') != null)
                         _detailLine('Workflow status', _value('workflow_status')!),
                     ],
-                    if (!isWorkflow && _value('erp_task_id') != null)
+                    if (!isClient &&
+                        !isWorkflow &&
+                        _value('erp_task_id') != null)
                       _detailLine('ERP task id', _value('erp_task_id')!),
                   ],
                 ),

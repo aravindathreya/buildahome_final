@@ -73,8 +73,14 @@ class ClientPortalService {
     if (!isImpersonatingClient) return const {};
     final prefs = await SharedPreferences.getInstance();
     final projectId = (prefs.getString('project_id') ?? '').trim();
-    if (projectId.isEmpty) return const {};
-    return {'project_id': projectId};
+    final salesSopId = (prefs.getString('sales_sop_id') ?? '').trim();
+    return {
+      if (projectId.isNotEmpty) 'project_id': projectId,
+      if (salesSopId.isNotEmpty) 'sales_sop_id': salesSopId,
+      // Hints some backend builds accept for staff "view as client".
+      'impersonate': '1',
+      'as_client': '1',
+    };
   }
 
   Future<Map<String, String>> _mergeQuery(Map<String, String>? query) async {
@@ -92,6 +98,9 @@ class ClientPortalService {
   }
 
   Future<void> _persistCookieFrom(http.BaseResponse response) async {
+    // Never adopt a client session cookie while Super Admin is impersonating —
+    // that can stick the staff token to the wrong session afterward.
+    if (isImpersonatingClient) return;
     final raw = response.headers['set-cookie'];
     if (raw == null || raw.isEmpty) return;
     final parts = raw.split(',');
@@ -114,14 +123,26 @@ class ClientPortalService {
     bool multipart = false,
   }) async {
     await _ensureCookieLoaded();
+    final prefs = await SharedPreferences.getInstance();
+    final projectId = (prefs.getString('project_id') ?? '').trim();
+    final salesSopId = (prefs.getString('sales_sop_id') ?? '').trim();
     final headers = <String, String>{
       'Accept': 'application/json',
       'X-Api-Token': apiToken,
       'Authorization': 'Bearer $apiToken',
       'X-Requested-With': 'XMLHttpRequest',
+      if (isImpersonatingClient && projectId.isNotEmpty)
+        'X-Project-Id': projectId,
+      if (isImpersonatingClient && salesSopId.isNotEmpty)
+        'X-Sales-Sop-Id': salesSopId,
+      if (isImpersonatingClient) 'X-Impersonate-Client': '1',
     };
     if (jsonBody) headers['Content-Type'] = 'application/json';
-    if (_sessionCookie != null && _sessionCookie!.isNotEmpty) {
+    // Skip client session cookie while impersonating — staff api_token +
+    // project scope must win.
+    if (!isImpersonatingClient &&
+        _sessionCookie != null &&
+        _sessionCookie!.isNotEmpty) {
       headers['Cookie'] = _sessionCookie!;
     }
     return headers;
@@ -196,6 +217,9 @@ class ClientPortalService {
   }
 
   Future<void> _cacheIdsFromPayload(Map<String, dynamic> payload) async {
+    // Impersonation must not rewrite the staff-selected project from a
+    // client-portal payload that may be empty or bound to another account.
+    if (isImpersonatingClient) return;
     final prefs = await SharedPreferences.getInstance();
     final sopId = payload['sales_sop_id']?.toString();
     final convertedId = payload['converted_project_id']?.toString();

@@ -14,7 +14,9 @@ import 'client_portal/client_portal_kyc_document_screen.dart';
 import 'client_portal/kyc_document_record.dart';
 import 'documents_v1/documents_v1_home_screen.dart';
 import 'models/workflow_document.dart';
+import 'SalesSopCardsScreen.dart';
 import 'services/client_portal_service.dart';
+import 'services/data_provider.dart';
 import 'services/mobile_documents.dart';
 import 'services/mobile_documents_service.dart';
 import 'services/workflow_document_service.dart';
@@ -82,14 +84,41 @@ class _ClientPortalScreenState extends State<ClientPortalScreen> {
           });
           return;
         }
+        // Staff timelines / portal scope need sales_sop_id when available.
+        final apiToken = (prefs.getString('api_token') ?? '').trim();
+        if (apiToken.isNotEmpty) {
+          await DataProvider().resolveSalesSopId(
+            projectId: projectId,
+            apiToken: apiToken,
+          );
+        }
       }
 
       // Prefer project section; fall back to full portal payload.
-      Map<String, dynamic> payload;
+      Map<String, dynamic>? payload;
+      Object? portalError;
       try {
         payload = await _portal.getProject();
-      } catch (_) {
-        payload = await _portal.getPortal(sections: const ['project']);
+      } catch (e) {
+        try {
+          payload = await _portal.getPortal(sections: const ['project']);
+        } catch (e2) {
+          portalError = e2;
+        }
+      }
+
+      // Super Admin: client-portal APIs are client-session scoped and often
+      // reject staff tokens. Fall back to prefs + workflow documents so For me
+      // still shows this client's details instead of a hard error.
+      if (payload == null && widget.impersonatingClient) {
+        await _bootstrapImpersonationFallback(
+          prefs: prefs,
+          portalError: portalError,
+        );
+        return;
+      }
+      if (payload == null) {
+        throw portalError ?? Exception('Unable to load client portal data');
       }
 
       final section = _portal.sectionOf(payload);
@@ -110,6 +139,13 @@ class _ClientPortalScreenState extends State<ClientPortalScreen> {
 
       if (project.isEmpty) {
         final msg = payload['message']?.toString() ?? '';
+        if (widget.impersonatingClient) {
+          await _bootstrapImpersonationFallback(
+            prefs: prefs,
+            portalError: msg.isEmpty ? portalError : msg,
+          );
+          return;
+        }
         if (msg.toLowerCase().contains('no project')) {
           setState(() {
             _loading = false;
@@ -134,34 +170,22 @@ class _ClientPortalScreenState extends State<ClientPortalScreen> {
           payload['tutorial_completed'] == true;
       if (apiTutorial) _tutorialDone = true;
 
-      WorkflowDocumentLibrary? library;
-      try {
-        final prefsProject =
-            (prefs.getString('project_id') ?? '').trim();
-        await MobileDocumentsService.instance.ensureLibrary(
-          projectId: prefsProject,
-        );
-        final snapshot = MobileDocumentsService.instance.snapshotFor(
-          projectId: prefsProject.isEmpty ? null : prefsProject,
-        );
-        if (shouldUseMobileDocumentsSnapshot(snapshot)) {
-          library = snapshot!.library;
-        } else {
-          library = await WorkflowDocumentService().fetchLibrary(
-            projectId: prefsProject.isEmpty ? null : prefsProject,
-          );
-        }
-      } catch (_) {
-        library = null;
-      }
+      final library = await _loadDocLibrary(prefs);
 
       setState(() {
         _loading = false;
-        _project = project.isEmpty ? <String, dynamic>{'client_name': 'Your project'} : project;
+        _project = project.isEmpty
+            ? <String, dynamic>{'client_name': 'Your project'}
+            : project;
         _docLibrary = library;
       });
     } catch (e) {
       if (!mounted) return;
+      if (widget.impersonatingClient) {
+        final prefs = await SharedPreferences.getInstance();
+        await _bootstrapImpersonationFallback(prefs: prefs, portalError: e);
+        return;
+      }
       final msg = e.toString().replaceFirst('Exception: ', '');
       if (msg.toLowerCase().contains('no project')) {
         setState(() {
@@ -176,6 +200,62 @@ class _ClientPortalScreenState extends State<ClientPortalScreen> {
         _error = msg;
       });
     }
+  }
+
+  Future<WorkflowDocumentLibrary?> _loadDocLibrary(
+    SharedPreferences prefs,
+  ) async {
+    try {
+      final prefsProject = (prefs.getString('project_id') ?? '').trim();
+      await MobileDocumentsService.instance.ensureLibrary(
+        projectId: prefsProject,
+      );
+      final snapshot = MobileDocumentsService.instance.snapshotFor(
+        projectId: prefsProject.isEmpty ? null : prefsProject,
+      );
+      if (shouldUseMobileDocumentsSnapshot(snapshot)) {
+        return snapshot!.library;
+      }
+      return await WorkflowDocumentService().fetchLibrary(
+        projectId: prefsProject.isEmpty ? null : prefsProject,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _bootstrapImpersonationFallback({
+    required SharedPreferences prefs,
+    Object? portalError,
+  }) async {
+    final projectId = (prefs.getString('project_id') ?? '').trim();
+    final clientName = (prefs.getString('client_name') ??
+            prefs.getString('project_name') ??
+            '')
+        .trim();
+    final salesSopId = (prefs.getString('sales_sop_id') ?? '').trim();
+    _impersonatedClientName = clientName;
+
+    final library = await _loadDocLibrary(prefs);
+    if (!mounted) return;
+
+    print(
+      '[ClientPortal] impersonation fallback project=$projectId '
+      'sop=$salesSopId name=$clientName portalError=$portalError',
+    );
+
+    setState(() {
+      _loading = false;
+      _error = null;
+      _tutorialDone = true;
+      _docLibrary = library;
+      _project = <String, dynamic>{
+        'client_name': clientName.isNotEmpty ? clientName : 'Client project',
+        'project_id': projectId,
+        if (salesSopId.isNotEmpty) 'sales_sop_id': salesSopId,
+        'impersonation_fallback': true,
+      };
+    });
   }
 
   Future<void> _completeTutorial() async {
@@ -332,6 +412,55 @@ class _ClientPortalScreenState extends State<ClientPortalScreen> {
   }
 
   void _openSection(ClientPortalHubItem section) {
+    // Super Admin impersonation: avoid client-session-only portal APIs and
+    // open staff-safe detail screens for this project instead.
+    if (widget.impersonatingClient) {
+      Widget page;
+      switch (section.kind) {
+        case ClientPortalHubKind.kyc:
+          page = const SalesSopCardsScreen(
+            initialCardKey: 'client_kyc',
+            isClient: false,
+          );
+          break;
+        case ClientPortalHubKind.officeDocuments:
+        case ClientPortalHubKind.receipts:
+        case ClientPortalHubKind.catalog:
+          if (section.category != null) {
+            page = DocumentsV1CategoryScreen(
+              category: section.category!,
+              clientMode: true,
+            );
+          } else {
+            page = const DocumentsV1HomeScreen(clientMode: true);
+          }
+          break;
+        case ClientPortalHubKind.sitePrep:
+          page = const SalesSopCardsScreen(
+            initialCardKey: 'project_details',
+            isClient: false,
+          );
+          break;
+        case ClientPortalHubKind.demolition:
+          page = const SalesSopCardsScreen(
+            initialCardKey: 'project_details',
+            isClient: false,
+          );
+          break;
+        case ClientPortalHubKind.inspection:
+          page = const SalesSopCardsScreen(
+            initialCardKey: 'site_inspection',
+            isClient: false,
+          );
+          break;
+      }
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => page),
+      ).then((_) => _bootstrap());
+      return;
+    }
+
     Widget page;
     switch (section.kind) {
       case ClientPortalHubKind.kyc:

@@ -531,4 +531,80 @@ class AppTheme {
           ),
         ],
       );
+
+  /// Applies [delta] logical pixels to every text size under [child]
+  /// (including hardcoded [TextStyle.fontSize] values).
+  static Widget withFontSizeDelta(
+    BuildContext context,
+    Widget child, {
+    double delta = -2,
+    double minFontSize = 8,
+  }) {
+    final media = MediaQuery.of(context);
+    return MediaQuery(
+      data: media.copyWith(
+        textScaler: _FontSizeDeltaTextScaler(
+          parent: media.textScaler,
+          delta: delta,
+          minFontSize: minFontSize,
+        ),
+      ),
+      child: child,
+    );
+  }
+}
+
+/// Applies an absolute font-size delta on top of the parent [TextScaler].
+class _FontSizeDeltaTextScaler extends TextScaler {
+  final TextScaler parent;
+  final double delta;
+  final double minFontSize;
+
+  const _FontSizeDeltaTextScaler({
+    required this.parent,
+    required this.delta,
+    required this.minFontSize,
+  });
+
+  @override
+  double scale(double fontSize) {
+    final next = parent.scale(fontSize) + delta;
+    return next < minFontSize ? minFontSize : next;
+  }
+
+  @override
+  @Deprecated(
+    'Use of textScaleFactor was deprecated in preparation for the upcoming nonlinear text scaling support. '
+    'This feature was deprecated after v3.12.0-2.0.pre.',
+  )
+  double get textScaleFactor {
+    const sample = 14.0;
+    return scale(sample) / sample;
+  }
+
+  @override
+  TextScaler clamp({
+    double minScaleFactor = 0.0,
+    double maxScaleFactor = double.infinity,
+  }) {
+    return _FontSizeDeltaTextScaler(
+      parent: parent.clamp(
+        minScaleFactor: minScaleFactor,
+        maxScaleFactor: maxScaleFactor,
+      ),
+      delta: delta,
+      minFontSize: minFontSize,
+    );
+  }
+
+  @override
+  bool operator ==(Object other) {
+    return other is _FontSizeDeltaTextScaler &&
+        other.parent == parent &&
+        other.delta == delta &&
+        other.minFontSize == minFontSize;
+  }
+
+  @override
+  int get hashCode => Object.hash(parent, delta, minFontSize);
 }

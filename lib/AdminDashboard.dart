@@ -267,38 +267,41 @@ class _AdminDashboardState extends State<AdminDashboard>
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      key: _scaffoldKey,
-      backgroundColor: AppTheme.darkBackgroundPrimary,
-      extendBody: true,
-      drawer: NavMenuWidget(),
-      appBar: null,
-      body: GestureDetector(
-        onTap: () {
-          // Hide search results when tapping outside
-          if (_adminHomeKey.currentState != null) {
-            _adminHomeKey.currentState!._quickSearchFocusNode.unfocus();
-          }
-        },
-        behavior: HitTestBehavior.opaque,
-        child: AdminHome(
-          key: _adminHomeKey,
-          searchQueryNotifier: _searchQueryNotifier,
+    return AppTheme.withFontSizeDelta(
+      context,
+      Scaffold(
+        key: _scaffoldKey,
+        backgroundColor: AppTheme.darkBackgroundPrimary,
+        extendBody: true,
+        drawer: NavMenuWidget(),
+        appBar: null,
+        body: GestureDetector(
+          onTap: () {
+            // Hide search results when tapping outside
+            if (_adminHomeKey.currentState != null) {
+              _adminHomeKey.currentState!._quickSearchFocusNode.unfocus();
+            }
+          },
+          behavior: HitTestBehavior.opaque,
+          child: AdminHome(
+            key: _adminHomeKey,
+            searchQueryNotifier: _searchQueryNotifier,
+          ),
         ),
-      ),
-      bottomNavigationBar: ValueListenableBuilder<int>(
-        valueListenable: MobileBottomNavService.instance.revision,
-        builder: (context, revision, _) {
-          final keys = _resolvedBottomNavKeys();
-          if (_bottomNavIndex >= keys.length) {
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (mounted && _bottomNavIndex >= keys.length) {
-                setState(() => _bottomNavIndex = 0);
-              }
-            });
-          }
-          return _buildBottomNav(keys);
-        },
+        bottomNavigationBar: ValueListenableBuilder<int>(
+          valueListenable: MobileBottomNavService.instance.revision,
+          builder: (context, revision, _) {
+            final keys = _resolvedBottomNavKeys();
+            if (_bottomNavIndex >= keys.length) {
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted && _bottomNavIndex >= keys.length) {
+                  setState(() => _bottomNavIndex = 0);
+                }
+              });
+            }
+            return _buildBottomNav(keys);
+          },
+        ),
       ),
     );
   }

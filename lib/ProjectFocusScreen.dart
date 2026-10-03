@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'MyTasksScreen.dart';
 import 'ProjectTimelineScreen.dart';
+import 'ProjectTimelineStatusScreen.dart';
 import 'app_theme.dart';
 import 'chat_v1/chat_v1_controller.dart';
 import 'models/project_focus.dart';
@@ -271,12 +272,6 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
     return payload;
   }
 
-  void _openTimeline() {
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute(builder: (_) => const ProjectTimelineScreen()),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return AnnotatedRegion<SystemUiOverlayStyle>(
@@ -308,9 +303,21 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
           bottom: ProjectSituationSwitcher(
             selected: ProjectSituationTab.focus,
             onChanged: (tab) {
-              if (tab == ProjectSituationTab.timeline) {
-                _openTimeline();
+              if (tab == ProjectSituationTab.focus) return;
+              final Widget page;
+              switch (tab) {
+                case ProjectSituationTab.focus:
+                  return;
+                case ProjectSituationTab.status:
+                  page = const ProjectTimelineStatusScreen();
+                  break;
+                case ProjectSituationTab.timeline:
+                  page = const ProjectTimelineScreen();
+                  break;
               }
+              Navigator.of(context).pushReplacement(
+                MaterialPageRoute(builder: (_) => page),
+              );
             },
           ),
           actions: [

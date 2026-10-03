@@ -39,6 +39,25 @@ subprojects {
 tasks.register("clean", Delete) {
     delete rootProject.buildDir
 }
+
+// ExFAT/Seagate volumes create macOS AppleDouble `._*` sidecars that break AAPT.
+subprojects { proj ->
+    proj.tasks.configureEach { task ->
+        def n = task.name.toLowerCase()
+        if (n.contains('resource') || n.contains('aapt') || n.contains('merge') || n.contains('package')) {
+            task.doFirst {
+                def dir = proj.buildDir
+                if (dir != null && dir.exists()) {
+                    dir.eachFileRecurse { f ->
+                        if (f.isFile() && f.name.startsWith('._')) {
+                            f.delete()
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
 subprojects {
     project.configurations.all {
         resolutionStrategy.eachDependency { details ->

@@ -64,8 +64,6 @@ class LoginScreenNewState extends State<LoginScreenNew>
       'assets/images/buildahome_splash_android_720.jpg';
   static const Duration _minSplashDuration = Duration(seconds: 3);
 
-  late AnimationController _splashEnterController;
-  late AnimationController _splashExitController;
   late AnimationController _formFadeController;
   late Animation<double> _formFade;
   /// App-launch splash only — not project/attendance/login-success handoffs.
@@ -80,14 +78,6 @@ class LoginScreenNewState extends State<LoginScreenNew>
   void initState() {
     super.initState();
     _minSplashFuture = Future<void>.delayed(_minSplashDuration);
-    _splashEnterController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 900),
-    );
-    _splashExitController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 720),
-    );
 
     _formFadeController = AnimationController(
       vsync: this,
@@ -98,16 +88,12 @@ class LoginScreenNewState extends State<LoginScreenNew>
       curve: Curves.easeOutCubic,
     );
 
-    // Smooth scale + fade in as soon as the Flutter splash appears.
-    _splashEnterController.forward();
     checkIfAlreadyLoggedIn();
   }
 
   @override
   void dispose() {
     _resendTimer?.cancel();
-    _splashEnterController.dispose();
-    _splashExitController.dispose();
     _formFadeController.dispose();
     phoneFocusNode.dispose();
     phoneTextController.dispose();
@@ -122,25 +108,22 @@ class LoginScreenNewState extends State<LoginScreenNew>
 
   Future<void> _exitSplash() async {
     if (!mounted || !showSplash) return;
-    // Lock enter at full size, then punch through with an exaggerated zoom-in.
-    _splashEnterController.value = 1.0;
-    await _splashExitController.forward(from: 0);
+    // Cut only — never fade/zoom. Fading lets the destination show through
+    // at the top and looks like the splash jumped upward.
+    setState(() {
+      showSplash = false;
+    });
   }
 
   Future<void> _revealLoginForm() async {
     if (!mounted) return;
-    // Put the login UI under the splash so the zoom reveals it (no black hold).
+    // Remove splash first so login never peeks through underneath.
+    await _exitSplash();
+    if (!mounted) return;
     setState(() {
       showLoginForm = true;
     });
-    await Future.wait<void>([
-      _exitSplash(),
-      _formFadeController.forward(from: 0),
-    ]);
-    if (!mounted) return;
-    setState(() {
-      showSplash = false;
-    });
+    await _formFadeController.forward(from: 0);
   }
 
   void _markDestinationReady() {
@@ -166,9 +149,6 @@ class LoginScreenNewState extends State<LoginScreenNew>
 
     await _exitSplash();
     if (!mounted) return;
-    setState(() {
-      showSplash = false;
-    });
 
     // Same GlobalKey widget moves from under-splash into the route, keeping State.
     await Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
@@ -252,9 +232,6 @@ class LoginScreenNewState extends State<LoginScreenNew>
     } else if (showSplash) {
       await _exitSplash();
       if (!mounted) return;
-      setState(() {
-        showSplash = false;
-      });
     }
     if (!mounted) return;
 
@@ -1014,6 +991,7 @@ class LoginScreenNewState extends State<LoginScreenNew>
             )
           : SystemUiOverlayStyle.light,
       child: Scaffold(
+      resizeToAvoidBottomInset: !(showSplash && !showLoginForm),
       backgroundColor: (showSplash && !showLoginForm)
           ? _splashBackground
           : AppTheme.darkBackgroundPrimary,
@@ -1389,85 +1367,57 @@ class LoginScreenNewState extends State<LoginScreenNew>
             ),
           if (showSplash)
             Positioned.fill(
-              child: AnimatedBuilder(
-                animation: Listenable.merge([
-                  _splashEnterController,
-                  _splashExitController,
-                ]),
-                builder: (context, child) {
-                  final enterT = Curves.easeOutCubic
-                      .transform(_splashEnterController.value);
-                  final exitT = Curves.easeInCubic
-                      .transform(_splashExitController.value);
-                  // Enter: subtle scale-up. Exit: exaggerated zoom-through.
-                  final scale =
-                      (0.88 + (0.12 * enterT)) * (1.0 + (1.25 * exitT));
-                  // Fade the whole layer so exit never lands on a plain hold.
-                  final opacity = enterT * (1.0 - exitT);
-                  return Opacity(
-                    opacity: opacity.clamp(0.0, 1.0),
-                    child: ColoredBox(
-                      color: _splashBackground,
-                      child: Stack(
-                        fit: StackFit.expand,
-                        children: [
-                          Transform.scale(
-                            scale: scale,
-                            filterQuality: FilterQuality.high,
-                            child: child,
+              child: ColoredBox(
+                color: _splashBackground,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    // Static, centered — matches Android launch_background gravity.
+                    Center(
+                      child: Image.asset(
+                        _splashAsset,
+                        fit: BoxFit.contain,
+                        alignment: Alignment.center,
+                        filterQuality: FilterQuality.high,
+                        errorBuilder: (_, __, ___) => const Text(
+                          'buildAhome',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 28,
+                            fontWeight: FontWeight.w800,
                           ),
-                          // Keep status UI outside the zoom so it stays readable.
-                          Positioned(
-                            left: 24,
-                            right: 24,
-                            bottom: MediaQuery.paddingOf(context).bottom + 36,
-                            child: Opacity(
-                              opacity: enterT.clamp(0.0, 1.0),
-                              child: const Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  SizedBox(
-                                    width: 14,
-                                    height: 14,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      color: Color(0xFF4A4A4A),
-                                    ),
-                                  ),
-                                  SizedBox(width: 10),
-                                  Text(
-                                    'Setting up',
-                                    style: TextStyle(
-                                      color: Color(0xFF4A4A4A),
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w600,
-                                      letterSpacing: 0.2,
-                                    ),
-                                  ),
-                                ],
-                              ),
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      left: 24,
+                      right: 24,
+                      bottom: MediaQuery.paddingOf(context).bottom + 36,
+                      child: const Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Color(0xFF4A4A4A),
+                            ),
+                          ),
+                          SizedBox(width: 10),
+                          Text(
+                            'Loading',
+                            style: TextStyle(
+                              color: Color(0xFF4A4A4A),
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              letterSpacing: 0.2,
                             ),
                           ),
                         ],
                       ),
                     ),
-                  );
-                },
-                child: Image.asset(
-                  _splashAsset,
-                  fit: BoxFit.contain,
-                  alignment: Alignment.center,
-                  filterQuality: FilterQuality.high,
-                  errorBuilder: (_, __, ___) => const Center(
-                    child: Text(
-                      'buildAhome',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 28,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ),
+                  ],
                 ),
               ),
             ),

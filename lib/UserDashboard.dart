@@ -44,6 +44,7 @@ import 'documents_v1/documents_v1_home_screen.dart';
 import 'VirtualTour.dart';
 import 'widgets/virtual_tour_embed.dart';
 import 'widgets/buildahome_brand_row.dart';
+import 'widgets/tentative_handover_card.dart';
 import 'NavMenu.dart';
 import 'ProfileScreen.dart';
 import 'notifcations.dart';
@@ -747,7 +748,9 @@ class UserDashboardLayoutState extends State<UserDashboardLayout> {
     // pop this project route and reveal the existing dashboard underneath.
     // Do NOT pushReplacement AdminDashboard — that stacked extra routes and
     // forced users to press back multiple times.
-    return PopScope(
+    return AppTheme.withFontSizeDelta(
+      context,
+      PopScope(
       canPop: !widget.fromAdminDashboard,
       onPopInvokedWithResult: (didPop, _) {
         if (didPop || !widget.fromAdminDashboard) return;
@@ -843,6 +846,7 @@ class UserDashboardLayoutState extends State<UserDashboardLayout> {
               ),
             ),
         ],
+      ),
       ),
     );
   }
@@ -1448,7 +1452,7 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
         ],
       );
 
-  static const double _chatUpdateCardMinHeight = 168;
+  static const double _chatUpdateCardMinHeight = 128;
 
   Widget _buildChatAndDailyUpdateRow() {
     return IntrinsicHeight(
@@ -1630,8 +1634,10 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
                     )
                   : Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Container(
                               width: 40,
@@ -1668,75 +1674,80 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
                             ),
                           ],
                         ),
-                        const SizedBox(height: 12),
-                        const Text(
-                          'Daily update',
-                          style: TextStyle(
-                            color: _ink,
-                            fontSize: 18,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: -0.3,
-                            height: 1.1,
-                          ),
-                        ),
-                        if (dateLabel.isNotEmpty && dateLabel != ' ') ...[
-                          const SizedBox(height: 4),
-                          Text(
-                            dateLabel,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              color: _airbnbMuted,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w500,
+                        const SizedBox(height: 18),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Daily update',
+                              style: TextStyle(
+                                color: _ink,
+                                fontSize: 18,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: -0.3,
+                                height: 1.1,
+                              ),
                             ),
-                          ),
-                        ],
-                        const SizedBox(height: 8),
-                        if (emptyMessage != null)
-                          Text(
-                            emptyMessage,
-                            maxLines: 3,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              color: _airbnbMuted,
-                              fontSize: 12.5,
-                              fontWeight: FontWeight.w400,
-                              height: 1.35,
-                            ),
-                          )
-                        else
-                          for (var i = 0; i < updates.length; i++) ...[
-                            if (i > 0) const SizedBox(height: 6),
-                            Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Container(
-                                  width: 5,
-                                  height: 5,
-                                  margin: const EdgeInsets.only(top: 5),
-                                  decoration: const BoxDecoration(
-                                    color: AppTheme.accentBlue,
-                                    shape: BoxShape.circle,
-                                  ),
+                            if (dateLabel.isNotEmpty && dateLabel != ' ') ...[
+                              const SizedBox(height: 4),
+                              Text(
+                                dateLabel,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: _airbnbMuted,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w500,
                                 ),
-                                const SizedBox(width: 7),
-                                Expanded(
-                                  child: Text(
-                                    updates[i],
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                      color: _ink,
-                                      fontSize: 12.5,
-                                      fontWeight: FontWeight.w500,
-                                      height: 1.3,
+                              ),
+                            ],
+                            const SizedBox(height: 8),
+                            if (emptyMessage != null)
+                              Text(
+                                emptyMessage,
+                                maxLines: 3,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: _airbnbMuted,
+                                  fontSize: 12.5,
+                                  fontWeight: FontWeight.w400,
+                                  height: 1.35,
+                                ),
+                              )
+                            else
+                              for (var i = 0; i < updates.length; i++) ...[
+                                if (i > 0) const SizedBox(height: 6),
+                                Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Container(
+                                      width: 5,
+                                      height: 5,
+                                      margin: const EdgeInsets.only(top: 5),
+                                      decoration: const BoxDecoration(
+                                        color: AppTheme.accentBlue,
+                                        shape: BoxShape.circle,
+                                      ),
                                     ),
-                                  ),
+                                    const SizedBox(width: 7),
+                                    Expanded(
+                                      child: Text(
+                                        updates[i],
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                          color: _ink,
+                                          fontSize: 12.5,
+                                          fontWeight: FontWeight.w500,
+                                          height: 1.3,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ],
-                            ),
                           ],
+                        ),
                       ],
                     ),
             ),
@@ -2853,9 +2864,21 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
         menuItems.add({
           'title': 'Client Portal',
           'icon': Icons.dashboard_customize_outlined,
-          'route': () => ClientPortalScreen(
-                impersonatingClient: _isSuperAdminUser && !_isClientUser,
-              ),
+          'route': () async {
+            if (_isSuperAdminUser && !_isClientUser) {
+              final prefs = await SharedPreferences.getInstance();
+              final projectId = (prefs.getString('project_id') ?? '').trim();
+              final apiToken = (prefs.getString('api_token') ?? '').trim();
+              if (projectId.isNotEmpty && apiToken.isNotEmpty) {
+                await DataProvider().resolveSalesSopId(
+                  projectId: projectId,
+                  apiToken: apiToken,
+                );
+              }
+              return const ClientPortalScreen(impersonatingClient: true);
+            }
+            return const ClientPortalScreen();
+          },
         });
       }
       menuItems.add({
@@ -3363,6 +3386,41 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
 
   String _dayWord(num count) => count == 1 ? 'day' : 'days';
 
+  Widget? _buildMapAction() {
+    if (location.isEmpty) return null;
+    return InkWell(
+      onTap: () async {
+        await launchUrl(
+          Uri.parse(location),
+          mode: LaunchMode.externalApplication,
+        );
+      },
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.location_on_outlined,
+              size: 15,
+              color: _ink,
+            ),
+            const SizedBox(width: 2),
+            Text(
+              'Map',
+              style: TextStyle(
+                color: _ink,
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildCompletionBanner() {
     final progress = ((double.tryParse(completed ?? '') ?? 0.0) / 100)
         .clamp(0.0, 1.0)
@@ -3381,9 +3439,18 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
     final plannedLabel = delayLabel != null && planned != null && planned > 0
         ? 'Planned $planned days'
         : null;
+    final mapAction = _buildMapAction();
 
-    final progressColor = _ink;
-    final trackColor = const Color(0xFF2A2A2D);
+    if (remaining != null) {
+      return TentativeHandoverCard(
+        remainingDays: remaining,
+        progress: progress,
+        percentLabel: percentLabel,
+        delayLabel: delayLabel,
+        plannedLabel: plannedLabel,
+        trailingAction: mapAction,
+      );
+    }
 
     const titleStyle = TextStyle(
       color: _ink,
@@ -3393,62 +3460,19 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
       letterSpacing: -0.3,
     );
 
-    final title = remaining != null
-        ? TweenAnimationBuilder<int>(
-            tween: IntTween(begin: 0, end: remaining),
-            duration: const Duration(milliseconds: 1100),
-            curve: Curves.easeOutCubic,
-            builder: (context, value, _) {
-              return Text(
-                '$value ${_dayWord(value)} pending to completion',
-                style: titleStyle,
-              );
-            },
-          )
-        : Text(
-            hasDuration ? durationLabel! : 'Project completion',
-            style: titleStyle,
-          );
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Expanded(child: title),
-            if (location.isNotEmpty)
-              InkWell(
-                onTap: () async {
-                  await launchUrl(
-                    Uri.parse(location),
-                    mode: LaunchMode.externalApplication,
-                  );
-                },
-                borderRadius: BorderRadius.circular(8),
-                child: Padding(
-                  padding: const EdgeInsets.only(left: 8, top: 2),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.location_on_outlined,
-                        size: 16,
-                        color: _ink,
-                      ),
-                      const SizedBox(width: 2),
-                      Text(
-                        'Map',
-                        style: const TextStyle(
-                          color: _ink,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+            Expanded(
+              child: Text(
+                hasDuration ? durationLabel! : 'Project completion',
+                style: titleStyle,
               ),
+            ),
+            if (mapAction != null) mapAction,
           ],
         ),
         if (delayLabel != null) ...[
@@ -3481,8 +3505,8 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
           child: LinearProgressIndicator(
             value: progress,
             minHeight: 6,
-            backgroundColor: trackColor,
-            color: progressColor,
+            backgroundColor: const Color(0xFF2A2A2D),
+            color: _ink,
           ),
         ),
       ],

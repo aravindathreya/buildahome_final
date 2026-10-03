@@ -70,7 +70,9 @@ class LegacyClientHomeState extends State<LegacyClientHome> {
 
   @override
   Widget build(BuildContext context) {
-    return PopScope(
+    return AppTheme.withFontSizeDelta(
+      context,
+      PopScope(
       canPop: !widget.fromAdminDashboard,
       onPopInvokedWithResult: (didPop, _) {
         if (didPop || !widget.fromAdminDashboard) return;
@@ -187,6 +189,7 @@ class LegacyClientHomeState extends State<LegacyClientHome> {
             ],
           ),
         ),
+      ),
       ),
     );
   }

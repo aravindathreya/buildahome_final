@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 
 import '../app_theme.dart';
 
-enum ProjectSituationTab { focus, timeline }
+enum ProjectSituationTab { focus, status, timeline }
 
-/// Compact Focus / Timeline switcher shared by both screens.
+/// Compact Focus / Status / Timeline switcher shared by situation screens.
 class ProjectSituationSwitcher extends StatelessWidget
     implements PreferredSizeWidget {
   final ProjectSituationTab selected;
@@ -36,6 +36,11 @@ class ProjectSituationSwitcher extends StatelessWidget
               label: 'Focus',
               selected: selected == ProjectSituationTab.focus,
               onTap: () => onChanged(ProjectSituationTab.focus),
+            ),
+            _TabChip(
+              label: 'Status',
+              selected: selected == ProjectSituationTab.status,
+              onTap: () => onChanged(ProjectSituationTab.status),
             ),
             _TabChip(
               label: 'Timeline',
@@ -73,7 +78,7 @@ class _TabChip extends StatelessWidget {
             child: Text(
               label,
               style: TextStyle(
-                fontSize: 13.5,
+                fontSize: 12.5,
                 fontWeight: FontWeight.w800,
                 color: selected
                     ? Colors.white
