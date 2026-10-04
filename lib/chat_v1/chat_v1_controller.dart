@@ -25,6 +25,7 @@ class ChatV1Controller extends ChangeNotifier {
   String? salesSopId;
   String? currentUserId;
   String? currentUserName;
+  final Set<String> _seenMentionMessageIds = <String>{};
 
   bool loading = false;
   String? error;
@@ -251,6 +252,7 @@ class ChatV1Controller extends ChangeNotifier {
       icon: Icons.checklist_rtl_rounded,
       accent: ChatV1Theme.pending,
       unread: all.fold<int>(0, (s, t) => s + t.unread),
+      mentions: all.fold<int>(0, (s, t) => s + t.mentions),
       isFixed: true,
       isTaskHub: true,
       opensAs: ChatV1OpensAs.taskList,
@@ -681,6 +683,7 @@ class ChatV1Controller extends ChangeNotifier {
     if (_socketBound) return;
     _socketBound = true;
     _socket.on('message_created', _onSocketMessageCreated);
+    _socket.on('mention_received', _onMentionReceived);
     _socket.on('connected', (_) => _catchUpAfterReconnect());
   }
 
@@ -762,6 +765,17 @@ class ChatV1Controller extends ChangeNotifier {
     });
     final openId = _socket.joinedConversationId;
     final isOpen = openId != null && openId == conversationId;
+    if (!isOpen) {
+      final me = (currentUserId ?? '').trim();
+      if (me.isNotEmpty) {
+        for (final message in fresh) {
+          if (message.isMine) continue;
+          final mentioned = message.mentions.any((m) => m.userId == me);
+          if (!mentioned) continue;
+          _noteUnreadMentionOnce(conversationId, message.id);
+        }
+      }
+    }
     final extraUnread = isOpen ? 0 : fresh.where((m) => !m.isMine).length;
     var changed = false;
 
@@ -847,6 +861,7 @@ class ChatV1Controller extends ChangeNotifier {
                 '')
             .toString();
     final fromMe = senderId.isNotEmpty && senderId == currentUserId;
+    final messageId = (message['id'] ?? message['message_id'] ?? '').toString();
 
     final preview = ChatV1Mapper.formatLastMessagePreview({
       'type': message['type'] ?? message['content_type'] ?? 'text',
@@ -866,6 +881,11 @@ class ChatV1Controller extends ChangeNotifier {
     // Don't bump unread for the conversation currently open in this client.
     final openId = _socket.joinedConversationId;
     final isOpen = openId != null && openId == conversationId;
+    if (!fromMe &&
+        !isOpen &&
+        _payloadMentionsCurrentUser(message['mentions'])) {
+      _noteUnreadMentionOnce(conversationId, messageId);
+    }
 
     List<ChatV1TaskItem> patchTasks(List<ChatV1TaskItem> source) {
       return source.map((t) {
@@ -984,37 +1004,113 @@ class ChatV1Controller extends ChangeNotifier {
       contextType: task.contextType ??
           (task.isWorkflow ? 'workflow_item_run' : 'erp_task'),
       contextId: task.contextId,
+      focusMessageId:
+          task.mentions > 0 ? task.unreadMentionMessageId : null,
     );
+  }
+
+  bool _payloadMentionsCurrentUser(dynamic rawMentions) {
+    final me = (currentUserId ?? '').trim();
+    if (me.isEmpty || rawMentions is! List) return false;
+    for (final item in rawMentions) {
+      final uid = item is Map
+          ? (item['user_id'] ?? item['id'] ?? item['mentioned_user_id'] ?? '')
+              .toString()
+          : item.toString();
+      if (uid.isNotEmpty && uid == me) return true;
+    }
+    return false;
+  }
+
+  void _noteUnreadMentionOnce(String conversationId, String messageId) {
+    final mid = messageId.trim();
+    if (mid.isEmpty || !_seenMentionMessageIds.add(mid)) return;
+    _noteUnreadMention(conversationId, mid);
+  }
+
+  void _noteUnreadMention(String conversationId, String messageId) {
+    var changed = false;
+    String? keepTarget(String? current) {
+      if (current != null && current.isNotEmpty) return current;
+      return messageId.isEmpty ? current : messageId;
+    }
+
+    List<ChatV1TaskItem> bumpTasks(List<ChatV1TaskItem> source) {
+      return source.map((t) {
+        final id = t.conversationId ?? t.id;
+        if (id != conversationId) return t;
+        changed = true;
+        return t.copyWith(
+          mentions: t.mentions + 1,
+          unreadMentionMessageId: keepTarget(t.unreadMentionMessageId),
+        );
+      }).toList();
+    }
+
+    List<ChatV1ChatItem> bumpChats(List<ChatV1ChatItem> source) {
+      return source.map((c) {
+        if (c.id != conversationId) return c;
+        changed = true;
+        return c.copyWith(
+          mentions: c.mentions + 1,
+          unreadMentionMessageId: keepTarget(c.unreadMentionMessageId),
+        );
+      }).toList();
+    }
+
+    taskConversations = bumpTasks(taskConversations);
+    workflowConversations = bumpTasks(workflowConversations);
+    channels = bumpChats(channels);
+    customGroups = bumpChats(customGroups);
+    dms = bumpChats(dms);
+    if (changed) notifyListeners();
+  }
+
+  void _onMentionReceived(dynamic data) {
+    final map = ChatV1Socket.asMap(data);
+    if (map == null) return;
+    final raw = map['mention'];
+    if (raw is! Map) return;
+    final mention = Map<String, dynamic>.from(raw);
+    final mentioned = (mention['mentioned_user_id'] ?? '').toString();
+    final me = currentUserId ?? '';
+    if (me.isEmpty || mentioned != me) return;
+    final conversationId = (mention['conversation_id'] ?? '').toString();
+    if (conversationId.isEmpty) return;
+    final openId = _socket.joinedConversationId;
+    if (openId != null && openId == conversationId) return;
+    final messageId = (mention['message_id'] ?? '').toString();
+    _noteUnreadMentionOnce(conversationId, messageId);
   }
 
   void markConversationSeen(String conversationId) {
     var changed = false;
     taskConversations = taskConversations.map((t) {
       final id = t.conversationId ?? t.id;
-      if (id != conversationId || t.unread == 0) return t;
+      if (id != conversationId || (t.unread == 0 && t.mentions == 0)) return t;
       changed = true;
-      return t.copyWith(unread: 0);
+      return t.copyWith(unread: 0, mentionsSeen: true);
     }).toList();
     workflowConversations = workflowConversations.map((t) {
       final id = t.conversationId ?? t.id;
-      if (id != conversationId || t.unread == 0) return t;
+      if (id != conversationId || (t.unread == 0 && t.mentions == 0)) return t;
       changed = true;
-      return t.copyWith(unread: 0);
+      return t.copyWith(unread: 0, mentionsSeen: true);
     }).toList();
     channels = channels.map((c) {
-      if (c.id != conversationId || c.unread == 0) return c;
+      if (c.id != conversationId || (c.unread == 0 && c.mentions == 0)) return c;
       changed = true;
-      return c.copyWith(unread: 0);
+      return c.copyWith(unread: 0, mentionsSeen: true);
     }).toList();
     customGroups = customGroups.map((c) {
-      if (c.id != conversationId || c.unread == 0) return c;
+      if (c.id != conversationId || (c.unread == 0 && c.mentions == 0)) return c;
       changed = true;
-      return c.copyWith(unread: 0);
+      return c.copyWith(unread: 0, mentionsSeen: true);
     }).toList();
     dms = dms.map((c) {
-      if (c.id != conversationId || c.unread == 0) return c;
+      if (c.id != conversationId || (c.unread == 0 && c.mentions == 0)) return c;
       changed = true;
-      return c.copyWith(unread: 0);
+      return c.copyWith(unread: 0, mentionsSeen: true);
     }).toList();
     if (changed) notifyListeners();
   }

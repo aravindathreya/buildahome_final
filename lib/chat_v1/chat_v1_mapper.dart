@@ -18,14 +18,17 @@ class ChatV1Mapper {
     final rawTitle = (raw['title'] ?? raw['name'] ?? 'Chat').toString();
     final isDocChannel = ChatV1Utils.isUpdateAndDocChannel(rawTitle);
     final title = isDocChannel
-        ? 'Update and Doc'
+        ? 'Upgrades & Additions'
         : ChatV1Utils.canonicalChannelTitle(rawTitle);
     final conversationType =
         (raw['conversation_type'] ?? raw['type'] ?? '').toString();
     final contextType = (raw['context_type'] ?? '').toString();
     final contextId = raw['context_id']?.toString();
     final unread = _int(raw['unread_count'] ?? raw['unread']) ?? 0;
-    final mentions = _int(raw['mention_count'] ?? raw['mentions']) ?? 0;
+    final mentions = _int(raw['unread_mention_count'] ?? raw['mention_count'] ?? raw['mentions']) ?? 0;
+    final mentionMessageId = mentions > 0
+        ? (raw['unread_mention_message_id'] ?? raw['mention_message_id'])?.toString()
+        : null;
     final last = isDocChannel
         ? 'Difference of Cost requests'
         : formatLastMessagePreview(raw['last_message']).label;
@@ -103,6 +106,7 @@ class ChatV1Mapper {
       accent: accent,
       unread: unread,
       mentions: mentions,
+      unreadMentionMessageId: mentionMessageId,
       isFixed: isChannel,
       isPinned: raw['is_pinned'] == true,
       isMuted: raw['is_muted'] == true || raw['is_archived'] == true,
@@ -158,6 +162,12 @@ class ChatV1Mapper {
       assigneeInitials: ChatV1Utils.initials(assignee),
       lastActivity: lastAt,
       unread: _int(raw['unread_count'] ?? raw['unread']) ?? 0,
+      mentions: _int(raw['unread_mention_count'] ?? raw['mention_count'] ?? raw['mentions']) ?? 0,
+      unreadMentionMessageId: () {
+        final count = _int(raw['unread_mention_count'] ?? raw['mention_count'] ?? raw['mentions']) ?? 0;
+        if (count <= 0) return null;
+        return (raw['unread_mention_message_id'] ?? raw['mention_message_id'])?.toString();
+      }(),
       discussions: _int(raw['message_count'] ?? raw['discussions']) ?? 0,
       conversationId: _id(raw['id'] ?? raw['conversation_id']),
       contextType: contextType.isEmpty
@@ -597,6 +607,7 @@ class ChatV1Mapper {
       conversationType: item.conversationType,
       contextType: item.contextType,
       contextId: item.contextId,
+      focusMessageId: item.mentions > 0 ? item.unreadMentionMessageId : null,
     );
   }
 

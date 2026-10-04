@@ -79,6 +79,26 @@ class Cv1TaskCard extends StatelessWidget {
                         ),
                       ),
                     ),
+                    if (task.mentions > 0) ...[
+                      Container(
+                        width: 18,
+                        height: 18,
+                        alignment: Alignment.center,
+                        decoration: const BoxDecoration(
+                          color: ChatV1Theme.mention,
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Text(
+                          '@',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                    ],
                     if (task.unread > 0) Cv1UnreadBadge(count: task.unread),
                   ],
                 ),

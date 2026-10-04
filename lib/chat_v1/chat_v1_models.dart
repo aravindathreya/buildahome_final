@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'chat_v1_importance.dart';
+
 enum ChatV1Filter { all, groups, tasks, unread }
 
 enum ChatV1OpensAs { conversation, taskList, docList }
@@ -34,6 +36,7 @@ class ChatV1ChatItem {
   final Color accent;
   final int unread;
   final int mentions;
+  final String? unreadMentionMessageId;
   final bool isFixed;
   final bool isPinned;
   final bool isMuted;
@@ -60,6 +63,7 @@ class ChatV1ChatItem {
     required this.accent,
     this.unread = 0,
     this.mentions = 0,
+    this.unreadMentionMessageId,
     this.isFixed = false,
     this.isPinned = false,
     this.isMuted = false,
@@ -79,6 +83,9 @@ class ChatV1ChatItem {
 
   ChatV1ChatItem copyWith({
     int? unread,
+    int? mentions,
+    String? unreadMentionMessageId,
+    bool mentionsSeen = false,
     bool? isPinned,
     bool? isMuted,
     bool? isTyping,
@@ -94,7 +101,10 @@ class ChatV1ChatItem {
       icon: icon,
       accent: accent,
       unread: unread ?? this.unread,
-      mentions: mentions,
+      mentions: mentionsSeen ? 0 : (mentions ?? this.mentions),
+      unreadMentionMessageId: mentionsSeen
+          ? null
+          : (unreadMentionMessageId ?? this.unreadMentionMessageId),
       isFixed: isFixed,
       isPinned: isPinned ?? this.isPinned,
       isMuted: isMuted ?? this.isMuted,
@@ -222,9 +232,10 @@ class ChatV1Message {
   });
 
   String get copyableText {
-    if (body.trim().isNotEmpty &&
-        !body.trim().toLowerCase().startsWith('uploaded:')) {
-      return body;
+    final visible = ChatV1Importance.parse(body).body;
+    if (visible.trim().isNotEmpty &&
+        !visible.trim().toLowerCase().startsWith('uploaded:')) {
+      return visible;
     }
     if (fileName != null && fileName!.isNotEmpty) return fileName!;
     return body;
@@ -341,6 +352,8 @@ class ChatV1TaskItem {
   final String category;
   final ChatV1TaskStatus status;
   final int unread;
+  final int mentions;
+  final String? unreadMentionMessageId;
   final int discussions;
   final String assignee;
   final String assigneeRole;
@@ -363,6 +376,8 @@ class ChatV1TaskItem {
     required this.assigneeInitials,
     this.lastActivity,
     this.unread = 0,
+    this.mentions = 0,
+    this.unreadMentionMessageId,
     this.discussions = 0,
     this.conversationId,
     this.contextType,
@@ -386,6 +401,9 @@ class ChatV1TaskItem {
 
   ChatV1TaskItem copyWith({
     int? unread,
+    int? mentions,
+    String? unreadMentionMessageId,
+    bool mentionsSeen = false,
     DateTime? lastActivity,
     String? lastMessagePreview,
     bool? hasMessages,
@@ -400,6 +418,10 @@ class ChatV1TaskItem {
       assigneeInitials: assigneeInitials,
       lastActivity: lastActivity ?? this.lastActivity,
       unread: unread ?? this.unread,
+      mentions: mentionsSeen ? 0 : (mentions ?? this.mentions),
+      unreadMentionMessageId: mentionsSeen
+          ? null
+          : (unreadMentionMessageId ?? this.unreadMentionMessageId),
       discussions: discussions,
       conversationId: conversationId,
       contextType: contextType,
@@ -486,6 +508,7 @@ class ChatV1ConvMeta {
   final String? conversationType;
   final String? contextType;
   final String? contextId;
+  final String? focusMessageId;
 
   const ChatV1ConvMeta({
     required this.id,
@@ -501,6 +524,7 @@ class ChatV1ConvMeta {
     this.conversationType,
     this.contextType,
     this.contextId,
+    this.focusMessageId,
   });
 }
 

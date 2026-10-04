@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'chat_v1_importance.dart';
 import 'chat_v1_models.dart';
 import 'chat_v1_theme.dart';
 
@@ -14,7 +15,9 @@ class ChatV1Utils {
     'Internal',
     'Architectural',
     'MEP',
-    'Update and Doc',
+    'Structural',
+    'Execution',
+    'Upgrades & Additions',
     'QA / QC',
     'Sales Weekly updates',
     'Architect weekly updates',
@@ -22,6 +25,7 @@ class ChatV1Utils {
 
   /// Legacy titles that map to "Update and Doc".
   static const List<String> updateAndDocAliases = [
+    'Upgrades & Additions',
     'Update and Doc',
     'DOC / NT',
     'Upgrade/DOC',
@@ -52,15 +56,16 @@ class ChatV1Utils {
 
   static bool isUpdateAndDocChannel(String title) {
     final n = _normalizeTitle(title);
-    return n == 'update and doc' ||
-        n == 'doc nt' ||
+    return n == 'upgrades additions' ||
+        n == 'update and doc' ||
+        n == 'upgrade and doc' ||
         n == 'upgrade doc' ||
         n == 'docnt';
   }
 
   /// Display / sort title for known channels (aliases → canonical label).
   static String canonicalChannelTitle(String title) {
-    if (isUpdateAndDocChannel(title)) return 'Update and Doc';
+    if (isUpdateAndDocChannel(title)) return 'Upgrades & Additions';
     final n = _normalizeTitle(title);
     for (final t in channelTitles) {
       final tn = _normalizeTitle(t);
@@ -88,7 +93,11 @@ class ChatV1Utils {
         return Icons.architecture_rounded;
       case 'mep':
         return Icons.electrical_services_rounded;
-      case 'update and doc':
+      case 'structural':
+        return Icons.foundation_rounded;
+      case 'execution':
+        return Icons.construction_rounded;
+      case 'upgrades additions':
         return Icons.description_outlined;
       case 'qa qc':
         return Icons.verified_outlined;
@@ -111,7 +120,11 @@ class ChatV1Utils {
         return const Color(0xFF8B5CF6);
       case 'mep':
         return const Color(0xFFEF4444);
-      case 'update and doc':
+      case 'structural':
+        return const Color(0xFFB45309);
+      case 'execution':
+        return const Color(0xFF0F766E);
+      case 'upgrades additions':
         return const Color(0xFF0EA5E9);
       case 'qa qc':
         return ChatV1Theme.completed;
@@ -211,7 +224,7 @@ class ChatV1Utils {
 
   /// Short text for reply quotes / composer banner.
   static String replySnippet(ChatV1Message msg) {
-    final body = msg.body.trim();
+    final body = ChatV1Importance.parse(msg.body).body.trim();
     final lower = body.toLowerCase();
     if (body.isNotEmpty &&
         !lower.startsWith('uploaded:') &&

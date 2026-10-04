@@ -156,18 +156,19 @@ class Cv1ChatTile extends StatelessWidget {
                           if (item.mentions > 0) ...[
                             const SizedBox(width: 6),
                             Container(
-                              width: 18,
-                              height: 18,
-                              alignment: Alignment.center,
-                              decoration: const BoxDecoration(
-                                color: ChatV1Theme.mention,
-                                shape: BoxShape.circle,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 6,
+                                vertical: 2,
                               ),
-                              child: const Text(
-                                '@',
-                                style: TextStyle(
+                              decoration: BoxDecoration(
+                                color: ChatV1Theme.mention,
+                                borderRadius: BorderRadius.circular(99),
+                              ),
+                              child: Text(
+                                '@ ${item.mentions}',
+                                style: const TextStyle(
                                   color: Colors.white,
-                                  fontSize: 10,
+                                  fontSize: 11,
                                   fontWeight: FontWeight.w800,
                                 ),
                               ),
