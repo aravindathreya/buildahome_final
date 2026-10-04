@@ -251,8 +251,8 @@ class _GalleryState extends State<Gallery> {
         backgroundColor: AppTheme.getBackgroundSecondary(context),
         foregroundColor: AppTheme.darkTextPrimary,
         elevation: 0,
-        iconTheme: const IconThemeData(color: AppTheme.darkTextPrimary),
-        actionsIconTheme: const IconThemeData(color: AppTheme.darkTextPrimary),
+        iconTheme: IconThemeData(color: AppTheme.darkTextPrimary),
+        actionsIconTheme: IconThemeData(color: AppTheme.darkTextPrimary),
         automaticallyImplyLeading: canPop,
         leading: canPop
             ? IconButton(
@@ -1290,8 +1290,8 @@ class _TimelineGalleryState extends State<TimelineGallery> {
         backgroundColor: AppTheme.getBackgroundSecondary(context),
         foregroundColor: AppTheme.darkTextPrimary,
         elevation: 0,
-        iconTheme: const IconThemeData(color: AppTheme.darkTextPrimary),
-        actionsIconTheme: const IconThemeData(color: AppTheme.darkTextPrimary),
+        iconTheme: IconThemeData(color: AppTheme.darkTextPrimary),
+        actionsIconTheme: IconThemeData(color: AppTheme.darkTextPrimary),
         automaticallyImplyLeading: canPop,
         leading: canPop
             ? IconButton(
@@ -1491,7 +1491,7 @@ class _TimelineGalleryState extends State<TimelineGallery> {
           controller: _searchController,
           onChanged: (value) => setState(() => _searchQuery = value),
           textInputAction: TextInputAction.search,
-          style: const TextStyle(
+          style: TextStyle(
             color: AppTheme.darkTextPrimary,
             fontWeight: FontWeight.w600,
           ),
@@ -1518,15 +1518,15 @@ class _TimelineGalleryState extends State<TimelineGallery> {
             contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(14),
-              borderSide: const BorderSide(color: Color(0xFFE8EDF4)),
+              borderSide: BorderSide.none,
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(14),
-              borderSide: const BorderSide(color: AppTheme.navy, width: 1.5),
+              borderSide: BorderSide.none,
             ),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(14),
-              borderSide: const BorderSide(color: Color(0xFFE8EDF4)),
+              borderSide: BorderSide.none,
             ),
           ),
         ),
@@ -1617,7 +1617,6 @@ class _TimelineGalleryState extends State<TimelineGallery> {
           decoration: BoxDecoration(
             color: AppTheme.darkBackgroundSecondary,
             borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: const Color(0xFFE8EDF4)),
             boxShadow: [
               BoxShadow(
                 color: Colors.black.withOpacity(0.06),
@@ -1717,7 +1716,6 @@ class _TimelineGalleryState extends State<TimelineGallery> {
         decoration: BoxDecoration(
           color: const Color(0xFFF6F8FB),
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: const Color(0xFFE5EAF1)),
         ),
         child: const Center(
           child: Text(
@@ -1818,7 +1816,7 @@ class _TimelineGalleryState extends State<TimelineGallery> {
           TextSpan(text: '$label: '),
           TextSpan(
             text: value,
-            style: const TextStyle(
+            style: TextStyle(
               color: AppTheme.darkTextPrimary,
               fontWeight: FontWeight.w900,
             ),
@@ -2286,7 +2284,7 @@ class _GallerySectionDetailScreenState
         foregroundColor: AppTheme.darkTextPrimary,
         elevation: 0,
         scrolledUnderElevation: 0,
-        iconTheme: const IconThemeData(color: AppTheme.darkTextPrimary),
+        iconTheme: IconThemeData(color: AppTheme.darkTextPrimary),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios_new_rounded),
           onPressed: () => Navigator.of(context).maybePop(),
@@ -2295,7 +2293,7 @@ class _GallerySectionDetailScreenState
           section.label,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
-          style: const TextStyle(
+          style: TextStyle(
             fontWeight: FontWeight.w800,
             color: AppTheme.darkTextPrimary,
           ),
@@ -2382,7 +2380,7 @@ class _GallerySectionDetailScreenState
       controller: _searchController,
       onChanged: _onQueryChanged,
       textInputAction: TextInputAction.search,
-      style: const TextStyle(
+      style: TextStyle(
         color: AppTheme.darkTextPrimary,
         fontWeight: FontWeight.w600,
       ),
@@ -2410,15 +2408,15 @@ class _GallerySectionDetailScreenState
             const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: Color(0xFFE8EDF4)),
+          borderSide: BorderSide.none,
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: AppTheme.navy, width: 1.5),
+          borderSide: BorderSide.none,
         ),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: Color(0xFFE8EDF4)),
+          borderSide: BorderSide.none,
         ),
       ),
     );
@@ -2431,9 +2429,8 @@ class _GallerySectionDetailScreenState
       decoration: BoxDecoration(
         color: AppTheme.darkBackgroundSecondary,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFE8EDF4)),
       ),
-      child: const Column(
+      child: Column(
         children: [
           Icon(Icons.search_off_rounded, color: Color(0xFF9CA3AF), size: 32),
           SizedBox(height: 10),
@@ -2464,7 +2461,6 @@ class _GallerySectionDetailScreenState
       decoration: BoxDecoration(
         color: AppTheme.darkBackgroundSecondary,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: const Color(0xFFE8EDF4)),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.05),
@@ -2493,7 +2489,7 @@ class _GallerySectionDetailScreenState
                   section.label,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
+                  style: TextStyle(
                     color: AppTheme.darkTextPrimary,
                     fontSize: 18,
                     fontWeight: FontWeight.w900,
@@ -2525,7 +2521,6 @@ class _GallerySectionDetailScreenState
         decoration: BoxDecoration(
           color: AppTheme.darkBackgroundSecondary,
           borderRadius: BorderRadius.circular(22),
-          border: Border.all(color: const Color(0xFFE8EDF4)),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withOpacity(0.05),
@@ -2588,7 +2583,7 @@ class _GallerySectionDetailScreenState
                     item.taskName ?? item.title ?? 'Workflow upload',
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: AppTheme.darkTextPrimary,
                       fontSize: 12,
                       fontWeight: FontWeight.w900,

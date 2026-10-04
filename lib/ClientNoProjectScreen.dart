@@ -168,7 +168,7 @@ class _ClientNoProjectScreenState extends State<ClientNoProjectScreen> {
         backgroundColor: AppTheme.getBackgroundSecondary(context),
         foregroundColor: AppTheme.darkTextPrimary,
         elevation: 0,
-        title: const Text(
+        title: Text(
           'Project Dashboard',
           style: TextStyle(
             color: AppTheme.darkTextPrimary,
@@ -176,11 +176,11 @@ class _ClientNoProjectScreenState extends State<ClientNoProjectScreen> {
             fontWeight: FontWeight.w800,
           ),
         ),
-        iconTheme: const IconThemeData(color: AppTheme.darkTextPrimary),
-        actionsIconTheme: const IconThemeData(color: AppTheme.darkTextPrimary),
+        iconTheme: IconThemeData(color: AppTheme.darkTextPrimary),
+        actionsIconTheme: IconThemeData(color: AppTheme.darkTextPrimary),
         actions: [
           IconButton(
-            icon: const Icon(Icons.refresh, color: AppTheme.darkTextPrimary),
+            icon: Icon(Icons.refresh, color: AppTheme.darkTextPrimary),
             onPressed: _loading ? null : _fetchSalesSopDetails,
           ),
         ],
@@ -388,12 +388,7 @@ class _ClientNoProjectScreenState extends State<ClientNoProjectScreen> {
       url: p['payment_screenshot_url'],
     ));
 
-    cards.add(_buildInAppDocumentNavCard(
-      icon: Icons.square_foot_outlined,
-      label: 'Area\nStatement',
-      color: AppTheme.getPrimaryColor(context),
-      url: p['area_statement_url'],
-    ));
+    // Area Statement is intentionally hidden from Client everywhere.
 
     cards.add(_buildInAppDocumentNavCard(
       icon: Icons.calculate_outlined,
@@ -1510,14 +1505,14 @@ class _InAppDocumentScreenState extends State<_InAppDocumentScreen> {
         elevation: 0,
         title: Text(
           widget.title,
-          style: const TextStyle(
+          style: TextStyle(
             color: AppTheme.darkTextPrimary,
             fontSize: 18,
             fontWeight: FontWeight.w800,
           ),
         ),
-        iconTheme: const IconThemeData(color: AppTheme.darkTextPrimary),
-        actionsIconTheme: const IconThemeData(color: AppTheme.darkTextPrimary),
+        iconTheme: IconThemeData(color: AppTheme.darkTextPrimary),
+        actionsIconTheme: IconThemeData(color: AppTheme.darkTextPrimary),
         actions: [
           IconButton(
             icon: Icon(Icons.open_in_new),

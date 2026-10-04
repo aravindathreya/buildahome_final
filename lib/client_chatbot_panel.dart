@@ -170,7 +170,7 @@ class _ClientChatbotPanelState extends State<ClientChatbotPanel> {
         alignment: Alignment.bottomCenter,
         child: Container(
           height: height,
-          decoration: const BoxDecoration(
+          decoration: BoxDecoration(
             color: AppTheme.darkBackgroundSecondary,
             borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
           ),
@@ -198,7 +198,7 @@ class _ClientChatbotPanelState extends State<ClientChatbotPanel> {
                       circle: true,
                     ),
                     const SizedBox(width: 10),
-                    const Expanded(
+                    Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -387,7 +387,7 @@ class _MessageBlock extends StatelessWidget {
                     ActionChip(
                       label: Text(
                         reply,
-                        style: const TextStyle(
+                        style: TextStyle(
                           color: AppTheme.darkTextPrimary,
                           fontSize: 12.5,
                           fontWeight: FontWeight.w600,
@@ -460,7 +460,7 @@ class _StageCard extends StatelessWidget {
           if (stage.name.isNotEmpty)
             Text(
               stage.name,
-              style: const TextStyle(
+              style: TextStyle(
                 color: AppTheme.darkTextPrimary,
                 fontSize: 14,
                 fontWeight: FontWeight.w800,
@@ -495,7 +495,7 @@ class _StageCard extends StatelessWidget {
                 const SizedBox(width: 8),
                 Text(
                   '${percent.round()}%',
-                  style: const TextStyle(
+                  style: TextStyle(
                     color: AppTheme.darkTextPrimary,
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
@@ -605,7 +605,7 @@ class _StageCard extends StatelessWidget {
                                       : (stage.name.isNotEmpty
                                           ? stage.name
                                           : 'Document'),
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                     color: AppTheme.darkTextPrimary,
                                     fontSize: 13.5,
                                     fontWeight: FontWeight.w700,

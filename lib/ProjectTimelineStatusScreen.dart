@@ -7,9 +7,9 @@ import 'services/data_provider.dart';
 import 'widgets/project_situation_switcher.dart';
 import 'widgets/skeleton_loader.dart';
 
-const Color _ink = AppTheme.darkTextPrimary;
-const Color _muted = AppTheme.darkTextSecondary;
-const Color _cardSurface = AppTheme.darkBackgroundSecondary;
+Color get _ink => AppTheme.darkTextPrimary;
+Color get _muted => AppTheme.darkTextSecondary;
+Color get _cardSurface => AppTheme.darkBackgroundSecondary;
 
 bool _statusTruthy(dynamic value) {
   if (value == true || value == 1) return true;
@@ -149,14 +149,14 @@ class _ProjectTimelineStatusScreenState
         foregroundColor: AppTheme.darkTextPrimary,
         elevation: 0,
         scrolledUnderElevation: 0,
-        iconTheme: const IconThemeData(color: AppTheme.darkTextPrimary),
-        actionsIconTheme: const IconThemeData(color: AppTheme.darkTextPrimary),
+        iconTheme: IconThemeData(color: AppTheme.darkTextPrimary),
+        actionsIconTheme: IconThemeData(color: AppTheme.darkTextPrimary),
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded,
+          icon: Icon(Icons.arrow_back_ios_new_rounded,
               color: AppTheme.darkTextPrimary, size: 20),
           onPressed: () => Navigator.maybePop(context),
         ),
-        title: const Text(
+        title: Text(
           'Project Status',
           style: TextStyle(
             color: AppTheme.darkTextPrimary,
@@ -196,7 +196,7 @@ class _ProjectTimelineStatusScreenState
                     child: CircularProgressIndicator(
                         strokeWidth: 2, color: AppTheme.navy),
                   )
-                : const Icon(Icons.refresh_rounded,
+                : Icon(Icons.refresh_rounded,
                     color: AppTheme.darkTextPrimary),
           ),
           const SizedBox(width: 8),
@@ -285,7 +285,7 @@ class _ProjectTimelineStatusScreenState
                 children: [
                   Text(
                     title,
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: _ink,
                       fontSize: 16,
                       fontWeight: FontWeight.w800,
@@ -295,7 +295,7 @@ class _ProjectTimelineStatusScreenState
                   const SizedBox(height: 2),
                   Text(
                     subtitle,
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: _muted,
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
@@ -326,7 +326,7 @@ class _ProjectTimelineStatusScreenState
             ),
             child: Text(
               emptyLabel,
-              style: const TextStyle(
+              style: TextStyle(
                 color: _muted,
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
@@ -352,7 +352,7 @@ class _ProjectTimelineStatusScreenState
             Icon(Icons.flag_outlined,
                 size: 56, color: AppTheme.getTextSecondary(context)),
             const SizedBox(height: 20),
-            const Text(
+            Text(
               'No project activity yet',
               style: TextStyle(
                 color: _ink,
@@ -361,7 +361,7 @@ class _ProjectTimelineStatusScreenState
               ),
             ),
             const SizedBox(height: 8),
-            const Text(
+            Text(
               'Recently closed, ongoing, and upcoming tasks will appear here.',
               textAlign: TextAlign.center,
               style: TextStyle(
@@ -406,7 +406,7 @@ class _ProjectTimelineStatusScreenState
               isAuthError
                   ? 'Could not authorize this request'
                   : 'Could not load project status',
-              style: const TextStyle(
+              style: TextStyle(
                 color: _ink,
                 fontSize: 18,
                 fontWeight: FontWeight.w700,
@@ -416,7 +416,7 @@ class _ProjectTimelineStatusScreenState
             Text(
               message,
               textAlign: TextAlign.center,
-              style: const TextStyle(color: _muted, fontSize: 13),
+              style: TextStyle(color: _muted, fontSize: 13),
             ),
             const SizedBox(height: 20),
             ElevatedButton(
@@ -500,7 +500,7 @@ class _StatusTaskRow extends StatelessWidget {
               children: [
                 Text(
                   taskName,
-                  style: const TextStyle(
+                  style: TextStyle(
                     color: _ink,
                     fontSize: 14.5,
                     fontWeight: FontWeight.w700,
@@ -520,7 +520,7 @@ class _StatusTaskRow extends StatelessWidget {
                   const SizedBox(height: 2),
                   Text(
                     'Completed $completedAt',
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: _muted,
                       fontSize: 11.5,
                       fontWeight: FontWeight.w600,
@@ -531,7 +531,7 @@ class _StatusTaskRow extends StatelessWidget {
                   const SizedBox(height: 2),
                   Text(
                     assignee,
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: _muted,
                       fontSize: 11.5,
                       fontWeight: FontWeight.w600,

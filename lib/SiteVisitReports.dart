@@ -756,7 +756,7 @@ class _SiteVisitReportsScreenState extends State<SiteVisitReportsScreen> with Si
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 14),
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: AppTheme.darkBackgroundSecondary,
         border: Border(bottom: BorderSide(color: AppTheme.border)),
       ),
@@ -777,7 +777,7 @@ class _SiteVisitReportsScreenState extends State<SiteVisitReportsScreen> with Si
               const Spacer(),
               Text(
                 stepTitles[_currentStep],
-                style: const TextStyle(
+                style: TextStyle(
                   color: AppTheme.darkTextPrimary,
                   fontSize: 13,
                   fontWeight: FontWeight.w800,
@@ -1398,7 +1398,7 @@ class _SiteVisitReportsScreenState extends State<SiteVisitReportsScreen> with Si
         20,
         20 + MediaQuery.paddingOf(context).bottom,
       ),
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: AppTheme.darkBackgroundSecondary,
         border: Border(top: BorderSide(color: AppTheme.border)),
       ),
@@ -1410,7 +1410,7 @@ class _SiteVisitReportsScreenState extends State<SiteVisitReportsScreen> with Si
                 onPressed: _previousStep,
                 style: OutlinedButton.styleFrom(
                   foregroundColor: AppTheme.darkTextPrimary,
-                  side: const BorderSide(color: AppTheme.border),
+                  side: BorderSide(color: AppTheme.border),
                   padding: const EdgeInsets.symmetric(vertical: 14),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(14),
@@ -1519,7 +1519,7 @@ class _SiteVisitReportsScreenState extends State<SiteVisitReportsScreen> with Si
                             _viewProject == null
                                 ? 'All projects'
                                 : _viewProject['name'] ?? 'Project #${_viewProject['id']}',
-                            style: const TextStyle(
+                            style: TextStyle(
                               color: AppTheme.darkTextPrimary,
                               fontWeight: FontWeight.w800,
                               fontSize: 15,
@@ -1557,7 +1557,7 @@ class _SiteVisitReportsScreenState extends State<SiteVisitReportsScreen> with Si
                       contentPadding: EdgeInsets.zero,
                       activeColor: AppTheme.darkTextPrimary,
                       thumbColor: MaterialStateProperty.all(Colors.white),
-                      title: const Text(
+                      title: Text(
                         'Only my reports',
                         style: TextStyle(
                           color: AppTheme.darkTextPrimary,
@@ -1649,7 +1649,7 @@ class _SectionHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     return Text(
       title,
-      style: const TextStyle(
+      style: TextStyle(
         fontWeight: FontWeight.w800,
         fontSize: 15.5,
         color: AppTheme.darkTextPrimary,
@@ -1821,7 +1821,7 @@ class _ReportTile extends StatelessWidget {
               Expanded(
                 child: Text(
                   projectLabel,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontWeight: FontWeight.w800,
                     fontSize: 15,
                     color: AppTheme.darkTextPrimary,
@@ -1850,7 +1850,7 @@ class _ReportTile extends StatelessWidget {
           const SizedBox(height: 8),
           Text(
             note,
-            style: const TextStyle(
+            style: TextStyle(
               color: AppTheme.darkTextPrimary,
               fontSize: 14,
               fontWeight: FontWeight.w500,

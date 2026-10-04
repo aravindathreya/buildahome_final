@@ -223,11 +223,20 @@ class ClientPortalService {
     final prefs = await SharedPreferences.getInstance();
     final sopId = payload['sales_sop_id']?.toString();
     final convertedId = payload['converted_project_id']?.toString();
+    final projectNumber = (payload['project_code'] ?? payload['project_number'])
+        ?.toString()
+        .trim();
     if (sopId != null && sopId.isNotEmpty) {
       await prefs.setString('sales_sop_id', sopId);
     }
     if (convertedId != null && convertedId.isNotEmpty) {
       await prefs.setString('project_id', convertedId);
+    }
+    if (projectNumber != null &&
+        projectNumber.isNotEmpty &&
+        projectNumber.toLowerCase() != 'null') {
+      await prefs.setString('project_number', projectNumber);
+      await prefs.setString('project_code', projectNumber);
     }
   }
 
@@ -536,14 +545,20 @@ class ClientPortalService {
 
   /// POST /api/client_portal/payment-proof/upload
   /// multipart: repeat `payment_screenshot` for each file (fallback: `files`).
-  /// Do not send `stage_task_id` — client upload has no stage selection.
+  /// Optional `stage_task_id` links the upload to a pending stage-proof task.
   /// The server waits for OpenAI, then returns `files` / `payment_proof_items`.
-  Future<Map<String, dynamic>> uploadPaymentProofs(List<File> files) async {
+  Future<Map<String, dynamic>> uploadPaymentProofs(
+    List<File> files, {
+    int? stageTaskId,
+  }) async {
     const openaiWait = Duration(seconds: 120);
+    final fields = <String, String>{
+      if (stageTaskId != null) 'stage_task_id': '$stageTaskId',
+    };
     try {
       return await _postMultipartMany(
         '/api/client_portal/payment-proof/upload',
-        const {},
+        fields,
         fileField: 'payment_screenshot',
         files: files,
         timeout: openaiWait,
@@ -556,7 +571,7 @@ class ClientPortalService {
       }
       return _postMultipartMany(
         '/api/client_portal/payment-proof/upload',
-        const {},
+        fields,
         fileField: 'files',
         files: files,
         timeout: openaiWait,

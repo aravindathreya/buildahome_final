@@ -47,8 +47,8 @@ class _TasksLayoutState extends State<TasksLayout> with SingleTickerProviderStat
         automaticallyImplyLeading: true,
         backgroundColor: AppTheme.darkBackgroundSecondary,
         elevation: 0,
-        iconTheme: const IconThemeData(color: AppTheme.darkTextPrimary),
-        title: const Text(
+        iconTheme: IconThemeData(color: AppTheme.darkTextPrimary),
+        title: Text(
           'Tasks',
           style: TextStyle(
             color: AppTheme.darkTextPrimary,
@@ -1761,7 +1761,7 @@ class _ViewTasksPageState extends State<ViewTasksPage> {
   Widget _buildTaskCard(Map<String, dynamic> task) {
     final taskId = task['id']?.toString() ?? '';
     final taskUserId = task['user_id']?.toString() ?? '';
-    final projectName = task['project_name']?.toString() ?? '';
+    final projectName = taskProjectDisplayName(task) ?? '';
     final assignedToName = task['assigned_to_name']?.toString() ?? '';
     final status = task['status']?.toString() ?? 'pending';
     final createdAt = task['created_at']?.toString() ?? '';

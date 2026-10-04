@@ -23,9 +23,9 @@ class ClientPortalDocTheme {
         ],
       );
 
-  static const cardBackground = AppTheme.darkBackgroundSecondary;
+  static Color get cardBackground => AppTheme.darkBackgroundSecondary;
 
-  static TabBarTheme tabBarTheme() => const TabBarTheme(
+  static TabBarTheme tabBarTheme() => TabBarTheme(
         labelColor: AppTheme.darkTextPrimary,
         unselectedLabelColor: AppTheme.mutedGrey,
         indicatorColor: accentBlue,
@@ -52,7 +52,7 @@ class ClientPortalCategoryVisual {
     required this.icon,
     required this.subtitle,
     required this.iconBg,
-    this.iconFg = AppTheme.darkTextPrimary,
+    this.iconFg = const Color(0xFFF4F4F5),
   });
 }
 
@@ -216,7 +216,7 @@ ClientPortalCategoryVisual categoryVisualFor({
       );
     }
     if (blob.contains('site_prep')) {
-      return const ClientPortalCategoryVisual(
+      return ClientPortalCategoryVisual(
         icon: Icons.construction_outlined,
         subtitle: 'Demolition & borewell questionnaire',
         iconBg: Color(0xFF2A2112),
@@ -224,7 +224,7 @@ ClientPortalCategoryVisual categoryVisualFor({
       );
     }
     if (blob.contains('demolition')) {
-      return const ClientPortalCategoryVisual(
+      return ClientPortalCategoryVisual(
         icon: Icons.home_work_outlined,
         subtitle: 'Demolition completion & comments',
         iconBg: Color(0xFF2C1618),
@@ -232,7 +232,7 @@ ClientPortalCategoryVisual categoryVisualFor({
       );
     }
     if (blob.contains('inspection')) {
-      return const ClientPortalCategoryVisual(
+      return ClientPortalCategoryVisual(
         icon: Icons.fact_check_outlined,
         subtitle: 'Book a slot or view reports',
         iconBg: Color(0xFF142830),
@@ -294,7 +294,7 @@ IconData? iconDataFromCatalogName(String? raw) {
   return mapped[key];
 }
 
-const List<ClientPortalCategoryVisual> kCatalogIconPalette = [
+List<ClientPortalCategoryVisual> kCatalogIconPalette = [
   ClientPortalCategoryVisual(
     icon: Icons.apartment_outlined,
     subtitle: 'View documents in this category',
@@ -609,11 +609,11 @@ class ClientPortalSearchBar extends StatelessWidget {
             const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(ClientPortalDocTheme.cardRadius),
-          borderSide: const BorderSide(color: AppTheme.border),
+          borderSide: BorderSide(color: AppTheme.border),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(ClientPortalDocTheme.cardRadius),
-          borderSide: const BorderSide(color: AppTheme.border),
+          borderSide: BorderSide(color: AppTheme.border),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(ClientPortalDocTheme.cardRadius),
@@ -869,11 +869,15 @@ class ClientPortalSectionCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final visual = sectionVisualFor(section);
+    final isRevisions = section.id.trim().toLowerCase() == 'revisions' ||
+        section.label.trim().toLowerCase() == 'revisions';
     return ClientPortalCategoryCard(
       icon: visual.icon,
       title: section.label,
       subtitle: visual.subtitle,
-      badgeCount: section.documentCount,
+      // Revisions are non-latest by definition; count every row.
+      badgeCount:
+          isRevisions ? section.documents.length : section.documentCount,
       iconBg: visual.iconBg,
       iconFg: visual.iconFg,
       journeyStyle: true,
@@ -912,7 +916,9 @@ class ClientPortalFilterTabs extends StatelessWidget {
                   style: TextStyle(
                     fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
                     fontSize: 14,
-                    color: selected ? AppTheme.darkTextPrimary : AppTheme.mutedGrey,
+                    color: selected
+                        ? AppTheme.darkTextPrimary
+                        : AppTheme.mutedGrey,
                   ),
                 ),
                 const SizedBox(height: 6),
@@ -953,7 +959,7 @@ class ClientPortalDocumentListHeader extends StatelessWidget {
       children: [
         Text(
           '$count Document${count == 1 ? '' : 's'}',
-          style: const TextStyle(
+          style: TextStyle(
             fontWeight: FontWeight.w800,
             fontSize: 14,
             color: AppTheme.darkTextPrimary,
@@ -1020,7 +1026,7 @@ class ClientPortalDocumentRow extends StatelessWidget {
                   children: [
                     Text(
                       document.displayTitle,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontWeight: FontWeight.w800,
                         fontSize: 14,
                         color: AppTheme.darkTextPrimary,
@@ -1199,7 +1205,7 @@ class ClientPortalScreenHeader extends StatelessWidget {
       children: [
         Text(
           title,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 16,
             fontWeight: FontWeight.w800,
             color: AppTheme.darkTextPrimary,
@@ -1312,6 +1318,109 @@ List<WorkflowDocumentSection> filterWorkflowSectionsBySearch(
   }).toList();
 }
 
+/// For me / client portal: Architectural collapses to Final + Revisions.
+bool isArchitecturalDocumentCategory(WorkflowDocumentCategory category) {
+  final blob =
+      '${category.id} ${category.label} ${category.libraryGroupKey ?? ''} ${category.clientJourneyKey ?? ''}'
+          .toLowerCase();
+  return blob.contains('architectural') || blob.contains('architecture');
+}
+
+bool isClientPortalFinalDocument(WorkflowDocumentUpload doc) {
+  if (doc.isLatest) return true;
+  final status = (doc.status ?? '').trim().toLowerCase();
+  return status == 'final' ||
+      status == 'finalized' ||
+      status == 'latest';
+}
+
+bool isClientPortalArchitecturalGroupedSection(WorkflowDocumentSection section) {
+  final id = section.id.trim().toLowerCase();
+  final label = section.label.trim().toLowerCase();
+  return id == 'final' ||
+      id == 'revisions' ||
+      label == 'final' ||
+      label == 'revisions';
+}
+
+WorkflowDocumentSection _architecturalGroupedSection({
+  required WorkflowDocumentCategory category,
+  required String id,
+  required String label,
+  required bool Function(WorkflowDocumentUpload doc) include,
+  required String Function(WorkflowDocumentUpload doc) dedupeKey,
+}) {
+  final docs = <WorkflowDocumentUpload>[];
+  final seen = <String>{};
+  for (final section in category.sections) {
+    for (final doc in section.documents) {
+      if (doc.isAreaStatement) continue;
+      if (!include(doc)) continue;
+      if (!seen.add(dedupeKey(doc))) continue;
+      docs.add(doc);
+    }
+  }
+  return WorkflowDocumentSection(
+    id: id,
+    label: label,
+    categoryId: category.id,
+    categoryLabel: category.label,
+    clientJourneyKey: category.clientJourneyKey,
+    libraryGroupKey: category.libraryGroupKey,
+    documents: docs,
+  );
+}
+
+/// Aggregates latest/final Architectural docs into one client-facing section.
+WorkflowDocumentSection buildClientPortalArchitecturalFinalSection(
+  WorkflowDocumentCategory category,
+) {
+  return _architecturalGroupedSection(
+    category: category,
+    id: 'final',
+    label: 'Final',
+    include: isClientPortalFinalDocument,
+    dedupeKey: (doc) =>
+        doc.documentKey.isNotEmpty ? doc.documentKey : doc.id,
+  );
+}
+
+/// Aggregates non-final Architectural revisions into one client-facing section.
+WorkflowDocumentSection buildClientPortalArchitecturalRevisionsSection(
+  WorkflowDocumentCategory category,
+) {
+  return _architecturalGroupedSection(
+    category: category,
+    id: 'revisions',
+    label: 'Revisions',
+    include: (doc) => !isClientPortalFinalDocument(doc),
+    dedupeKey: (doc) {
+      if (doc.id.isNotEmpty) return doc.id;
+      return '${doc.documentKey}|${doc.revision ?? ''}|${doc.url ?? ''}|${doc.name}';
+    },
+  );
+}
+
+List<WorkflowDocumentSection> clientPortalArchitecturalSections(
+  WorkflowDocumentCategory category,
+  String query,
+) {
+  final sections = [
+    buildClientPortalArchitecturalFinalSection(category),
+    buildClientPortalArchitecturalRevisionsSection(category),
+  ];
+  final q = query.trim();
+  if (q.isEmpty) return sections;
+  return sections
+      .map(
+        (section) => section.copyWithDocuments(
+          section.documents.where((doc) => doc.matchesSearch(q)).toList(),
+        ),
+      )
+      .where((section) => section.documents.isNotEmpty)
+      .toList();
+}
+
 List<WorkflowDocumentCategory> filterWorkflowCategoriesBySearch(
   List<WorkflowDocumentCategory> categories,
   String query,
@@ -1345,7 +1454,8 @@ List<Widget> buildDocumentCategoryCards({
   String? searchQuery,
 }) {
   final q = searchQuery?.trim().toLowerCase() ?? '';
-  final categories = library.documentsTabCategories.where((category) {
+  final categories = withoutAreaStatementCategories(library.documentsTabCategories)
+      .where((category) {
     if (q.isEmpty) return true;
     return category.label.toLowerCase().contains(q) ||
         (category.clientJourneyKey ?? '').toLowerCase().contains(q);
@@ -1414,7 +1524,7 @@ class ClientPortalJourneyStatusBanner extends StatelessWidget {
           Expanded(
             child: Text(
               message,
-              style: const TextStyle(
+              style: TextStyle(
                 fontWeight: FontWeight.w700,
                 fontSize: 13.5,
                 height: 1.35,
@@ -1464,7 +1574,7 @@ class ClientPortalHelpCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 12),
-              const Expanded(
+              Expanded(
                 child: Text(
                   'Need help finding a document?',
                   style: TextStyle(
@@ -1543,7 +1653,7 @@ class ClientPortalSectionHeroCard extends StatelessWidget {
               const SizedBox(height: 10),
               Text(
                 section.label,
-                style: const TextStyle(
+                style: TextStyle(
                   fontWeight: FontWeight.w800,
                   fontSize: 15,
                   color: AppTheme.darkTextPrimary,
@@ -1593,7 +1703,7 @@ class ClientPortalJourneyDocumentRow extends StatelessWidget {
                   children: [
                     Text(
                       document.displayTitle,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontWeight: FontWeight.w800,
                         fontSize: 14.5,
                         color: AppTheme.darkTextPrimary,
@@ -1818,7 +1928,7 @@ class ClientPortalViewerDocCard extends StatelessWidget {
                   document.displayTitle,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontWeight: FontWeight.w800,
                     fontSize: 13.5,
                     color: AppTheme.darkTextPrimary,

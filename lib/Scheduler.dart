@@ -212,7 +212,7 @@ class TaskScreen extends State<TaskScreenClass> {
   }
 
   Widget _buildHeader(ThemeData theme) {
-    return const Column(
+    return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
@@ -308,7 +308,7 @@ class TaskScreen extends State<TaskScreenClass> {
     return TextField(
       controller: _searchController,
       onChanged: (value) => setState(() => _searchQuery = value),
-      style: const TextStyle(color: AppTheme.darkTextPrimary, fontWeight: FontWeight.w600),
+      style: TextStyle(color: AppTheme.darkTextPrimary, fontWeight: FontWeight.w600),
       decoration: InputDecoration(
         hintText: 'Search tasks, notes or dates',
         hintStyle: const TextStyle(
@@ -329,7 +329,7 @@ class TaskScreen extends State<TaskScreenClass> {
         fillColor: AppTheme.darkBackgroundPrimaryLight,
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: AppTheme.border),
+          borderSide: BorderSide(color: AppTheme.border),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
@@ -337,7 +337,7 @@ class TaskScreen extends State<TaskScreenClass> {
         ),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: AppTheme.border),
+          borderSide: BorderSide(color: AppTheme.border),
         ),
       ),
     );
@@ -653,7 +653,7 @@ class _SummaryCard extends StatelessWidget {
           const SizedBox(height: 12),
           Text(
             title,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 14.5,
               fontWeight: FontWeight.w800,
               color: AppTheme.darkTextPrimary,

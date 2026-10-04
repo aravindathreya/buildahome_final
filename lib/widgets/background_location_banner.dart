@@ -57,7 +57,7 @@ class _BackgroundLocationBannerState extends State<BackgroundLocationBanner>
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(20),
           ),
-          title: const Text(
+          title: Text(
             'Turn off background location?',
             style: TextStyle(
               color: AppTheme.darkTextPrimary,
@@ -65,7 +65,7 @@ class _BackgroundLocationBannerState extends State<BackgroundLocationBanner>
               fontSize: 18,
             ),
           ),
-          content: const Text(
+          content: Text(
             'Attendance monitoring uses background location. Turning this off may flag your attendance within the company',
             style: TextStyle(
               color: AppTheme.darkTextPrimary,

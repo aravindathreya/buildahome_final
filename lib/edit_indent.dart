@@ -134,8 +134,8 @@ class EditIndentLayout extends StatelessWidget {
           backgroundColor: AppTheme.darkBackgroundSecondary,
           foregroundColor: AppTheme.darkTextPrimary,
           elevation: 0,
-          iconTheme: const IconThemeData(color: AppTheme.darkTextPrimary),
-          titleTextStyle: const TextStyle(color: AppTheme.darkTextPrimary, fontSize: 18, fontWeight: FontWeight.w800),
+          iconTheme: IconThemeData(color: AppTheme.darkTextPrimary),
+          titleTextStyle: TextStyle(color: AppTheme.darkTextPrimary, fontSize: 18, fontWeight: FontWeight.w800),
         ),
 
         body: EditIndent(this.indent),
@@ -208,7 +208,7 @@ class EditIndentState extends State<EditIndent> {
       margin: const EdgeInsets.fromLTRB(10, 14, 10, 6),
       child: Text(
         title,
-        style: const TextStyle(
+        style: TextStyle(
           fontSize: 16,
           fontWeight: FontWeight.w800,
           color: AppTheme.darkTextPrimary,

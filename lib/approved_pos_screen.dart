@@ -366,8 +366,8 @@ class _ApprovedPoListCard extends StatelessWidget {
                   height: 48,
                   decoration: BoxDecoration(
                     color: isPendingPo
-                        ? const Color(0xFFFFF7ED)
-                        : const Color(0xFFE0E7FF),
+                        ? const Color(0xFF3D3420)
+                        : const Color(0xFF1E3A5F),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Icon(
@@ -375,8 +375,8 @@ class _ApprovedPoListCard extends StatelessWidget {
                         ? Icons.hourglass_empty_rounded
                         : Icons.receipt_long_rounded,
                     color: isPendingPo
-                        ? const Color(0xFFB45309)
-                        : const Color(0xFF4338CA),
+                        ? const Color(0xFFEAB308)
+                        : const Color(0xFF93C5FD),
                     size: 24,
                   ),
                 ),
@@ -391,7 +391,7 @@ class _ApprovedPoListCard extends StatelessWidget {
                           Expanded(
                             child: Text(
                               title,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontWeight: FontWeight.w800,
                                 fontSize: 14.5,
                                 color: AppTheme.darkTextPrimary,
@@ -414,7 +414,7 @@ class _ApprovedPoListCard extends StatelessWidget {
                         const SizedBox(height: 4),
                         Text(
                           materialLine,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 13,
                             fontWeight: FontWeight.w700,
                             color: AppTheme.darkTextPrimary,
@@ -468,8 +468,8 @@ class _ApprovedPoListCard extends StatelessWidget {
                           if (item.statusLabel.isNotEmpty)
                             _ApprovedPoChip(
                               label: item.statusLabel,
-                              bg: const Color(0xFFDCFCE7),
-                              fg: const Color(0xFF166534),
+                              bg: const Color(0xFF14532D),
+                              fg: const Color(0xFF6EE7B7),
                             ),
                           if (item.isPartial ||
                               item.receiptStatus == 'partial')
@@ -477,8 +477,8 @@ class _ApprovedPoListCard extends StatelessWidget {
                               label: item.receiptLabel.trim().isNotEmpty
                                   ? item.receiptLabel.trim()
                                   : 'Partially completed',
-                              bg: const Color(0xFFFFF7ED),
-                              fg: const Color(0xFFB45309),
+                              bg: const Color(0xFF3D3420),
+                              fg: const Color(0xFFEAB308),
                               icon: Icons.timelapse_rounded,
                             ),
                           if (item.isComplete ||
@@ -487,36 +487,36 @@ class _ApprovedPoListCard extends StatelessWidget {
                               label: item.receiptLabel.trim().isNotEmpty
                                   ? item.receiptLabel.trim()
                                   : 'Fully received',
-                              bg: const Color(0xFFECFDF5),
-                              fg: const Color(0xFF047857),
+                              bg: const Color(0xFF14532D),
+                              fg: const Color(0xFF6EE7B7),
                               icon: Icons.check_circle_outline_rounded,
                             ),
                           if (item.canViewMaskedDocument)
                             _ApprovedPoChip(
                               label: 'PDF ready',
-                              bg: const Color(0xFFEFF6FF),
-                              fg: const Color(0xFF2563EB),
+                              bg: const Color(0xFF1E3A5F),
+                              fg: const Color(0xFF93C5FD),
                               icon: Icons.picture_as_pdf_rounded,
                             ),
                           if (item.awaitingMaskedDocument)
                             _ApprovedPoChip(
                               label: 'PDF pending',
-                              bg: const Color(0xFFFFF7ED),
-                              fg: const Color(0xFFB45309),
+                              bg: const Color(0xFF3D3420),
+                              fg: const Color(0xFFEAB308),
                               icon: Icons.hourglass_top_rounded,
                             ),
                           if (item.isBilled)
                             _ApprovedPoChip(
                               label: 'Billed',
-                              bg: const Color(0xFFECFDF5),
-                              fg: const Color(0xFF047857),
+                              bg: const Color(0xFF14532D),
+                              fg: const Color(0xFF6EE7B7),
                               icon: Icons.check_circle_outline_rounded,
                             ),
                           if (item.createdByName.isNotEmpty)
                             _ApprovedPoChip(
                               label: item.createdByName,
-                              bg: const Color(0xFFF3F4F6),
-                              fg: const Color(0xFF4B5563),
+                              bg: AppTheme.darkBackgroundPrimaryLight,
+                              fg: AppTheme.mutedGrey,
                               icon: Icons.person_outline_rounded,
                             ),
                         ],
@@ -864,7 +864,7 @@ class _ApprovedPoDetailScreenState extends State<ApprovedPoDetailScreen> {
               width: double.infinity,
               padding: const EdgeInsets.all(16),
               decoration: ClientPortalDocTheme.cardDecoration(
-                bg: const Color(0xFFF9FAFB),
+                bg: AppTheme.darkBackgroundPrimaryLight,
               ),
               child: Row(
                 children: [
@@ -872,12 +872,12 @@ class _ApprovedPoDetailScreenState extends State<ApprovedPoDetailScreen> {
                     width: 48,
                     height: 48,
                     decoration: BoxDecoration(
-                      color: const Color(0xFFF3F4F6),
+                      color: AppTheme.darkBackgroundSecondary,
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: const Icon(
                       Icons.description_outlined,
-                      color: Color(0xFF9CA3AF),
+                      color: AppTheme.mutedGrey,
                       size: 24,
                     ),
                   ),
@@ -949,7 +949,7 @@ class _ApprovedPoHeroCard extends StatelessWidget {
               children: [
                 Text(
                   item.displayPoNumber(),
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontWeight: FontWeight.w800,
                     color: AppTheme.darkTextPrimary,
                     fontSize: 16,
@@ -988,13 +988,13 @@ class _ApprovedPoHeroCard extends StatelessWidget {
                   padding:
                       const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFDCFCE7),
+                    color: const Color(0xFF14532D),
                     borderRadius: BorderRadius.circular(999),
                   ),
                   child: Text(
                     item.statusLabel,
                     style: const TextStyle(
-                      color: Color(0xFF166534),
+                      color: Color(0xFF6EE7B7),
                       fontSize: 11,
                       fontWeight: FontWeight.w800,
                     ),
@@ -1006,7 +1006,7 @@ class _ApprovedPoHeroCard extends StatelessWidget {
                   padding:
                       const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFFFF7ED),
+                    color: const Color(0xFF3D3420),
                     borderRadius: BorderRadius.circular(999),
                   ),
                   child: Text(
@@ -1014,7 +1014,7 @@ class _ApprovedPoHeroCard extends StatelessWidget {
                         ? item.receiptLabel.trim()
                         : 'Partially completed',
                     style: const TextStyle(
-                      color: Color(0xFFB45309),
+                      color: Color(0xFFEAB308),
                       fontSize: 11,
                       fontWeight: FontWeight.w800,
                     ),
@@ -1027,7 +1027,7 @@ class _ApprovedPoHeroCard extends StatelessWidget {
                   padding:
                       const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFECFDF5),
+                    color: const Color(0xFF14532D),
                     borderRadius: BorderRadius.circular(999),
                   ),
                   child: Text(
@@ -1035,7 +1035,7 @@ class _ApprovedPoHeroCard extends StatelessWidget {
                         ? item.receiptLabel.trim()
                         : 'Fully received',
                     style: const TextStyle(
-                      color: Color(0xFF047857),
+                      color: Color(0xFF6EE7B7),
                       fontSize: 11,
                       fontWeight: FontWeight.w800,
                     ),
@@ -1048,13 +1048,13 @@ class _ApprovedPoHeroCard extends StatelessWidget {
                   padding:
                       const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFDCFCE7),
+                    color: const Color(0xFF14532D),
                     borderRadius: BorderRadius.circular(999),
                   ),
                   child: const Text(
                     'Billed',
                     style: TextStyle(
-                      color: Color(0xFF166534),
+                      color: Color(0xFF6EE7B7),
                       fontSize: 11,
                       fontWeight: FontWeight.w800,
                     ),
@@ -1133,7 +1133,7 @@ class _ApprovedPoInfoTable extends StatelessWidget {
                 Expanded(
                   child: Text(
                     row.value,
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: AppTheme.darkTextPrimary,
                       fontWeight: FontWeight.w700,
                       fontSize: 13,
@@ -1214,7 +1214,7 @@ class _ApprovedPoMaterialsCard extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: Text(
         text.trim().isEmpty ? '—' : text,
-        style: const TextStyle(
+        style: TextStyle(
           fontSize: 13.5,
           fontWeight: FontWeight.w600,
           color: AppTheme.darkTextPrimary,
@@ -1288,7 +1288,7 @@ class _ApprovedPoSiteProofCard extends StatelessWidget {
           style: OutlinedButton.styleFrom(
             foregroundColor: AppTheme.darkTextPrimary,
             minimumSize: const Size.fromHeight(44),
-            side: const BorderSide(color: AppTheme.border),
+            side: BorderSide(color: AppTheme.border),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(12),
             ),
@@ -1351,7 +1351,7 @@ class _ApprovedPoDocumentCard extends StatelessWidget {
                   children: [
                     Text(
                       document.displayTitle,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontWeight: FontWeight.w800,
                         fontSize: 14,
                         color: AppTheme.darkTextPrimary,
@@ -1404,9 +1404,9 @@ class _ApprovedPoPendingDocumentCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: const Color(0xFFFFF7ED),
+        color: const Color(0xFF3D3420),
         borderRadius: BorderRadius.circular(ClientPortalDocTheme.cardRadius),
-        border: Border.all(color: const Color(0xFFFED7AA)),
+        border: Border.all(color: const Color(0xFF854D0E)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1415,12 +1415,12 @@ class _ApprovedPoPendingDocumentCard extends StatelessWidget {
             width: 48,
             height: 48,
             decoration: BoxDecoration(
-              color: const Color(0xFFFFEDD5),
+              color: const Color(0xFF4A3B1A),
               borderRadius: BorderRadius.circular(12),
             ),
             child: const Icon(
               Icons.hourglass_top_rounded,
-              color: Color(0xFFB45309),
+              color: Color(0xFFEAB308),
               size: 24,
             ),
           ),
@@ -1429,7 +1429,7 @@ class _ApprovedPoPendingDocumentCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
+                Text(
                   'Masked PO PDF pending',
                   style: TextStyle(
                     fontWeight: FontWeight.w800,
@@ -1485,7 +1485,7 @@ class _InlineMessage extends StatelessWidget {
             Text(
               title,
               textAlign: TextAlign.center,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.w800,
                 color: AppTheme.darkTextPrimary,

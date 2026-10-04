@@ -854,7 +854,7 @@ class SlotsViewState extends State<SlotsView> {
             ? 'Choose preferred dates and times for visits that still need selection.'
             : 'Each visit has preferred dates. Choose one date to confirm.';
     final title = widget.showInlineTitle
-        ? const Text(
+        ? Text(
             'Slots',
             style: TextStyle(
               color: AppTheme.darkTextPrimary,
@@ -1012,7 +1012,7 @@ class _ProgressSummary extends StatelessWidget {
             backgroundColor: AppTheme.darkBackgroundPrimaryLight,
             center: Text(
               '$accepted/$total',
-              style: const TextStyle(
+              style: TextStyle(
                 color: AppTheme.darkTextPrimary,
                 fontSize: 11,
                 fontWeight: FontWeight.w800,
@@ -1027,7 +1027,7 @@ class _ProgressSummary extends StatelessWidget {
               children: [
                 Text(
                   '$accepted accepted · $pending pending',
-                  style: const TextStyle(
+                  style: TextStyle(
                     color: AppTheme.darkTextPrimary,
                     fontSize: 13.5,
                     fontWeight: FontWeight.w800,
@@ -1191,7 +1191,7 @@ class _FilterRow extends StatelessWidget {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.swap_vert_rounded, size: 16, color: AppTheme.darkTextPrimary),
+              Icon(Icons.swap_vert_rounded, size: 16, color: AppTheme.darkTextPrimary),
               const SizedBox(width: 4),
               Text(
                 sort == _VisitSort.name
@@ -1199,13 +1199,13 @@ class _FilterRow extends StatelessWidget {
                     : sort == _VisitSort.pendingFirst
                         ? 'Pending'
                         : 'Visit order',
-                style: const TextStyle(
+                style: TextStyle(
                   color: AppTheme.darkTextPrimary,
                   fontSize: 11.5,
                   fontWeight: FontWeight.w800,
                 ),
               ),
-              const Icon(Icons.expand_more_rounded, size: 16, color: AppTheme.darkTextPrimary),
+              Icon(Icons.expand_more_rounded, size: 16, color: AppTheme.darkTextPrimary),
             ],
           ),
         ),
@@ -1544,7 +1544,7 @@ class _VisitCard extends StatelessWidget {
                           slot.title,
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
+                          style: TextStyle(
                             color: AppTheme.darkTextPrimary,
                             fontSize: 14.5,
                             fontWeight: FontWeight.w800,
@@ -1652,7 +1652,7 @@ class _VisitCard extends StatelessWidget {
                 maxLines: 3,
                 enabled: !confirming,
                 onChanged: onNoteChanged,
-                style: const TextStyle(
+                style: TextStyle(
                   color: AppTheme.darkTextPrimary,
                   fontSize: 13,
                   fontWeight: FontWeight.w600,
@@ -1666,11 +1666,11 @@ class _VisitCard extends StatelessWidget {
                   contentPadding: const EdgeInsets.all(12),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: AppTheme.border),
+                    borderSide: BorderSide(color: AppTheme.border),
                   ),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: AppTheme.border),
+                    borderSide: BorderSide(color: AppTheme.border),
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
@@ -1759,7 +1759,7 @@ _StatusLook _statusLook(
     );
   }
   if (slot.isSubmitted) {
-    return const _StatusLook(
+    return _StatusLook(
       label: 'Submitted',
       background: AppTheme.darkBackgroundPrimaryLight,
       foreground: AppTheme.mutedGrey,
@@ -1874,7 +1874,7 @@ class _PreferredSlotsForm extends StatelessWidget {
                 children: [
                   Text(
                     'Slot ${index + 1}',
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: AppTheme.darkTextPrimary,
                       fontSize: 12,
                       fontWeight: FontWeight.w800,
@@ -1931,7 +1931,7 @@ class _PreferredSlotsForm extends StatelessWidget {
               maxLines: 3,
               enabled: enabled && !submitting,
               onChanged: onNoteChanged,
-              style: const TextStyle(
+              style: TextStyle(
                 color: AppTheme.darkTextPrimary,
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
@@ -1945,11 +1945,11 @@ class _PreferredSlotsForm extends StatelessWidget {
                 contentPadding: const EdgeInsets.all(12),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: AppTheme.border),
+                  borderSide: BorderSide(color: AppTheme.border),
                 ),
                 enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: AppTheme.border),
+                  borderSide: BorderSide(color: AppTheme.border),
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
@@ -2032,7 +2032,7 @@ class _PickerTile extends StatelessWidget {
               Expanded(
                 child: Text(
                   label,
-                  style: const TextStyle(
+                  style: TextStyle(
                     color: AppTheme.darkTextPrimary,
                     fontSize: 12.5,
                     fontWeight: FontWeight.w700,
@@ -2080,7 +2080,7 @@ class _TimeOptionSheet extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 16),
-            const Text(
+            Text(
               'Select time option',
               style: TextStyle(
                 color: AppTheme.darkTextPrimary,
@@ -2118,7 +2118,7 @@ class _TimeOptionSheet extends StatelessWidget {
                             Expanded(
                               child: Text(
                                 option.display,
-                                style: const TextStyle(
+                                style: TextStyle(
                                   color: AppTheme.darkTextPrimary,
                                   fontSize: 13.5,
                                   fontWeight: FontWeight.w700,
@@ -2342,7 +2342,7 @@ class _SelectedFooter extends StatelessWidget {
               'Selected: $summary',
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
+              style: TextStyle(
                 color: AppTheme.darkTextPrimary,
                 fontSize: 11.5,
                 height: 1.3,
@@ -2518,7 +2518,7 @@ class _ConfirmSheet extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 16),
-            const Text(
+            Text(
               'Confirm visit dates',
               style: TextStyle(
                 color: AppTheme.darkTextPrimary,
@@ -2550,7 +2550,7 @@ class _ConfirmSheet extends StatelessWidget {
                   final parts = option == null ? null : _slotDisplay(option);
                   return Text(
                     '${slot.title}  ·  ${parts == null ? 'Selected' : [parts.dateLine, parts.timeLine].where((e) => e.isNotEmpty).join(' · ')}',
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: AppTheme.darkTextPrimary,
                       fontSize: 13,
                       fontWeight: FontWeight.w700,
@@ -2610,7 +2610,7 @@ class _HowItWorksSheet extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 16),
-            const Text(
+            Text(
               'How it works',
               style: TextStyle(
                 color: AppTheme.darkTextPrimary,
@@ -2684,7 +2684,7 @@ class _HowStep extends StatelessWidget {
               children: [
                 Text(
                   title,
-                  style: const TextStyle(
+                  style: TextStyle(
                     color: AppTheme.darkTextPrimary,
                     fontSize: 14,
                     fontWeight: FontWeight.w800,
@@ -2732,7 +2732,7 @@ class _FilterEmptyState extends StatelessWidget {
         children: [
           Text(
             title,
-            style: const TextStyle(
+            style: TextStyle(
               color: AppTheme.darkTextPrimary,
               fontSize: 15,
               fontWeight: FontWeight.w800,
@@ -2760,7 +2760,7 @@ class _SlotsEmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Center(
+    return Center(
       child: Padding(
         padding: EdgeInsets.symmetric(horizontal: 32),
         child: Column(
@@ -2823,7 +2823,7 @@ class _SlotsMessage extends StatelessWidget {
             Text(
               title,
               textAlign: TextAlign.center,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.w800,
                 color: AppTheme.darkTextPrimary,
@@ -2892,7 +2892,7 @@ class _QuoteBlock extends StatelessWidget {
                 const SizedBox(height: 4),
                 Text(
                   text,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 13,
                     height: 1.4,
                     fontWeight: FontWeight.w600,
@@ -3008,7 +3008,7 @@ _VisitLook _visitLook(String title) {
       foreground: Color(0xFF047857),
     );
   }
-  return const _VisitLook(
+  return _VisitLook(
     icon: Icons.event_available_outlined,
     background: AppTheme.darkBackgroundPrimaryLight,
     foreground: AppTheme.navy,

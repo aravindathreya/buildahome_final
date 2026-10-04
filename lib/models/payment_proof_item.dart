@@ -1,5 +1,9 @@
 import 'package:intl/intl.dart';
 
+import 'payment_proof_bill_stage.dart';
+
+export 'payment_proof_bill_stage.dart';
+
 /// One uploaded payment-proof file from the client-portal upload response
 /// or GET `payment_proof` snapshot.
 class PaymentProofItem {
@@ -21,6 +25,13 @@ class PaymentProofItem {
   final bool rejectedFlag;
   final bool? canDeleteFlag;
   final String clearedBillsText;
+  final List<PaymentProofBillStage> billStages;
+  final String allocationHeading;
+  final String allocationState;
+  final String summaryText;
+  /// Workflow / payment-stage task this proof was uploaded for, when known.
+  final int? stageTaskId;
+  final String stageName;
 
   const PaymentProofItem({
     required this.url,
@@ -38,6 +49,12 @@ class PaymentProofItem {
     this.rejectedFlag = false,
     this.canDeleteFlag,
     this.clearedBillsText = '',
+    this.billStages = const [],
+    this.allocationHeading = '',
+    this.allocationState = '',
+    this.summaryText = '',
+    this.stageTaskId,
+    this.stageName = '',
   });
 
   bool get isNotABill =>
@@ -125,6 +142,13 @@ class PaymentProofItem {
     final rejectedFlag = _asBool(flat['is_rejected']) == true ||
         _asBool(flat['rejected']) == true;
 
+    final billStages = PaymentProofBillStage.listFromProofJson(flat);
+    final summaryText = (_asString(flat['summary_text']) ?? '').trim();
+    final stageName = (_asString(flat['stage_name']) ??
+            _asString(flat['task_name']) ??
+            _asString(flat['payment_stage_name']) ??
+            '')
+        .trim();
     return PaymentProofItem(
       url: url,
       filename: filename,
@@ -147,6 +171,14 @@ class PaymentProofItem {
           _asBool(flat['can_remove']) ??
           _asBool(flat['deletable']),
       clearedBillsText: resolveClearedBillsText(flat),
+      billStages: billStages,
+      allocationHeading: (_asString(flat['heading']) ?? '').trim(),
+      allocationState: (_asString(flat['allocation_state']) ?? '').trim(),
+      summaryText: summaryText,
+      stageTaskId: _asInt(flat['stage_task_id']) ??
+          _asInt(flat['task_id']) ??
+          _asInt(flat['payment_stage_task_id']),
+      stageName: stageName,
     );
   }
 
@@ -235,9 +267,175 @@ class PaymentProofItem {
           index: _indexFromUrl(unique[i]) ?? (i + 1),
           canDeleteFlag: null,
           clearedBillsText: '',
+          billStages: const [],
         ),
     ];
   }
+
+  /// Pending workflow tasks from `section.pending_stage_proof_tasks`.
+  static List<PaymentProofPendingTask> pendingTasksFromPayload(
+    Map<String, dynamic> payload,
+  ) {
+    final section = payload['section'] is Map
+        ? Map<String, dynamic>.from(payload['section'] as Map)
+        : <String, dynamic>{};
+    final raw = section['pending_stage_proof_tasks'] ??
+        payload['pending_stage_proof_tasks'];
+    if (raw is! List) return const [];
+    final out = <PaymentProofPendingTask>[];
+    for (final entry in raw) {
+      if (entry is! Map) continue;
+      final task = PaymentProofPendingTask.fromJson(
+        Map<String, dynamic>.from(entry),
+      );
+      if (task.id == null && task.stageName.isEmpty) continue;
+      out.add(task);
+    }
+    return out;
+  }
+
+  /// Gallery-style sections: pending stage tasks, then NT/non-NT bill stages,
+  /// then unassigned uploads. A proof may appear under its stage task and/or
+  /// each bill stage it clears.
+  static List<PaymentProofStageSection> buildGallerySections({
+    required List<PaymentProofItem> items,
+    List<PaymentProofPendingTask> pendingTasks = const [],
+  }) {
+    final taskOrder = <String>[];
+    final ntOrder = <String>[];
+    final nonNtOrder = <String>[];
+    final sections = <String, _MutableStageSection>{};
+    final assigned = <String>{};
+
+    String itemToken(PaymentProofItem item) =>
+        '${item.index ?? ''}|${item.url}|${item.filename}';
+
+    void ensureTaskSection(PaymentProofPendingTask task) {
+      final key = 'task|${task.id ?? task.stageName.toLowerCase()}';
+      sections.putIfAbsent(key, () {
+        taskOrder.add(key);
+        return _MutableStageSection(
+          key: key,
+          label: task.stageName.isNotEmpty
+              ? task.stageName
+              : (task.label.isNotEmpty ? task.label : 'Payment stage'),
+          kind: 'task',
+          stageTaskId: task.id,
+          subtitle: task.label,
+        );
+      });
+    }
+
+    for (final task in pendingTasks) {
+      ensureTaskSection(task);
+    }
+
+    for (final item in items) {
+      var placed = false;
+
+      if (item.stageTaskId != null || item.stageName.isNotEmpty) {
+        PaymentProofPendingTask? match;
+        for (final task in pendingTasks) {
+          if (item.stageTaskId != null && task.id == item.stageTaskId) {
+            match = task;
+            break;
+          }
+          if (item.stageName.isNotEmpty &&
+              task.stageName.toLowerCase() == item.stageName.toLowerCase()) {
+            match = task;
+            break;
+          }
+        }
+        match ??= PaymentProofPendingTask(
+          id: item.stageTaskId,
+          stageName: item.stageName.isNotEmpty
+              ? item.stageName
+              : 'Payment stage',
+          label: item.stageName,
+        );
+        ensureTaskSection(match);
+        final key = 'task|${match.id ?? match.stageName.toLowerCase()}';
+        final bucket = sections[key]!;
+        if (!bucket.items.any((e) => itemToken(e) == itemToken(item))) {
+          bucket.items.add(item);
+        }
+        assigned.add(itemToken(item));
+        placed = true;
+      }
+
+      for (final stage in item.billStages) {
+        final key = stage.sectionKey;
+        final bucket = sections.putIfAbsent(key, () {
+          if (stage.isNt) {
+            ntOrder.add(key);
+          } else {
+            nonNtOrder.add(key);
+          }
+          return _MutableStageSection(
+            key: key,
+            label: stage.sectionLabel,
+            kind: stage.kind,
+          );
+        });
+        if (!bucket.items.any((e) => itemToken(e) == itemToken(item))) {
+          bucket.items.add(item);
+        }
+        assigned.add(itemToken(item));
+        placed = true;
+      }
+
+      if (!placed) {
+        // leave for other/unassigned bucket below
+      }
+    }
+
+    final unassigned = [
+      for (final item in items)
+        if (!assigned.contains(itemToken(item))) item,
+    ];
+
+    final out = <PaymentProofStageSection>[
+      for (final key in taskOrder)
+        PaymentProofStageSection(
+          key: sections[key]!.key,
+          label: sections[key]!.label,
+          kind: sections[key]!.kind,
+          items: List<PaymentProofItem>.from(sections[key]!.items),
+          stageTaskId: sections[key]!.stageTaskId,
+          subtitle: sections[key]!.subtitle,
+        ),
+      for (final key in [...ntOrder, ...nonNtOrder])
+        PaymentProofStageSection(
+          key: sections[key]!.key,
+          label: sections[key]!.label,
+          kind: sections[key]!.kind,
+          items: List<PaymentProofItem>.from(sections[key]!.items),
+          stageTaskId: sections[key]!.stageTaskId,
+          subtitle: sections[key]!.subtitle,
+        ),
+    ];
+
+    if (unassigned.isNotEmpty) {
+      out.add(
+        PaymentProofStageSection(
+          key: PaymentProofStageSection.awaitingKey,
+          label: pendingTasks.isNotEmpty ||
+                  items.any((e) => e.billStages.isNotEmpty)
+              ? 'Other uploads'
+              : PaymentProofStageSection.awaitingLabel,
+          kind: 'other',
+          items: unassigned,
+        ),
+      );
+    }
+    return out;
+  }
+
+  /// Backward-compatible alias used by older call sites/tests.
+  static List<PaymentProofStageSection> groupByBillStage(
+    List<PaymentProofItem> items,
+  ) =>
+      buildGallerySections(items: items);
 
   static bool payloadHasFileRecords(Map<String, dynamic> payload) {
     final section = payload['section'] is Map
@@ -255,15 +453,38 @@ class PaymentProofItem {
     return sum;
   }
 
-  /// Plain lines under the screenshot: NT bill, then staged bill.
-  /// Uses API `cleared_bills_text` when present, else `finance_applied_bills`.
+  /// Plain lines under the screenshot: NT stages first, then non-NT.
+  /// Prefers `summary_text`, then `cleared_bills_text`, else structured lists.
   static String resolveClearedBillsText(Map<String, dynamic> json) {
     final flat = _flattenProofJson(json);
+    final summary = (_asString(flat['summary_text']) ?? '').trim();
+    if (summary.isNotEmpty) return summary;
     final direct = (_asString(flat['cleared_bills_text']) ?? '').trim();
     if (direct.isNotEmpty) return direct;
+
+    final stages = PaymentProofBillStage.listFromProofJson(flat);
+    if (stages.isNotEmpty) {
+      return formatBillStageLines(stages);
+    }
+
     final raw = flat['cleared_bills'] ?? flat['finance_applied_bills'];
     if (raw is! List) return '';
     return formatClearedBillLines(raw);
+  }
+
+  static String formatBillStageLines(List<PaymentProofBillStage> stages) {
+    final nt = <String>[];
+    final nonNt = <String>[];
+    for (final stage in stages) {
+      final line = _stageLine(stage);
+      if (line.isEmpty) continue;
+      if (stage.isNt) {
+        nt.add(line);
+      } else {
+        nonNt.add(line);
+      }
+    }
+    return [...nt, ...nonNt].join('\n');
   }
 
   static String formatClearedBillLines(List<dynamic> raw) {
@@ -274,13 +495,97 @@ class PaymentProofItem {
       final row = Map<String, dynamic>.from(entry);
       final kind = _clearedBillKind(row['kind']);
       if (kind == 'nt') {
-        nt.add(_clearedBillLine('NT bill', row));
-      } else if (kind == 'staged') {
-        staged.add(_clearedBillLine('Staged bill', row));
+        nt.add(_clearedBillLine('NT', row));
+      } else if (kind == 'non_nt' || kind == 'staged') {
+        staged.add(_clearedBillLine('Non-NT', row));
       }
     }
     return [...nt, ...staged].where((line) => line.isNotEmpty).join('\n');
   }
+}
+
+/// Pending client stage-proof workflow task from the payment_proof section.
+class PaymentProofPendingTask {
+  final int? id;
+  final String stageName;
+  final String label;
+
+  const PaymentProofPendingTask({
+    this.id,
+    required this.stageName,
+    this.label = '',
+  });
+
+  factory PaymentProofPendingTask.fromJson(Map<String, dynamic> json) {
+    final stageName = (_asString(json['stage_name']) ??
+            _asString(json['name']) ??
+            _asString(json['task_name']) ??
+            '')
+        .trim();
+    final label = (_asString(json['label']) ?? '').trim();
+    return PaymentProofPendingTask(
+      id: _asInt(json['id']) ?? _asInt(json['task_id']),
+      stageName: stageName.isNotEmpty
+          ? stageName
+          : (label.isNotEmpty ? label : 'Payment stage'),
+      label: label,
+    );
+  }
+}
+
+/// Gallery-style section of proofs for a stage task or bill allocation.
+class PaymentProofStageSection {
+  static const awaitingKey = 'awaiting';
+  static const awaitingLabel = 'Awaiting allocation';
+
+  final String key;
+  final String label;
+  final String kind; // task | nt | non_nt | other
+  final List<PaymentProofItem> items;
+  final int? stageTaskId;
+  final String subtitle;
+
+  const PaymentProofStageSection({
+    required this.key,
+    required this.label,
+    required this.kind,
+    required this.items,
+    this.stageTaskId,
+    this.subtitle = '',
+  });
+
+  bool get isAwaiting => key == awaitingKey;
+  bool get isNt => kind == 'nt';
+  bool get isTask => kind == 'task';
+}
+
+class _MutableStageSection {
+  final String key;
+  final String label;
+  final String kind;
+  final int? stageTaskId;
+  final String subtitle;
+  final List<PaymentProofItem> items = [];
+
+  _MutableStageSection({
+    required this.key,
+    required this.label,
+    required this.kind,
+    this.stageTaskId,
+    this.subtitle = '',
+  });
+}
+
+String _stageLine(PaymentProofBillStage stage) {
+  final prefix = stage.isNt ? 'NT' : 'Non-NT';
+  final label = stage.sectionLabel;
+  var text = '$prefix: $label';
+  final money = stage.amountDisplay.isNotEmpty
+      ? stage.amountDisplay
+      : _clearedBillMoney(stage.amount);
+  if (money.isNotEmpty) text = '$text — $money';
+  if (stage.partial) text = '$text (partial)';
+  return text;
 }
 
 String formatReceiptAmount(num amount) {
@@ -611,29 +916,31 @@ num? _asNum(dynamic value) {
 }
 
 String _clearedBillKind(dynamic value) {
-  final kind = (value ?? '').toString().trim().toLowerCase().replaceAll(' ', '_');
-  if (kind == 'nt' || kind == 'non_tender' || kind == 'non-tender') return 'nt';
-  if (kind == 'raised' ||
-      kind == 'stage' ||
-      kind == 'staged' ||
-      kind == 'stage_bill' ||
-      kind == 'staged_bill') {
-    return 'staged';
-  }
+  final kind = normalizeBillStageKind(value);
+  if (kind == 'nt') return 'nt';
+  if (kind == 'non_nt') return 'non_nt';
   return '';
 }
 
 String _clearedBillLine(String label, Map<String, dynamic> row) {
-  final bits = <String>[label];
+  final name = (_asString(row['stage_name']) ??
+          _asString(row['name']) ??
+          _asString(row['task_name']) ??
+          '')
+      .trim();
+  final number = (_asString(row['bill_number']) ?? '').trim();
   final id = row['id'];
   final idText = id == null ? '' : id.toString().trim();
-  if (idText.isNotEmpty) bits.add('#$idText');
-  final number = (_asString(row['bill_number']) ?? '').trim();
-  final name = (_asString(row['name']) ?? '').trim();
-  if (number.isNotEmpty && number != idText) bits.add(number);
-  if (name.isNotEmpty && name != number && name != idText) bits.add(name);
-  var text = bits.join(' ');
-  final money = _clearedBillMoney(row['amount']);
+
+  final titleBits = <String>[];
+  if (name.isNotEmpty) titleBits.add(name);
+  if (number.isNotEmpty && number != name) titleBits.add(number);
+  if (titleBits.isEmpty && idText.isNotEmpty) titleBits.add('#$idText');
+
+  var text = titleBits.isEmpty ? label : '$label: ${titleBits.join(' ')}';
+  final display = (_asString(row['amount_display']) ?? '').trim();
+  final money =
+      display.isNotEmpty ? display : _clearedBillMoney(row['amount']);
   if (money.isNotEmpty) text = '$text — $money';
   if (row['partial'] == true) text = '$text (partial)';
   return text;

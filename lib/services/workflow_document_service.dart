@@ -493,6 +493,14 @@ class WorkflowDocumentService {
 
       void addCategory(_MutableCategory category) {
         if (seen.contains(category.id)) return;
+        if (isUncategorizedDocumentCategoryRef(
+          id: category.id,
+          label: category.label,
+          libraryGroupKey: category.libraryGroupKey,
+          clientJourneyKey: category.clientJourneyKey,
+        )) {
+          return;
+        }
         final dedupedSections = <String, WorkflowDocumentSection>{};
         for (final section in category.sections) {
           dedupedSections[section.id] = section;

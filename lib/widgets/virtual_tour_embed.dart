@@ -125,7 +125,7 @@ class _VirtualTourEmbedState extends State<VirtualTourEmbed> {
           child: Stack(
             fit: StackFit.expand,
             children: [
-              const ColoredBox(color: AppTheme.darkBackgroundPrimary),
+              ColoredBox(color: AppTheme.darkBackgroundPrimary),
               if (_controller != null)
                 WebViewWidget(
                   controller: _controller!,
@@ -214,7 +214,7 @@ class _EmbedLoading extends StatelessWidget {
   Widget build(BuildContext context) {
     return ColoredBox(
       color: AppTheme.darkBackgroundPrimary.withValues(alpha: 0.92),
-      child: const Center(
+      child: Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -264,7 +264,7 @@ class _EmbedError extends StatelessWidget {
                 color: AppTheme.accentBlue,
               ),
               const SizedBox(height: 8),
-              const Text(
+              Text(
                 '3D view unavailable',
                 textAlign: TextAlign.center,
                 style: TextStyle(

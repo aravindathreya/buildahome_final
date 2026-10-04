@@ -444,7 +444,7 @@ class LegacyClientDashboardScreenState extends State<LegacyClientDashboardScreen
     });
 
     menuItems.add({
-      'title': 'NT Payments',
+      'title': 'Upwind Additions Cost',
       'icon': Icons.receipt_long,
       'route': () => const PaymentTaskWidget(
             initialCategory: PaymentCategory.nonTender,
@@ -854,10 +854,17 @@ class LegacyClientDashboardScreenState extends State<LegacyClientDashboardScreen
 
     items.add(
       _DashboardSearchItem(
-        title: 'Payments • Non Tender',
+        title: 'Payments • Upwind Additions Cost',
         subtitle: 'Monitor custom expenses',
         icon: Icons.receipt_long,
-        keywords: ['payment', 'non tender', 'expenses'],
+        keywords: [
+          'payment',
+          'non tender',
+          'nt',
+          'upwind',
+          'additions',
+          'expenses',
+        ],
         onSelected: () => _openPaymentCategory(PaymentCategory.nonTender),
       ),
     );

@@ -583,6 +583,11 @@ class _MultiMaterialSiteProofScreenState
     r')$',
   );
 
+  /// Quantity + unit label, e.g. "450 CFT", "12.5 Sq. ft".
+  static final RegExp _measurementUnitPattern = RegExp(
+    r'^\d+(?:[.,]\d+)?\s+[A-Za-z][A-Za-z.\s]*$',
+  );
+
   String _normalizeIndianVehicleNumber(String raw) {
     return raw.trim().toUpperCase().replaceAll(RegExp(r'[\s\-./]'), '');
   }
@@ -591,6 +596,12 @@ class _MultiMaterialSiteProofScreenState
     final normalized = _normalizeIndianVehicleNumber(raw);
     if (normalized.isEmpty) return false;
     return _indianVehicleNumberPattern.hasMatch(normalized);
+  }
+
+  bool _isValidMeasurementUnit(String raw) {
+    final value = raw.trim();
+    if (value.isEmpty) return false;
+    return _measurementUnitPattern.hasMatch(value);
   }
 
   Future<void> _submitAll() async {
@@ -608,6 +619,18 @@ class _MultiMaterialSiteProofScreenState
     }
     if (_measurementController.text.trim().isEmpty) {
       _snack('Measurement is required.', error: true);
+      return;
+    }
+    final unitRaw = _measurementUnitController.text.trim();
+    if (unitRaw.isEmpty) {
+      _snack('Unit is required (e.g. 450 CFT).', error: true);
+      return;
+    }
+    if (!_isValidMeasurementUnit(unitRaw)) {
+      _snack(
+        'Unit must include a number and text (e.g. 450 CFT).',
+        error: true,
+      );
       return;
     }
 
@@ -972,7 +995,7 @@ class _MultiMaterialSiteProofScreenState
                 children: [
                   Text(
                     'Materials (${_materialsWithRemaining.length})',
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 17,
                       fontWeight: FontWeight.w800,
                       color: AppTheme.darkTextPrimary,
@@ -1011,7 +1034,7 @@ class _MultiMaterialSiteProofScreenState
                   width: double.infinity,
                   padding: const EdgeInsets.all(14),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFF8FAFC),
+                    color: AppTheme.darkBackgroundPrimaryLight,
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(color: AppTheme.border),
                   ),
@@ -1055,7 +1078,7 @@ class _MultiMaterialSiteProofScreenState
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppTheme.accentBlue,
                 foregroundColor: Colors.white,
-                disabledBackgroundColor: const Color(0xFFBFDBFE),
+                disabledBackgroundColor: AppTheme.darkBackgroundPrimaryLight,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(14),
                 ),
@@ -1089,10 +1112,12 @@ class _MultiMaterialSiteProofScreenState
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
-            color: selected ? const Color(0xFF93C5FD) : AppTheme.border,
+            color: selected ? AppTheme.accentBlue : AppTheme.border,
             width: selected ? 1.5 : 1,
           ),
-          color: selected ? const Color(0xFFEFF6FF) : Colors.white,
+          color: selected
+              ? const Color(0xFF1E3A5F)
+              : AppTheme.darkBackgroundSecondary,
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1112,7 +1137,7 @@ class _MultiMaterialSiteProofScreenState
                       children: [
                         Text(
                           line.material,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontWeight: FontWeight.w800,
                             fontSize: 16,
                             color: AppTheme.darkTextPrimary,
@@ -1143,7 +1168,7 @@ class _MultiMaterialSiteProofScreenState
             ),
             if (selected) ...[
               const SizedBox(height: 12),
-              const Text(
+              Text(
                 'Quantity received today *',
                 style: TextStyle(
                   fontWeight: FontWeight.w700,
@@ -1168,7 +1193,7 @@ class _MultiMaterialSiteProofScreenState
                 Text(
                   'Remaining after this: $remainingAfter',
                   style: const TextStyle(
-                    color: Color(0xFF065F46),
+                    color: Color(0xFF34D399),
                     fontWeight: FontWeight.w700,
                     fontSize: 13,
                   ),
@@ -1191,7 +1216,7 @@ class _MultiMaterialSiteProofScreenState
           child: ListView(
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
             children: [
-              const Text(
+              Text(
                 'Evidence & delivery details',
                 style: TextStyle(
                   fontSize: 18,
@@ -1209,7 +1234,7 @@ class _MultiMaterialSiteProofScreenState
                 ),
               ),
               const SizedBox(height: 16),
-              const Text(
+              Text(
                 'Selected materials',
                 style: TextStyle(
                   fontSize: 16,
@@ -1221,7 +1246,7 @@ class _MultiMaterialSiteProofScreenState
               ...materials.map(_buildMaterialEvidenceCard),
               const SizedBox(height: 8),
               const Divider(height: 32),
-              const Text(
+              Text(
                 'Delivery proof *',
                 style: TextStyle(
                   fontSize: 16,
@@ -1283,10 +1308,19 @@ class _MultiMaterialSiteProofScreenState
               const SizedBox(height: 10),
               TextField(
                 controller: _measurementUnitController,
-                decoration: _inputDecoration('Unit (e.g. Sq. ft)'),
+                decoration: _inputDecoration('Unit * (e.g. 450 CFT)'),
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                'Enter a number followed by the unit label. Example: 450 CFT',
+                style: TextStyle(
+                  color: AppTheme.mutedGrey,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
               const SizedBox(height: 20),
-              const Text(
+              Text(
                 'Vehicle details',
                 style: TextStyle(
                   fontSize: 16,
@@ -1375,7 +1409,7 @@ class _MultiMaterialSiteProofScreenState
                 onRemove: (i) => setState(() => _vehicleVideos.removeAt(i)),
               ),
               const SizedBox(height: 20),
-              const Text(
+              Text(
                 'Comments',
                 style: TextStyle(
                   fontSize: 16,
@@ -1444,7 +1478,7 @@ class _MultiMaterialSiteProofScreenState
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppTheme.darkBackgroundSecondary,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: AppTheme.border),
       ),
@@ -1456,7 +1490,7 @@ class _MultiMaterialSiteProofScreenState
               children: [
                 Text(
                   line.material,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontWeight: FontWeight.w800,
                     fontSize: 16,
                     color: AppTheme.darkTextPrimary,
@@ -1491,17 +1525,17 @@ class _MultiMaterialSiteProofScreenState
             width: 88,
             height: 88,
             decoration: const BoxDecoration(
-              color: Color(0xFFECFDF5),
+              color: Color(0xFF14532D),
               shape: BoxShape.circle,
             ),
             child: const Icon(
               Icons.check_rounded,
               size: 52,
-              color: Color(0xFF059669),
+              color: Color(0xFF34D399),
             ),
           ),
           const SizedBox(height: 20),
-          const Text(
+          Text(
             'Proof submitted successfully!',
             textAlign: TextAlign.center,
             style: TextStyle(
@@ -1526,14 +1560,14 @@ class _MultiMaterialSiteProofScreenState
               width: double.infinity,
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: const Color(0xFFFFFBEB),
+                color: const Color(0xFF3A2F14),
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: const Color(0xFFFDE68A)),
+                border: Border.all(color: const Color(0xFF854D0E)),
               ),
               child: const Text(
                 'Some material quantities are still pending. You can submit another delivery for the remaining amounts.',
                 style: TextStyle(
-                  color: Color(0xFF92400E),
+                  color: Color(0xFFFBBF24),
                   fontWeight: FontWeight.w700,
                   height: 1.35,
                 ),
@@ -1545,7 +1579,7 @@ class _MultiMaterialSiteProofScreenState
             width: double.infinity,
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: AppTheme.darkBackgroundSecondary,
               borderRadius: BorderRadius.circular(14),
               border: Border.all(color: AppTheme.border),
             ),
@@ -1683,11 +1717,11 @@ class _MultiMaterialSiteProofScreenState
       fillColor: AppTheme.darkBackgroundPrimaryLight,
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: const BorderSide(color: AppTheme.border),
+        borderSide: BorderSide(color: AppTheme.border),
       ),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: const BorderSide(color: AppTheme.border),
+        borderSide: BorderSide(color: AppTheme.border),
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
@@ -1738,8 +1772,8 @@ class _BottomBar extends StatelessWidget {
       top: false,
       child: Container(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-        decoration: const BoxDecoration(
-          color: Colors.white,
+        decoration: BoxDecoration(
+          color: AppTheme.darkBackgroundSecondary,
           border: Border(top: BorderSide(color: AppTheme.border)),
         ),
         child: child,
@@ -1775,20 +1809,20 @@ class _GpsBanner extends StatelessWidget {
   Widget build(BuildContext context) {
     final hasError = siteConfigured && !onSite;
     final bg = isChecking
-        ? const Color(0xFFEFF6FF)
+        ? const Color(0xFF1E3A5F)
         : hasError
-            ? const Color(0xFFFEF2F2)
-            : const Color(0xFFECFDF5);
+            ? const Color(0xFF3F1D1D)
+            : const Color(0xFF14532D);
     final border = isChecking
-        ? const Color(0xFFBFDBFE)
+        ? const Color(0xFF3B82F6)
         : hasError
-            ? const Color(0xFFFECACA)
-            : const Color(0xFFA7F3D0);
+            ? const Color(0xFF7F1D1D)
+            : const Color(0xFF166534);
     final ink = isChecking
-        ? const Color(0xFF1D4ED8)
+        ? const Color(0xFF93C5FD)
         : hasError
-            ? const Color(0xFF991B1B)
-            : const Color(0xFF065F46);
+            ? const Color(0xFFFCA5A5)
+            : const Color(0xFF6EE7B7);
 
     String message;
     if (isChecking) {
@@ -2014,7 +2048,7 @@ class _MediaRow extends StatelessWidget {
       children: [
         Text(
           title,
-          style: const TextStyle(
+          style: TextStyle(
             fontWeight: FontWeight.w700,
             color: AppTheme.darkTextPrimary,
             fontSize: 13,
@@ -2035,7 +2069,7 @@ class _MediaRow extends StatelessWidget {
                         ? Container(
                             width: 80,
                             height: 80,
-                            color: AppTheme.darkTextPrimary,
+                            color: AppTheme.darkBackgroundPrimaryLight,
                             child: const Column(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
@@ -2066,8 +2100,11 @@ class _MediaRow extends StatelessWidget {
                                 errorBuilder: (_, __, ___) => Container(
                                   width: 80,
                                   height: 80,
-                                  color: const Color(0xFFE5E7EB),
-                                  child: const Icon(Icons.image),
+                                  color: AppTheme.darkBackgroundPrimaryLight,
+                                  child: const Icon(
+                                    Icons.image,
+                                    color: AppTheme.mutedGrey,
+                                  ),
                                 ),
                               ),
                               Positioned(
@@ -2109,7 +2146,7 @@ class _MediaRow extends StatelessWidget {
                             ? Container(
                                 width: 80,
                                 height: 80,
-                                color: AppTheme.darkTextPrimary,
+                                color: AppTheme.darkBackgroundPrimaryLight,
                                 child: const Icon(
                                   Icons.play_circle_fill,
                                   color: Colors.white,
@@ -2156,7 +2193,7 @@ class _MediaRow extends StatelessWidget {
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(color: AppTheme.accentBlue),
-                      color: const Color(0xFFEFF6FF),
+                      color: const Color(0xFF1E3A5F),
                     ),
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,

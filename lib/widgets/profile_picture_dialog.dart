@@ -211,7 +211,7 @@ class _ProfilePictureDialogState extends State<_ProfilePictureDialog> {
         widget.isStartupPrompt
             ? 'Add a profile picture'
             : 'Update profile picture',
-        style: const TextStyle(
+        style: TextStyle(
           color: AppTheme.darkTextPrimary,
           fontWeight: FontWeight.w800,
           fontSize: 18,

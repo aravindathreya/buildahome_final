@@ -368,9 +368,12 @@ class UserDashboardLayoutState extends State<UserDashboardLayout> {
         snapshot: snapshot,
       ),
     );
-    // Docs tab: staff only (never clients).
+    // Docs tab: staff only (never clients). Clients also drop "More" —
+    // the side drawer is removed and remaining screens are quick actions.
     keys = _layoutIsClientUser
         ? withoutProjectHomeDocsTabs(keys)
+            .where((key) => key != kMobileBottomNavMoreKey)
+            .toList()
         : ensureProjectHomeDocsTab(keys);
     // "For me" / client portal: clients + Super Admin only.
     if (!_layoutIsClientUser && !_layoutIsSuperAdmin) {
@@ -526,6 +529,8 @@ class UserDashboardLayoutState extends State<UserDashboardLayout> {
       return;
     }
     if (key == kMobileBottomNavMoreKey) {
+      // Clients no longer use the side drawer; everything lives in quick actions.
+      if (_layoutIsClientUser) return;
       _scaffoldKey.currentState?.openDrawer();
       return;
     }
@@ -563,7 +568,7 @@ class UserDashboardLayoutState extends State<UserDashboardLayout> {
     return Container(
       width: MediaQuery.of(context).size.width,
       padding: EdgeInsets.only(top: topPad + 10, left: 20, right: 16, bottom: 12),
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: AppTheme.darkBackgroundSecondary,
         border: Border(bottom: BorderSide(color: AppTheme.border)),
       ),
@@ -579,7 +584,7 @@ class UserDashboardLayoutState extends State<UserDashboardLayout> {
                   onPressed: _goBackToDashboard,
                   padding: EdgeInsets.zero,
                   constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
-                  icon: const Icon(
+                  icon: Icon(
                     Icons.arrow_back_rounded,
                     color: AppTheme.darkTextPrimary,
                     size: 22,
@@ -603,7 +608,7 @@ class UserDashboardLayoutState extends State<UserDashboardLayout> {
                     const SizedBox(height: 2),
                     Text(
                       displayName.isNotEmpty ? displayName : 'there',
-                      style: const TextStyle(
+                      style: TextStyle(
                         color: AppTheme.darkTextPrimary,
                         fontSize: 26,
                         fontWeight: FontWeight.w600,
@@ -648,7 +653,7 @@ class UserDashboardLayoutState extends State<UserDashboardLayout> {
                         return Stack(
                           clipBehavior: Clip.none,
                           children: [
-                            const Center(
+                            Center(
                               child: Icon(
                                 Icons.notifications_none_rounded,
                                 color: AppTheme.darkTextPrimary,
@@ -762,7 +767,7 @@ class UserDashboardLayoutState extends State<UserDashboardLayout> {
             key: _scaffoldKey,
             backgroundColor: AppTheme.darkBackgroundPrimary,
             extendBody: true,
-            drawer: NavMenuWidget(),
+            drawer: _layoutIsClientUser ? null : NavMenuWidget(),
             body: Column(
               children: [
                 _buildUserHeader(),
@@ -819,23 +824,23 @@ class UserDashboardLayoutState extends State<UserDashboardLayout> {
                   ClientTourStep(
                     title: 'Quick actions',
                     body:
-                        'Payments, gallery, and more. “For me” opens your Client Portal.',
+                        'For me, Slots, Payments, Upwind, Project Gallery, Docs, Timeline, and Profile.',
                     targetKey: _tourActionsKey,
                     holeRadius: 16,
                     holePadding: const EdgeInsets.fromLTRB(6, 4, 6, 8),
                   ),
                   ClientTourStep(
-                    title: 'Tasks, payments, and more',
+                    title: 'Tasks and payments',
                     body:
-                        'Use the bar below for your tasks, payments, and the full menu.',
+                        'Use the bar below for home, tasks, and payments.',
                     targetKey: _tourBottomNavKey,
                     holeRadius: 16,
                     holePadding: const EdgeInsets.fromLTRB(4, 4, 4, 2),
                   ),
                   ClientTourStep(
-                    title: 'Alerts and your menu',
+                    title: 'Alerts and profile',
                     body:
-                        'Notifications land on the bell. Tap your photo for the menu, profile, and more screens.',
+                        'Notifications land on the bell. Tap your photo for profile and sign out.',
                     targetKey: _tourHeaderKey,
                     holeRadius: 22,
                     holePadding: const EdgeInsets.all(6),
@@ -873,10 +878,10 @@ class UserDashboardScreen extends StatefulWidget {
 class UserDashboardScreenState extends State<UserDashboardScreen> {
   static const Color _navy = AppTheme.navy;
   static const Color _mutedGrey = Color(0xFFA8B3C7);
-  static const Color _cardBorder = AppTheme.border;
+  static Color get _cardBorder => AppTheme.border;
   static const Color _ink = Color(0xFFF8FAFC);
   static const Color _airbnbMuted = _mutedGrey;
-  static const Color _hairline = _cardBorder;
+  static Color _hairline = _cardBorder;
 
   List dailyUpdateList = [];
   var username = ' ';
@@ -915,11 +920,17 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
   bool _isLoadingTasks = false;
   String? _tasksError;
 
+  // Client outstanding payments (tender + non-tender)
+  double _totalOutstanding = 0;
+  bool _isLoadingOutstanding = false;
+
   @override
   void dispose() {
     ClientGenerationService.instance.generation
         .removeListener(_onClientGenerationChanged);
     MobileQuickActionsService.instance.revision
+        .removeListener(_onQuickActionsChanged);
+    MobileBottomNavService.instance.revision
         .removeListener(_onQuickActionsChanged);
     _searchDebounce?.cancel();
     _quickSearchController.dispose();
@@ -936,6 +947,8 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
         .addListener(_onClientGenerationChanged);
     MobileQuickActionsService.instance.revision
         .addListener(_onQuickActionsChanged);
+    MobileBottomNavService.instance.revision
+        .addListener(_onQuickActionsChanged);
     // Load role
     _loadRole();
     loadDataFromProvider();
@@ -945,6 +958,7 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
     }
     _initializeData();
     loadTasks();
+    unawaited(_loadOutstandingPayments());
     unawaited(ClientGenerationService.instance.ensureLoaded());
     unawaited(MobileQuickActionsService.instance
         .ensureSurface(MobileQuickActionSurface.projectHomeNew));
@@ -983,6 +997,54 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
     if (mounted) {
       await loadDataFromProvider();
     }
+    unawaited(_loadOutstandingPayments());
+  }
+
+  Future<void> _loadOutstandingPayments() async {
+    if (!mounted) return;
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    final role = (prefs.getString('role') ?? '').trim().toLowerCase();
+    if (role != 'client') return;
+
+    final projectId = prefs.getString('project_id');
+    if (projectId == null || projectId.isEmpty) return;
+
+    if (_isLoadingOutstanding) return;
+    _isLoadingOutstanding = true;
+    try {
+      final snapshot = await fetchProjectPaymentsSnapshot(projectId);
+      if (!mounted) return;
+      final next = snapshot.totalOutstanding;
+      if ((next - _totalOutstanding).abs() > 0.009) {
+        setState(() => _totalOutstanding = next);
+      }
+      print(
+          '[UserDashboard] Outstanding payments: tender+NT = $next');
+    } catch (e) {
+      print('[UserDashboard] Error loading outstanding payments: $e');
+    } finally {
+      _isLoadingOutstanding = false;
+    }
+  }
+
+  bool get _shouldShowClearPaymentTask =>
+      _isClientUser && _totalOutstanding > 0;
+
+  Map<String, dynamic> get _clearPaymentTask {
+    final formatter =
+        NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0);
+    final amountText = formatter.format(_totalOutstanding);
+    return <String, dynamic>{
+      'id': kClearOutstandingPaymentTaskId,
+      'title': 'Clear outstanding payment',
+      'task_name': 'Clear outstanding payment',
+      'description':
+          'You have $amountText pending. Upload payment proof to clear dues.',
+      'status': 'pending',
+      'category': kClearOutstandingPaymentCategory,
+      'task_category': kClearOutstandingPaymentCategory,
+      'outstanding_amount': _totalOutstanding,
+    };
   }
 
   loadDataFromProvider() async {
@@ -1069,6 +1131,7 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
     });
     await DataProvider().reloadData(force: force);
     await loadDataFromProvider();
+    unawaited(_loadOutstandingPayments());
     if (force) {
       await MobileQuickActionsService.instance.ensureSurface(
         MobileQuickActionSurface.projectHomeNew,
@@ -1292,8 +1355,13 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
     );
   }
 
-  List<Map<String, dynamic>> get _activeRecentTasks =>
-      filterActiveRecentTasks(_tasks);
+  List<Map<String, dynamic>> get _activeRecentTasks {
+    final tasks = filterActiveRecentTasks(_tasks);
+    if (_shouldShowClearPaymentTask) {
+      return [_clearPaymentTask, ...tasks];
+    }
+    return tasks;
+  }
 
   bool get _isClientUser =>
       (_currentRole ?? '').trim().toLowerCase() == 'client';
@@ -1823,24 +1891,38 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
 
   Widget _buildModernDashboardTaskCard(
       Map<String, dynamic> task, int index) {
+    final isClearPayment = isClearOutstandingPaymentTask(task);
     final dateParts = _taskDateTimeParts(task);
     final dateText = dateParts[0] == null
         ? null
         : dateParts[1] == null
             ? dateParts[0]
             : '${dateParts[0]} · ${dateParts[1]}';
+    final outstandingRaw = task['outstanding_amount'];
+    final outstandingAmount = outstandingRaw is num
+        ? outstandingRaw.toDouble()
+        : double.tryParse(outstandingRaw?.toString() ?? '') ??
+            _totalOutstanding;
+    final clearPaymentAmountLabel = isClearPayment
+        ? NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0)
+            .format(outstandingAmount)
+        : null;
     final showPaymentProofMenu =
         (_currentRole ?? '').trim().toLowerCase() == 'client' &&
             isClientUploadStagePaymentProofTask(task);
 
     return ModernTaskCard(
-      title: _dashboardPendingTaskTitle(task),
-      materialLabel: indentTaskMaterialLabel(task),
-      dateLabel: dateText,
-      status: isWorkflowDelayGated(task)
+      title: isClearPayment
+          ? 'Clear outstanding payment'
+          : _dashboardPendingTaskTitle(task),
+      materialLabel: isClearPayment ? null : indentTaskMaterialLabel(task),
+      dateLabel: clearPaymentAmountLabel ?? dateText,
+      status: isClearPayment
           ? 'pending'
-          : normalizeTaskStatusValue(task),
-      statusLabel: workflowStatusDisplayLabel(task),
+          : isWorkflowDelayGated(task)
+              ? 'pending'
+              : normalizeTaskStatusValue(task),
+      statusLabel: isClearPayment ? 'Pending' : workflowStatusDisplayLabel(task),
       accentIndex: index,
       tintedBackground: true,
       onTap: () => _openTaskDetails(task),
@@ -1856,7 +1938,9 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
               ),
               onSelected: (value) {
                 if (value == 'payment_proof') {
-                  _navigateToWidget(const UploadPaymentProofScreen());
+                  _navigateToWidget(
+                    const UploadPaymentProofScreen(showPendingPayments: true),
+                  );
                 }
               },
               itemBuilder: (context) => const [
@@ -1872,7 +1956,7 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
 
   String _dashboardPendingTaskTitle(Map<String, dynamic> task) {
     final title = _clientTaskTitle(task);
-    final projectName = task['project_name']?.toString().trim() ?? '';
+    final projectName = taskProjectDisplayName(task) ?? '';
     if (projectName.isEmpty) return title;
 
     final lowerTitle = title.toLowerCase();
@@ -2297,6 +2381,14 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
   }
 
   void _openTaskDetails(Map<String, dynamic> task) {
+    if (isClearOutstandingPaymentTask(task)) {
+      _navigateToWidget(
+        const UploadPaymentProofScreen(showPendingPayments: true),
+      ).then((_) {
+        unawaited(_loadOutstandingPayments());
+      });
+      return;
+    }
     if (isIndentProofReviewTask(task) || isIndentProofDeeplinkTask(task)) {
       if (isIndentProofReviewTask(task)) {
         openIndentProofReviewFromTask(
@@ -2863,7 +2955,7 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
       if (_canSeeForMe) {
         menuItems.add({
           'title': 'Client Portal',
-          'icon': Icons.dashboard_customize_outlined,
+          'icon': Icons.dashboard_customize_rounded,
           'route': () async {
             if (_isSuperAdminUser && !_isClientUser) {
               final prefs = await SharedPreferences.getInstance();
@@ -2883,7 +2975,7 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
       }
       menuItems.add({
         'title': 'My tasks',
-        'icon': Icons.pending_actions,
+        'icon': Icons.pending_actions_rounded,
         'route': () => MyTasksScreen(
               tasks: _tasks,
               onRefresh: _refreshTasksForMyTasks,
@@ -2891,14 +2983,14 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
       });
       menuItems.add({
         'title': 'Project Timeline',
-        'icon': Icons.timeline_rounded,
+        'icon': Icons.view_timeline_rounded,
         'route': () => const ProjectTimelineScreen(),
       });
       // Clients: shared Client Information card only.
       if (_currentRole?.toLowerCase() == 'client') {
         menuItems.add({
           'title': 'Client Information',
-          'icon': Icons.person_outline_rounded,
+          'icon': Icons.person_rounded,
           'route': () => const SalesSopCardsScreen(
                 initialCardKey: 'client_information',
                 isClient: true,
@@ -2907,7 +2999,7 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
       }
       menuItems.add({
         'title': 'Slots',
-        'icon': Icons.event_available_outlined,
+        'icon': Icons.event_available_rounded,
         'route': () => const SlotsScreen(),
       });
     }
@@ -2974,14 +3066,14 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
     // Payments is part of the shared project home, including staff.
     menuItems.add({
       'title': 'Payments',
-      'icon': Icons.payment,
+      'icon': Icons.account_balance_wallet_rounded,
       'route': () => PaymentTaskWidget(),
     });
     if (_isClientUser ||
         rbac.canViewSync(_currentRole, RBACService.payments)) {
       menuItems.add({
-        'title': 'NT Payments',
-        'icon': Icons.receipt_long,
+        'title': 'Upwind Additions Cost',
+        'icon': Icons.receipt_long_rounded,
         'route': () => const PaymentTaskWidget(
               initialCategory: PaymentCategory.nonTender,
             ),
@@ -2991,28 +3083,36 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
     if (_isClientUser) {
       menuItems.add({
         'title': 'Updates',
-        'icon': Icons.description_outlined,
+        'icon': Icons.campaign_rounded,
         'route': () => const DprScreen(title: 'Updates'),
       });
     }
 
+    // Upload proof: clients get it on home now that the side drawer is gone.
     menuItems.add({
       'title': 'Upload proof',
-      'icon': Icons.cloud_upload_outlined,
-      'route': () => const UploadPaymentProofScreen(),
+      'icon': Icons.cloud_upload_rounded,
+      'route': () => UploadPaymentProofScreen(
+            showPendingPayments: !_isClientUser,
+          ),
     });
 
-    // Documents — staff only. Clients no longer get Docs V1 on home.
-    if (!_isClientUser &&
-        rbac.canViewSync(_currentRole, RBACService.documents)) {
+    // Documents — clients get Docs as a quick action; staff keep both entries.
+    if (_isClientUser) {
       menuItems.add({
         'title': 'Documents',
-        'icon': Icons.description,
+        'icon': Icons.folder_copy_rounded,
+        'route': () => const DocumentsV1HomeScreen(clientMode: true),
+      });
+    } else if (rbac.canViewSync(_currentRole, RBACService.documents)) {
+      menuItems.add({
+        'title': 'Documents',
+        'icon': Icons.folder_copy_rounded,
         'route': () => Documents(),
       });
       menuItems.add({
         'title': 'Documents V1',
-        'icon': Icons.folder_copy_outlined,
+        'icon': Icons.folder_copy_rounded,
         'route': () => const DocumentsV1HomeScreen(),
       });
     }
@@ -3021,7 +3121,7 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
     if (rbac.canViewSync(_currentRole, RBACService.scheduler)) {
       menuItems.add({
         'title': 'Scheduler',
-        'icon': Icons.calendar_today,
+        'icon': Icons.calendar_today_rounded,
         'route': () => const TaskWidget(),
       });
     }
@@ -3031,13 +3131,13 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
       if (!_isClientUser) {
         menuItems.add({
           'title': 'Gallery',
-          'icon': Icons.photo_library,
+          'icon': Icons.photo_library_rounded,
           'route': () => Gallery(),
         });
       }
       menuItems.add({
         'title': 'Timeline Gallery',
-        'icon': Icons.auto_awesome_motion,
+        'icon': Icons.auto_awesome_motion_rounded,
         'route': () => TimelineGallery(),
       });
     }
@@ -3139,20 +3239,31 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
     return menuItems;
   }
 
-  /// Pinned quick actions for clients on the project dashboard.
+  /// Staff project home keeps a fixed 3×2 quick-action grid.
+  static const int _quickActionSlotCount = 6;
+
+  /// Prefer these when staffing the fixed 6-slot staff grid.
+  static const List<String> _quickActionFillerTitles = [
+    'Documents',
+    'Profile',
+  ];
+
+  /// Pinned quick actions for clients on the project dashboard — exact set (4×2).
   static const List<String> _clientPinnedQuickActionTitles = [
     'Client Portal',
     'Slots',
-    'Project Timeline',
-    'Timeline Gallery',
     'Payments',
-    'Upload proof',
+    'Upwind Additions Cost',
+    'Timeline Gallery',
+    'Documents',
+    'Project Timeline',
+    'Profile',
   ];
 
   /// Working tiles from commit 440e62a, then newer tiles marked coming soon.
   static const List<String> _legacyClientPinnedQuickActionTitles = [
     'Payments',
-    'NT Payments',
+    'Upwind Additions Cost',
     'Gallery',
     'Updates',
     'Scheduler',
@@ -3171,10 +3282,7 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
 
   List<Map<String, dynamic>> _hardcodedPinnedQuickActions(
       List<Map<String, dynamic>> items) {
-    final byTitle = <String, Map<String, dynamic>>{};
-    for (final item in items) {
-      byTitle[item['title'].toString()] = item;
-    }
+    final byTitle = _quickActionCatalogByTitle(items);
 
     final titles = _restrictLegacyClientFeatures
         ? _legacyClientPinnedQuickActionTitles
@@ -3190,6 +3298,11 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
 
   List<Map<String, dynamic>> _pinnedQuickActions(
       List<Map<String, dynamic>> items) {
+    // Clients always show the fixed 8 quick actions — no remote expansion.
+    if (_isClientUser) {
+      return _hardcodedPinnedQuickActions(items);
+    }
+
     final actions = resolveMobileQuickActions(
       surface: MobileQuickActionSurface.projectHomeNew,
       catalog: items,
@@ -3214,14 +3327,84 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
     if (!hasPayments) {
       for (final item in items) {
         if (item['title']?.toString() == 'Payments') {
-          // Keep it on the first screen of the grid, same slot clients use.
           final insertAt = visible.length < 4 ? visible.length : 4;
           visible.insert(insertAt, item);
           break;
         }
       }
     }
-    return visible;
+    return _normalizeQuickActionSlots(visible, items);
+  }
+
+  Map<String, Map<String, dynamic>> _quickActionCatalogByTitle(
+    List<Map<String, dynamic>> catalog,
+  ) {
+    final byTitle = <String, Map<String, dynamic>>{};
+    for (final item in catalog) {
+      final title = item['title']?.toString();
+      if (title == null || title.isEmpty) continue;
+      byTitle.putIfAbsent(title, () => item);
+    }
+    byTitle.putIfAbsent(
+      'Documents',
+      () => {
+        'title': 'Documents',
+        'icon': Icons.folder_copy_rounded,
+        'route': () => DocumentsV1HomeScreen(clientMode: _isClientUser),
+      },
+    );
+    byTitle.putIfAbsent(
+      'Timeline Gallery',
+      () => {
+        'title': 'Timeline Gallery',
+        'icon': Icons.photo_library_rounded,
+        'route': () => TimelineGallery(),
+      },
+    );
+    byTitle.putIfAbsent(
+      'Project Timeline',
+      () => {
+        'title': 'Project Timeline',
+        'icon': Icons.view_timeline_rounded,
+        'route': () => const ProjectTimelineScreen(),
+      },
+    );
+    byTitle.putIfAbsent(
+      'Profile',
+      () => {
+        'title': 'Profile',
+        'icon': Icons.person_rounded,
+        'route': () => const ProfileScreen(),
+      },
+    );
+    return byTitle;
+  }
+
+  /// Staff project home: keep the quick-action grid at exactly 6.
+  List<Map<String, dynamic>> _normalizeQuickActionSlots(
+    List<Map<String, dynamic>> actions,
+    List<Map<String, dynamic>> catalog,
+  ) {
+    final byTitle = _quickActionCatalogByTitle(catalog);
+
+    final normalized = <Map<String, dynamic>>[];
+    final seen = <String>{};
+    for (final item in actions) {
+      final title = item['title']?.toString() ?? '';
+      if (title.isEmpty || !seen.add(title)) continue;
+      normalized.add(item);
+      if (normalized.length >= _quickActionSlotCount) {
+        return normalized;
+      }
+    }
+
+    for (final title in _quickActionFillerTitles) {
+      if (normalized.length >= _quickActionSlotCount) break;
+      if (!seen.add(title)) continue;
+      final item = byTitle[title];
+      if (item != null) normalized.add(item);
+    }
+    return normalized;
   }
 
   Widget build(BuildContext context) {
@@ -3290,11 +3473,11 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
               child: GridView.builder(
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 3,
-                  crossAxisSpacing: 12,
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: _isClientUser ? 4 : 3,
+                  crossAxisSpacing: _isClientUser ? 8 : 12,
                   mainAxisSpacing: 8,
-                  childAspectRatio: 0.9,
+                  childAspectRatio: _isClientUser ? 0.78 : 0.9,
                 ),
                 itemCount: pinnedActions.length,
                 itemBuilder: (BuildContext context, int index) {
@@ -3319,6 +3502,21 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
     _openingMenu = true;
     try {
       await _navigateToWidget(const VirtualTourScreen());
+    } finally {
+      _openingMenu = false;
+    }
+  }
+
+  Future<void> _openProjectTimeline() async {
+    if (_openingMenu) return;
+    if (_restrictLegacyClientFeatures &&
+        !_isLegacyFeatureAllowed('Project Timeline')) {
+      await showFeatureComingSoon(context, featureName: 'Project Timeline');
+      return;
+    }
+    _openingMenu = true;
+    try {
+      await _navigateToWidget(const ProjectTimelineScreen());
     } finally {
       _openingMenu = false;
     }
@@ -3449,6 +3647,7 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
         delayLabel: delayLabel,
         plannedLabel: plannedLabel,
         trailingAction: mapAction,
+        onTap: _openProjectTimeline,
       );
     }
 
@@ -3743,8 +3942,14 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
                 ]
               : title == 'Work orders'
                   ? [title, 'WO', 'work order', 'contractor']
-                  : title == 'Timeline Gallery'
-                      ? [title, 'gallery', 'photos', 'images']
+                  : title == 'Timeline Gallery' || title == 'Gallery'
+                      ? [
+                          title,
+                          'project gallery',
+                          'gallery',
+                          'photos',
+                          'images',
+                        ]
                       : title == 'Slots'
                           ? [
                               title,
@@ -3771,10 +3976,17 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
 
     items.add(
       _DashboardSearchItem(
-        title: 'Payments • Non Tender',
+        title: 'Payments • Upwind Additions Cost',
         subtitle: 'Monitor custom expenses',
         icon: Icons.receipt_long,
-        keywords: ['payment', 'non tender', 'expenses'],
+        keywords: [
+          'payment',
+          'non tender',
+          'nt',
+          'upwind',
+          'additions',
+          'expenses',
+        ],
         onSelected: () => _openPaymentCategory(PaymentCategory.nonTender),
       ),
     );
@@ -3916,6 +4128,9 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
     final label = _restrictLegacyClientFeatures && title == 'ChatBox'
         ? 'Notes & Comments'
         : _quickActionLabel(title);
+    final circleSize = _isClientUser ? 56.0 : 72.0;
+    final iconSize = _isClientUser ? 28.0 : 36.0;
+    final labelSize = _isClientUser ? 11.0 : 12.0;
 
     return InkWell(
       onTap: () => _handleMenuTap(item),
@@ -3929,8 +4144,8 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
               clipBehavior: Clip.none,
               children: [
                 Container(
-                  width: 72,
-                  height: 72,
+                  width: circleSize,
+                  height: circleSize,
                   decoration: BoxDecoration(
                     color: AppTheme.darkBackgroundSecondary,
                     shape: BoxShape.circle,
@@ -3953,7 +4168,7 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
                   ),
                   child: Icon(
                     _quickActionIcon(title, item['icon'] as IconData),
-                    size: 36,
+                    size: iconSize,
                     color: _ink,
                   ),
                 ),
@@ -4008,15 +4223,15 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
                   ),
               ],
             ),
-            const SizedBox(height: 8),
+            SizedBox(height: _isClientUser ? 6 : 8),
             Text(
               label,
               textAlign: TextAlign.center,
-              style: const TextStyle(
+              style: TextStyle(
                 color: _ink,
-                fontSize: 12,
+                fontSize: labelSize,
                 fontWeight: FontWeight.w500,
-                height: 1.2,
+                height: 1.15,
               ),
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
@@ -4039,8 +4254,12 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
         return 'POs';
       case 'Work orders':
         return 'Work orders';
+      case 'Documents':
+        return 'Docs';
       case 'Documents V1':
         return 'Docs V1';
+      case 'Profile':
+        return 'Profile';
       case 'Scheduler':
         return 'Schedule';
       case 'ChatBox':
@@ -4052,13 +4271,17 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
       case 'Site Visit Reports':
         return 'Upcoming visits';
       case 'Timeline Gallery':
-        return 'Timeline Gallery';
+        return _isClientUser ? 'Project Gallery' : 'Timeline Gallery';
+      case 'Gallery':
+        return _isClientUser ? 'Project Gallery' : 'Gallery';
       case '3D House Tour':
         return '3D House Tour';
       case 'Client Portal':
         return 'For me';
+      case 'Upwind Additions Cost':
       case 'NT Payments':
-        return 'NT Payments';
+      case 'Non Tender Payments':
+        return 'Upwind Additions Cost';
       case 'Updates':
         return 'Updates';
       default:
@@ -4074,51 +4297,53 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
   IconData _quickActionIcon(String title, IconData fallback) {
     switch (title) {
       case 'Client Portal':
-        return Icons.dashboard_customize_outlined;
+        return Icons.dashboard_customize_rounded;
       case 'Site Visit Reports':
-        return Icons.event_available_outlined;
+        return Icons.event_available_rounded;
       case 'Gallery':
         return Icons.photo_library_rounded;
       case 'Project Timeline':
         return Icons.view_timeline_rounded;
       case 'My tasks':
-        return Icons.assignment_outlined;
+        return Icons.assignment_rounded;
       case 'Timeline Gallery':
-        return Icons.auto_awesome_motion;
+        return Icons.auto_awesome_motion_rounded;
       case 'Indents':
-        return Icons.request_quote_outlined;
+        return Icons.request_quote_rounded;
       case 'Approved POs':
-        return Icons.receipt_long_outlined;
+        return Icons.receipt_long_rounded;
       case 'Work orders':
-        return Icons.engineering_outlined;
+        return Icons.engineering_rounded;
+      case 'Documents':
       case 'Documents V1':
-        return Icons.folder_copy_outlined;
+        return Icons.folder_copy_rounded;
+      case 'Profile':
+        return Icons.person_rounded;
       case 'Payments':
-        return Icons.account_balance_wallet_outlined;
+        return Icons.account_balance_wallet_rounded;
+      case 'Upwind Additions Cost':
       case 'NT Payments':
       case 'Non Tender Payments':
-        return Icons.receipt_long_outlined;
+        return Icons.receipt_long_rounded;
       case 'Updates':
-        return Icons.campaign_outlined;
+        return Icons.campaign_rounded;
       case 'Upload payment proofs':
       case 'Upload proof':
-        return Icons.cloud_upload_outlined;
+        return Icons.cloud_upload_rounded;
       case 'Scheduler':
         return Icons.calendar_month_rounded;
-      case 'Documents':
-        return Icons.description_outlined;
       case 'ChatBox':
-        return Icons.chat_bubble_outline_rounded;
+        return Icons.chat_bubble_rounded;
       case 'Chat V1':
-        return Icons.forum_outlined;
+        return Icons.forum_rounded;
       case 'Project Status':
-        return Icons.flag_outlined;
+        return Icons.flag_rounded;
       case 'Checklist':
         return Icons.checklist_rtl_rounded;
       case '3D House Tour':
         return Icons.view_in_ar_rounded;
       case 'Slots':
-        return Icons.event_available_outlined;
+        return Icons.event_available_rounded;
       default:
         return fallback;
     }
@@ -4128,20 +4353,7 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
       List<Map<String, dynamic>> items) {
     final preferred = _restrictLegacyClientFeatures
         ? _legacyClientPinnedQuickActionTitles
-        : const [
-            'Client Portal',
-            'Slots',
-            'Project Timeline',
-            'Timeline Gallery',
-            'Payments',
-            'Upload proof',
-            '3D House Tour',
-            'My tasks',
-            'Scheduler',
-            'ChatBox',
-            'Chat V1',
-            'Checklist',
-          ];
+        : _clientPinnedQuickActionTitles;
     final byTitle = <String, Map<String, dynamic>>{};
     for (final item in items) {
       byTitle[item['title'].toString()] = item;
@@ -4426,4 +4638,4 @@ class _AnimatedWidgetSlideState extends State<AnimatedWidgetSlide>
   }
 }
 
-// Logout for clients is handled by `NavMenuWidget` (drawer) to match other roles.
+// Logout for clients is on Profile (header avatar / Profile quick action).

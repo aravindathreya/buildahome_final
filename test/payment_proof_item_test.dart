@@ -439,12 +439,144 @@ void main() {
     test('builds only the staged line when NT was not applied', () {
       final text = PaymentProofItem.resolveClearedBillsText({
         'finance_applied_bills': [
-          {'id': 3, 'name': 'Slab', 'kind': 'raised', 'amount': 500.5, 'partial': true},
+          {
+            'id': 3,
+            'name': 'Slab',
+            'kind': 'raised',
+            'amount': 500.5,
+            'partial': true,
+          },
         ],
       });
-      expect(text, contains('Staged bill #3 Slab'));
+      expect(text, contains('Non-NT: Slab'));
       expect(text, contains('(partial)'));
-      expect(text.contains('NT bill'), isFalse);
+      expect(text.startsWith('NT:'), isFalse);
+      expect(text.contains('\nNT:'), isFalse);
+    });
+
+    test('prefers summary_text and parses nt_bills / non_nt_bills', () {
+      final item = PaymentProofItem.fromJson({
+        'filename': 'upi.jpg',
+        'url': 'https://office.buildahome.in/serve_sales_sop_payment/1?index=0',
+        'amount': 25000,
+        'finance_status': 'approved',
+        'status': 'approved',
+        'allocation_state': 'applied',
+        'heading': 'Deducted from these bills',
+        'summary_text':
+            'NT: Extra civil — ₹15,000.00\nNon-NT: Foundation ST-8 — ₹10,000.00 (partial)',
+        'nt_bills': [
+          {
+            'id': 12,
+            'stage_name': 'Extra civil',
+            'kind': 'nt',
+            'amount': 15000,
+            'amount_display': '₹15,000.00',
+            'partial': false,
+          },
+        ],
+        'non_nt_bills': [
+          {
+            'id': 8,
+            'stage_name': 'Foundation',
+            'kind': 'non_nt',
+            'amount': 10000,
+            'amount_display': '₹10,000.00',
+            'partial': true,
+            'bill_amount': 20000,
+            'bill_number': 'ST-8',
+          },
+        ],
+      });
+
+      expect(item.allocationHeading, 'Deducted from these bills');
+      expect(item.allocationState, 'applied');
+      expect(item.clearedBillsText, contains('NT: Extra civil'));
+      expect(item.clearedBillsText, contains('Foundation ST-8'));
+      expect(item.billStages, hasLength(2));
+      expect(item.billStages.first.isNt, isTrue);
+      expect(item.billStages.last.partial, isTrue);
+    });
+
+    test('groups proofs by NT stages first then non-NT then awaiting', () {
+      final allocated = PaymentProofItem.fromJson({
+        'url': 'https://office.buildahome.in/p/a.jpg',
+        'index': 0,
+        'amount': 25000,
+        'status': 'approved',
+        'nt_bills': [
+          {'id': 12, 'stage_name': 'Extra civil', 'kind': 'nt', 'amount': 15000},
+        ],
+        'non_nt_bills': [
+          {
+            'id': 8,
+            'stage_name': 'Foundation',
+            'kind': 'non_nt',
+            'amount': 10000,
+            'bill_number': 'ST-8',
+          },
+        ],
+      });
+      final pending = PaymentProofItem.fromJson({
+        'url': 'https://office.buildahome.in/p/b.jpg',
+        'index': 1,
+        'amount': 5000,
+        'status': 'pending',
+      });
+
+      final sections =
+          PaymentProofItem.groupByBillStage([allocated, pending]);
+      expect(sections, hasLength(3));
+      expect(sections[0].isNt, isTrue);
+      expect(sections[0].label, 'Extra civil');
+      expect(sections[0].items, hasLength(1));
+      expect(sections[1].kind, 'non_nt');
+      expect(sections[1].label, contains('Foundation'));
+      expect(sections[1].items.single.url, allocated.url);
+      expect(sections[2].isAwaiting, isTrue);
+      expect(sections[2].items.single.url, pending.url);
+    });
+
+    test('builds gallery sections from pending_stage_proof_tasks', () {
+      final unassigned = PaymentProofItem.fromJson({
+        'url': 'https://office.buildahome.in/p/u.jpg',
+        'index': 0,
+        'amount': 1000,
+        'status': 'pending',
+      });
+      final linked = PaymentProofItem.fromJson({
+        'url': 'https://office.buildahome.in/p/l.jpg',
+        'index': 1,
+        'amount': 2000,
+        'status': 'pending',
+        'stage_task_id': 36940,
+        'stage_name': 'Completion of Footing',
+      });
+      final sections = PaymentProofItem.buildGallerySections(
+        items: [unassigned, linked],
+        pendingTasks: const [
+          PaymentProofPendingTask(
+            id: 36940,
+            stageName: 'Completion of Footing',
+            label: 'Upload payment proof for Completion of Footing',
+          ),
+          PaymentProofPendingTask(
+            id: 36941,
+            stageName: 'Completion of Plinth Beam',
+            label: 'Upload payment proof for Completion of Plinth Beam',
+          ),
+        ],
+      );
+
+      expect(sections, hasLength(3));
+      expect(sections[0].isTask, isTrue);
+      expect(sections[0].label, 'Completion of Footing');
+      expect(sections[0].items.single.url, linked.url);
+      expect(sections[1].label, 'Completion of Plinth Beam');
+      expect(sections[1].items, isEmpty);
+      expect(sections[2].isAwaiting, isTrue);
+      expect(sections[2].label, 'Other uploads');
+      expect(sections[2].items.single.url, unassigned.url);
     });
 
     test('hides the line when the proof has no linked bill', () {

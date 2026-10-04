@@ -61,7 +61,7 @@ class _DocumentsV1DetailScreenState extends State<DocumentsV1DetailScreen>
         elevation: 0,
         title: Text(
           widget.document.displayTitle,
-          style: const TextStyle(
+          style: TextStyle(
             color: AppTheme.darkTextPrimary,
             fontSize: 16,
             fontWeight: FontWeight.w800,
@@ -187,7 +187,7 @@ class _DetailsTab extends StatelessWidget {
                   children: [
                     Text(
                       document.displayTitle,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontWeight: FontWeight.w800,
                         color: AppTheme.darkTextPrimary,
                         fontSize: 15,
@@ -361,7 +361,7 @@ class _InfoTable extends StatelessWidget {
                 Expanded(
                   child: Text(
                     row.value,
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: AppTheme.darkTextPrimary,
                       fontWeight: FontWeight.w700,
                       fontSize: 13,
@@ -447,7 +447,7 @@ class _RevisionsTab extends StatelessWidget {
                               revision.displayRevision.isNotEmpty
                                   ? revision.displayRevision
                                   : revision.displayTitle,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontWeight: FontWeight.w800,
                                 color: AppTheme.darkTextPrimary,
                                 fontSize: 14,
@@ -537,7 +537,7 @@ class _ActivityTab extends StatelessWidget {
             children: [
               Text(
                 title,
-                style: const TextStyle(
+                style: TextStyle(
                   fontWeight: FontWeight.w700,
                   color: AppTheme.darkTextPrimary,
                 ),

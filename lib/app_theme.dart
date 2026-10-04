@@ -1,35 +1,55 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'services/theme_service.dart';
+
 class AppTheme {
   // Brand tokens — between indigo and purple
   static const Color navy = Color(0xFF3B2A7D);
   static const Color navySoft = Color(0xFF523D9E);
   static const Color accentBlue = Color(0xFF7063CC);
   static const Color mutedGrey = Color(0xFFA1A1AA);
-  static const Color border = Color(0xFF3F3F46);
+  static const Color lightBorder = Color(0xFFE4E4E7);
   static const Color softShadow = Color(0x14000000);
 
-  // Light theme colors (kept for helpers; app is dark-mode-only)
+  // Light theme colors
   static const Color lightBackgroundPrimary = Color(0xFFF7F8FB);
   static const Color lightBackgroundSecondary = Color(0xFFFFFFFF);
   static const Color lightBackgroundPrimaryLight = Color(0xFFEEF2F7);
   static const Color lightTextPrimary = Color(0xFF1B254B);
   static const Color lightTextSecondary = Color(0xFF8A94A6);
 
-  // Dark theme colors — dark grey surfaces
-  static const Color darkBackgroundPrimary = Color(0xFF121212);
-  static const Color darkBackgroundSecondary = Color(0xFF1C1C1E);
-  static const Color darkBackgroundPrimaryLight = Color(0xFF2A2A2D);
-  static const Color darkTextPrimary = Color(0xFFF4F4F5);
-  static const Color darkTextSecondary = Color(0xFFA1A1AA);
+  // Fixed dark palette (always dark — used by getDarkTheme)
+  static const Color _darkBackgroundPrimary = Color(0xFF121212);
+  static const Color _darkBackgroundSecondary = Color(0xFF1C1C1E);
+  static const Color _darkBackgroundPrimaryLight = Color(0xFF2A2A2D);
+  static const Color _darkTextPrimary = Color(0xFFF4F4F5);
+  static const Color _darkTextSecondary = Color(0xFFA1A1AA);
+  static const Color _darkBorder = Color(0xFF3F3F46);
 
   // Primary color — between indigo and purple
   static const Color primaryColorConst = navy;
   static const Color primaryColorConstDark = Color(0xFF271B54);
   static const Color primaryColorConstLight = Color(0xFF4C3894);
 
-  // Legacy colors — app is dark-mode-only; these map to dark tokens
+  // Adaptive colors follow the user's light/dark preference.
+  // NOTE: Historical names like [darkBackgroundPrimary] are used across the
+  // app; they now resolve to light tokens when light mode is active.
+  static bool get isDark => ThemeService.instance.isDark;
+
+  static Color get darkBackgroundPrimary =>
+      isDark ? _darkBackgroundPrimary : lightBackgroundPrimary;
+  static Color get darkBackgroundSecondary =>
+      isDark ? _darkBackgroundSecondary : lightBackgroundSecondary;
+  static Color get darkBackgroundPrimaryLight =>
+      isDark ? _darkBackgroundPrimaryLight : lightBackgroundPrimaryLight;
+  static Color get darkTextPrimary =>
+      isDark ? _darkTextPrimary : lightTextPrimary;
+  static Color get darkTextSecondary =>
+      isDark ? _darkTextSecondary : lightTextSecondary;
+  static Color get border => isDark ? _darkBorder : lightBorder;
+  static Color get borderColor => border;
+
   static Color get backgroundPrimary => darkBackgroundPrimary;
   static Color get backgroundSecondary => darkBackgroundSecondary;
   static Color get backgroundPrimaryLight => darkBackgroundPrimaryLight;
@@ -46,7 +66,7 @@ class AppTheme {
       onSecondary: Colors.white,
       onSurface: lightTextPrimary,
       onBackground: lightTextPrimary,
-      outline: border,
+      outline: lightBorder,
     );
 
     return ThemeData(
@@ -66,7 +86,7 @@ class AppTheme {
       scaffoldBackgroundColor: lightBackgroundPrimary,
       canvasColor: lightBackgroundPrimary,
       cardColor: lightBackgroundSecondary,
-      dividerColor: border,
+      dividerColor: lightBorder,
       fontFamily: 'Mulish-Regular',
       colorScheme: colorScheme,
       splashFactory: InkRipple.splashFactory,
@@ -93,7 +113,7 @@ class AppTheme {
         margin: EdgeInsets.zero,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
-          side: const BorderSide(color: border),
+          side: const BorderSide(color: lightBorder),
         ),
         shadowColor: softShadow,
       ),
@@ -126,7 +146,7 @@ class AppTheme {
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
           foregroundColor: primaryColorConst,
-          side: const BorderSide(color: border),
+          side: const BorderSide(color: lightBorder),
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(14),
@@ -190,7 +210,7 @@ class AppTheme {
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(999),
-          side: const BorderSide(color: border),
+          side: const BorderSide(color: lightBorder),
         ),
       ),
       dialogTheme: DialogThemeData(
@@ -236,7 +256,7 @@ class AppTheme {
         color: primaryColorConst,
       ),
       dividerTheme: const DividerThemeData(
-        color: border,
+        color: lightBorder,
         thickness: 1,
         space: 1,
       ),
@@ -250,11 +270,11 @@ class AppTheme {
         fillColor: lightBackgroundPrimaryLight,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: border),
+          borderSide: const BorderSide(color: lightBorder),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: border),
+          borderSide: const BorderSide(color: lightBorder),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
@@ -309,13 +329,13 @@ class AppTheme {
     final colorScheme = ColorScheme.dark(
       primary: primaryColorConstLight,
       secondary: accentBlue,
-      surface: darkBackgroundSecondary,
-      background: darkBackgroundPrimary,
+      surface: _darkBackgroundSecondary,
+      background: _darkBackgroundPrimary,
       onPrimary: Colors.white,
       onSecondary: Colors.white,
-      onSurface: darkTextPrimary,
-      onBackground: darkTextPrimary,
-      outline: const Color(0xFF3F3F46),
+      onSurface: _darkTextPrimary,
+      onBackground: _darkTextPrimary,
+      outline: _darkBorder,
     );
 
     return ThemeData(
@@ -332,29 +352,29 @@ class AppTheme {
         },
       ),
       primaryColor: primaryColorConst,
-      scaffoldBackgroundColor: darkBackgroundPrimary,
-      canvasColor: darkBackgroundPrimary,
-      cardColor: darkBackgroundSecondary,
-      dividerColor: const Color(0xFF3F3F46),
+      scaffoldBackgroundColor: _darkBackgroundPrimary,
+      canvasColor: _darkBackgroundPrimary,
+      cardColor: _darkBackgroundSecondary,
+      dividerColor: _darkBorder,
       fontFamily: 'Mulish-Regular',
       colorScheme: colorScheme,
       appBarTheme: AppBarTheme(
-        backgroundColor: darkBackgroundSecondary,
-        foregroundColor: darkTextPrimary,
+        backgroundColor: _darkBackgroundSecondary,
+        foregroundColor: _darkTextPrimary,
         elevation: 0,
         scrolledUnderElevation: 0,
         centerTitle: false,
         systemOverlayStyle: SystemUiOverlayStyle.light,
-        iconTheme: const IconThemeData(color: darkTextPrimary),
+        iconTheme: const IconThemeData(color: _darkTextPrimary),
         titleTextStyle: const TextStyle(
-          color: darkTextPrimary,
+          color: _darkTextPrimary,
           fontSize: 18,
           fontWeight: FontWeight.w800,
           fontFamily: 'Mulish-Regular',
         ),
       ),
       cardTheme: CardThemeData(
-        color: darkBackgroundSecondary,
+        color: _darkBackgroundSecondary,
         elevation: 0,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
@@ -374,7 +394,7 @@ class AppTheme {
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: darkBackgroundPrimaryLight,
+        fillColor: _darkBackgroundPrimaryLight,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
           borderSide: const BorderSide(color: Color(0xFF3F3F46)),
@@ -387,69 +407,69 @@ class AppTheme {
           borderRadius: BorderRadius.circular(14),
           borderSide: const BorderSide(color: primaryColorConstLight, width: 1.5),
         ),
-        labelStyle: const TextStyle(color: darkTextSecondary),
-        hintStyle: const TextStyle(color: darkTextSecondary),
+        labelStyle: const TextStyle(color: _darkTextSecondary),
+        hintStyle: const TextStyle(color: _darkTextSecondary),
         contentPadding:
             const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       ),
       textTheme: ThemeData.dark().textTheme.apply(
         fontFamily: 'Mulish-Regular',
-        bodyColor: darkTextPrimary,
-        displayColor: darkTextPrimary,
+        bodyColor: _darkTextPrimary,
+        displayColor: _darkTextPrimary,
       ).copyWith(
         headlineLarge: const TextStyle(
-            color: darkTextPrimary, fontSize: 26, fontWeight: FontWeight.w800),
+            color: _darkTextPrimary, fontSize: 26, fontWeight: FontWeight.w800),
         headlineMedium: const TextStyle(
-            color: darkTextPrimary, fontSize: 22, fontWeight: FontWeight.w800),
+            color: _darkTextPrimary, fontSize: 22, fontWeight: FontWeight.w800),
         headlineSmall: const TextStyle(
-            color: darkTextPrimary, fontSize: 18, fontWeight: FontWeight.w800),
-        bodyLarge: const TextStyle(color: darkTextPrimary, fontSize: 15),
-        bodyMedium: const TextStyle(color: darkTextPrimary, fontSize: 14),
-        bodySmall: const TextStyle(color: darkTextSecondary, fontSize: 12.5),
-        titleLarge: const TextStyle(color: darkTextPrimary, fontSize: 18, fontWeight: FontWeight.w800),
-        titleMedium: const TextStyle(color: darkTextPrimary, fontSize: 16, fontWeight: FontWeight.w700),
-        titleSmall: const TextStyle(color: darkTextPrimary, fontSize: 14, fontWeight: FontWeight.w600),
-        labelLarge: const TextStyle(color: darkTextPrimary, fontSize: 14, fontWeight: FontWeight.w600),
-        labelMedium: const TextStyle(color: darkTextSecondary, fontSize: 12),
-        labelSmall: const TextStyle(color: darkTextSecondary, fontSize: 11),
+            color: _darkTextPrimary, fontSize: 18, fontWeight: FontWeight.w800),
+        bodyLarge: const TextStyle(color: _darkTextPrimary, fontSize: 15),
+        bodyMedium: const TextStyle(color: _darkTextPrimary, fontSize: 14),
+        bodySmall: const TextStyle(color: _darkTextSecondary, fontSize: 12.5),
+        titleLarge: const TextStyle(color: _darkTextPrimary, fontSize: 18, fontWeight: FontWeight.w800),
+        titleMedium: const TextStyle(color: _darkTextPrimary, fontSize: 16, fontWeight: FontWeight.w700),
+        titleSmall: const TextStyle(color: _darkTextPrimary, fontSize: 14, fontWeight: FontWeight.w600),
+        labelLarge: const TextStyle(color: _darkTextPrimary, fontSize: 14, fontWeight: FontWeight.w600),
+        labelMedium: const TextStyle(color: _darkTextSecondary, fontSize: 12),
+        labelSmall: const TextStyle(color: _darkTextSecondary, fontSize: 11),
       ),
       primaryTextTheme: ThemeData.dark().primaryTextTheme.apply(
         fontFamily: 'Mulish-Regular',
-        bodyColor: darkTextPrimary,
-        displayColor: darkTextPrimary,
+        bodyColor: _darkTextPrimary,
+        displayColor: _darkTextPrimary,
       ),
-      iconTheme: const IconThemeData(color: darkTextPrimary),
-      primaryIconTheme: const IconThemeData(color: darkTextPrimary),
+      iconTheme: const IconThemeData(color: _darkTextPrimary),
+      primaryIconTheme: const IconThemeData(color: _darkTextPrimary),
       listTileTheme: const ListTileThemeData(
-        iconColor: darkTextPrimary,
-        textColor: darkTextPrimary,
+        iconColor: _darkTextPrimary,
+        textColor: _darkTextPrimary,
       ),
       dialogTheme: const DialogThemeData(
-        backgroundColor: darkBackgroundSecondary,
+        backgroundColor: _darkBackgroundSecondary,
         titleTextStyle: TextStyle(
-          color: darkTextPrimary,
+          color: _darkTextPrimary,
           fontSize: 18,
           fontWeight: FontWeight.w800,
           fontFamily: 'Mulish-Regular',
         ),
         contentTextStyle: TextStyle(
-          color: darkTextPrimary,
+          color: _darkTextPrimary,
           fontSize: 14,
           fontFamily: 'Mulish-Regular',
         ),
       ),
       bottomSheetTheme: const BottomSheetThemeData(
-        backgroundColor: darkBackgroundSecondary,
-        modalBackgroundColor: darkBackgroundSecondary,
+        backgroundColor: _darkBackgroundSecondary,
+        modalBackgroundColor: _darkBackgroundSecondary,
         elevation: 0,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
         ),
       ),
       bottomNavigationBarTheme: const BottomNavigationBarThemeData(
-        backgroundColor: darkBackgroundSecondary,
+        backgroundColor: _darkBackgroundSecondary,
         selectedItemColor: Colors.white,
-        unselectedItemColor: darkTextSecondary,
+        unselectedItemColor: _darkTextSecondary,
         type: BottomNavigationBarType.fixed,
       ),
       progressIndicatorTheme: const ProgressIndicatorThemeData(
@@ -462,23 +482,33 @@ class AppTheme {
   static ThemeData get darkTheme => getDarkTheme();
 
   static Color getBackgroundPrimary(BuildContext context) {
-    return darkBackgroundPrimary;
+    return Theme.of(context).brightness == Brightness.dark
+        ? _darkBackgroundPrimary
+        : lightBackgroundPrimary;
   }
 
   static Color getBackgroundSecondary(BuildContext context) {
-    return darkBackgroundSecondary;
+    return Theme.of(context).brightness == Brightness.dark
+        ? _darkBackgroundSecondary
+        : lightBackgroundSecondary;
   }
 
   static Color getBackgroundPrimaryLight(BuildContext context) {
-    return darkBackgroundPrimaryLight;
+    return Theme.of(context).brightness == Brightness.dark
+        ? _darkBackgroundPrimaryLight
+        : lightBackgroundPrimaryLight;
   }
 
   static Color getTextPrimary(BuildContext context) {
-    return darkTextPrimary;
+    return Theme.of(context).brightness == Brightness.dark
+        ? _darkTextPrimary
+        : lightTextPrimary;
   }
 
   static Color getTextSecondary(BuildContext context) {
-    return darkTextSecondary;
+    return Theme.of(context).brightness == Brightness.dark
+        ? _darkTextSecondary
+        : lightTextSecondary;
   }
 
   static Color getPrimaryColor(BuildContext context) {
@@ -486,7 +516,9 @@ class AppTheme {
   }
 
   static Color getBorderColor(BuildContext context) {
-    return const Color(0xFF3F3F46);
+    return Theme.of(context).brightness == Brightness.dark
+        ? _darkBorder
+        : lightBorder;
   }
 
   // Shared surface card decoration for list/grid items
@@ -509,7 +541,7 @@ class AppTheme {
   static BoxDecoration get gridCardDecoration => BoxDecoration(
         color: darkBackgroundSecondary,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFF3F3F46)),
+        border: Border.all(color: border),
         boxShadow: const [
           BoxShadow(
             color: softShadow,

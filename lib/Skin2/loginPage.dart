@@ -566,6 +566,16 @@ class LoginScreenNewState extends State<LoginScreenNew>
               (user['client_name'] ?? user['project_name'] ?? user['name'])
                   ?.toString()
                   .trim();
+          final projectNumber = (user['project_code'] ??
+                  user['project_number'] ??
+                  body['project_code'] ??
+                  body['project_number'] ??
+                  (user['project'] is Map
+                      ? ((user['project'] as Map)['project_code'] ??
+                          (user['project'] as Map)['project_number'])
+                      : null))
+              ?.toString()
+              .trim();
           if (sopId != null &&
               sopId.isNotEmpty &&
               sopId.toLowerCase() != 'null') {
@@ -583,6 +593,11 @@ class LoginScreenNewState extends State<LoginScreenNew>
             }
           } else {
             projectId = null;
+          }
+          if (projectNumber != null &&
+              projectNumber.isNotEmpty &&
+              projectNumber.toLowerCase() != 'null') {
+            await DataProvider().persistProjectNumber(projectNumber);
           }
           if (role.trim().toLowerCase() == 'client' &&
               clientName != null &&
@@ -1264,37 +1279,8 @@ class LoginScreenNewState extends State<LoginScreenNew>
                                           ),
                                         ],
                                       )
-                                    : Container(
-                                        key: const ValueKey('intro'),
-                                        padding: const EdgeInsets.all(14),
-                                        decoration: BoxDecoration(
-                                          color: AppTheme.darkBackgroundPrimary,
-                                          borderRadius:
-                                              BorderRadius.circular(14),
-                                          border:
-                                              Border.all(color: _border),
-                                        ),
-                                        child: const Row(
-                                          children: [
-                                            Icon(
-                                              Icons.chat_outlined,
-                                              color: Color(0xFF25D366),
-                                              size: 22,
-                                            ),
-                                            SizedBox(width: 12),
-                                            Expanded(
-                                              child: Text(
-                                                'We will send a one-time password to your registered WhatsApp number.',
-                                                style: TextStyle(
-                                                  color: _muted,
-                                                  fontSize: 13,
-                                                  fontWeight: FontWeight.w500,
-                                                  height: 1.35,
-                                                ),
-                                              ),
-                                            ),
-                                          ],
-                                        ),
+                                    : const SizedBox.shrink(
+                                        key: ValueKey('intro'),
                                       ),
                           ),
                           const SizedBox(height: 18),

@@ -148,12 +148,19 @@ class _DocumentsV1HomeScreenState extends State<DocumentsV1HomeScreen>
     }
   }
 
+  List<WorkflowDocumentCategory> get _visibleCategories {
+    final source = (_library?.libraryCategories ?? const [])
+        .where((category) => !isUncategorizedDocumentCategory(category))
+        .toList();
+    final filtered = widget.clientMode
+        ? withoutAreaStatementCategories(source)
+        : source;
+    return filterWorkflowCategoriesBySearch(filtered, _searchCtrl.text);
+  }
+
   @override
   Widget build(BuildContext context) {
-    final categories = filterWorkflowCategoriesBySearch(
-      _library?.libraryCategories ?? const [],
-      _searchCtrl.text,
-    );
+    final categories = _visibleCategories;
 
     return Scaffold(
       backgroundColor: AppTheme.getBackgroundPrimary(context),
@@ -161,7 +168,7 @@ class _DocumentsV1HomeScreenState extends State<DocumentsV1HomeScreen>
         backgroundColor: AppTheme.getBackgroundSecondary(context),
         foregroundColor: AppTheme.darkTextPrimary,
         elevation: 0,
-        title: const Text(
+        title: Text(
           'Documents V1',
           style: TextStyle(
             color: AppTheme.darkTextPrimary,
@@ -285,9 +292,25 @@ class _DocumentsV1CategoryScreenState extends State<DocumentsV1CategoryScreen>
     super.dispose();
   }
 
+  WorkflowDocumentCategory get _category => widget.clientMode
+      ? withoutAreaStatementDocuments(
+          widget.category,
+          dropEmptySections: false,
+        )
+      : widget.category;
+
+  bool get _clientArchitecturalGrouped =>
+      widget.clientMode && isArchitecturalDocumentCategory(_category);
+
   List<WorkflowDocumentSection> get _filteredSections {
+    if (_clientArchitecturalGrouped) {
+      return clientPortalArchitecturalSections(
+        _category,
+        _searchCtrl.text,
+      );
+    }
     return filterWorkflowSectionsBySearch(
-      widget.category.sections,
+      _category.sections,
       _searchCtrl.text,
     );
   }
@@ -295,6 +318,7 @@ class _DocumentsV1CategoryScreenState extends State<DocumentsV1CategoryScreen>
   @override
   Widget build(BuildContext context) {
     final sections = _filteredSections;
+    final category = _category;
 
     return Scaffold(
       backgroundColor: AppTheme.getBackgroundPrimary(context),
@@ -303,8 +327,8 @@ class _DocumentsV1CategoryScreenState extends State<DocumentsV1CategoryScreen>
         foregroundColor: AppTheme.darkTextPrimary,
         elevation: 0,
         title: Text(
-          widget.category.label,
-          style: const TextStyle(
+          category.label,
+          style: TextStyle(
             color: AppTheme.darkTextPrimary,
             fontSize: 17,
             fontWeight: FontWeight.w800,
@@ -318,7 +342,7 @@ class _DocumentsV1CategoryScreenState extends State<DocumentsV1CategoryScreen>
         ],
       ),
       body: SafeArea(
-        child: widget.category.sections.isEmpty
+        child: category.sections.isEmpty
             ? Center(
                 child: Text(
                   'No sections available yet.',
@@ -333,7 +357,10 @@ class _DocumentsV1CategoryScreenState extends State<DocumentsV1CategoryScreen>
                     hint: 'Search drawings…',
                   ),
                   const SizedBox(height: 16),
-                  if (sections.isEmpty)
+                  if (sections.isEmpty ||
+                      (_clientArchitecturalGrouped &&
+                          sections.every((s) => s.documents.isEmpty) &&
+                          _searchCtrl.text.trim().isNotEmpty))
                     Padding(
                       padding: const EdgeInsets.symmetric(vertical: 24),
                       child: Text(
@@ -354,7 +381,7 @@ class _DocumentsV1CategoryScreenState extends State<DocumentsV1CategoryScreen>
                             context,
                             MaterialPageRoute(
                               builder: (_) => DocumentsV1ListScreen(
-                                categoryLabel: widget.category.label,
+                                categoryLabel: category.label,
                                 section: section,
                                 clientMode: widget.clientMode,
                               ),
@@ -401,6 +428,24 @@ class _DocumentsV1ListScreenState extends State<DocumentsV1ListScreen>
       widget.section.clientJourneyKey?.contains('design') == true ||
       widget.section.clientJourneyKey?.contains('floor_plan') == true;
 
+  /// For me Architectural Final/Revisions — no All/Latest/Others.
+  bool get _clientArchitecturalGroupedList {
+    if (!widget.clientMode) return false;
+    if (isClientPortalArchitecturalGroupedSection(widget.section)) {
+      return true;
+    }
+    final category = widget.categoryLabel.toLowerCase();
+    return category.contains('architectural') ||
+        category.contains('architecture');
+  }
+
+  bool get _clientArchitecturalRevisionsList {
+    final id = widget.section.id.trim().toLowerCase();
+    final label = widget.section.label.trim().toLowerCase();
+    return _clientArchitecturalGroupedList &&
+        (id == 'revisions' || label == 'revisions');
+  }
+
   @override
   void initState() {
     super.initState();
@@ -415,17 +460,26 @@ class _DocumentsV1ListScreenState extends State<DocumentsV1ListScreen>
   }
 
   List<WorkflowDocumentUpload> _filtered() {
-    final docs = widget.section.documents;
+    var docs = widget.section.documents;
+    if (widget.clientMode) {
+      docs = docs.where((doc) => !doc.isAreaStatement).toList();
+    }
     List<WorkflowDocumentUpload> base;
-    switch (_filterIndex) {
-      case 1:
-        base = docs.where((doc) => doc.isLatest).toList();
-        break;
-      case 2:
-        base = docs.where((doc) => !doc.isLatest).toList();
-        break;
-      default:
-        base = docs;
+    if (_clientArchitecturalGroupedList) {
+      base = _clientArchitecturalRevisionsList
+          ? docs.where((doc) => !isClientPortalFinalDocument(doc)).toList()
+          : docs.where(isClientPortalFinalDocument).toList();
+    } else {
+      switch (_filterIndex) {
+        case 1:
+          base = docs.where((doc) => doc.isLatest).toList();
+          break;
+        case 2:
+          base = docs.where((doc) => !doc.isLatest).toList();
+          break;
+        default:
+          base = docs;
+      }
     }
 
     final q = _searchCtrl.text.trim();
@@ -464,7 +518,7 @@ class _DocumentsV1ListScreenState extends State<DocumentsV1ListScreen>
         elevation: 0,
         title: Text(
           widget.section.label,
-          style: const TextStyle(
+          style: TextStyle(
             color: AppTheme.darkTextPrimary,
             fontSize: 16,
             fontWeight: FontWeight.w800,
@@ -481,13 +535,14 @@ class _DocumentsV1ListScreenState extends State<DocumentsV1ListScreen>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
-              child: ClientPortalFilterTabs(
-                selectedIndex: _filterIndex,
-                onChanged: (index) => setState(() => _filterIndex = index),
+            if (!_clientArchitecturalGroupedList)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+                child: ClientPortalFilterTabs(
+                  selectedIndex: _filterIndex,
+                  onChanged: (index) => setState(() => _filterIndex = index),
+                ),
               ),
-            ),
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
               child: ClientPortalSearchBar(
@@ -636,7 +691,19 @@ class _ClientJourneyDocumentsScreenState
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _sections = library.sectionsForJourney(widget.journeyKey);
+        final sections = library.sectionsForJourney(widget.journeyKey);
+        _sections = widget.clientMode
+            ? sections
+                .map(
+                  (section) => section.copyWithDocuments(
+                    section.documents
+                        .where((doc) => !doc.isAreaStatement)
+                        .toList(),
+                  ),
+                )
+                .where((section) => section.documents.isNotEmpty)
+                .toList()
+            : sections;
       });
     } catch (e) {
       if (!mounted) return;
@@ -803,7 +870,7 @@ class _ClientJourneyDocumentsScreenState
         elevation: 0,
         title: Text(
           widget.title,
-          style: const TextStyle(
+          style: TextStyle(
             color: AppTheme.darkTextPrimary,
             fontSize: 17,
             fontWeight: FontWeight.w800,

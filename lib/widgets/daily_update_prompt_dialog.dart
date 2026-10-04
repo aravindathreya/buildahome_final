@@ -59,7 +59,7 @@ class _DailyUpdatePromptDialog extends StatelessWidget {
       titlePadding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
       contentPadding: const EdgeInsets.fromLTRB(24, 16, 24, 8),
       actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-      title: const Text(
+      title: Text(
         'Add today’s daily update',
         style: TextStyle(
           color: AppTheme.darkTextPrimary,

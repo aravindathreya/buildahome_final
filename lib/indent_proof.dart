@@ -1064,15 +1064,15 @@ class _IndentProofDetailScreenState extends State<IndentProofDetailScreen> {
                               vertical: 12,
                             ),
                             decoration: BoxDecoration(
-                              color: const Color(0xFFDCFCE7),
+                              color: const Color(0xFF14532D),
                               borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: const Color(0xFF86EFAC)),
+                              border: Border.all(color: const Color(0xFF166534)),
                             ),
                             child: const Text(
                               'This indent proof is already approved.',
                               textAlign: TextAlign.center,
                               style: TextStyle(
-                                color: Color(0xFF166534),
+                                color: Color(0xFF6EE7B7),
                                 fontWeight: FontWeight.w700,
                               ),
                             ),
@@ -1297,9 +1297,9 @@ class _IndentProofDetailScreenState extends State<IndentProofDetailScreen> {
           width: double.infinity,
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: AppTheme.darkBackgroundSecondary,
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: primary.withValues(alpha: 0.2)),
+            border: Border.all(color: primary.withValues(alpha: 0.35)),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1728,18 +1728,18 @@ class _IndentProofListCard extends StatelessWidget {
 List<Color> _statusChipColors(String label) {
   final lower = label.toLowerCase();
   if (lower.contains('pending')) {
-    return const [Color(0xFFFEF3C7), Color(0xFF92400E)];
+    return const [Color(0xFF3D3420), Color(0xFFEAB308)];
   }
   if (lower.contains('approved') || lower.contains('full') || lower.contains('complete')) {
-    return const [Color(0xFFDCFCE7), Color(0xFF166534)];
+    return const [Color(0xFF14532D), Color(0xFF6EE7B7)];
   }
   if (lower.contains('partial')) {
-    return const [Color(0xFFE0E7FF), Color(0xFF3730A3)];
+    return const [Color(0xFF1E3A5F), Color(0xFF93C5FD)];
   }
   if (lower.contains('reject') || lower.contains('cancel')) {
-    return const [Color(0xFFFEE2E2), Color(0xFF991B1B)];
+    return const [Color(0xFF3F1D1D), Color(0xFFFCA5A5)];
   }
-  return const [Color(0xFFE2E8F0), Color(0xFF334155)];
+  return const [Color(0xFF2A2A2D), Color(0xFFA1A1AA)];
 }
 
 String? _nestedDeliveryField(

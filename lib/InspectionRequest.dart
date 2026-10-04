@@ -77,20 +77,20 @@ class _InspectionRequestLayoutState extends State<InspectionRequestLayout> with 
     if (!_canCreate && !_canView) return null;
     final tabs = <Widget>[
       if (_canCreate)
-        const SizedBox(height: 40, child: Center(child: Text('Create'))),
+        SizedBox(height: 40, child: Center(child: Text('Create'))),
       if (_canView)
-        const SizedBox(height: 40, child: Center(child: Text('View'))),
+        SizedBox(height: 40, child: Center(child: Text('View'))),
     ];
     if (tabs.length < 2) return null;
 
     return PreferredSize(
-      preferredSize: const Size.fromHeight(66),
+      preferredSize: Size.fromHeight(66),
       child: Container(
         color: AppTheme.darkBackgroundSecondary,
-        padding: const EdgeInsets.fromLTRB(18, 0, 18, 14),
+        padding: EdgeInsets.fromLTRB(18, 0, 18, 14),
         child: Container(
           height: 48,
-          padding: const EdgeInsets.all(4),
+          padding: EdgeInsets.all(4),
           decoration: BoxDecoration(
             color: const Color(0xFFF1F4F8),
             borderRadius: BorderRadius.circular(14),
@@ -108,11 +108,11 @@ class _InspectionRequestLayoutState extends State<InspectionRequestLayout> with 
             ),
             labelColor: Colors.white,
             unselectedLabelColor: AppTheme.mutedGrey,
-            labelStyle: const TextStyle(
+            labelStyle: TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w700,
             ),
-            unselectedLabelStyle: const TextStyle(
+            unselectedLabelStyle: TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w600,
             ),
@@ -131,10 +131,10 @@ class _InspectionRequestLayoutState extends State<InspectionRequestLayout> with 
         title: 'Inspection Requests',
         body: Center(
           child: Padding(
-            padding: const EdgeInsets.all(40),
+            padding: EdgeInsets.all(40),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
-              children: const [
+              children: [
                 Icon(
                   Icons.fact_check_outlined,
                   size: 64,
@@ -252,7 +252,7 @@ class InspectionRequestScreenState extends State<InspectionRequestScreen> {
 
     // If no tabs, show empty state
     if (tabs.isEmpty) {
-      return const Center(
+      return Center(
         child: Padding(
           padding: EdgeInsets.all(40),
           child: Column(
@@ -429,7 +429,7 @@ class _CreateInspectionRequestPageState extends State<CreateInspectionRequestPag
       builder: (context, child) {
         return Theme(
           data: Theme.of(context).copyWith(
-            colorScheme: const ColorScheme.light(
+            colorScheme: ColorScheme.light(
               primary: AppTheme.darkTextPrimary,
               onPrimary: Colors.white,
               onSurface: AppTheme.darkTextPrimary,
@@ -724,7 +724,7 @@ class _CreateInspectionRequestPageState extends State<CreateInspectionRequestPag
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 14),
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: AppTheme.darkBackgroundSecondary,
         border: Border(bottom: BorderSide(color: AppTheme.border)),
       ),
@@ -745,7 +745,7 @@ class _CreateInspectionRequestPageState extends State<CreateInspectionRequestPag
               const Spacer(),
               Text(
                 stepTitles[_currentStep],
-                style: const TextStyle(
+                style: TextStyle(
                   color: AppTheme.darkTextPrimary,
                   fontSize: 13,
                   fontWeight: FontWeight.w800,
@@ -1063,11 +1063,11 @@ class _CreateInspectionRequestPageState extends State<CreateInspectionRequestPag
                 isExpanded: true,
                 value: selectedCategory == 'Select category' ? null : selectedCategory,
                 hint: const Text('Select category', style: TextStyle(color: AppTheme.mutedGrey)),
-                icon: const Icon(Icons.keyboard_arrow_down_rounded, color: AppTheme.darkTextPrimary),
+                icon: Icon(Icons.keyboard_arrow_down_rounded, color: AppTheme.darkTextPrimary),
                 items: categories.map((String category) {
                   return DropdownMenuItem<String>(
                     value: category,
-                    child: Text(category, style: const TextStyle(color: AppTheme.darkTextPrimary, fontWeight: FontWeight.w700)),
+                    child: Text(category, style: TextStyle(color: AppTheme.darkTextPrimary, fontWeight: FontWeight.w700)),
                   );
                 }).toList(),
                 onChanged: (String? newValue) {
@@ -1230,7 +1230,7 @@ class _CreateInspectionRequestPageState extends State<CreateInspectionRequestPag
               maxLines: 8,
               textCapitalization: TextCapitalization.sentences,
               keyboardType: TextInputType.multiline,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 15.5,
                 color: AppTheme.darkTextPrimary,
                 fontWeight: FontWeight.w500,
@@ -1239,7 +1239,7 @@ class _CreateInspectionRequestPageState extends State<CreateInspectionRequestPag
               onChanged: (value) {
                 setState(() {});
               },
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 hintText: 'Add any additional details or comments about the inspection request...',
                 hintStyle: TextStyle(
                   color: AppTheme.mutedGrey,
@@ -1318,7 +1318,7 @@ class _CreateInspectionRequestPageState extends State<CreateInspectionRequestPag
                 const SizedBox(height: 4),
                 Text(
                   value,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 15,
                     color: AppTheme.darkTextPrimary,
                     fontWeight: FontWeight.w800,
@@ -1335,7 +1335,7 @@ class _CreateInspectionRequestPageState extends State<CreateInspectionRequestPag
   Widget _buildNavigationButtons() {
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 14, 20, 20),
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: AppTheme.darkBackgroundSecondary,
         border: Border(top: BorderSide(color: AppTheme.border)),
       ),
@@ -1347,7 +1347,7 @@ class _CreateInspectionRequestPageState extends State<CreateInspectionRequestPag
                 onPressed: _previousStep,
                 style: OutlinedButton.styleFrom(
                   foregroundColor: AppTheme.darkTextPrimary,
-                  side: const BorderSide(color: AppTheme.border),
+                  side: BorderSide(color: AppTheme.border),
                   padding: const EdgeInsets.symmetric(vertical: 14),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(14),
@@ -2425,7 +2425,7 @@ class _ViewInspectionRequestsPageState extends State<ViewInspectionRequestsPage>
                         ),
                         child: Text(
                           category.toUpperCase(),
-                          style: const TextStyle(
+                          style: TextStyle(
                             color: AppTheme.darkTextPrimary,
                             fontSize: 10,
                             fontWeight: FontWeight.w800,
@@ -2441,7 +2441,7 @@ class _ViewInspectionRequestsPageState extends State<ViewInspectionRequestsPage>
                         children: [
                           Text(
                             'Request #$requestId',
-                            style: const TextStyle(
+                            style: TextStyle(
                               color: AppTheme.darkTextPrimary,
                               fontSize: 15,
                               fontWeight: FontWeight.w800,
@@ -2687,7 +2687,7 @@ class _ViewInspectionRequestsPageState extends State<ViewInspectionRequestsPage>
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
+              Text(
                 'Filters',
                 style: TextStyle(
                   color: AppTheme.darkTextPrimary,

@@ -257,7 +257,7 @@ class DprState extends State<DprScreen> {
       builder: (dialogContext) => AlertDialog(
         backgroundColor: AppTheme.darkBackgroundSecondary,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text(
+        title: Text(
           'Delete update?',
           style: TextStyle(
             color: AppTheme.darkTextPrimary,
@@ -396,7 +396,7 @@ class DprState extends State<DprScreen> {
           padding: EdgeInsets.only(top: isFirst ? 2 : 22, bottom: 12),
           child: Text(
             date.trim().isEmpty ? 'Undated' : date,
-            style: const TextStyle(
+            style: TextStyle(
               color: AppTheme.darkTextSecondary,
               fontSize: 13,
               fontWeight: FontWeight.w700,
@@ -453,7 +453,7 @@ class DprState extends State<DprScreen> {
                 Expanded(
                   child: Text(
                     title,
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: AppTheme.darkTextPrimary,
                       fontSize: 15,
                       fontWeight: FontWeight.w600,
@@ -599,7 +599,7 @@ class DprState extends State<DprScreen> {
         Text(
           title,
           textAlign: TextAlign.center,
-          style: const TextStyle(
+          style: TextStyle(
             color: AppTheme.darkTextPrimary,
             fontSize: 18,
             fontWeight: FontWeight.w800,

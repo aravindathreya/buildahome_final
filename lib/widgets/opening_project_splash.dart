@@ -189,7 +189,7 @@ class _OpeningProjectGateState extends State<OpeningProjectGate>
           child: Stack(
             fit: StackFit.expand,
             children: [
-              const DecoratedBox(
+              DecoratedBox(
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     begin: Alignment.topCenter,
@@ -267,7 +267,7 @@ class _OpeningProjectGateState extends State<OpeningProjectGate>
                         },
                         child: Column(
                           children: [
-                            const Text(
+                            Text(
                               'Welcome home',
                               style: TextStyle(
                                 color: AppTheme.darkTextSecondary,
@@ -282,7 +282,7 @@ class _OpeningProjectGateState extends State<OpeningProjectGate>
                               textAlign: TextAlign.center,
                               maxLines: 2,
                               overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 color: AppTheme.darkTextPrimary,
                                 fontSize: 30,
                                 fontWeight: FontWeight.w600,
@@ -298,7 +298,7 @@ class _OpeningProjectGateState extends State<OpeningProjectGate>
                               child: Text(
                                 _phrases[_phraseIndex],
                                 key: ValueKey(_phraseIndex),
-                                style: const TextStyle(
+                                style: TextStyle(
                                   color: AppTheme.darkTextSecondary,
                                   fontSize: 15,
                                   fontWeight: FontWeight.w500,
@@ -353,7 +353,7 @@ class _BrandMark extends StatelessWidget {
               height: 80,
               fit: BoxFit.contain,
               filterQuality: FilterQuality.high,
-              errorBuilder: (_, __, ___) => const Icon(
+              errorBuilder: (_, __, ___) => Icon(
                 Icons.home_rounded,
                 color: AppTheme.darkTextPrimary,
                 size: 64,

@@ -277,7 +277,7 @@ class _Header extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Text(
+    return Text(
       'Mobile Live Test',
       style: TextStyle(
         fontSize: 22,
@@ -326,7 +326,7 @@ class _EnableCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
+          Text(
             'Enable Test Mode on this device',
             style: TextStyle(
               fontWeight: FontWeight.w800,
@@ -390,7 +390,7 @@ class _StatusCard extends StatelessWidget {
         Expanded(
           child: Text(
             'Status: $connectionLabel',
-            style: const TextStyle(
+            style: TextStyle(
               fontWeight: FontWeight.w800,
               color: AppTheme.darkTextPrimary,
             ),
@@ -406,7 +406,7 @@ class _WaitingCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const MobileLiveTestPanel(
+    return MobileLiveTestPanel(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

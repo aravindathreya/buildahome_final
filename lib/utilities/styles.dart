@@ -17,7 +17,7 @@ get_button_decoration() {
 }
 
 get_button_text_style() {
-  return const TextStyle(
+  return TextStyle(
     fontSize: 14,
     fontWeight: FontWeight.w700,
     color: AppTheme.darkTextPrimary,
@@ -25,7 +25,7 @@ get_button_text_style() {
 }
 
 get_header_text_style() {
-  return const TextStyle(
+  return TextStyle(
     fontSize: 18,
     fontWeight: FontWeight.w800,
     color: AppTheme.darkTextPrimary,

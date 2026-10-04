@@ -96,6 +96,16 @@ class IsometricViewService {
       if (body == null) {
         throw const IsometricViewException('Unexpected response from server');
       }
+      // Cache human-facing project number whenever the API returns it.
+      final projectCode = (body['project_code'] ?? body['project_number'])
+          ?.toString()
+          .trim();
+      if (projectCode != null &&
+          projectCode.isNotEmpty &&
+          projectCode.toLowerCase() != 'null') {
+        await prefs.setString('project_number', projectCode);
+        await prefs.setString('project_code', projectCode);
+      }
       if (body['success'] == false) {
         throw IsometricViewException(
           _messageOf(body) ?? 'Could not load the 3D House Tour',

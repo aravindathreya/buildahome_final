@@ -864,6 +864,101 @@ void main() {
       expect(find.text('Contracts'), findsNothing);
     });
 
+    testWidgets(
+        'For me Architectural shows Final and Revisions sections',
+        (tester) async {
+      final snapshot = parseMobileDocumentsPayload({
+        'message': 'success',
+        'configured': true,
+        'project_id': '100',
+        'categories': [
+          {
+            'id': 'architectural',
+            'label': 'Architectural',
+            'types': [
+              {
+                'id': 'floor_plans',
+                'label': 'Floor Plans',
+                'documents': [
+                  {
+                    'id': '1',
+                    'document_key': 'gfp',
+                    'name': 'Ground Floor Plan',
+                    'status': 'uploaded',
+                    'url': '/g.pdf',
+                    'is_latest': true,
+                    'revision': 2,
+                  },
+                  {
+                    'id': '1b',
+                    'document_key': 'gfp',
+                    'name': 'Ground Floor Plan old',
+                    'status': 'superseded',
+                    'url': '/g-old.pdf',
+                    'is_latest': false,
+                    'revision': 1,
+                  },
+                  {
+                    'id': '2',
+                    'name': 'First Floor Plan',
+                    'status': 'pending',
+                  },
+                ],
+              },
+              {
+                'id': 'elevations',
+                'label': 'Elevations',
+                'documents': [
+                  {
+                    'id': '3',
+                    'name': 'Front Elevation',
+                    'status': 'final',
+                    'url': '/e.pdf',
+                    'is_latest': true,
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      })!;
+      final category = snapshot.library.libraryCategories.single;
+      final finalSection =
+          buildClientPortalArchitecturalFinalSection(category);
+      final revisionsSection =
+          buildClientPortalArchitecturalRevisionsSection(category);
+
+      expect(finalSection.label, 'Final');
+      expect(
+        finalSection.documents.map((d) => d.name),
+        containsAll(['Ground Floor Plan', 'First Floor Plan', 'Front Elevation']),
+      );
+      expect(
+        finalSection.documents.map((d) => d.name),
+        isNot(contains('Ground Floor Plan old')),
+      );
+      expect(revisionsSection.label, 'Revisions');
+      expect(
+        revisionsSection.documents.map((d) => d.name),
+        ['Ground Floor Plan old'],
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: DocumentsV1CategoryScreen(
+            category: category,
+            clientMode: true,
+          ),
+        ),
+      );
+
+      expect(find.text('Architectural'), findsOneWidget);
+      expect(find.text('Final'), findsOneWidget);
+      expect(find.text('Revisions'), findsOneWidget);
+      expect(find.text('Floor Plans'), findsNothing);
+      expect(find.text('Elevations'), findsNothing);
+    });
+
     testWidgets('renders individual documents including pending rows',
         (tester) async {
       final snapshot = parseMobileDocumentsPayload({
@@ -935,6 +1030,119 @@ void main() {
       );
 
       expect(find.text('Second Floor Plan'), findsOneWidget);
+    });
+  });
+
+  group('Uncategorized category', () {
+    test('is dropped from mobile catalog parse and hub', () {
+      final snapshot = parseMobileDocumentsPayload({
+        'message': 'success',
+        'configured': true,
+        'project_id': '100',
+        'categories': [
+          {
+            'id': 'architectural',
+            'name': 'Architectural',
+            'types': [
+              {
+                'id': 'floor_plans',
+                'name': 'Floor Plans',
+                'documents': [
+                  {
+                    'id': '1',
+                    'name': 'Ground Floor Plan',
+                    'status': 'uploaded',
+                    'url': '/g.pdf',
+                  },
+                ],
+              },
+            ],
+          },
+          {
+            'id': 'uncategorized',
+            'name': 'Uncategorized',
+            'types': [
+              {
+                'id': 'other',
+                'name': 'Other',
+                'documents': [
+                  {
+                    'id': '9',
+                    'name': 'Loose file',
+                    'status': 'uploaded',
+                    'url': '/x.pdf',
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      })!;
+
+      expect(
+        snapshot.library.libraryCategories.map((c) => c.label),
+        ['Architectural'],
+      );
+      expect(
+        buildClientPortalHubItems(snapshot.library).map((i) => i.title),
+        isNot(contains('Uncategorized')),
+      );
+    });
+  });
+
+  group('Area Statement client visibility', () {
+    test('detects Area Statement by name, key, and URL', () {
+      expect(
+        isAreaStatementDocumentRef(name: 'Area Statement'),
+        isTrue,
+      );
+      expect(
+        isAreaStatementDocumentRef(documentKey: 'area_statement'),
+        isTrue,
+      );
+      expect(
+        isAreaStatementDocumentRef(
+          url: 'https://office.buildahome.in/serve_sales_sop_area_statement/3',
+        ),
+        isTrue,
+      );
+      expect(isAreaStatementDocumentRef(name: 'Floor Plan'), isFalse);
+    });
+
+    test('strips Area Statement from client categories', () {
+      final category = WorkflowDocumentCategory(
+        id: 'architectural',
+        label: 'Architectural',
+        sections: [
+          WorkflowDocumentSection(
+            id: 'misc',
+            label: 'Misc',
+            documents: [
+              WorkflowDocumentUpload(
+                id: '1',
+                documentKey: 'area_statement',
+                name: 'Area Statement',
+                url: '/a.pdf',
+                isLatest: true,
+              ),
+              WorkflowDocumentUpload(
+                id: '2',
+                documentKey: 'gfp',
+                name: 'Ground Floor Plan',
+                url: '/g.pdf',
+                isLatest: true,
+              ),
+            ],
+          ),
+        ],
+      );
+
+      final filtered = withoutAreaStatementDocuments(category);
+      expect(filtered.sections, hasLength(1));
+      expect(
+        filtered.sections.single.documents.map((d) => d.name),
+        ['Ground Floor Plan'],
+      );
     });
   });
 
@@ -1025,6 +1233,37 @@ void main() {
         items.where((i) => i.isCatalog).every((i) => !i.title.startsWith(RegExp(r'\d+\. '))),
         isTrue,
       );
+
+      final withoutKyc = buildClientPortalHubItems(
+        snapshot.library,
+        includeKyc: false,
+      );
+      expect(
+        withoutKyc.map((i) => i.kind),
+        isNot(contains(ClientPortalHubKind.kyc)),
+      );
+      expect(
+        withoutKyc.map((i) => i.title),
+        isNot(contains('KYC & Documents')),
+      );
+      expect(
+        withoutKyc.map((i) => i.title),
+        containsAll(['Documents', 'Receipts and Agreements']),
+      );
+      expect(items.map((i) => i.title), isNot(contains('Site Preparation')));
+      expect(items.map((i) => i.title), isNot(contains('Demolition Details')));
+      expect(items.map((i) => i.title), isNot(contains('Site Inspection')));
+      expect(items.where((i) => i.isProjectStep), isEmpty);
+    });
+
+    test('KYC hub visibility is Client and Super Admin only', () {
+      expect(roleCanSeeClientPortalKyc('Client'), isTrue);
+      expect(roleCanSeeClientPortalKyc('Super Admin'), isTrue);
+      expect(roleCanSeeClientPortalKyc('Admin'), isTrue);
+      expect(roleCanSeeClientPortalKyc('Project Manager'), isFalse);
+      expect(roleCanSeeClientPortalKyc('Site Engineer'), isFalse);
+      expect(roleCanSeeClientPortalKyc('Sales'), isFalse);
+      expect(roleCanSeeClientPortalKyc(null), isFalse);
     });
 
     test('new catalog categories get a colored icon, not a plain folder', () {

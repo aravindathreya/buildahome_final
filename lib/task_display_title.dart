@@ -32,6 +32,55 @@ String workflowTaskDisplayTitle(
   return taskId.isEmpty ? emptyFallback : 'Task #$taskId';
 }
 
+/// Project label for task cards/details. Hides SoP / bare numeric ids that
+/// sometimes arrive in `project_name` instead of a human project name.
+String? taskProjectDisplayName(Map task) {
+  final raw = _trimmedTaskField(task, 'project_name');
+  if (raw == null) return null;
+
+  if (_isSopProjectIdLabel(raw)) return null;
+
+  final sopIds = <String>{};
+  for (final key in const [
+    'sales_sop_id',
+    'sop_id',
+    'sales_sop_project_id',
+    'sop_project_id',
+  ]) {
+    final value = _trimmedTaskField(task, key);
+    if (value != null) sopIds.add(value);
+  }
+
+  if (sopIds.contains(raw)) return null;
+
+  // "#77" / "SOP #77" matching a known SoP id on the row.
+  final hashMatch =
+      RegExp(r'^(?:sop\s*)?#\s*(\d+)$', caseSensitive: false).firstMatch(raw);
+  if (hashMatch != null && sopIds.contains(hashMatch.group(1))) return null;
+
+  // Bare digits with no real name — treat as leaked SoP/ERP id.
+  if (RegExp(r'^\d+$').hasMatch(raw)) return null;
+
+  return raw;
+}
+
+bool _isSopProjectIdLabel(String value) {
+  final normalized = value.trim();
+  if (RegExp(
+    r'^(?:so\s*p|sop|sales\s*sop)(?:\s+project)?(?:\s+id)?\s*[:#]?\s*\d+$',
+    caseSensitive: false,
+  ).hasMatch(normalized)) {
+    return true;
+  }
+  if (RegExp(
+    r'^project\s+sop\s*#?\s*\d+$',
+    caseSensitive: false,
+  ).hasMatch(normalized)) {
+    return true;
+  }
+  return false;
+}
+
 String? _firstNonEmpty(Map task, List<String> keys) {
   for (final key in keys) {
     final value = task[key]?.toString().trim() ?? '';

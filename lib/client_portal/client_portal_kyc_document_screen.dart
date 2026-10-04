@@ -107,7 +107,7 @@ class ClientPortalKycDocumentScreen extends StatelessWidget {
         elevation: 0,
         title: Text(
           label,
-          style: const TextStyle(
+          style: TextStyle(
             color: AppTheme.darkTextPrimary,
             fontSize: 17,
             fontWeight: FontWeight.w800,
@@ -160,7 +160,7 @@ class ClientPortalKycDocumentScreen extends StatelessWidget {
                   Text(
                     label,
                     textAlign: TextAlign.center,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontWeight: FontWeight.w800,
                       fontSize: 17,
                       color: AppTheme.darkTextPrimary,
@@ -217,7 +217,7 @@ class ClientPortalKycDocumentScreen extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 24),
-            const Text(
+            Text(
               'Document Details',
               style: TextStyle(
                 fontWeight: FontWeight.w800,

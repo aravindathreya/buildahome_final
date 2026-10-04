@@ -20,6 +20,7 @@ class TentativeHandoverCard extends StatefulWidget {
   final String? delayLabel;
   final String? plannedLabel;
   final Widget? trailingAction;
+  final VoidCallback? onTap;
 
   const TentativeHandoverCard({
     super.key,
@@ -31,6 +32,7 @@ class TentativeHandoverCard extends StatefulWidget {
     this.delayLabel,
     this.plannedLabel,
     this.trailingAction,
+    this.onTap,
   });
 
   /// Calendar date for tentative handover (local midnight of that day).
@@ -106,22 +108,28 @@ class _TentativeHandoverCardState extends State<TentativeHandoverCard> {
     final seconds = totalSeconds % 60;
     final dueNow = totalSeconds <= 0;
 
-    if (_merged) {
-      return _buildMergedSection(
-        days: days,
-        hours: hours,
-        minutes: minutes,
-        seconds: seconds,
-        dueNow: dueNow,
-      );
-    }
+    final child = _merged
+        ? _buildMergedSection(
+            days: days,
+            hours: hours,
+            minutes: minutes,
+            seconds: seconds,
+            dueNow: dueNow,
+          )
+        : _buildCompactCard(
+            days: days,
+            hours: hours,
+            minutes: minutes,
+            seconds: seconds,
+            dueNow: dueNow,
+          );
 
-    return _buildCompactCard(
-      days: days,
-      hours: hours,
-      minutes: minutes,
-      seconds: seconds,
-      dueNow: dueNow,
+    if (widget.onTap == null) return child;
+
+    return GestureDetector(
+      onTap: widget.onTap,
+      behavior: HitTestBehavior.opaque,
+      child: child,
     );
   }
 
@@ -158,7 +166,7 @@ class _TentativeHandoverCardState extends State<TentativeHandoverCard> {
                       dueNow
                           ? 'Tentative handover - Due now'
                           : 'Tentative handover - $_dateLabel',
-                      style: const TextStyle(
+                      style: TextStyle(
                         color: AppTheme.darkTextPrimary,
                         fontSize: 16,
                         fontWeight: FontWeight.w800,
@@ -174,7 +182,7 @@ class _TentativeHandoverCardState extends State<TentativeHandoverCard> {
                       builder: (context, value, _) {
                         return Text(
                           '$value ${_dayWord(value)} left to completion',
-                          style: const TextStyle(
+                          style: TextStyle(
                             color: AppTheme.darkTextSecondary,
                             fontSize: 12,
                             fontWeight: FontWeight.w600,
@@ -186,7 +194,7 @@ class _TentativeHandoverCardState extends State<TentativeHandoverCard> {
                       const SizedBox(height: 2),
                       Text(
                         widget.delayLabel!,
-                        style: const TextStyle(
+                        style: TextStyle(
                           color: AppTheme.darkTextSecondary,
                           fontSize: 11.5,
                           fontWeight: FontWeight.w600,
@@ -197,7 +205,7 @@ class _TentativeHandoverCardState extends State<TentativeHandoverCard> {
                       const SizedBox(height: 2),
                       Text(
                         widget.plannedLabel!,
-                        style: const TextStyle(
+                        style: TextStyle(
                           color: AppTheme.darkTextSecondary,
                           fontSize: 11.5,
                           fontWeight: FontWeight.w500,
@@ -226,7 +234,7 @@ class _TentativeHandoverCardState extends State<TentativeHandoverCard> {
               if (percent != null) ...[
                 Text(
                   percent,
-                  style: const TextStyle(
+                  style: TextStyle(
                     color: AppTheme.darkTextPrimary,
                     fontSize: 12,
                     fontWeight: FontWeight.w800,
@@ -249,7 +257,7 @@ class _TentativeHandoverCardState extends State<TentativeHandoverCard> {
           ),
           const SizedBox(height: 14),
           if (dueNow)
-            const Text(
+            Text(
               'Your project is ready for handover',
               style: TextStyle(
                 color: AppTheme.darkTextSecondary,
@@ -342,7 +350,7 @@ class _TentativeHandoverCardState extends State<TentativeHandoverCard> {
           ),
           const SizedBox(height: 12),
           if (dueNow)
-            const Text(
+            Text(
               'Your project is ready for handover',
               style: TextStyle(
                 color: AppTheme.darkTextSecondary,
@@ -504,7 +512,7 @@ class _CounterCell extends StatelessWidget {
           const SizedBox(height: 2),
           Text(
             label,
-            style: const TextStyle(
+            style: TextStyle(
               color: AppTheme.darkTextSecondary,
               fontSize: 10,
               fontWeight: FontWeight.w700,

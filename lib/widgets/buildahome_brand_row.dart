@@ -6,14 +6,14 @@ import '../app_theme.dart';
 class BuildAhomeBrandRow extends StatefulWidget {
   final double logoHeight;
   final double fontSize;
-  final Color color;
+  final Color? color;
   final EdgeInsetsGeometry padding;
 
   const BuildAhomeBrandRow({
     super.key,
     this.logoHeight = 28,
     this.fontSize = 18,
-    this.color = AppTheme.darkTextPrimary,
+    this.color,
     this.padding = const EdgeInsets.only(bottom: 14),
   });
 
@@ -48,6 +48,7 @@ class _BuildAhomeBrandRowState extends State<BuildAhomeBrandRow>
 
   @override
   Widget build(BuildContext context) {
+    final color = widget.color ?? AppTheme.darkTextPrimary;
     final brand = Row(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.center,
@@ -59,7 +60,7 @@ class _BuildAhomeBrandRowState extends State<BuildAhomeBrandRow>
           filterQuality: FilterQuality.high,
           errorBuilder: (_, __, ___) => Icon(
             Icons.home_rounded,
-            color: widget.color,
+            color: color,
             size: widget.logoHeight * 0.9,
           ),
         ),
@@ -70,7 +71,7 @@ class _BuildAhomeBrandRowState extends State<BuildAhomeBrandRow>
               TextSpan(
                 text: 'buildAhome',
                 style: TextStyle(
-                  color: widget.color,
+                  color: color,
                   fontSize: widget.fontSize,
                   fontWeight: FontWeight.w800,
                   letterSpacing: -0.4,
@@ -84,7 +85,7 @@ class _BuildAhomeBrandRowState extends State<BuildAhomeBrandRow>
                   child: Text(
                     'TM',
                     style: TextStyle(
-                      color: widget.color.withValues(alpha: 0.78),
+                      color: color.withValues(alpha: 0.78),
                       fontSize: widget.fontSize * 0.42,
                       fontWeight: FontWeight.w700,
                       height: 1.0,

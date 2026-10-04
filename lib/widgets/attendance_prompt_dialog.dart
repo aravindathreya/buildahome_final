@@ -212,7 +212,7 @@ class _AttendancePromptDialogState extends State<_AttendancePromptDialog> {
       titlePadding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
       contentPadding: const EdgeInsets.fromLTRB(24, 16, 24, 12),
       actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-      title: const Text(
+      title: Text(
         'Mark today’s attendance',
         style: TextStyle(
           color: AppTheme.darkTextPrimary,
@@ -395,7 +395,7 @@ class _AttendancePromptDialogState extends State<_AttendancePromptDialog> {
               children: [
                 Text(
                   title,
-                  style: const TextStyle(
+                  style: TextStyle(
                     color: AppTheme.darkTextPrimary,
                     fontWeight: FontWeight.w800,
                     fontSize: 14,
@@ -415,7 +415,7 @@ class _AttendancePromptDialogState extends State<_AttendancePromptDialog> {
           ),
           IconButton(
             onPressed: (_locating || _submitting) ? null : _refreshLocation,
-            icon: const Icon(Icons.refresh_rounded, color: AppTheme.darkTextPrimary),
+            icon: Icon(Icons.refresh_rounded, color: AppTheme.darkTextPrimary),
             tooltip: 'Refresh location',
           ),
         ],

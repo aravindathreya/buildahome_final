@@ -139,7 +139,7 @@ const Map<MobileQuickActionSurface, Map<String, String>>
     kMobileQuickActionTitlesBySurface = {
   MobileQuickActionSurface.staffHome: {
     'payments': 'Payments',
-    'nt_payments': 'NT Payments',
+    'nt_payments': 'Upwind Additions Cost',
     'upload_payment_proof': 'Upload proof',
     'my_tasks': 'My tasks',
     'project_status': 'Project Status',
@@ -169,7 +169,7 @@ const Map<MobileQuickActionSurface, Map<String, String>>
   },
   MobileQuickActionSurface.projectHomeOld: {
     'payments': 'Payments',
-    'nt_payments': 'NT Payments',
+    'nt_payments': 'Upwind Additions Cost',
     'scheduler': 'Scheduler',
     'gallery': 'Gallery',
     'chatbox': 'Notes & Comments',
@@ -185,7 +185,7 @@ const Map<MobileQuickActionSurface, Map<String, String>>
     'approved_pos': 'Approved POs',
     'work_orders': 'Work orders',
     'payments': 'Payments',
-    'nt_payments': 'NT Payments',
+    'nt_payments': 'Upwind Additions Cost',
     'updates': 'Updates',
     'upload_payment_proof': 'Upload proof',
     'documents': 'Documents',

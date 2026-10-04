@@ -1869,6 +1869,14 @@ class DataProvider {
     String? projectName,
   }) async {
     final prefs = await SharedPreferences.getInstance();
+    final previousProjectId = prefs.getString('project_id')?.trim();
+    if (previousProjectId != null &&
+        previousProjectId.isNotEmpty &&
+        previousProjectId != projectId) {
+      // Avoid showing another project's number after a project switch.
+      await prefs.remove('project_number');
+      await prefs.remove('project_code');
+    }
     await prefs.setString('project_id', projectId);
     clientProjectId = projectId;
 
@@ -1909,7 +1917,146 @@ class DataProvider {
       clientSalesSopId = sopId;
     }
 
+    await persistProjectNumber(_extractProjectNumberFromMap(source));
+
     print('[DataProvider] Persisted client project_id=$projectId');
+  }
+
+  /// Human-facing project number (`project_code`), not the ERP `project_id`.
+  Future<void> persistProjectNumber(String? value) async {
+    final number = _stringValue(value);
+    if (number == null) return;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('project_number', number);
+    await prefs.setString('project_code', number);
+  }
+
+  String? _extractProjectNumberFromMap(Map<String, dynamic>? source) {
+    if (source == null) return null;
+    final direct = _stringValue(source['project_code']) ??
+        _stringValue(source['project_number']) ??
+        _stringValue(source['code']);
+    if (direct != null) return direct;
+
+    final project = source['project'];
+    if (project is Map) {
+      final nested = Map<String, dynamic>.from(project);
+      return _stringValue(nested['project_code']) ??
+          _stringValue(nested['project_number']) ??
+          _stringValue(nested['code']);
+    }
+    return null;
+  }
+
+  /// Returns cached project number, or resolves it from the API when missing.
+  Future<String?> ensureClientProjectNumber({
+    Map<String, dynamic>? payload,
+  }) async {
+    final prefs = await SharedPreferences.getInstance();
+    final cached = _stringValue(prefs.getString('project_number')) ??
+        _stringValue(prefs.getString('project_code'));
+    if (cached != null) return cached;
+
+    final fromPayload = _extractProjectNumberFromMap(payload) ??
+        _extractProjectNumberFromMap(
+          payload != null && payload['user'] is Map
+              ? Map<String, dynamic>.from(payload['user'] as Map)
+              : null,
+        );
+    if (fromPayload != null) {
+      await persistProjectNumber(fromPayload);
+      return fromPayload;
+    }
+
+    final projectId = prefs.getString('project_id')?.trim();
+    final token = _normalizeApiToken(
+      prefs.getString('api_token') ?? currentApiToken,
+    );
+    if (projectId == null ||
+        projectId.isEmpty ||
+        projectId.toLowerCase() == 'null' ||
+        token == null) {
+      return null;
+    }
+
+    final userId =
+        (prefs.getString('userId') ?? prefs.getString('user_id') ?? '')
+            .trim();
+
+    try {
+      final uri = Uri.parse(
+        'https://office.buildahome.in/API/mobile/isometric-view',
+      ).replace(queryParameters: {
+        'api_token': token,
+        'project_id': projectId,
+        if (userId.isNotEmpty) 'user_id': userId,
+      });
+      final response = await ApiHttp.get(
+        uri,
+        headers: {
+          'Accept': 'application/json',
+          'X-Api-Token': token,
+          'Authorization': 'Bearer $token',
+        },
+      ).timeout(const Duration(seconds: 20));
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        final decoded = jsonDecode(response.body);
+        if (decoded is Map) {
+          final number = _extractProjectNumberFromMap(
+            Map<String, dynamic>.from(decoded),
+          );
+          if (number != null) {
+            await persistProjectNumber(number);
+            return number;
+          }
+        }
+      }
+    } catch (e) {
+      if (e is SessionInvalidatedException) rethrow;
+      print('[DataProvider] ensureClientProjectNumber isometric error: $e');
+    }
+
+    try {
+      final role = (prefs.getString('role') ?? currentRole ?? '').trim();
+      final userIdForProjects =
+          (prefs.getString('userId') ?? prefs.getString('user_id') ?? '')
+              .trim();
+      if (role.isEmpty || userIdForProjects.isEmpty) return null;
+      final response = await ApiHttp.post(
+        Uri.parse('https://office1.buildahome.in/API/get_projects_for_user'),
+        body: {
+          'user_id': userIdForProjects,
+          'role': role,
+          'api_token': token,
+        },
+        headers: {'X-Api-Token': token},
+      ).timeout(const Duration(seconds: 20));
+      if (response.statusCode != 200) return null;
+      final decoded = jsonDecode(response.body);
+      List<dynamic> list = [];
+      if (decoded is List) {
+        list = decoded;
+      } else if (decoded is Map && decoded['projects'] is List) {
+        list = decoded['projects'] as List;
+      }
+      for (final item in list) {
+        if (item is! Map) continue;
+        final map = Map<String, dynamic>.from(item);
+        final id = _stringValue(map['id']) ??
+            _stringValue(map['project_id']) ??
+            _stringValue(map['converted_project_id']);
+        if (id != projectId) continue;
+        final number = _extractProjectNumberFromMap(map);
+        if (number != null) {
+          await persistProjectNumber(number);
+          return number;
+        }
+      }
+    } catch (e) {
+      if (e is SessionInvalidatedException) rethrow;
+      print('[DataProvider] ensureClientProjectNumber projects error: $e');
+    }
+    return null;
   }
 
   Future<String?> _resolveProjectIdFromProjectsApi() async {

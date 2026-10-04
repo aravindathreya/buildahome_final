@@ -96,7 +96,7 @@ class ViewUsers extends StatelessWidget {
           automaticallyImplyLeading: false,
           title: Text(
             appTitle,
-            style: const TextStyle(
+            style: TextStyle(
               color: AppTheme.darkTextPrimary,
               fontWeight: FontWeight.w800,
             ),
@@ -107,7 +107,7 @@ class ViewUsers extends StatelessWidget {
           backgroundColor: AppTheme.getBackgroundSecondary(context),
           foregroundColor: AppTheme.darkTextPrimary,
           elevation: 0,
-          iconTheme: const IconThemeData(color: AppTheme.darkTextPrimary),
+          iconTheme: IconThemeData(color: AppTheme.darkTextPrimary),
         ),
         bottomNavigationBar: BottomNavigationBar(
           items: const <BottomNavigationBarItem>[

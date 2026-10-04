@@ -7,8 +7,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app_theme.dart';
 import 'services/app_logout.dart';
+import 'services/data_provider.dart';
 import 'services/location_service.dart';
 import 'services/profile_picture_service.dart';
+import 'services/theme_service.dart';
 import 'widgets/profile_picture_dialog.dart';
 
 /// Account profile: phone, photo, and location permission controls.
@@ -24,6 +26,7 @@ class _ProfileScreenState extends State<ProfileScreen>
   String _displayName = '';
   String _role = '';
   String _phone = '';
+  String _projectNumber = '';
   String? _picturePath;
   bool? _backgroundLocationOn;
   bool _loading = true;
@@ -31,10 +34,14 @@ class _ProfileScreenState extends State<ProfileScreen>
   /// (e.g. before a full rebuild after adding the plugin).
   String _appVersion = 'Version 3.0.1';
 
+  bool get _isClient => _role.trim().toLowerCase() == 'client';
+
   bool get _showLocationControls {
     final role = _role.trim().toLowerCase();
     return role.isNotEmpty && role != 'client';
   }
+
+  bool get _showProjectNumber => _isClient && _projectNumber.isNotEmpty;
 
   @override
   void initState() {
@@ -67,6 +74,15 @@ class _ProfileScreenState extends State<ProfileScreen>
             prefs.getString('mobile') ??
             '')
         .trim();
+    // Prefer human-facing project_code/number — never display ERP project_id.
+    var projectNumber = (prefs.getString('project_number') ??
+            prefs.getString('project_code') ??
+            '')
+        .trim();
+    if (role.toLowerCase() == 'client' && projectNumber.isEmpty) {
+      projectNumber =
+          (await DataProvider().ensureClientProjectNumber())?.trim() ?? '';
+    }
 
     String displayName;
     if (role.toLowerCase() == 'client' && clientName.isNotEmpty) {
@@ -101,6 +117,7 @@ class _ProfileScreenState extends State<ProfileScreen>
       _displayName = displayName;
       _role = role;
       _phone = phone;
+      _projectNumber = projectNumber;
       _picturePath = picture;
       _backgroundLocationOn = backgroundOn;
       _appVersion = appVersion;
@@ -142,22 +159,22 @@ class _ProfileScreenState extends State<ProfileScreen>
       context: context,
       builder: (dialogContext) {
         return AlertDialog(
-          backgroundColor: AppTheme.darkBackgroundSecondary,
+          backgroundColor: AppTheme.backgroundSecondary,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(20),
           ),
-          title: const Text(
+          title: Text(
             'Log out?',
             style: TextStyle(
-              color: AppTheme.darkTextPrimary,
+              color: AppTheme.textPrimary,
               fontWeight: FontWeight.w800,
               fontSize: 18,
             ),
           ),
-          content: const Text(
+          content: Text(
             'Are you sure you want to log out of this account?',
             style: TextStyle(
-              color: AppTheme.darkTextSecondary,
+              color: AppTheme.textSecondary,
               fontSize: 14.5,
               fontWeight: FontWeight.w500,
               height: 1.4,
@@ -198,22 +215,22 @@ class _ProfileScreenState extends State<ProfileScreen>
       context: context,
       builder: (dialogContext) {
         return AlertDialog(
-          backgroundColor: AppTheme.darkBackgroundSecondary,
+          backgroundColor: AppTheme.backgroundSecondary,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(20),
           ),
-          title: const Text(
+          title: Text(
             'Turn off background location?',
             style: TextStyle(
-              color: AppTheme.darkTextPrimary,
+              color: AppTheme.textPrimary,
               fontWeight: FontWeight.w800,
               fontSize: 18,
             ),
           ),
-          content: const Text(
+          content: Text(
             'Attendance monitoring uses background location. Turning this off may flag your attendance within the company.',
             style: TextStyle(
-              color: AppTheme.darkTextSecondary,
+              color: AppTheme.textSecondary,
               fontSize: 14.5,
               fontWeight: FontWeight.w500,
               height: 1.4,
@@ -256,68 +273,142 @@ class _ProfileScreenState extends State<ProfileScreen>
 
   @override
   Widget build(BuildContext context) {
-    return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: SystemUiOverlayStyle.light,
-      child: Scaffold(
-        backgroundColor: AppTheme.darkBackgroundPrimary,
-        appBar: AppBar(
-          backgroundColor: AppTheme.darkBackgroundSecondary,
-          foregroundColor: AppTheme.darkTextPrimary,
-          elevation: 0,
-          systemOverlayStyle: SystemUiOverlayStyle.light,
-          title: const Text(
-            'Profile',
-            style: TextStyle(
-              color: AppTheme.darkTextPrimary,
-              fontSize: 18,
-              fontWeight: FontWeight.w800,
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: ThemeService.instance.modeNotifier,
+      builder: (context, themeMode, _) {
+        final isDark = themeMode != ThemeMode.light;
+        return AnnotatedRegion<SystemUiOverlayStyle>(
+          value: isDark ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark,
+          child: Scaffold(
+            backgroundColor: AppTheme.backgroundPrimary,
+            appBar: AppBar(
+              backgroundColor: AppTheme.backgroundSecondary,
+              foregroundColor: AppTheme.textPrimary,
+              elevation: 0,
+              systemOverlayStyle:
+                  isDark ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark,
+              title: Text(
+                'Profile',
+                style: TextStyle(
+                  color: AppTheme.textPrimary,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
             ),
-          ),
-        ),
-        body: _loading
-            ? const Center(
-                child: CircularProgressIndicator(color: AppTheme.accentBlue),
-              )
-            : Column(
-                children: [
-                  Expanded(
-                    child: RefreshIndicator(
-                      color: AppTheme.accentBlue,
-                      onRefresh: _load,
-                      child: ListView(
-                        padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
-                        children: [
-                          _buildIdentityCard(),
-                          const SizedBox(height: 16),
-                          _buildPhoneCard(),
-                          if (_showLocationControls) ...[
-                            const SizedBox(height: 16),
-                            _buildLocationCard(),
-                          ],
-                          const SizedBox(height: 16),
-                          _buildLogoutButton(),
-                        ],
-                      ),
-                    ),
-                  ),
-                  SafeArea(
-                    top: false,
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
-                      child: Center(
-                        child: Text(
-                          _appVersion,
-                          style: const TextStyle(
-                            color: AppTheme.mutedGrey,
-                            fontSize: 12.5,
-                            fontWeight: FontWeight.w600,
+            body: _loading
+                ? const Center(
+                    child: CircularProgressIndicator(color: AppTheme.accentBlue),
+                  )
+                : Column(
+                    children: [
+                      Expanded(
+                        child: RefreshIndicator(
+                          color: AppTheme.accentBlue,
+                          onRefresh: _load,
+                          child: ListView(
+                            padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
+                            children: [
+                              _buildIdentityCard(),
+                              const SizedBox(height: 16),
+                              _buildPhoneCard(),
+                              if (_showProjectNumber) ...[
+                                const SizedBox(height: 16),
+                                _buildProjectNumberCard(),
+                              ],
+                              if (_showLocationControls) ...[
+                                const SizedBox(height: 16),
+                                _buildLocationCard(),
+                              ],
+                              const SizedBox(height: 16),
+                              _buildAppearanceCard(isDark),
+                              const SizedBox(height: 16),
+                              _buildLogoutButton(),
+                            ],
                           ),
                         ),
                       ),
-                    ),
+                      SafeArea(
+                        top: false,
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
+                          child: Center(
+                            child: Text(
+                              _appVersion,
+                              style: const TextStyle(
+                                color: AppTheme.mutedGrey,
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                ],
-              ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildAppearanceCard(bool isDark) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+      decoration: BoxDecoration(
+        color: AppTheme.backgroundSecondary,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppTheme.borderColor),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: AppTheme.backgroundPrimaryLight,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(
+              isDark ? Icons.dark_mode_rounded : Icons.light_mode_rounded,
+              color: AppTheme.accentBlue,
+              size: 22,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Dark mode',
+                  style: TextStyle(
+                    color: AppTheme.textPrimary,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  isDark ? 'Using dark appearance' : 'Using light appearance',
+                  style: TextStyle(
+                    color: AppTheme.textSecondary,
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Switch.adaptive(
+            value: isDark,
+            activeThumbColor: AppTheme.accentBlue,
+            activeTrackColor: AppTheme.accentBlue.withValues(alpha: 0.45),
+            onChanged: (value) {
+              unawaited(ThemeService.instance.setDark(value));
+            },
+          ),
+        ],
       ),
     );
   }
@@ -348,9 +439,9 @@ class _ProfileScreenState extends State<ProfileScreen>
     return Container(
       padding: const EdgeInsets.fromLTRB(18, 20, 18, 18),
       decoration: BoxDecoration(
-        color: AppTheme.darkBackgroundSecondary,
+        color: AppTheme.backgroundSecondary,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AppTheme.border),
+        border: Border.all(color: AppTheme.borderColor),
       ),
       child: Column(
         children: [
@@ -358,8 +449,8 @@ class _ProfileScreenState extends State<ProfileScreen>
             displayName: _displayName,
             picturePath: _picturePath,
             size: 84,
-            backgroundColor: AppTheme.darkBackgroundPrimaryLight,
-            borderColor: AppTheme.border,
+            backgroundColor: AppTheme.backgroundPrimaryLight,
+            borderColor: AppTheme.borderColor,
             showEditBadge: true,
             onTap: _changeProfilePicture,
           ),
@@ -367,8 +458,8 @@ class _ProfileScreenState extends State<ProfileScreen>
           Text(
             _displayName,
             textAlign: TextAlign.center,
-            style: const TextStyle(
-              color: AppTheme.darkTextPrimary,
+            style: TextStyle(
+              color: AppTheme.textPrimary,
               fontSize: 20,
               fontWeight: FontWeight.w800,
               letterSpacing: -0.3,
@@ -378,8 +469,8 @@ class _ProfileScreenState extends State<ProfileScreen>
             const SizedBox(height: 4),
             Text(
               _role,
-              style: const TextStyle(
-                color: AppTheme.darkTextSecondary,
+              style: TextStyle(
+                color: AppTheme.textSecondary,
                 fontSize: 13.5,
                 fontWeight: FontWeight.w600,
               ),
@@ -397,8 +488,8 @@ class _ProfileScreenState extends State<ProfileScreen>
                     : 'Change profile picture',
               ),
               style: OutlinedButton.styleFrom(
-                foregroundColor: AppTheme.darkTextPrimary,
-                side: const BorderSide(color: AppTheme.border),
+                foregroundColor: AppTheme.textPrimary,
+                side: BorderSide(color: AppTheme.borderColor),
                 padding: const EdgeInsets.symmetric(vertical: 12),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
@@ -415,9 +506,9 @@ class _ProfileScreenState extends State<ProfileScreen>
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
       decoration: BoxDecoration(
-        color: AppTheme.darkBackgroundSecondary,
+        color: AppTheme.backgroundSecondary,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: AppTheme.border),
+        border: Border.all(color: AppTheme.borderColor),
       ),
       child: Row(
         children: [
@@ -425,7 +516,7 @@ class _ProfileScreenState extends State<ProfileScreen>
             width: 42,
             height: 42,
             decoration: BoxDecoration(
-              color: AppTheme.darkBackgroundPrimaryLight,
+              color: AppTheme.backgroundPrimaryLight,
               borderRadius: BorderRadius.circular(12),
             ),
             child: const Icon(
@@ -439,10 +530,10 @@ class _ProfileScreenState extends State<ProfileScreen>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
+                Text(
                   'Logged-in phone number',
                   style: TextStyle(
-                    color: AppTheme.darkTextSecondary,
+                    color: AppTheme.textSecondary,
                     fontSize: 12.5,
                     fontWeight: FontWeight.w600,
                   ),
@@ -450,8 +541,62 @@ class _ProfileScreenState extends State<ProfileScreen>
                 const SizedBox(height: 3),
                 Text(
                   _displayPhone,
-                  style: const TextStyle(
-                    color: AppTheme.darkTextPrimary,
+                  style: TextStyle(
+                    color: AppTheme.textPrimary,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.2,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildProjectNumberCard() {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+      decoration: BoxDecoration(
+        color: AppTheme.backgroundSecondary,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppTheme.borderColor),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: AppTheme.backgroundPrimaryLight,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Icon(
+              Icons.home_work_outlined,
+              color: AppTheme.accentBlue,
+              size: 22,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Project number',
+                  style: TextStyle(
+                    color: AppTheme.textSecondary,
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  _projectNumber,
+                  style: TextStyle(
+                    color: AppTheme.textPrimary,
                     fontSize: 16,
                     fontWeight: FontWeight.w800,
                     letterSpacing: 0.2,
@@ -470,15 +615,20 @@ class _ProfileScreenState extends State<ProfileScreen>
     final isOn = backgroundOn == true;
     final statusColor =
         isOn ? const Color(0xFF34D399) : const Color(0xFFFBBF24);
-    final statusBg =
-        isOn ? const Color(0xFF14352B) : const Color(0xFF3A2F14);
+    final statusBg = isOn
+        ? (AppTheme.isDark
+            ? const Color(0xFF14352B)
+            : const Color(0xFFD1FAE5))
+        : (AppTheme.isDark
+            ? const Color(0xFF3A2F14)
+            : const Color(0xFFFEF3C7));
 
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
       decoration: BoxDecoration(
-        color: AppTheme.darkBackgroundSecondary,
+        color: AppTheme.backgroundSecondary,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: AppTheme.border),
+        border: Border.all(color: AppTheme.borderColor),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -505,10 +655,10 @@ class _ProfileScreenState extends State<ProfileScreen>
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
+                    Text(
                       'Background location',
                       style: TextStyle(
-                        color: AppTheme.darkTextPrimary,
+                        color: AppTheme.textPrimary,
                         fontSize: 15,
                         fontWeight: FontWeight.w800,
                       ),
@@ -536,8 +686,8 @@ class _ProfileScreenState extends State<ProfileScreen>
             isOn
                 ? 'Attendance monitoring uses background location after check-in. You can reset or turn this off in system settings.'
                 : 'Allow location all the time so attendance can update after you check in.',
-            style: const TextStyle(
-              color: AppTheme.darkTextSecondary,
+            style: TextStyle(
+              color: AppTheme.textSecondary,
               fontSize: 13,
               fontWeight: FontWeight.w500,
               height: 1.35,
@@ -552,8 +702,8 @@ class _ProfileScreenState extends State<ProfileScreen>
                       ? null
                       : (isOn ? _confirmTurnOffLocation : _openLocationSettings),
                   style: OutlinedButton.styleFrom(
-                    foregroundColor: AppTheme.darkTextPrimary,
-                    side: const BorderSide(color: AppTheme.border),
+                    foregroundColor: AppTheme.textPrimary,
+                    side: BorderSide(color: AppTheme.borderColor),
                     padding: const EdgeInsets.symmetric(vertical: 12),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),

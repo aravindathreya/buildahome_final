@@ -143,7 +143,7 @@ Future<bool?> _promptToOpenSettings(
       return AlertDialog(
         backgroundColor: AppTheme.darkBackgroundSecondary,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Row(
+        title: Row(
           children: [
             Icon(
               Icons.photo_camera_rounded,

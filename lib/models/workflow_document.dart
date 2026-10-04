@@ -163,6 +163,94 @@ class WorkflowDocumentUpload {
         hit(sectionLabel) ||
         hit(categoryLabel);
   }
+
+  /// Area Statement must never surface to Client role / clientMode UIs.
+  bool get isAreaStatement => isAreaStatementDocumentRef(
+        name: name,
+        documentKey: documentKey,
+        id: id,
+        url: url,
+        taskName: taskName,
+      );
+}
+
+/// True for the unused "Uncategorized" catalog bucket from the backend.
+bool isUncategorizedDocumentCategoryRef({
+  String? id,
+  String? label,
+  String? libraryGroupKey,
+  String? clientJourneyKey,
+}) {
+  bool hit(String? raw) {
+    final value = (raw ?? '').trim().toLowerCase();
+    if (value.isEmpty) return false;
+    final normalized = value.replaceAll(RegExp(r'[\s_-]+'), ' ');
+    return normalized == 'uncategorized' || normalized == 'uncategorised';
+  }
+
+  return hit(id) ||
+      hit(label) ||
+      hit(libraryGroupKey) ||
+      hit(clientJourneyKey);
+}
+
+bool isUncategorizedDocumentCategory(WorkflowDocumentCategory category) {
+  return isUncategorizedDocumentCategoryRef(
+    id: category.id,
+    label: category.label,
+    libraryGroupKey: category.libraryGroupKey,
+    clientJourneyKey: category.clientJourneyKey,
+  );
+}
+
+/// Matches Area Statement by common labels, keys, and serve URLs.
+bool isAreaStatementDocumentRef({
+  String? name,
+  String? documentKey,
+  String? id,
+  String? url,
+  String? taskName,
+  String? title,
+}) {
+  final blob = [
+    name,
+    documentKey,
+    id,
+    url,
+    taskName,
+    title,
+  ].whereType<String>().join(' ').toLowerCase();
+  if (blob.isEmpty) return false;
+  if (blob.contains('area_statement') || blob.contains('area-statement')) {
+    return true;
+  }
+  final normalized = blob.replaceAll(RegExp(r'[\s_/-]+'), ' ');
+  return normalized.contains('area statement');
+}
+
+/// Strips Area Statement rows from a category for client-facing screens.
+WorkflowDocumentCategory withoutAreaStatementDocuments(
+  WorkflowDocumentCategory category, {
+  bool dropEmptySections = true,
+}) {
+  final sections = category.sections
+      .map(
+        (section) => section.copyWithDocuments(
+          section.documents.where((doc) => !doc.isAreaStatement).toList(),
+        ),
+      )
+      .where((section) => !dropEmptySections || section.documents.isNotEmpty)
+      .toList();
+  return category.copyWithSections(sections);
+}
+
+List<WorkflowDocumentCategory> withoutAreaStatementCategories(
+  List<WorkflowDocumentCategory> categories,
+) {
+  return categories
+      .map(withoutAreaStatementDocuments)
+      .where((category) => category.sections.isNotEmpty)
+      .toList();
 }
 
 class WorkflowDocumentSection {
@@ -334,14 +422,26 @@ class WorkflowDocumentLibrary {
       'office_documents',
       'receipts_and_agreements',
       'gallery',
+      'uncategorized',
+      'uncategorised',
+      'site_preparation',
+      'demolition_details',
+      'site_inspection',
     };
     bool keep(WorkflowDocumentCategory category) {
+      if (isUncategorizedDocumentCategory(category)) return false;
       final key = (category.clientJourneyKey ??
               category.libraryGroupKey ??
               category.id)
           .toLowerCase();
       if (excluded.contains(key)) return false;
       if (key.contains('kyc')) return false;
+      if (key.contains('site_prep') ||
+          key.contains('site_preparation') ||
+          key.contains('demolition') ||
+          key.contains('site_inspection')) {
+        return false;
+      }
       return true;
     }
 

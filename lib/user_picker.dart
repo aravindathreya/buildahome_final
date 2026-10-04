@@ -7,7 +7,7 @@ import 'widgets/skeleton_loader.dart';
 class UserPickerScreen {
   static const Color _navy = Color(0xFF1B254B);
   static const Color _muted = AppTheme.mutedGrey;
-  static const Color _border = AppTheme.border;
+  static Color get _border => AppTheme.border;
   static const Color _softShadow = AppTheme.softShadow;
 
   static Future<dynamic> show(BuildContext context, {int? projectId}) async {
@@ -68,7 +68,7 @@ class UserPickerScreen {
       isScrollControlled: true,
       builder: (context) => Container(
         height: MediaQuery.of(context).size.height * 0.82,
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           color: AppTheme.darkBackgroundSecondary,
           borderRadius: BorderRadius.only(
             topLeft: Radius.circular(24),
@@ -116,11 +116,11 @@ class UserPickerScreen {
                           color: AppTheme.darkBackgroundPrimaryLight,
                           borderRadius: BorderRadius.circular(12),
                         ),
-                        child: const Icon(Icons.person_search_rounded,
+                        child: Icon(Icons.person_search_rounded,
                             color: AppTheme.darkTextPrimary, size: 20),
                       ),
                       const SizedBox(width: 12),
-                      const Expanded(
+                      Expanded(
                         child: Text(
                           'Select User',
                           style: TextStyle(
@@ -145,7 +145,7 @@ class UserPickerScreen {
                   padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
                   child: TextField(
                     controller: searchController,
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: AppTheme.darkTextPrimary,
                       fontSize: 14,
                       fontWeight: FontWeight.w600,
@@ -173,11 +173,11 @@ class UserPickerScreen {
                       fillColor: AppTheme.darkBackgroundPrimary,
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(14),
-                        borderSide: const BorderSide(color: _border),
+                        borderSide: BorderSide(color: _border),
                       ),
                       enabledBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(14),
-                        borderSide: const BorderSide(color: _border),
+                        borderSide: BorderSide(color: _border),
                       ),
                       focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(14),
@@ -300,7 +300,7 @@ class UserPickerScreen {
                                                         BorderRadius.circular(
                                                             12),
                                                   ),
-                                                  child: const Icon(
+                                                  child: Icon(
                                                     Icons.person_rounded,
                                                     color: AppTheme.darkTextPrimary,
                                                     size: 20,
@@ -310,7 +310,7 @@ class UserPickerScreen {
                                                 Expanded(
                                                   child: Text(
                                                     userName,
-                                                    style: const TextStyle(
+                                                    style: TextStyle(
                                                       color: AppTheme.darkTextPrimary,
                                                       fontSize: 14.5,
                                                       fontWeight:

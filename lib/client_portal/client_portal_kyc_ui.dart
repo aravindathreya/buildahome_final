@@ -79,7 +79,7 @@ KycDocVisual kycDocVisualFor({required String docKey, required String label}) {
       iconFg: Color(0xFFF9A8D4),
     );
   }
-  return const KycDocVisual(
+  return KycDocVisual(
     icon: Icons.description_outlined,
     iconBg: Color(0xFF2A2040),
     iconFg: AppTheme.darkTextPrimary,
@@ -145,7 +145,7 @@ class KycStatusCard extends StatelessWidget {
                   children: [
                     Text(
                       complete ? 'KYC Completed' : 'KYC In Progress',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w800,
                         color: AppTheme.darkTextPrimary,
@@ -276,7 +276,7 @@ class KycSuccessBanner extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
+                Text(
                   'All mandatory documents uploaded',
                   style: TextStyle(
                     fontWeight: FontWeight.w800,
@@ -386,7 +386,7 @@ class KycDetailRow extends StatelessWidget {
                 const SizedBox(height: 2),
                 Text(
                   value,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w700,
                     color: AppTheme.darkTextPrimary,

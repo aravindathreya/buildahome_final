@@ -402,7 +402,7 @@ class AdminHome extends StatefulWidget {
 class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
   static const Color _navy = AppTheme.navy;
   static const Color _mutedGrey = Color(0xFFA8B3C7);
-  static const Color _cardBorder = AppTheme.border;
+  static Color get _cardBorder => AppTheme.border;
   static const Color _softShadow = Color(0x14000000);
 
   var currentWidgetContext;
@@ -1276,7 +1276,7 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
         route: () => _routeForCurrentProject(() => PaymentTaskWidget()),
       ),
       _quickActionTile(
-        title: 'NT Payments',
+        title: 'Upwind Additions Cost',
         icon: Icons.receipt_long,
         route: () => _routeForCurrentProject(
           () => const PaymentTaskWidget(
@@ -1762,7 +1762,7 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
                     width: 56,
                     height: 56,
                     color: AppTheme.darkBackgroundPrimaryLight,
-                    child: const Icon(Icons.apartment_rounded, color: AppTheme.darkTextPrimary),
+                    child: Icon(Icons.apartment_rounded, color: AppTheme.darkTextPrimary),
                   ),
                 ),
               ),
@@ -1785,7 +1785,7 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
                       currentUserRole.isNotEmpty
                           ? currentUserRole
                           : 'Team Dashboard',
-                      style: const TextStyle(
+                      style: TextStyle(
                         color: AppTheme.darkTextPrimary,
                         fontSize: 15,
                         fontWeight: FontWeight.w800,
@@ -1876,7 +1876,7 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
                 children: [
                   Text(
                     value,
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: AppTheme.darkTextPrimary,
                       fontSize: 17,
                       fontWeight: FontWeight.w800,
@@ -1944,14 +1944,14 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
                     color: const Color(0xFFEEF2FF),
                     borderRadius: BorderRadius.circular(10),
                   ),
-                  child: const Icon(
+                  child: Icon(
                     Icons.folder_special_rounded,
                     color: AppTheme.darkTextPrimary,
                     size: 18,
                   ),
                 ),
               const SizedBox(width: 12),
-              const Expanded(
+              Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -2031,7 +2031,7 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
           Text(
             _quickActionLabel(title),
             textAlign: TextAlign.center,
-            style: const TextStyle(
+            style: TextStyle(
               color: AppTheme.darkTextPrimary,
               fontSize: 12,
               fontWeight: FontWeight.w500,
@@ -2083,8 +2083,9 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
         return 'New Indent';
       case 'Upload proof':
         return 'Proof';
+      case 'Upwind Additions Cost':
       case 'NT Payments':
-        return 'NT Pay';
+        return 'Upwind Additions Cost';
       case '3D House Tour':
         return '3D House Tour';
       case 'Work orders':
@@ -2103,61 +2104,62 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
       case 'Projects':
         return Icons.folder_special_rounded;
       case 'My tasks':
-        return Icons.assignment_outlined;
+        return Icons.assignment_rounded;
       case 'Attendance':
         return Icons.fingerprint_rounded;
       case 'Daily Update':
         return Icons.campaign_rounded;
       case 'Indents':
-        return Icons.request_quote_outlined;
+        return Icons.request_quote_rounded;
       case 'Create Indent':
-        return Icons.add_box_outlined;
+        return Icons.add_box_rounded;
       case 'Stock Report':
-        return Icons.inventory_2_outlined;
+        return Icons.inventory_2_rounded;
       case 'Site Visits':
-        return Icons.location_on_outlined;
+        return Icons.location_on_rounded;
       case 'Test Reports':
-        return Icons.science_outlined;
+        return Icons.science_rounded;
       case 'Checklist':
         return Icons.checklist_rtl_rounded;
       case 'ChatBox':
-        return Icons.chat_bubble_outline_rounded;
+        return Icons.chat_bubble_rounded;
       case 'Chat V1':
-        return Icons.forum_outlined;
+        return Icons.forum_rounded;
       case 'Project Status':
-        return Icons.flag_outlined;
+        return Icons.flag_rounded;
       case 'My Notifications':
-        return Icons.notifications_none_rounded;
+        return Icons.notifications_rounded;
       case 'Mobile Live Test':
-        return Icons.phonelink_setup_outlined;
+        return Icons.phonelink_setup_rounded;
       case 'Payments':
-        return Icons.payment;
+        return Icons.payments_rounded;
+      case 'Upwind Additions Cost':
       case 'NT Payments':
-        return Icons.receipt_long;
+        return Icons.receipt_long_rounded;
       case 'Upload proof':
-        return Icons.cloud_upload_outlined;
+        return Icons.cloud_upload_rounded;
       case 'Approved POs':
-        return Icons.receipt_long_outlined;
+        return Icons.receipt_long_rounded;
       case 'Work orders':
-        return Icons.engineering_outlined;
+        return Icons.engineering_rounded;
       case 'Documents':
-        return Icons.folder_copy_outlined;
+        return Icons.folder_copy_rounded;
       case 'Scheduler':
-        return Icons.calendar_today;
+        return Icons.calendar_today_rounded;
       case 'Gallery':
-        return Icons.photo_library;
+        return Icons.photo_library_rounded;
       case 'Request Drawings':
-        return Icons.architecture;
+        return Icons.architecture_rounded;
       case 'Client Portal':
-        return Icons.dashboard_customize_outlined;
+        return Icons.dashboard_customize_rounded;
       case 'Slots':
-        return Icons.event_available_outlined;
+        return Icons.event_available_rounded;
       case 'Project Timeline':
         return Icons.timeline_rounded;
       case '3D House Tour':
         return Icons.view_in_ar_rounded;
       case 'Inspection Requests':
-        return Icons.fact_check_outlined;
+        return Icons.fact_check_rounded;
       default:
         return fallback;
     }
@@ -2178,7 +2180,7 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
+                Text(
                   'All Actions',
                   style: TextStyle(
                     color: AppTheme.darkTextPrimary,
@@ -2697,7 +2699,7 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
       children: [
         Row(
           children: [
-            const Expanded(
+            Expanded(
               child: Text(
                 'Recent tasks',
                 style: TextStyle(
@@ -2817,14 +2819,14 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
               children: [
                 Container(
                   padding: const EdgeInsets.all(12),
-                  decoration: const BoxDecoration(
+                  decoration: BoxDecoration(
                     color: AppTheme.darkBackgroundPrimaryLight,
                     shape: BoxShape.circle,
                   ),
-                  child: const Icon(Icons.task_alt, size: 28, color: AppTheme.darkTextPrimary),
+                  child: Icon(Icons.task_alt, size: 28, color: AppTheme.darkTextPrimary),
                 ),
                 const SizedBox(height: 12),
-                const Text(
+                Text(
                   'No tasks found',
                   style: TextStyle(
                     color: AppTheme.darkTextPrimary,
@@ -2920,7 +2922,7 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
 
   Widget _buildModernRecentTaskCard(Map<String, dynamic> task, int index) {
     final taskId = task['id']?.toString() ?? '';
-    final projectName = task['project_name']?.toString() ?? '';
+    final projectName = taskProjectDisplayName(task) ?? '';
     final assignedToName = task['assigned_to_name']?.toString() ?? '';
     final delayGated = isWorkflowDelayGated(task);
     final status = delayGated
@@ -3048,7 +3050,7 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
   Widget _buildTaskCard(Map<String, dynamic> task, int index) {
     final taskId = task['id']?.toString() ?? '';
     final projectId = task['project_id']?.toString() ?? '';
-    final projectName = task['project_name']?.toString() ?? '';
+    final projectName = taskProjectDisplayName(task) ?? '';
     final assignedTo = task['assigned_to']?.toString() ?? '';
     final assignedToName = task['assigned_to_name']?.toString() ?? '';
     final userName = task['user_name']?.toString() ?? '';

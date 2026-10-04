@@ -437,7 +437,7 @@ class _ActingAsFooterLine extends StatelessWidget {
       children: [
         Text(
           'Acting as $actingLabel',
-          style: const TextStyle(
+          style: TextStyle(
             color: AppTheme.darkTextPrimary,
             fontSize: 12.5,
             fontWeight: FontWeight.w700,

@@ -343,7 +343,7 @@ class _SalesSopCardsScreenState extends State<SalesSopCardsScreen>
         backgroundColor: AppTheme.getBackgroundSecondary(context),
         foregroundColor: AppTheme.darkTextPrimary,
         elevation: 0,
-        title: const Text(
+        title: Text(
           'Project Details',
           style: TextStyle(
             color: AppTheme.darkTextPrimary,
@@ -355,7 +355,7 @@ class _SalesSopCardsScreenState extends State<SalesSopCardsScreen>
           IconButton(
             tooltip: 'Refresh',
             onPressed: _refreshCurrent,
-            icon: const Icon(Icons.refresh_rounded, color: AppTheme.darkTextPrimary),
+            icon: Icon(Icons.refresh_rounded, color: AppTheme.darkTextPrimary),
           ),
         ],
         bottom: _cardKeys.length > 1
@@ -612,7 +612,7 @@ class _CardHeader extends StatelessWidget {
               children: [
                 Text(
                   title,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 17,
                     fontWeight: FontWeight.w800,
                     color: AppTheme.darkTextPrimary,
@@ -686,7 +686,7 @@ class _NestedGroup extends StatelessWidget {
         children: [
           Text(
             title,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 13.5,
               fontWeight: FontWeight.w800,
               color: AppTheme.darkTextPrimary,
@@ -762,7 +762,7 @@ class _InfoRow extends StatelessWidget {
                       )
                     : Text(
                         value,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 14.5,
                           fontWeight: FontWeight.w700,
                           color: AppTheme.darkTextPrimary,

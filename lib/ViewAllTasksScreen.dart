@@ -863,7 +863,7 @@ class _ViewAllTasksScreenState extends State<ViewAllTasksScreen> {
   Widget _buildTaskCard(Map<String, dynamic> task) {
     final taskId = task['id']?.toString() ?? '';
     final taskUserId = task['user_id']?.toString() ?? '';
-    final projectName = task['project_name']?.toString() ?? '';
+    final projectName = taskProjectDisplayName(task) ?? '';
     final assignedToName = task['assigned_to_name']?.toString() ?? '';
     final status = task['status']?.toString() ?? 'pending';
     final note = task['note']?.toString() ?? '';
@@ -1128,13 +1128,13 @@ class _ViewAllTasksScreenState extends State<ViewAllTasksScreen> {
         backgroundColor: AppTheme.getBackgroundSecondary(context),
         foregroundColor: AppTheme.darkTextPrimary,
         elevation: 0,
-        iconTheme: const IconThemeData(color: AppTheme.darkTextPrimary),
-        actionsIconTheme: const IconThemeData(color: AppTheme.darkTextPrimary),
+        iconTheme: IconThemeData(color: AppTheme.darkTextPrimary),
+        actionsIconTheme: IconThemeData(color: AppTheme.darkTextPrimary),
         leading: IconButton(
           icon: Icon(Icons.arrow_back),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text(
+        title: Text(
           'All tasks',
           style: TextStyle(color: AppTheme.darkTextPrimary, fontWeight: FontWeight.w800),
         ),

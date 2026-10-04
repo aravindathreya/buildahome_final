@@ -99,46 +99,63 @@ WorkflowDocumentCategory? _categoryForJourney(
   return null;
 }
 
-bool _catalogCoversSpecial(WorkflowDocumentLibrary library, String id) {
-  bool hit(WorkflowDocumentCategory category) {
-    final blob =
-        '${category.id} ${category.label} ${category.clientJourneyKey ?? ''} ${category.libraryGroupKey ?? ''}'
-            .toLowerCase();
-    switch (id) {
-      case 'site_prep':
-        return blob.contains('site_prep') || blob.contains('site preparation');
-      case 'demolition':
-        return blob.contains('demolition');
-      case 'inspection':
-        return blob.contains('inspection');
-      default:
-        return false;
-    }
+/// Site Prep / Demolition / Site Inspection are not shown in the client app —
+/// clients only get login after the 10% payment (post site-prep stage).
+bool isClientPortalSitePrepCategory(WorkflowDocumentCategory category) {
+  final journey = (category.clientJourneyKey ?? '').trim().toLowerCase();
+  if (journey == ClientJourneyKeys.sitePrep ||
+      journey == ClientJourneyKeys.demolition ||
+      journey == ClientJourneyKeys.inspection) {
+    return true;
   }
+  final blob =
+      '${category.id} ${category.label} ${category.libraryGroupKey ?? ''}'
+          .toLowerCase();
+  if (blob.contains('site_prep') || blob.contains('site preparation')) {
+    return true;
+  }
+  if (blob.contains('demolition')) return true;
+  if (blob.contains('site_inspection') || blob.contains('site inspection')) {
+    return true;
+  }
+  return false;
+}
 
-  return library.libraryCategories.any(hit) ||
-      library.clientJourneyCategories.any(hit);
+/// KYC on For me / Client Portal is Client + Super Admin only.
+/// Super Admin is often stored as `Admin` in prefs.
+bool roleCanSeeClientPortalKyc(String? role) {
+  final normalized =
+      (role ?? '').trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
+  return normalized == 'client' ||
+      normalized == 'super admin' ||
+      normalized == 'admin';
 }
 
 /// Client Portal hub rows: KYC / Office Documents / Receipts stay pinned.
 /// Remaining rows come from the live catalog (same tree as staff Documents).
 List<ClientPortalHubItem> buildClientPortalHubItems(
-  WorkflowDocumentLibrary? library,
-) {
+  WorkflowDocumentLibrary? library, {
+  bool includeKyc = true,
+}) {
   final items = <ClientPortalHubItem>[];
 
-  items.add(
-    ClientPortalHubItem(
-      id: 'documents',
-      title: 'KYC & Documents',
-      subtitle: 'KYC and other project documents',
-      kind: ClientPortalHubKind.kyc,
-      visual: categoryVisualFor(categoryId: 'kyc', label: 'KYC & Documents'),
-      badgeCount: library == null
-          ? 0
-          : workflowDocCountForJourney(library, ClientJourneyKeys.preConversion),
-    ),
-  );
+  if (includeKyc) {
+    items.add(
+      ClientPortalHubItem(
+        id: 'documents',
+        title: 'KYC & Documents',
+        subtitle: 'KYC and other project documents',
+        kind: ClientPortalHubKind.kyc,
+        visual: categoryVisualFor(categoryId: 'kyc', label: 'KYC & Documents'),
+        badgeCount: library == null
+            ? 0
+            : workflowDocCountForJourney(
+                library,
+                ClientJourneyKeys.preConversion,
+              ),
+      ),
+    );
+  }
 
   if (library != null &&
       _libraryHasJourney(library, ClientJourneyKeys.officeDocuments)) {
@@ -204,6 +221,8 @@ List<ClientPortalHubItem> buildClientPortalHubItems(
     final seen = <String>{};
     for (final category in library.libraryCategories) {
       if (isPinnedClientPortalCategory(category)) continue;
+      if (isUncategorizedDocumentCategory(category)) continue;
+      if (isClientPortalSitePrepCategory(category)) continue;
       if (!seen.add(category.id)) continue;
       items.add(
         ClientPortalHubItem(
@@ -219,48 +238,6 @@ List<ClientPortalHubItem> buildClientPortalHubItems(
       );
     }
   }
-
-  void addSpecial({
-    required String id,
-    required String title,
-    required String subtitle,
-    required ClientPortalHubKind kind,
-    required String journeyKey,
-  }) {
-    if (library != null && _catalogCoversSpecial(library, id)) return;
-    items.add(
-      ClientPortalHubItem(
-        id: id,
-        title: title,
-        subtitle: subtitle,
-        kind: kind,
-        visual: categoryVisualFor(categoryId: id, journeyKey: journeyKey, label: title),
-        journeyKey: journeyKey,
-      ),
-    );
-  }
-
-  addSpecial(
-    id: 'site_prep',
-    title: 'Site Preparation',
-    subtitle: 'Demolition & borewell questionnaire',
-    kind: ClientPortalHubKind.sitePrep,
-    journeyKey: ClientJourneyKeys.sitePrep,
-  );
-  addSpecial(
-    id: 'demolition',
-    title: 'Demolition Details',
-    subtitle: 'Demolition completion & comments',
-    kind: ClientPortalHubKind.demolition,
-    journeyKey: ClientJourneyKeys.demolition,
-  );
-  addSpecial(
-    id: 'inspection',
-    title: 'Site Inspection',
-    subtitle: 'Book a slot or view reports',
-    kind: ClientPortalHubKind.inspection,
-    journeyKey: ClientJourneyKeys.inspection,
-  );
 
   return items;
 }

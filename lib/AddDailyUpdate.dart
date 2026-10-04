@@ -126,9 +126,9 @@ class AddDailyUpdateForm extends StatefulWidget {
 class AddDailyUpdateState extends State<AddDailyUpdateForm> {
   static const Color _navy = Color(0xFF1B254B);
   static const Color _mutedGrey = AppTheme.mutedGrey;
-  static const Color _cardBorder = AppTheme.border;
+  static Color get _cardBorder => AppTheme.border;
   static const Color _softShadow = AppTheme.softShadow;
-  static const Color _pageBg = AppTheme.darkBackgroundPrimary;
+  static Color get _pageBg => AppTheme.darkBackgroundPrimary;
   static const Color _success = Color(0xFF16A34A);
   static const Color _successBg = Color(0xFFDCFCE7);
 
@@ -372,7 +372,7 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
         return AlertDialog(
           backgroundColor: AppTheme.darkBackgroundSecondary,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          title: const Text(
+          title: Text(
             'Select Image Source',
             style: TextStyle(
               color: AppTheme.darkTextPrimary,
@@ -392,9 +392,9 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
                     color: AppTheme.darkBackgroundPrimaryLight,
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: const Icon(Icons.photo_camera_rounded, color: AppTheme.darkTextPrimary, size: 20),
+                  child: Icon(Icons.photo_camera_rounded, color: AppTheme.darkTextPrimary, size: 20),
                 ),
-                title: const Text(
+                title: Text(
                   'Take Photo',
                   style: TextStyle(color: AppTheme.darkTextPrimary, fontWeight: FontWeight.w700),
                 ),
@@ -412,9 +412,9 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
                     color: AppTheme.darkBackgroundPrimaryLight,
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: const Icon(Icons.photo_library_rounded, color: AppTheme.darkTextPrimary, size: 20),
+                  child: Icon(Icons.photo_library_rounded, color: AppTheme.darkTextPrimary, size: 20),
                 ),
-                title: const Text(
+                title: Text(
                   'Choose from Gallery',
                   style: TextStyle(color: AppTheme.darkTextPrimary, fontWeight: FontWeight.w700),
                 ),
@@ -645,7 +645,7 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 14),
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: AppTheme.darkBackgroundSecondary,
         border: Border(bottom: BorderSide(color: _cardBorder)),
       ),
@@ -666,7 +666,7 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
               const Spacer(),
               Text(
                 stepTitles[_currentStep],
-                style: const TextStyle(
+                style: TextStyle(
                   color: AppTheme.darkTextPrimary,
                   fontSize: 13,
                   fontWeight: FontWeight.w800,
@@ -816,7 +816,7 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
   Widget _buildNavigationButtons() {
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 14, 20, 20),
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: AppTheme.darkBackgroundSecondary,
         border: Border(top: BorderSide(color: _cardBorder)),
       ),
@@ -828,7 +828,7 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
                 onPressed: _previousStep,
                 style: OutlinedButton.styleFrom(
                   foregroundColor: AppTheme.darkTextPrimary,
-                  side: const BorderSide(color: _cardBorder),
+                  side: BorderSide(color: _cardBorder),
                   padding: const EdgeInsets.symmetric(vertical: 14),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(14),
@@ -1346,7 +1346,7 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
                       color: AppTheme.darkBackgroundPrimaryLight,
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: const Icon(Icons.apartment_rounded, color: AppTheme.darkTextPrimary),
+                    child: Icon(Icons.apartment_rounded, color: AppTheme.darkTextPrimary),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -1418,7 +1418,7 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
                       color: AppTheme.darkBackgroundPrimaryLight,
                       borderRadius: BorderRadius.circular(14),
                     ),
-                    child: const Icon(
+                    child: Icon(
                       Icons.add_a_photo_rounded,
                       size: 22,
                       color: AppTheme.darkTextPrimary,
@@ -1431,7 +1431,7 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
                       children: [
                         Text(
                           attachPictureButtonText,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 15,
                             fontWeight: FontWeight.w800,
                             color: AppTheme.darkTextPrimary,
@@ -1460,7 +1460,7 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
               children: [
                 Text(
                   'Selected images (${selectedPictures.length})',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 14.5,
                     fontWeight: FontWeight.w800,
                     color: AppTheme.darkTextPrimary,
@@ -1590,7 +1590,7 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
                       color: AppTheme.darkBackgroundPrimaryLight,
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: const Icon(Icons.groups_rounded, color: AppTheme.darkTextPrimary),
+                    child: Icon(Icons.groups_rounded, color: AppTheme.darkTextPrimary),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -1628,7 +1628,7 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
                                   children: [
                                     Text(
                                       entry.key,
-                                      style: const TextStyle(
+                                      style: TextStyle(
                                         color: AppTheme.darkTextPrimary,
                                         fontSize: 12,
                                         fontWeight: FontWeight.w700,
@@ -1743,7 +1743,7 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
                   keyboardType: TextInputType.multiline,
                   textCapitalization: TextCapitalization.sentences,
                   maxLines: 8,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 15.5,
                     color: AppTheme.darkTextPrimary,
                     fontWeight: FontWeight.w500,
@@ -1763,7 +1763,7 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
                       borderRadius: BorderRadius.circular(14),
                     ),
                     enabledBorder: OutlineInputBorder(
-                      borderSide: const BorderSide(color: _cardBorder),
+                      borderSide: BorderSide(color: _cardBorder),
                       borderRadius: BorderRadius.circular(14),
                     ),
                     filled: true,
@@ -1871,7 +1871,7 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
                           children: [
                             Text(
                               entry.key,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 color: AppTheme.darkTextPrimary,
                                 fontSize: 12,
                                 fontWeight: FontWeight.w700,
@@ -1956,7 +1956,7 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
               Expanded(
                 child: Text(
                   title,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w800,
                     color: AppTheme.darkTextPrimary,
@@ -1978,7 +1978,7 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
               ),
               child: Text(
                 content,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 14,
                   color: AppTheme.darkTextPrimary,
                   height: 1.5,
@@ -2098,7 +2098,7 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
                               color: AppTheme.darkBackgroundPrimaryLight,
                               borderRadius: BorderRadius.circular(12),
                             ),
-                            child: const Icon(
+                            child: Icon(
                               Icons.groups_rounded,
                               color: AppTheme.darkTextPrimary,
                               size: 22,
@@ -2108,7 +2108,7 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
                           Expanded(
                             child: Text(
                               tradesmenName,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 color: AppTheme.darkTextPrimary,
                                 fontSize: 18,
                                 fontWeight: FontWeight.w800,
@@ -2130,7 +2130,7 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
                       TextField(
                         controller: countController,
                         keyboardType: TextInputType.number,
-                        style: const TextStyle(
+                        style: TextStyle(
                           color: AppTheme.darkTextPrimary,
                           fontSize: 18,
                           fontWeight: FontWeight.w700,
@@ -2145,11 +2145,11 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
                           fillColor: _pageBg,
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(14),
-                            borderSide: const BorderSide(color: _cardBorder),
+                            borderSide: BorderSide(color: _cardBorder),
                           ),
                           enabledBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(14),
-                            borderSide: const BorderSide(color: _cardBorder),
+                            borderSide: BorderSide(color: _cardBorder),
                           ),
                           focusedBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(14),

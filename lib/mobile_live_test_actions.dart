@@ -759,7 +759,7 @@ class _MobileLiveTestActionCardState extends State<MobileLiveTestActionCard> {
           const SizedBox(width: 10),
           Text(
             '$current%',
-            style: const TextStyle(
+            style: TextStyle(
               fontWeight: FontWeight.w800,
               color: AppTheme.darkTextPrimary,
             ),
@@ -860,10 +860,10 @@ class _MobileLiveTestActionCardState extends State<MobileLiveTestActionCard> {
       ],
       if (atFullProgress) ...[
         const SizedBox(height: 12),
-        const Text(
+        Text(
           'Progress is at 100%. Add a comment and finish this upload.',
           style: TextStyle(
-            color: AppTheme.darkTextPrimarySoft,
+            color: AppTheme.darkTextPrimary,
             fontWeight: FontWeight.w600,
           ),
         ),
@@ -949,7 +949,7 @@ class _MobileLiveTestActionCardState extends State<MobileLiveTestActionCard> {
         children: [
           Text(
             title,
-            style: const TextStyle(
+            style: TextStyle(
               fontWeight: FontWeight.w800,
               color: AppTheme.darkTextPrimary,
             ),
@@ -1352,7 +1352,7 @@ class _MobileLiveTestCommentsSectionState
             icon: Icons.chat_bubble_outline_rounded,
           )
         else
-          const Text(
+          Text(
             '💬 Comments',
             style: TextStyle(
               fontWeight: FontWeight.w800,
@@ -1375,7 +1375,7 @@ class _MobileLiveTestCommentsSectionState
                   c.authorName.isNotEmpty
                       ? c.authorName
                       : 'Workflow comment',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontWeight: FontWeight.w700,
                     color: AppTheme.darkTextPrimary,
                   ),
@@ -1399,7 +1399,7 @@ class _MobileLiveTestCommentsSectionState
                 const SizedBox(height: 4),
                 Text(
                   c.body,
-                  style: const TextStyle(color: AppTheme.darkTextPrimary),
+                  style: TextStyle(color: AppTheme.darkTextPrimary),
                 ),
               ],
             ),
@@ -1416,7 +1416,7 @@ class _MobileLiveTestCommentsSectionState
             fillColor: AppTheme.darkBackgroundPrimaryLight,
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: kTaskBorder),
+              borderSide: BorderSide(color: kTaskBorder),
             ),
           ),
         ),
@@ -1428,7 +1428,7 @@ class _MobileLiveTestCommentsSectionState
             onPressed: _submitting || widget.busy ? null : _addComment,
             style: OutlinedButton.styleFrom(
               foregroundColor: AppTheme.darkTextPrimary,
-              side: const BorderSide(color: kTaskBorder),
+              side: BorderSide(color: kTaskBorder),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(14),
               ),
@@ -1557,7 +1557,7 @@ class MobileLiveTestCompletionSection extends StatelessWidget {
               fillColor: AppTheme.darkBackgroundPrimaryLight,
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
-                borderSide: const BorderSide(color: AppTheme.border),
+                borderSide: BorderSide(color: AppTheme.border),
               ),
             ),
           ),

@@ -110,7 +110,7 @@ class _AttendanceNoteSheetState extends State<_AttendanceNoteSheet> {
           const SizedBox(height: 16),
           Text(
             widget.title,
-            style: const TextStyle(
+            style: TextStyle(
               color: AppTheme.darkTextPrimary,
               fontSize: 18,
               fontWeight: FontWeight.w800,

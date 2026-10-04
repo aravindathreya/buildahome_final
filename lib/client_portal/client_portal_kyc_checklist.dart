@@ -58,7 +58,7 @@ class ClientPortalKycChecklist extends StatelessWidget {
               'Please upload all mandatory documents. Your team will verify them before construction begins.',
         ),
         const SizedBox(height: 18),
-        const Text(
+        Text(
           'Document Checklist',
           style: TextStyle(
             fontWeight: FontWeight.w800,
@@ -298,7 +298,7 @@ class _CustomDocumentsSectionState extends State<_CustomDocumentsSection> {
         children: [
           Row(
             children: [
-              const Icon(
+              Icon(
                 Icons.note_add_outlined,
                 size: 20,
                 color: AppTheme.darkTextPrimary,
@@ -307,7 +307,7 @@ class _CustomDocumentsSectionState extends State<_CustomDocumentsSection> {
               Expanded(
                 child: Text(
                   _title,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontWeight: FontWeight.w800,
                     fontSize: 16,
                     color: AppTheme.darkTextPrimary,
@@ -342,7 +342,7 @@ class _CustomDocumentsSectionState extends State<_CustomDocumentsSection> {
             ),
           ),
           const SizedBox(height: 14),
-          const Text(
+          Text(
             'Document name',
             style: TextStyle(
               fontWeight: FontWeight.w700,
@@ -366,7 +366,7 @@ class _CustomDocumentsSectionState extends State<_CustomDocumentsSection> {
               errorMaxLines: 2,
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
-                borderSide: const BorderSide(color: AppTheme.border),
+                borderSide: BorderSide(color: AppTheme.border),
               ),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
@@ -412,7 +412,7 @@ class _CustomDocumentsSectionState extends State<_CustomDocumentsSection> {
           ),
           if (uploads.isNotEmpty) ...[
             const SizedBox(height: 14),
-            const Divider(height: 1, color: AppTheme.border),
+            Divider(height: 1, color: AppTheme.border),
             const SizedBox(height: 10),
             ...uploads.map(
               (record) => Padding(
@@ -461,7 +461,7 @@ class _CustomUploadRow extends StatelessWidget {
                   color: const Color(0xFF2A2040),
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: const Icon(
+                child: Icon(
                   Icons.insert_drive_file_outlined,
                   size: 18,
                   color: AppTheme.darkTextPrimary,
@@ -474,7 +474,7 @@ class _CustomUploadRow extends StatelessWidget {
                   children: [
                     Text(
                       record.displayLabel,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontWeight: FontWeight.w700,
                         fontSize: 13.5,
                         color: AppTheme.darkTextPrimary,
@@ -550,10 +550,10 @@ class _CommentSectionState extends State<_CommentSection> {
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
               child: Row(
                 children: [
-                  const Icon(Icons.chat_bubble_outline_rounded,
+                  Icon(Icons.chat_bubble_outline_rounded,
                       size: 20, color: AppTheme.darkTextPrimary),
                   const SizedBox(width: 10),
-                  const Expanded(
+                  Expanded(
                     child: Text(
                       'Notes for your team',
                       style: TextStyle(
@@ -573,7 +573,7 @@ class _CommentSectionState extends State<_CommentSection> {
             ),
           ),
           if (_expanded) ...[
-            const Divider(height: 1, color: AppTheme.border),
+            Divider(height: 1, color: AppTheme.border),
             Padding(
               padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
               child: Column(
@@ -587,11 +587,11 @@ class _CommentSectionState extends State<_CommentSection> {
                       fillColor: AppTheme.darkBackgroundPrimary,
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
-                        borderSide: const BorderSide(color: AppTheme.border),
+                        borderSide: BorderSide(color: AppTheme.border),
                       ),
                       enabledBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
-                        borderSide: const BorderSide(color: AppTheme.border),
+                        borderSide: BorderSide(color: AppTheme.border),
                       ),
                     ),
                   ),
@@ -694,7 +694,7 @@ class _KycChecklistTile extends StatelessWidget {
                   children: [
                     Text(
                       item.label,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontWeight: FontWeight.w800,
                         fontSize: 14.5,
                         color: AppTheme.darkTextPrimary,

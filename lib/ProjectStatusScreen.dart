@@ -850,7 +850,7 @@ class _TabChip extends StatelessWidget {
                     ? const Color(0xFF0B1B4D)
                     : Colors.white.withValues(alpha: 0.82),
               ),
-              const SizedBox(width: 5),
+              SizedBox(width: 5),
               Flexible(
                 child: Text(
                   label,
@@ -865,10 +865,10 @@ class _TabChip extends StatelessWidget {
                   ),
                 ),
               ),
-              const SizedBox(width: 5),
+              SizedBox(width: 5),
               Container(
                 padding:
-                    const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                    EdgeInsets.symmetric(horizontal: 7, vertical: 2),
                 decoration: BoxDecoration(
                   color: selected
                       ? const Color(0xFFE8EEFF)
@@ -899,7 +899,7 @@ class _PendingNowTab extends StatelessWidget {
   final Future<void> Function() onRefresh;
   final ValueChanged<_WorkTask> onOpenDetails;
 
-  const _PendingNowTab({
+  _PendingNowTab({
     required this.tasks,
     required this.onRefresh,
     required this.onOpenDetails,
@@ -911,9 +911,9 @@ class _PendingNowTab extends StatelessWidget {
       return RefreshIndicator(
         onRefresh: onRefresh,
         child: ListView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.fromLTRB(24, 48, 24, 28),
-          children: const [
+          physics: AlwaysScrollableScrollPhysics(),
+          padding: EdgeInsets.fromLTRB(24, 48, 24, 28),
+          children: [
             Icon(Icons.check_circle_outline,
                 size: 44, color: Color(0xFF16A34A)),
             SizedBox(height: 14),
@@ -944,14 +944,14 @@ class _PendingNowTab extends StatelessWidget {
     return RefreshIndicator(
       onRefresh: onRefresh,
       child: ListView.builder(
-        physics: const AlwaysScrollableScrollPhysics(
+        physics: AlwaysScrollableScrollPhysics(
           parent: BouncingScrollPhysics(),
         ),
-        padding: const EdgeInsets.fromLTRB(14, 12, 14, 24),
+        padding: EdgeInsets.fromLTRB(14, 12, 14, 24),
         itemCount: tasks.length + 1,
         itemBuilder: (context, index) {
           if (index == 0) {
-            return const Padding(
+            return Padding(
               padding: EdgeInsets.only(bottom: 10),
               child: _SectionHeader(
                 title: 'Pending Tasks',
@@ -986,7 +986,7 @@ class _UpcomingTab extends StatelessWidget {
   final Future<void> Function() onRefresh;
   final ValueChanged<_WorkTask> onOpenDetails;
 
-  const _UpcomingTab({
+  _UpcomingTab({
     required this.tasks,
     required this.onRefresh,
     required this.onOpenDetails,
@@ -998,9 +998,9 @@ class _UpcomingTab extends StatelessWidget {
       return RefreshIndicator(
         onRefresh: onRefresh,
         child: ListView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.fromLTRB(24, 48, 24, 28),
-          children: const [
+          physics: AlwaysScrollableScrollPhysics(),
+          padding: EdgeInsets.fromLTRB(24, 48, 24, 28),
+          children: [
             Icon(Icons.event_available_outlined,
                 size: 44, color: Color(0xFF6366F1)),
             SizedBox(height: 14),
@@ -1069,7 +1069,7 @@ class _SectionHeader extends StatelessWidget {
       children: [
         Text(
           title,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 16,
             fontWeight: FontWeight.w800,
             color: AppTheme.darkTextPrimary,
@@ -1153,7 +1153,7 @@ class _PrimaryPendingCard extends StatelessWidget {
                 task.taskName,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 15.5,
                   fontWeight: FontWeight.w800,
                   color: AppTheme.darkTextPrimary,
@@ -1311,7 +1311,7 @@ class _CompactTaskRow extends StatelessWidget {
                       task.taskName,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w700,
                         color: AppTheme.darkTextPrimary,
@@ -1459,7 +1459,7 @@ class _TaskDetailsSheet extends StatelessWidget {
               const SizedBox(height: 4),
               Text(
                 task.taskName,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.w800,
                   color: AppTheme.darkTextPrimary,
@@ -1566,7 +1566,7 @@ class _SheetMeta extends StatelessWidget {
         const SizedBox(height: 2),
         Text(
           value,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 14.5,
             fontWeight: FontWeight.w700,
             color: AppTheme.darkTextPrimary,

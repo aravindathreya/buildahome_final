@@ -59,8 +59,8 @@ class UsersState extends State<Users> {
           backgroundColor: AppTheme.darkBackgroundSecondary,
           foregroundColor: AppTheme.darkTextPrimary,
           elevation: 0,
-          iconTheme: const IconThemeData(color: AppTheme.darkTextPrimary),
-          titleTextStyle: const TextStyle(color: AppTheme.darkTextPrimary, fontSize: 18, fontWeight: FontWeight.w800),
+          iconTheme: IconThemeData(color: AppTheme.darkTextPrimary),
+          titleTextStyle: TextStyle(color: AppTheme.darkTextPrimary, fontSize: 18, fontWeight: FontWeight.w800),
         ),
         drawer: NavMenuWidget(),
 

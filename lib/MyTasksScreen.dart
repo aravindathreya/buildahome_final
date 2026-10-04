@@ -47,10 +47,10 @@ import 'SlotsScreen.dart';
 import 'UploadPaymentProofScreen.dart';
 
 const String _workflowApiBaseUrl = kProductionApiBaseUrl;
-const Color _premiumBackground = AppTheme.darkBackgroundPrimary;
-const Color _premiumSurface = AppTheme.darkBackgroundSecondary;
-const Color _premiumInk = AppTheme.darkTextPrimary;
-const Color _premiumMuted = AppTheme.darkTextSecondary;
+Color get _premiumBackground => AppTheme.darkBackgroundPrimary;
+Color get _premiumSurface => AppTheme.darkBackgroundSecondary;
+Color get _premiumInk => AppTheme.darkTextPrimary;
+Color get _premiumMuted => AppTheme.darkTextSecondary;
 
 const Set<String> kCompletedTaskStatuses = {
   'completed',
@@ -149,6 +149,28 @@ bool isClientUploadStagePaymentProofTask(Map task) {
         normalized.contains('client_upload_stage_payment_proof')) {
       return true;
     }
+  }
+  return false;
+}
+
+/// Synthetic dashboard task when tender + non-tender outstanding > 0.
+const String kClearOutstandingPaymentTaskId = 'clear_outstanding_payment';
+const String kClearOutstandingPaymentCategory =
+    'client_clear_outstanding_payment';
+
+bool isClearOutstandingPaymentTask(Map task) {
+  final id = task['id']?.toString().trim() ?? '';
+  if (id == kClearOutstandingPaymentTaskId) return true;
+  for (final key in const [
+    'task_category',
+    'category',
+    'erp_category',
+    'source_erp_category',
+  ]) {
+    final raw = task[key]?.toString().trim().toLowerCase() ?? '';
+    if (raw.isEmpty) continue;
+    final normalized = raw.replaceAll(RegExp(r'[\s-]+'), '_');
+    if (normalized == kClearOutstandingPaymentCategory) return true;
   }
   return false;
 }
@@ -1780,7 +1802,7 @@ class _MyTasksScreenState extends State<MyTasksScreen>
 
             return Container(
               height: MediaQuery.of(context).size.height * 0.7,
-              decoration: const BoxDecoration(
+              decoration: BoxDecoration(
                 color: AppTheme.darkBackgroundSecondary,
                 borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
               ),
@@ -1799,7 +1821,7 @@ class _MyTasksScreenState extends State<MyTasksScreen>
                           ),
                         ),
                         const SizedBox(width: 12),
-                        const Expanded(
+                        Expanded(
                           child: Text(
                             'Filter tasks',
                             style: TextStyle(
@@ -1829,7 +1851,7 @@ class _MyTasksScreenState extends State<MyTasksScreen>
                             ),
                           ),
                         IconButton(
-                          icon: const Icon(Icons.close_rounded,
+                          icon: Icon(Icons.close_rounded,
                               color: _premiumMuted),
                           onPressed: () => Navigator.pop(context),
                         ),
@@ -1870,7 +1892,7 @@ class _MyTasksScreenState extends State<MyTasksScreen>
                       ),
                     ),
                   ),
-                  const Padding(
+                  Padding(
                     padding: EdgeInsets.fromLTRB(18, 0, 18, 8),
                     child: Align(
                       alignment: Alignment.centerLeft,
@@ -1942,7 +1964,7 @@ class _MyTasksScreenState extends State<MyTasksScreen>
                                     Expanded(
                                       child: Text(
                                         projectName,
-                                        style: const TextStyle(
+                                        style: TextStyle(
                                           color: _premiumInk,
                                           fontSize: 14,
                                           fontWeight: FontWeight.w600,
@@ -1950,7 +1972,7 @@ class _MyTasksScreenState extends State<MyTasksScreen>
                                       ),
                                     ),
                                     if (isSelected)
-                                      const Icon(
+                                      Icon(
                                         Icons.check_circle_rounded,
                                         size: 20,
                                         color: AppTheme.darkTextPrimary,
@@ -2190,19 +2212,19 @@ class _MyTasksScreenState extends State<MyTasksScreen>
                   controller: _searchController,
                   focusNode: _searchFocusNode,
                   textInputAction: TextInputAction.search,
-                  style: const TextStyle(
+                  style: TextStyle(
                     color: AppTheme.darkTextPrimary,
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
                   ),
                   decoration: InputDecoration(
                     hintText: 'Search by task, project, or assignee',
-                    hintStyle: const TextStyle(
+                    hintStyle: TextStyle(
                       color: _premiumMuted,
                       fontSize: 13.5,
                       fontWeight: FontWeight.w500,
                     ),
-                    prefixIcon: const Icon(
+                    prefixIcon: Icon(
                       Icons.search_rounded,
                       color: _premiumMuted,
                       size: 20,
@@ -2211,7 +2233,7 @@ class _MyTasksScreenState extends State<MyTasksScreen>
                         ? IconButton(
                             tooltip: 'Clear',
                             onPressed: () => _searchController.clear(),
-                            icon: const Icon(
+                            icon: Icon(
                               Icons.cancel_rounded,
                               color: _premiumMuted,
                               size: 18,
@@ -2356,7 +2378,7 @@ class _MyTasksScreenState extends State<MyTasksScreen>
                     Expanded(
                       child: Text(
                         isPending ? 'All pending tasks' : 'All completed tasks',
-                        style: const TextStyle(
+                        style: TextStyle(
                           color: _premiumInk,
                           fontSize: 16,
                           fontWeight: FontWeight.w800,
@@ -2783,7 +2805,7 @@ class _TaskCardState extends State<_TaskCard> {
   Widget build(BuildContext context) {
     final task = _task;
     final taskId = task['id']?.toString() ?? '';
-    final projectName = task['project_name']?.toString() ?? '';
+    final projectName = taskProjectDisplayName(task) ?? '';
     final assignedToName = task['assigned_to_name']?.toString() ?? '';
     final createdAt = task['created_at']?.toString() ?? '';
     final status = normalizeTaskStatusValue(task);
@@ -4239,7 +4261,7 @@ class _IndentProofReviewScreenState extends State<_IndentProofReviewScreen> {
     final title = (_task['title'] ?? _task['s_title'] ?? 'Review indent site proof')
         .toString()
         .trim();
-    final project = (_task['project_name'] ?? '').toString().trim();
+    final project = taskProjectDisplayName(_task) ?? '';
     final reviewAction = _reviewCommentAction;
     final placeholder = reviewAction?['comment_placeholder']?.toString().trim() ?? '';
     final approveLabel =
@@ -4262,7 +4284,7 @@ class _IndentProofReviewScreenState extends State<_IndentProofReviewScreen> {
                       padding: const EdgeInsets.only(bottom: 12),
                       child: Text(
                         project,
-                        style: const TextStyle(
+                        style: TextStyle(
                           color: _premiumMuted,
                           fontSize: 13,
                           fontWeight: FontWeight.w600,
@@ -4280,7 +4302,7 @@ class _IndentProofReviewScreenState extends State<_IndentProofReviewScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
+                        Text(
                           'Review comment',
                           style: TextStyle(
                             color: _premiumInk,
@@ -4289,7 +4311,7 @@ class _IndentProofReviewScreenState extends State<_IndentProofReviewScreen> {
                           ),
                         ),
                         const SizedBox(height: 4),
-                        const Text(
+                        Text(
                           'Optional comment for PC/APC review. Site engineer comment is shown on Indent Proof detail.',
                           style: TextStyle(
                             color: _premiumMuted,
@@ -4367,15 +4389,15 @@ class _IndentProofReviewScreenState extends State<_IndentProofReviewScreen> {
                         vertical: 12,
                       ),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFDCFCE7),
+                        color: const Color(0xFF14532D),
                         borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: const Color(0xFF86EFAC)),
+                        border: Border.all(color: const Color(0xFF166534)),
                       ),
                       child: const Text(
                         'This indent proof is already approved.',
                         textAlign: TextAlign.center,
                         style: TextStyle(
-                          color: Color(0xFF166534),
+                          color: Color(0xFF6EE7B7),
                           fontWeight: FontWeight.w700,
                         ),
                       ),
@@ -4437,7 +4459,7 @@ class _IndentProofReviewLaunchCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
+          Text(
             'Indent proof review',
             style: TextStyle(
               color: _premiumInk,
@@ -4449,7 +4471,7 @@ class _IndentProofReviewLaunchCard extends StatelessWidget {
             const SizedBox(height: 8),
             Text(
               'Material: $material',
-              style: const TextStyle(
+              style: TextStyle(
                 color: _premiumInk,
                 fontSize: 12.5,
                 fontWeight: FontWeight.w700,
@@ -4458,7 +4480,7 @@ class _IndentProofReviewLaunchCard extends StatelessWidget {
             ),
           ],
           const SizedBox(height: 4),
-          const Text(
+          Text(
             'Review indent site proof. Save an optional review comment, then approve.',
             style: TextStyle(
               color: _premiumMuted,
@@ -4517,7 +4539,7 @@ class _IndentReviewApproveLaunchCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
+          Text(
             'Review and approve the indent',
             style: TextStyle(
               color: _premiumInk,
@@ -4529,7 +4551,7 @@ class _IndentReviewApproveLaunchCard extends StatelessWidget {
             const SizedBox(height: 8),
             Text(
               'Material: $material',
-              style: const TextStyle(
+              style: TextStyle(
                 color: _premiumInk,
                 fontSize: 12.5,
                 fontWeight: FontWeight.w700,
@@ -4542,7 +4564,7 @@ class _IndentReviewApproveLaunchCard extends StatelessWidget {
             indentId.isEmpty
                 ? 'Open View Open indents to review and approve this indent.'
                 : 'Open View Open for indent #$indentId to review and approve.',
-            style: const TextStyle(
+            style: TextStyle(
               color: _premiumMuted,
               fontSize: 12,
               fontWeight: FontWeight.w600,
@@ -4639,7 +4661,7 @@ class _IndentSiteProofScreenState extends State<_IndentSiteProofScreen> {
   String get _subtitle {
     final note = (_task['note'] ?? _task['s_note'] ?? '').toString().trim();
     if (note.isNotEmpty) return note;
-    return _task['project_name']?.toString().trim() ?? '';
+    return taskProjectDisplayName(_task) ?? '';
   }
 
   Map<String, dynamic>? get _locationAction =>
@@ -4835,7 +4857,7 @@ class _IndentSiteProofScreenState extends State<_IndentSiteProofScreen> {
                       padding: const EdgeInsets.only(bottom: 12),
                       child: Text(
                         _subtitle,
-                        style: const TextStyle(
+                        style: TextStyle(
                           color: _premiumMuted,
                           fontSize: 14,
                           fontWeight: FontWeight.w600,
@@ -4861,7 +4883,7 @@ class _IndentSiteProofScreenState extends State<_IndentSiteProofScreen> {
                   ),
                   const SizedBox(height: 16),
                   if (steps.isEmpty)
-                    const Text(
+                    Text(
                       'No site-proof steps are available yet.',
                       style: TextStyle(
                         color: _premiumMuted,
@@ -4920,20 +4942,20 @@ class _IndentSiteProofGpsBanner extends StatelessWidget {
   Widget build(BuildContext context) {
     final hasError = !onSite || !siteConfigured;
     final bg = isChecking
-        ? const Color(0xFFEFF6FF)
+        ? const Color(0xFF1E3A5F)
         : hasError
-            ? const Color(0xFFFEF2F2)
-            : const Color(0xFFECFDF5);
+            ? const Color(0xFF3F1D1D)
+            : const Color(0xFF14532D);
     final border = isChecking
-        ? const Color(0xFFBFDBFE)
+        ? const Color(0xFF3B82F6)
         : hasError
-            ? const Color(0xFFFECACA)
-            : const Color(0xFFA7F3D0);
+            ? const Color(0xFF7F1D1D)
+            : const Color(0xFF166534);
     final ink = isChecking
-        ? const Color(0xFF1D4ED8)
+        ? const Color(0xFF93C5FD)
         : hasError
-            ? const Color(0xFF991B1B)
-            : const Color(0xFF065F46);
+            ? const Color(0xFFFCA5A5)
+            : const Color(0xFF6EE7B7);
     final icon = isChecking
         ? Icons.my_location
         : hasError
@@ -5093,11 +5115,11 @@ class _IndentSiteProofStepTile extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: AppTheme.darkBackgroundSecondary,
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
               color: done
-                  ? const Color(0xFFA7F3D0)
+                  ? const Color(0xFF166534)
                   : locked
                       ? AppTheme.border
                       : accent.withValues(alpha: 0.35),
@@ -5132,7 +5154,7 @@ class _IndentSiteProofStepTile extends StatelessWidget {
                   children: [
                     Text(
                       label,
-                      style: const TextStyle(
+                      style: TextStyle(
                         color: _premiumInk,
                         fontSize: 14,
                         fontWeight: FontWeight.w800,
@@ -5144,7 +5166,7 @@ class _IndentSiteProofStepTile extends StatelessWidget {
                         preview!,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
+                        style: TextStyle(
                           color: _premiumMuted,
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
@@ -5727,7 +5749,7 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
     const info = AppTheme.accentBlue;
     const primary = AppTheme.primaryColorConst;
     const secondary = AppTheme.navySoft;
-    const tertiary = AppTheme.border;
+    final tertiary = AppTheme.border;
 
     switch (type) {
       case 'upload':
@@ -6476,9 +6498,7 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
           'to_project_name',
           'destination_project_name',
         ]) ??
-        (task['project_name']?.toString().trim().isNotEmpty == true
-            ? task['project_name'].toString().trim()
-            : 'Destination project');
+        (taskProjectDisplayName(task) ?? 'Destination project');
     final finalListTitle =
         action['final_list_title']?.toString().trim().isNotEmpty == true
             ? action['final_list_title'].toString().trim()
@@ -8211,7 +8231,7 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
                                   const EdgeInsets.symmetric(vertical: 14),
                               foregroundColor:
                                   AppTheme.getTextPrimary(context),
-                              side: const BorderSide(color: Color(0xFFE5E7EB)),
+                              side: BorderSide(color: AppTheme.border),
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(14),
                               ),
@@ -8407,7 +8427,7 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
                       width: double.infinity,
                       padding: EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: Color(0xFFECFDF5),
+                        color: const Color(0xFF14532D),
                         borderRadius: BorderRadius.circular(14),
                         border: Border.all(
                           color: Color(0xFF10B981).withValues(alpha: 0.25),
@@ -8416,7 +8436,7 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
                       child: Text(
                         '100% reached — use the button below to finish.',
                         style: TextStyle(
-                          color: Color(0xFF065F46),
+                          color: const Color(0xFF6EE7B7),
                           fontSize: 13,
                           fontWeight: FontWeight.w700,
                         ),
@@ -10241,7 +10261,7 @@ class _WorkflowTextListStandardLineCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: _premiumSurface,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Color(0xFFE5E7EB)),
+        border: Border.all(color: AppTheme.border),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -10377,7 +10397,7 @@ class _WorkflowTextListCustomLineCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: _premiumSurface,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Color(0xFFE5E7EB)),
+        border: Border.all(color: AppTheme.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -10516,14 +10536,14 @@ class _WorkflowTextListReadOnlyView extends StatelessWidget {
             width: double.infinity,
             padding: EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: Color(0xFFECFDF5),
+              color: const Color(0xFF14532D),
               borderRadius: BorderRadius.circular(14),
               border: Border.all(color: Color(0xFF10B981).withOpacity(0.25)),
             ),
             child: Text(
               message,
               style: TextStyle(
-                color: Color(0xFF065F46),
+                color: const Color(0xFF6EE7B7),
                 fontSize: 13,
                 fontWeight: FontWeight.w700,
               ),
@@ -10616,7 +10636,7 @@ class _WorkflowTextListIndentLinkCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: _premiumSurface,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Color(0xFFE5E7EB)),
+        border: Border.all(color: AppTheme.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -11267,14 +11287,14 @@ class _KypMaterialShiftReadOnlyView extends StatelessWidget {
             width: double.infinity,
             padding: EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: Color(0xFFECFDF5),
+              color: const Color(0xFF14532D),
               borderRadius: BorderRadius.circular(14),
               border: Border.all(color: Color(0xFF10B981).withOpacity(0.25)),
             ),
             child: Text(
               message,
               style: TextStyle(
-                color: Color(0xFF065F46),
+                color: const Color(0xFF6EE7B7),
                 fontSize: 13,
                 fontWeight: FontWeight.w700,
               ),
@@ -11330,7 +11350,7 @@ class _KypMaterialShiftReadOnlyView extends StatelessWidget {
               decoration: BoxDecoration(
                 color: _premiumSurface,
                 borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: Color(0xFFE5E7EB)),
+                border: Border.all(color: AppTheme.border),
               ),
               child: Text(
                 '$material — $qty $unit'.trim(),
@@ -11412,7 +11432,7 @@ class _KypFinalListTable extends StatelessWidget {
       decoration: BoxDecoration(
         color: _premiumSurface,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Color(0xFFE5E7EB)),
+        border: Border.all(color: AppTheme.border),
       ),
       child: Column(
         children: [
@@ -11426,7 +11446,7 @@ class _KypFinalListTable extends StatelessWidget {
               ],
             ),
           ),
-          Divider(height: 1, color: Color(0xFFE5E7EB)),
+          Divider(height: 1, color: AppTheme.border),
           ...rows.asMap().entries.map((entry) {
             final row = entry.value;
             final isLast = entry.key == rows.length - 1;
@@ -11472,7 +11492,7 @@ class _KypFinalListTable extends StatelessWidget {
                     ],
                   ),
                 ),
-                if (!isLast) Divider(height: 1, color: Color(0xFFE5E7EB)),
+                if (!isLast) Divider(height: 1, color: AppTheme.border),
               ],
             );
           }),
@@ -11511,7 +11531,7 @@ class _KypShiftProjectCard extends StatelessWidget {
             color: _premiumSurface,
             borderRadius: BorderRadius.circular(18),
             border: Border.all(
-              color: isError ? Colors.red : Color(0xFFE5E7EB),
+              color: isError ? Colors.red : AppTheme.border,
             ),
           ),
           child: Row(
@@ -11591,7 +11611,7 @@ class _KypMaterialShiftRowCard extends StatelessWidget {
         color: _premiumSurface,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
-          color: quantityError != null ? Colors.red : Color(0xFFE5E7EB),
+          color: quantityError != null ? Colors.red : AppTheme.border,
         ),
       ),
       child: Column(
@@ -11650,14 +11670,14 @@ class _KypMaterialShiftRowCard extends StatelessWidget {
                         EdgeInsets.symmetric(horizontal: 8, vertical: 8),
                     hintText: '0',
                     filled: true,
-                    fillColor: Color(0xFFF8FAFC),
+                    fillColor: AppTheme.darkBackgroundPrimaryLight,
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(10),
-                      borderSide: BorderSide(color: Color(0xFFE5E7EB)),
+                      borderSide: BorderSide(color: AppTheme.border),
                     ),
                     enabledBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(10),
-                      borderSide: BorderSide(color: Color(0xFFE5E7EB)),
+                      borderSide: BorderSide(color: AppTheme.border),
                     ),
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(10),
@@ -11712,7 +11732,7 @@ class _KypOptionalFieldCard extends StatelessWidget {
           decoration: BoxDecoration(
             color: _premiumSurface,
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: Color(0xFFE5E7EB)),
+            border: Border.all(color: AppTheme.border),
           ),
           child: Row(
             children: [
@@ -11869,7 +11889,7 @@ class _KypProjectPickerSheetState extends State<_KypProjectPickerSheet> {
                                   border: Border.all(
                                     color: selected
                                         ? AppTheme.getPrimaryColor(context)
-                                        : Color(0xFFE5E7EB),
+                                        : AppTheme.border,
                                   ),
                                 ),
                                 child: Row(
@@ -12583,7 +12603,7 @@ class _ChecklistFollowupResponseTile extends StatelessWidget {
       decoration: BoxDecoration(
         color: AppTheme.getBackgroundSecondary(context),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Color(0xFFE5E7EB)),
+        border: Border.all(color: AppTheme.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -12909,7 +12929,7 @@ class _WorkflowUploadProgressBar extends StatelessWidget {
           child: LinearProgressIndicator(
             value: (percent.clamp(0, 100)) / 100,
             minHeight: 10,
-            backgroundColor: Color(0xFFE5E7EB),
+            backgroundColor: AppTheme.border,
             valueColor: AlwaysStoppedAnimation<Color>(
               AppTheme.getPrimaryColor(context),
             ),
@@ -13141,7 +13161,7 @@ class _UploadedProgressCarouselCard extends StatelessWidget {
                       ),
                       child: Text(
                         percentLabel!,
-                        style: const TextStyle(
+                        style: TextStyle(
                           color: AppTheme.darkTextPrimary,
                           fontSize: 11,
                           fontWeight: FontWeight.w900,
@@ -13234,7 +13254,7 @@ class _UploadedDocumentImagePreview extends StatelessWidget {
     final preview = ClipRRect(
       borderRadius: BorderRadius.circular(14),
       child: ColoredBox(
-        color: const Color(0xFFF3F4F6),
+        color: AppTheme.darkBackgroundPrimaryLight,
         child: Image.network(
           absoluteUrl,
           width: size,
@@ -13245,7 +13265,7 @@ class _UploadedDocumentImagePreview extends StatelessWidget {
           errorBuilder: (_, __, ___) => const Center(
             child: Icon(
               Icons.broken_image_outlined,
-              color: Color(0xFF9CA3AF),
+              color: AppTheme.mutedGrey,
               size: 28,
             ),
           ),
@@ -15193,7 +15213,7 @@ Future<_NearSiteCheckResult> _applyDebugNearSiteOverrideIfNeeded(
       return AlertDialog(
         backgroundColor: AppTheme.darkBackgroundSecondary,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text(
+        title: Text(
           'Debug: Override site check?',
           style: TextStyle(
             color: _premiumInk,
@@ -15205,7 +15225,7 @@ Future<_NearSiteCheckResult> _applyDebugNearSiteOverrideIfNeeded(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
+            Text(
               'This task requires you to be at the project site location.',
               style: TextStyle(
                 color: _premiumInk,
@@ -15219,7 +15239,7 @@ Future<_NearSiteCheckResult> _applyDebugNearSiteOverrideIfNeeded(
               result.error?.trim().isNotEmpty == true
                   ? result.error!.trim()
                   : 'Location check failed.',
-              style: const TextStyle(
+              style: TextStyle(
                 color: _premiumMuted,
                 fontSize: 13,
                 height: 1.35,
@@ -15230,14 +15250,14 @@ Future<_NearSiteCheckResult> _applyDebugNearSiteOverrideIfNeeded(
               width: double.infinity,
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: const Color(0xFFFFF7ED),
+                color: const Color(0xFF3D3420),
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: const Color(0xFFFDBA74)),
+                border: Border.all(color: const Color(0xFF854D0E)),
               ),
               child: const Text(
                 'Debug builds only. Overriding lets you continue without being on site.',
                 style: TextStyle(
-                  color: Color(0xFF9A3412),
+                  color: Color(0xFFFBBF24),
                   fontSize: 12.5,
                   fontWeight: FontWeight.w600,
                   height: 1.35,
@@ -15431,9 +15451,9 @@ class _SelectedUploadPreview extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
+        color: AppTheme.darkBackgroundPrimaryLight,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFE5E7EB)),
+        border: Border.all(color: AppTheme.border),
       ),
       child: Row(
         children: [
@@ -15441,7 +15461,7 @@ class _SelectedUploadPreview extends StatelessWidget {
             isVideo
                 ? Icons.videocam_outlined
                 : Icons.insert_drive_file_outlined,
-            color: const Color(0xFF2563EB),
+            color: const Color(0xFF93C5FD),
             size: 20,
           ),
           const SizedBox(width: 10),
@@ -15453,7 +15473,7 @@ class _SelectedUploadPreview extends StatelessWidget {
                   _displayFileName(file.name, fallback: 'Selected file'),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
+                  style: TextStyle(
                     color: _premiumInk,
                     fontSize: 12.5,
                     fontWeight: FontWeight.w800,
@@ -15463,7 +15483,7 @@ class _SelectedUploadPreview extends StatelessWidget {
                   const SizedBox(height: 2),
                   Text(
                     DateFormat('dd MMM yyyy, hh:mm a').format(file.capturedAt!),
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: _premiumMuted,
                       fontSize: 10.5,
                       fontWeight: FontWeight.w600,
@@ -15548,9 +15568,9 @@ class _SelectedUploadFilesPreview extends StatelessWidget {
                 width: double.infinity,
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFF8FAFC),
+                  color: AppTheme.darkBackgroundPrimaryLight,
                   borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: const Color(0xFFE5E7EB)),
+                  border: Border.all(color: AppTheme.border),
                 ),
                 child: Row(
                   children: [
@@ -15558,7 +15578,7 @@ class _SelectedUploadFilesPreview extends StatelessWidget {
                       isVideo
                           ? Icons.videocam_outlined
                           : Icons.insert_drive_file_outlined,
-                      color: const Color(0xFF2563EB),
+                      color: const Color(0xFF93C5FD),
                       size: 20,
                     ),
                     const SizedBox(width: 10),
@@ -15569,7 +15589,7 @@ class _SelectedUploadFilesPreview extends StatelessWidget {
                             : '${_displayFileName(file.name, fallback: 'Selected file')} • ${DateFormat('dd MMM, hh:mm a').format(file.capturedAt!)}',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
+                        style: TextStyle(
                           color: _premiumInk,
                           fontSize: 12.5,
                           fontWeight: FontWeight.w700,
@@ -15617,7 +15637,7 @@ class _SelectedImagePreviewTile extends StatelessWidget {
             child: ClipRRect(
               borderRadius: BorderRadius.circular(14),
               child: ColoredBox(
-                color: const Color(0xFFF3F4F6),
+                color: AppTheme.darkBackgroundPrimaryLight,
                 child: Image.file(
                   File(file.path),
                   fit: BoxFit.contain,
@@ -15626,7 +15646,7 @@ class _SelectedImagePreviewTile extends StatelessWidget {
                   errorBuilder: (_, __, ___) => const Center(
                     child: Icon(
                       Icons.broken_image_outlined,
-                      color: Color(0xFF9CA3AF),
+                      color: AppTheme.mutedGrey,
                       size: 28,
                     ),
                   ),
@@ -15711,10 +15731,10 @@ class _NearSiteStatusBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final hasError = error != null && error!.isNotEmpty;
-    final bg = hasError ? const Color(0xFFFEF2F2) : const Color(0xFFECFDF5);
+    final bg = hasError ? const Color(0xFF3F1D1D) : const Color(0xFF14532D);
     final border =
-        hasError ? const Color(0xFFFECACA) : const Color(0xFFA7F3D0);
-    final ink = hasError ? const Color(0xFF991B1B) : const Color(0xFF065F46);
+        hasError ? const Color(0xFF7F1D1D) : const Color(0xFF166534);
+    final ink = hasError ? const Color(0xFFFCA5A5) : const Color(0xFF6EE7B7);
     final distanceText = distanceMeters == null
         ? null
         : 'You are ${distanceMeters!.round()} m from site';
@@ -16245,7 +16265,7 @@ class _ChecklistFollowupItemCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: _premiumSurface,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Color(0xFFE5E7EB)),
+        border: Border.all(color: AppTheme.border),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.045),
@@ -16265,12 +16285,12 @@ class _ChecklistFollowupItemCard extends StatelessWidget {
                   width: 38,
                   height: 38,
                   decoration: BoxDecoration(
-                    color: Color(0xFFEFF6FF),
+                    color: Color(0xFF1E3A5F),
                     borderRadius: BorderRadius.circular(13),
                   ),
                   child: Icon(
                     Icons.assignment_turned_in_outlined,
-                    color: Color(0xFF2563EB),
+                    color: Color(0xFF93C5FD),
                     size: 20,
                   ),
                 ),
@@ -16415,16 +16435,16 @@ class _FollowupInfoBlock extends StatelessWidget {
       width: double.infinity,
       padding: EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Color(0xFFF8FAFC),
+        color: AppTheme.darkBackgroundPrimaryLight,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Color(0xFFE5E7EB)),
+        border: Border.all(color: AppTheme.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Icon(icon, size: 16, color: Color(0xFF2563EB)),
+              Icon(icon, size: 16, color: Color(0xFF93C5FD)),
               SizedBox(width: 7),
               Text(
                 label,
@@ -17008,16 +17028,16 @@ class _SlotOutcomeBody extends StatelessWidget {
           width: double.infinity,
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
-            color: saved ? const Color(0xFFECFDF5) : const Color(0xFFFEF2F2),
+            color: saved ? const Color(0xFF14532D) : const Color(0xFF3F1D1D),
             borderRadius: BorderRadius.circular(14),
             border: Border.all(
-              color: saved ? const Color(0xFF86EFAC) : const Color(0xFFFECACA),
+              color: saved ? const Color(0xFF166534) : const Color(0xFF7F1D1D),
             ),
           ),
           child: Text(
             saved ? 'Done' : message,
             style: TextStyle(
-              color: saved ? const Color(0xFF065F46) : const Color(0xFF991B1B),
+              color: saved ? const Color(0xFF6EE7B7) : const Color(0xFFFCA5A5),
               fontSize: 14,
               fontWeight: FontWeight.w800,
               height: 1.35,
@@ -17317,7 +17337,7 @@ class _SlotConfirmationOptionCard extends StatelessWidget {
               : _premiumSurface,
           borderRadius: BorderRadius.circular(18),
           border: Border.all(
-            color: selected ? Color(0xFF10B981) : Color(0xFFE5E7EB),
+            color: selected ? Color(0xFF10B981) : AppTheme.border,
             width: selected ? 1.4 : 1,
           ),
         ),
@@ -17632,7 +17652,7 @@ class _PictureChoiceListRowCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: _premiumSurface,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: Color(0xFFE5E7EB)),
+        border: Border.all(color: AppTheme.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -17666,7 +17686,7 @@ class _PictureChoiceListRowCard extends StatelessWidget {
               decoration: BoxDecoration(
                 color: _premiumBackground,
                 borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: Color(0xFFE5E7EB)),
+                border: Border.all(color: AppTheme.border),
               ),
               clipBehavior: Clip.antiAlias,
               child: imageUrl == null
@@ -18003,7 +18023,7 @@ class _PictureChoicePickOptionCard extends StatelessWidget {
               : _premiumSurface,
           borderRadius: BorderRadius.circular(18),
           border: Border.all(
-            color: selected ? Color(0xFF0D9488) : Color(0xFFE5E7EB),
+            color: selected ? Color(0xFF0D9488) : AppTheme.border,
             width: selected ? 1.4 : 1,
           ),
         ),
@@ -18071,7 +18091,7 @@ class _PictureChoiceReadOnlyOptionCard extends StatelessWidget {
             : _premiumSurface,
         borderRadius: BorderRadius.circular(18),
         border: Border.all(
-          color: highlight ? Color(0xFF0D9488) : Color(0xFFE5E7EB),
+          color: highlight ? Color(0xFF0D9488) : AppTheme.border,
         ),
       ),
       child: Row(

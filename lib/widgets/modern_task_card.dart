@@ -9,9 +9,9 @@ import '../app_theme.dart';
 
 const Color kTaskNavy = AppTheme.navy;
 const Color kTaskMuted = Color(0xFFA8B3C7);
-const Color kTaskBorder = AppTheme.border;
+Color get kTaskBorder => AppTheme.border;
 const Color kTaskSoftShadow = Color(0x14000000);
-const Color kTaskCardSurface = AppTheme.darkBackgroundSecondary;
+Color get kTaskCardSurface => AppTheme.darkBackgroundSecondary;
 
 class TaskStatusStyle {
   final Color color;
@@ -50,13 +50,13 @@ TaskStatusStyle taskStatusStyle(String status) {
         icon: Icons.bolt_rounded,
       );
     case 'waiting_approval':
-      return const TaskStatusStyle(
+      return TaskStatusStyle(
         color: Color(0xFFA5B4FC),
         background: AppTheme.darkBackgroundPrimaryLight,
         icon: Icons.rate_review_outlined,
       );
     case 'scheduled':
-      return const TaskStatusStyle(
+      return TaskStatusStyle(
         color: AppTheme.darkTextPrimary,
         background: AppTheme.darkBackgroundPrimaryLight,
         icon: Icons.schedule_rounded,
@@ -69,13 +69,13 @@ TaskStatusStyle taskStatusStyle(String status) {
         icon: Icons.cancel_outlined,
       );
     case 'not_started':
-      return const TaskStatusStyle(
+      return TaskStatusStyle(
         color: Color(0xFFA8B3C7),
         background: AppTheme.darkBackgroundPrimary,
         icon: Icons.hourglass_empty_rounded,
       );
     default:
-      return const TaskStatusStyle(
+      return TaskStatusStyle(
         color: Color(0xFFA8B3C7),
         background: AppTheme.darkBackgroundPrimaryLight,
         icon: Icons.pending_actions_outlined,
@@ -445,7 +445,7 @@ class ModernTaskCard extends StatelessWidget {
                                               children: [
                                                 Text(
                                                   title,
-                                                  style: const TextStyle(
+                                                  style: TextStyle(
                                                     color: AppTheme.darkTextPrimary,
                                                     fontSize: 12.5,
                                                     fontWeight: FontWeight.normal,
@@ -1005,7 +1005,7 @@ class TaskSummaryStatCard extends StatelessWidget {
               children: [
                 Text(
                   value,
-                  style: const TextStyle(
+                  style: TextStyle(
                     color: AppTheme.darkTextPrimary,
                     fontSize: 16,
                     fontWeight: FontWeight.w800,
@@ -1065,12 +1065,12 @@ class TaskHelpBanner extends StatelessWidget {
                 width: 54,
                 height: 54,
                 color: const Color(0xFF1A2A45),
-                child: const Icon(Icons.support_agent, color: AppTheme.darkTextPrimary),
+                child: Icon(Icons.support_agent, color: AppTheme.darkTextPrimary),
               ),
             ),
           ),
           const SizedBox(width: 12),
-          const Expanded(
+          Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [

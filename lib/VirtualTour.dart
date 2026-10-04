@@ -201,7 +201,7 @@ class _BackButton extends StatelessWidget {
         child: IconButton(
           tooltip: 'Back',
           onPressed: onPressed,
-          icon: const Icon(Icons.arrow_back_rounded, color: AppTheme.darkTextPrimary),
+          icon: Icon(Icons.arrow_back_rounded, color: AppTheme.darkTextPrimary),
         ),
       ),
     );
@@ -268,7 +268,7 @@ class _ErrorView extends StatelessWidget {
                 color: AppTheme.accentBlue,
               ),
               const SizedBox(height: 16),
-              const Text(
+              Text(
                 '3D House Tour unavailable',
                 textAlign: TextAlign.center,
                 style: TextStyle(

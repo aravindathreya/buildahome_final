@@ -489,7 +489,7 @@ class _AttendanceScreenState extends State<AttendanceScreen>
           Text(
             _statusError!,
             textAlign: TextAlign.center,
-            style: const TextStyle(
+            style: TextStyle(
               color: AppTheme.darkTextPrimary,
               fontWeight: FontWeight.w700,
             ),
@@ -529,7 +529,7 @@ class _AttendanceScreenState extends State<AttendanceScreen>
           _recordCard(status.record!),
         ],
         const SizedBox(height: 20),
-        const Text(
+        Text(
           'Assigned workspaces',
           style: TextStyle(
             color: AppTheme.darkTextPrimary,
@@ -598,7 +598,7 @@ class _AttendanceScreenState extends State<AttendanceScreen>
               Expanded(
                 child: Text(
                   headline,
-                  style: const TextStyle(
+                  style: TextStyle(
                     color: AppTheme.darkTextPrimary,
                     fontWeight: FontWeight.w800,
                     fontSize: 20,
@@ -683,7 +683,7 @@ class _AttendanceScreenState extends State<AttendanceScreen>
               children: [
                 Text(
                   title,
-                  style: const TextStyle(
+                  style: TextStyle(
                     color: AppTheme.darkTextPrimary,
                     fontWeight: FontWeight.w800,
                     fontSize: 14,
@@ -732,11 +732,11 @@ class _AttendanceScreenState extends State<AttendanceScreen>
         fillColor: AppTheme.darkBackgroundPrimaryLight,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: AppTheme.border),
+          borderSide: BorderSide(color: AppTheme.border),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: AppTheme.border),
+          borderSide: BorderSide(color: AppTheme.border),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
@@ -806,7 +806,7 @@ class _AttendanceScreenState extends State<AttendanceScreen>
         children: [
           Row(
             children: [
-              const Text(
+              Text(
                 'Today’s record',
                 style: TextStyle(
                   color: AppTheme.darkTextPrimary,
@@ -865,7 +865,7 @@ class _AttendanceScreenState extends State<AttendanceScreen>
               Expanded(
                 child: Text(
                   assignment.workspaceName,
-                  style: const TextStyle(
+                  style: TextStyle(
                     color: AppTheme.darkTextPrimary,
                     fontWeight: FontWeight.w800,
                     fontSize: 15,
@@ -941,7 +941,7 @@ class _AttendanceScreenState extends State<AttendanceScreen>
           Text(
             _historyError!,
             textAlign: TextAlign.center,
-            style: const TextStyle(
+            style: TextStyle(
               color: AppTheme.darkTextPrimary,
               fontWeight: FontWeight.w700,
             ),
@@ -1018,7 +1018,7 @@ class _AttendanceScreenState extends State<AttendanceScreen>
         children: [
           Text(
             value,
-            style: const TextStyle(
+            style: TextStyle(
               color: AppTheme.darkTextPrimary,
               fontWeight: FontWeight.w800,
               fontSize: 18,
@@ -1057,7 +1057,7 @@ class _AttendanceScreenState extends State<AttendanceScreen>
                   row.dayName == null || row.dayName!.isEmpty
                       ? row.date
                       : '${row.dayName}, ${row.date}',
-                  style: const TextStyle(
+                  style: TextStyle(
                     color: AppTheme.darkTextPrimary,
                     fontWeight: FontWeight.w800,
                     fontSize: 14,
@@ -1150,7 +1150,7 @@ class _AttendanceScreenState extends State<AttendanceScreen>
           Expanded(
             child: Text(
               value,
-              style: const TextStyle(
+              style: TextStyle(
                 color: AppTheme.darkTextPrimary,
                 fontWeight: FontWeight.w700,
                 fontSize: 13,
@@ -1251,7 +1251,7 @@ class _LocationOverrideDialogState extends State<_LocationOverrideDialog> {
     return AlertDialog(
       backgroundColor: AppTheme.darkBackgroundSecondary,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      title: const Text(
+      title: Text(
         'Override attendance?',
         style: TextStyle(
           color: AppTheme.darkTextPrimary,

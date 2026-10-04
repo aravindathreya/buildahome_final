@@ -77,19 +77,16 @@ class IndentSiteProofSummaryCard extends StatelessWidget {
     return <String, dynamic>{};
   }
 
-  static const Color _ink = Color(0xFF1B254B);
-  static const Color _muted = Color(0xFF8A94A6);
-
   static Widget _infoRow(IconData icon, String label, String value) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Icon(icon, size: 15, color: _muted),
+        Icon(icon, size: 15, color: AppTheme.mutedGrey),
         const SizedBox(width: 6),
         Text(
           '$label: ',
           style: const TextStyle(
-            color: _muted,
+            color: AppTheme.mutedGrey,
             fontSize: 12,
             fontWeight: FontWeight.w600,
           ),
@@ -97,8 +94,8 @@ class IndentSiteProofSummaryCard extends StatelessWidget {
         Expanded(
           child: Text(
             value,
-            style: const TextStyle(
-              color: _ink,
+            style: TextStyle(
+              color: AppTheme.darkTextPrimary,
               fontSize: 12.5,
               fontWeight: FontWeight.w700,
               height: 1.3,
@@ -120,7 +117,7 @@ class IndentSiteProofSummaryCard extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppTheme.darkBackgroundSecondary,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: AppTheme.border),
       ),
@@ -129,8 +126,8 @@ class IndentSiteProofSummaryCard extends StatelessWidget {
         children: [
           Text(
             title,
-            style: const TextStyle(
-              color: _ink,
+            style: TextStyle(
+              color: AppTheme.darkTextPrimary,
               fontSize: 14,
               fontWeight: FontWeight.w800,
             ),

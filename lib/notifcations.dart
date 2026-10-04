@@ -41,7 +41,7 @@ class NotificationPageBody extends StatefulWidget {
 class NotificationPageBodyState extends State<NotificationPageBody> {
   static const Color _navy = Color(0xFF1B254B);
   static const Color _mutedGrey = AppTheme.mutedGrey;
-  static const Color _cardBorder = AppTheme.border;
+  static Color get _cardBorder => AppTheme.border;
 
   final NotificationService _service = NotificationService.instance;
   final ScrollController _scrollController = ScrollController();
@@ -697,7 +697,7 @@ class NotificationPageBodyState extends State<NotificationPageBody> {
           ),
         ),
         if (showDivider)
-          const Divider(height: 1, thickness: 1, color: _cardBorder),
+          Divider(height: 1, thickness: 1, color: _cardBorder),
       ],
     );
   }
@@ -716,7 +716,7 @@ class NotificationPageBodyState extends State<NotificationPageBody> {
               color: const Color(0xFFEEF2FF),
               borderRadius: BorderRadius.circular(24),
             ),
-            child: const Icon(
+            child: Icon(
               Icons.notifications_off_outlined,
               size: 36,
               color: AppTheme.darkTextPrimary,
@@ -724,7 +724,7 @@ class NotificationPageBodyState extends State<NotificationPageBody> {
           ),
         ),
         const SizedBox(height: 22),
-        const Text(
+        Text(
           "You're all caught up!",
           textAlign: TextAlign.center,
           style: TextStyle(

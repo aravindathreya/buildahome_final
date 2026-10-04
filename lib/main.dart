@@ -8,6 +8,7 @@ import 'app_scroll_behavior.dart';
 import 'app_theme.dart';
 import 'services/app_deep_link_service.dart';
 import 'services/session_manager.dart';
+import 'services/theme_service.dart';
 
 export 'app_navigator.dart';
 
@@ -32,6 +33,7 @@ class _AppState extends State<App> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    ThemeService.instance.load();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       // Let Home start its own authenticated calls first; this probe only
       // exists to catch a revoked token on a cold restore.
@@ -60,17 +62,22 @@ class _AppState extends State<App> with WidgetsBindingObserver {
   Widget build(BuildContext context) {
     final appTitle = 'buildAhome';
 
-    return MaterialApp(
-      title: appTitle,
-      debugShowCheckedModeBanner: false,
-      theme: AppTheme.getDarkTheme(),
-      darkTheme: AppTheme.getDarkTheme(),
-      themeMode: ThemeMode.dark,
-      scrollBehavior: const AppScrollBehavior(),
-      navigatorKey: globalNavigatorKey,
-      scaffoldMessengerKey: globalScaffoldMessengerKey,
-      navigatorObservers: [globalNavigatorObserver],
-      home: LoginScreenNew(),
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: ThemeService.instance.modeNotifier,
+      builder: (context, themeMode, _) {
+        return MaterialApp(
+          title: appTitle,
+          debugShowCheckedModeBanner: false,
+          theme: AppTheme.getLightTheme(),
+          darkTheme: AppTheme.getDarkTheme(),
+          themeMode: themeMode,
+          scrollBehavior: const AppScrollBehavior(),
+          navigatorKey: globalNavigatorKey,
+          scaffoldMessengerKey: globalScaffoldMessengerKey,
+          navigatorObservers: [globalNavigatorObserver],
+          home: LoginScreenNew(),
+        );
+      },
     );
   }
 }

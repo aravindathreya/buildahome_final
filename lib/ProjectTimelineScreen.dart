@@ -8,10 +8,10 @@ import 'widgets/project_situation_switcher.dart';
 import 'widgets/skeleton_loader.dart';
 import 'widgets/tentative_handover_card.dart';
 
-const Color _pageBackground = AppTheme.darkBackgroundPrimary;
-const Color _cardSurface = AppTheme.darkBackgroundSecondary;
-const Color _ink = AppTheme.darkTextPrimary;
-const Color _muted = AppTheme.darkTextSecondary;
+Color get _pageBackground => AppTheme.darkBackgroundPrimary;
+Color get _cardSurface => AppTheme.darkBackgroundSecondary;
+Color get _ink => AppTheme.darkTextPrimary;
+Color get _muted => AppTheme.darkTextSecondary;
 
 enum _TimelineFilter { all, completed, pending, upcoming }
 
@@ -193,14 +193,14 @@ class _ProjectTimelineScreenState extends State<ProjectTimelineScreen> {
         foregroundColor: AppTheme.darkTextPrimary,
         elevation: 0,
         scrolledUnderElevation: 0,
-        iconTheme: const IconThemeData(color: AppTheme.darkTextPrimary),
-        actionsIconTheme: const IconThemeData(color: AppTheme.darkTextPrimary),
+        iconTheme: IconThemeData(color: AppTheme.darkTextPrimary),
+        actionsIconTheme: IconThemeData(color: AppTheme.darkTextPrimary),
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded,
+          icon: Icon(Icons.arrow_back_ios_new_rounded,
               color: AppTheme.darkTextPrimary, size: 20),
           onPressed: () => Navigator.maybePop(context),
         ),
-        title: const Text(
+        title: Text(
           'Project Timeline',
           style: TextStyle(
             color: AppTheme.darkTextPrimary,
@@ -240,7 +240,7 @@ class _ProjectTimelineScreenState extends State<ProjectTimelineScreen> {
                     child: CircularProgressIndicator(
                         strokeWidth: 2, color: AppTheme.navy),
                   )
-                : const Icon(Icons.refresh_rounded, color: AppTheme.darkTextPrimary),
+                : Icon(Icons.refresh_rounded, color: AppTheme.darkTextPrimary),
           ),
           const SizedBox(width: 8),
         ],
@@ -346,7 +346,7 @@ class _ProjectTimelineScreenState extends State<ProjectTimelineScreen> {
               Expanded(
                 child: Text(
                   '$_pendingCount pending · $_completedCount completed · $_upcomingCount upcoming',
-                  style: const TextStyle(
+                  style: TextStyle(
                     color: _ink,
                     fontSize: 13.5,
                     fontWeight: FontWeight.w700,
@@ -427,7 +427,7 @@ class _ProjectTimelineScreenState extends State<ProjectTimelineScreen> {
               _isClientRole()
                   ? 'No critical timeline tasks yet'
                   : 'No timeline tasks yet',
-              style: const TextStyle(
+              style: TextStyle(
                 color: _ink,
                 fontSize: 22,
                 fontWeight: FontWeight.w800,
@@ -439,7 +439,7 @@ class _ProjectTimelineScreenState extends State<ProjectTimelineScreen> {
                   ? 'Main Critical construction tasks will appear here once they are available.'
                   : 'Project timeline tasks will appear here once they are created.',
               textAlign: TextAlign.center,
-              style: const TextStyle(
+              style: TextStyle(
                 color: _muted,
                 fontSize: 14,
                 fontWeight: FontWeight.w500,
@@ -479,12 +479,12 @@ class _ProjectTimelineScreenState extends State<ProjectTimelineScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 24),
       child: Column(
         children: [
-          const Icon(Icons.filter_list_off_rounded, size: 40, color: _muted),
+          Icon(Icons.filter_list_off_rounded, size: 40, color: _muted),
           const SizedBox(height: 12),
           Text(
             label,
             textAlign: TextAlign.center,
-            style: const TextStyle(
+            style: TextStyle(
               color: _muted,
               fontSize: 14,
               fontWeight: FontWeight.w600,
@@ -518,7 +518,7 @@ class _ProjectTimelineScreenState extends State<ProjectTimelineScreen> {
               isAuthError
                   ? 'Could not authorize this request'
                   : 'Could not load project timeline',
-              style: const TextStyle(
+              style: TextStyle(
                 color: _ink,
                 fontSize: 18,
                 fontWeight: FontWeight.w700,
@@ -528,7 +528,7 @@ class _ProjectTimelineScreenState extends State<ProjectTimelineScreen> {
             Text(
               message,
               textAlign: TextAlign.center,
-              style: const TextStyle(color: _muted, fontSize: 13),
+              style: TextStyle(color: _muted, fontSize: 13),
             ),
             const SizedBox(height: 20),
             ElevatedButton(
@@ -764,7 +764,7 @@ class _TimelineTaskCard extends StatelessWidget {
                 const SizedBox(height: 12),
                 Text(
                   '$assigneeName · $assigneeRole',
-                  style: const TextStyle(
+                  style: TextStyle(
                     color: _muted,
                     fontSize: 12.5,
                     fontWeight: FontWeight.w600,
@@ -775,7 +775,7 @@ class _TimelineTaskCard extends StatelessWidget {
                 const SizedBox(height: 6),
                 Text(
                   triggerLabel,
-                  style: const TextStyle(
+                  style: TextStyle(
                     color: _muted,
                     fontSize: 11.5,
                     fontWeight: FontWeight.w500,
@@ -890,7 +890,7 @@ class _TimelineTaskDetailSheet extends StatelessWidget {
                   children: [
                     Text(
                       taskName,
-                      style: const TextStyle(
+                      style: TextStyle(
                         color: _ink,
                         fontSize: 18,
                         fontWeight: FontWeight.w800,
@@ -939,7 +939,7 @@ class _TimelineTaskDetailSheet extends StatelessWidget {
             width: 110,
             child: Text(
               label,
-              style: const TextStyle(
+              style: TextStyle(
                 color: _muted,
                 fontSize: 12.5,
                 fontWeight: FontWeight.w600,
@@ -949,7 +949,7 @@ class _TimelineTaskDetailSheet extends StatelessWidget {
           Expanded(
             child: Text(
               value,
-              style: const TextStyle(
+              style: TextStyle(
                 color: _ink,
                 fontSize: 13,
                 fontWeight: FontWeight.w700,

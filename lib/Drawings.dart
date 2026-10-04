@@ -83,7 +83,7 @@ class DocumentObjectState extends State<DocumentObject> {
                             color: const Color(0xFFEEF2FF),
                             borderRadius: BorderRadius.circular(12),
                           ),
-                          child: const Icon(
+                          child: Icon(
                             Icons.folder_rounded,
                             size: 22,
                             color: AppTheme.darkTextPrimary,
@@ -92,7 +92,7 @@ class DocumentObjectState extends State<DocumentObject> {
                         const SizedBox(width: 12),
                         Text(
                           parent.toString(),
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 15.5,
                             fontWeight: FontWeight.w800,
                             color: AppTheme.darkTextPrimary,
@@ -149,7 +149,7 @@ class DocumentObjectState extends State<DocumentObject> {
                                       ),
                                       child: Row(
                                         children: [
-                                          const Icon(
+                                          Icon(
                                             Icons.description_outlined,
                                             color: AppTheme.darkTextPrimary,
                                             size: 20,
@@ -158,7 +158,7 @@ class DocumentObjectState extends State<DocumentObject> {
                                           Expanded(
                                             child: Text(
                                               children[x]['name'].toString() == 'null' ? children[x]['link'].toString() : children[x]['name'].toString(),
-                                              style: const TextStyle(
+                                              style: TextStyle(
                                                 color: AppTheme.darkTextPrimary,
                                                 fontWeight: FontWeight.w700,
                                                 fontSize: 14,
@@ -371,7 +371,7 @@ class DocumentsState extends State<Documents> {
             physics: const AlwaysScrollableScrollPhysics(),
             padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
             children: [
-              const Text(
+              Text(
                 'Project documents',
                 style: TextStyle(
                   fontSize: 18,
@@ -476,7 +476,7 @@ class DocumentsState extends State<Documents> {
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: AppTheme.border),
       ),
-      child: const Column(
+      child: Column(
         children: [
           Icon(Icons.inventory_2_outlined, color: AppTheme.darkTextPrimary, size: 32),
           SizedBox(height: 12),
@@ -510,7 +510,7 @@ class DocumentsState extends State<Documents> {
         children: [
           const Icon(Icons.error_outline, color: Color(0xFFDC2626), size: 48),
           const SizedBox(height: 12),
-          const Text(
+          Text(
             'Something went wrong',
             style: TextStyle(fontWeight: FontWeight.w800, color: AppTheme.darkTextPrimary),
           ),

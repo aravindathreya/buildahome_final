@@ -51,7 +51,8 @@ class ThemedScaffold extends StatelessWidget {
     final Color appBarBg = isAdminChrome
         ? (DashboardChrome.appBarColorOf(context) ?? AppTheme.primaryColorConst)
         : AppTheme.darkBackgroundSecondary;
-    final Color appBarFg = Colors.white;
+    final Color appBarFg =
+        isAdminChrome ? Colors.white : AppTheme.darkTextPrimary;
 
     final appBar = AppBar(
       primary: headerDrop <= 0,
@@ -61,7 +62,9 @@ class ThemedScaffold extends StatelessWidget {
       scrolledUnderElevation: 0,
       centerTitle: centerTitle ?? false,
       automaticallyImplyLeading: false,
-      systemOverlayStyle: SystemUiOverlayStyle.light,
+      systemOverlayStyle: isAdminChrome || AppTheme.isDark
+          ? SystemUiOverlayStyle.light
+          : SystemUiOverlayStyle.dark,
       leading: leading ??
           (shouldImplyLeading
               ? IconButton(
@@ -127,7 +130,9 @@ class ThemedScaffold extends StatelessWidget {
           );
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: SystemUiOverlayStyle.light,
+      value: (isAdminChrome || AppTheme.isDark)
+          ? SystemUiOverlayStyle.light
+          : SystemUiOverlayStyle.dark,
       child: Scaffold(
         backgroundColor:
             backgroundColor ?? AppTheme.darkBackgroundPrimary,

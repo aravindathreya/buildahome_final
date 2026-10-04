@@ -483,7 +483,7 @@ class _WorkOrderListCard extends StatelessWidget {
                     children: [
                       Text(
                         item.trade.isNotEmpty ? item.trade : 'Work order',
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontWeight: FontWeight.w800,
                           fontSize: 14.5,
                           color: AppTheme.darkTextPrimary,
@@ -524,7 +524,7 @@ class _WorkOrderListCard extends StatelessWidget {
                   children: [
                     Text(
                       formatIndianRupees(item.value),
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontWeight: FontWeight.w800,
                         fontSize: 14,
                         color: AppTheme.darkTextPrimary,
@@ -651,7 +651,7 @@ class _WorkOrderDetailScreenState extends State<WorkOrderDetailScreen> {
           children: [
             Text(
               title,
-              style: const TextStyle(
+              style: TextStyle(
                 fontWeight: FontWeight.w800,
                 fontSize: 17,
                 color: AppTheme.darkTextPrimary,
@@ -932,7 +932,7 @@ class _DocumentButton extends StatelessWidget {
               Expanded(
                 child: Text(
                   label,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontWeight: FontWeight.w800,
                     fontSize: 14,
                     color: AppTheme.darkTextPrimary,
@@ -983,11 +983,11 @@ class _MilestonesCard extends StatelessWidget {
               ],
             ),
           ),
-          const Divider(height: 1, color: AppTheme.border),
+          Divider(height: 1, color: AppTheme.border),
           for (var i = 0; i < milestones.length; i++) ...[
             _MilestoneRow(milestone: milestones[i]),
             if (i != milestones.length - 1)
-              const Divider(height: 1, color: AppTheme.border),
+              Divider(height: 1, color: AppTheme.border),
           ],
         ],
       ),
@@ -1147,7 +1147,7 @@ class _NotesCard extends StatelessWidget {
               children: [
                 Text(
                   note.text,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 13.5,
                     fontWeight: FontWeight.w600,
                     color: AppTheme.darkTextPrimary,
@@ -1221,7 +1221,7 @@ class _InlineMessage extends StatelessWidget {
             Text(
               title,
               textAlign: TextAlign.center,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.w800,
                 color: AppTheme.darkTextPrimary,

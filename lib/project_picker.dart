@@ -86,7 +86,7 @@ class ProjectPickerScreen {
         enableDrag: true,
         builder: (sheetContext) => Container(
           height: MediaQuery.of(sheetContext).size.height * 0.82,
-          decoration: const BoxDecoration(
+          decoration: BoxDecoration(
             color: AppTheme.darkBackgroundSecondary,
             borderRadius: BorderRadius.only(
               topLeft: Radius.circular(24),
@@ -141,7 +141,7 @@ class ProjectPickerScreen {
                             color: AppTheme.darkBackgroundPrimaryLight,
                             borderRadius: BorderRadius.circular(12),
                           ),
-                          child: const Icon(
+                          child: Icon(
                             Icons.folder_special_rounded,
                             color: AppTheme.darkTextPrimary,
                             size: 20,
@@ -152,7 +152,7 @@ class ProjectPickerScreen {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const Text(
+                              Text(
                                 'Select Project',
                                 style: TextStyle(
                                   color: AppTheme.darkTextPrimary,
@@ -191,7 +191,7 @@ class ProjectPickerScreen {
                       controller: searchController,
                       textCapitalization: TextCapitalization.sentences,
                       inputFormatters: const [FirstLetterCapitalFormatter()],
-                      style: const TextStyle(
+                      style: TextStyle(
                         color: AppTheme.darkTextPrimary,
                         fontSize: 14,
                         fontWeight: FontWeight.w600,
@@ -206,7 +206,7 @@ class ProjectPickerScreen {
                           color: _muted,
                           fontWeight: FontWeight.w500,
                         ),
-                        prefixIcon: const Icon(
+                        prefixIcon: Icon(
                           Icons.search_rounded,
                           color: AppTheme.darkTextPrimary,
                         ),
@@ -437,7 +437,7 @@ class ProjectPickerScreen {
                                                                   Text(
                                                                     projectName,
                                                                     style:
-                                                                        const TextStyle(
+                                                                        TextStyle(
                                                                       color:
                                                                           AppTheme.darkTextPrimary,
                                                                       fontSize:
@@ -566,7 +566,7 @@ class _EmptyState extends StatelessWidget {
             const SizedBox(height: 16),
             Text(
               title,
-              style: const TextStyle(
+              style: TextStyle(
                 color: AppTheme.darkTextPrimary,
                 fontSize: 15,
                 fontWeight: FontWeight.w800,

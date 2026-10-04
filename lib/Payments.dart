@@ -15,6 +15,183 @@ enum PaymentCategory {
   nonTender,
 }
 
+/// Snapshot of tender + non-tender payment data for a project.
+class ProjectPaymentsSnapshot {
+  final PaymentSummary tenderSummary;
+  final PaymentSummary nonTenderSummary;
+  final List<PaymentItem> tenderItems;
+  final List<PaymentItem> nonTenderItems;
+
+  const ProjectPaymentsSnapshot({
+    required this.tenderSummary,
+    required this.nonTenderSummary,
+    required this.tenderItems,
+    required this.nonTenderItems,
+  });
+
+  double get totalOutstanding =>
+      tenderSummary.outstandingNumeric + nonTenderSummary.outstandingNumeric;
+
+  /// Pending line items only (excludes paid / scheduled), tender then non-tender.
+  List<PendingPaymentRow> get pendingPaymentRows {
+    final rows = <PendingPaymentRow>[];
+    for (final item in tenderItems) {
+      if (!item.isPending) continue;
+      rows.add(PendingPaymentRow(
+        name: item.name,
+        amount: item.resolvedAmount(tenderSummary),
+        isTender: true,
+        status: item.status,
+      ));
+    }
+    for (final item in nonTenderItems) {
+      if (!item.isPending) continue;
+      rows.add(PendingPaymentRow(
+        name: item.name,
+        amount: item.resolvedAmount(nonTenderSummary),
+        isTender: false,
+        status: item.status,
+      ));
+    }
+    return rows;
+  }
+}
+
+class PendingPaymentRow {
+  final String name;
+  final double amount;
+  final bool isTender;
+  final String status;
+
+  const PendingPaymentRow({
+    required this.name,
+    required this.amount,
+    required this.isTender,
+    required this.status,
+  });
+}
+
+bool isPaymentStatusPaid(String status) {
+  return status.toLowerCase().trim() == 'paid';
+}
+
+bool isPaymentStatusScheduled(String status) {
+  final normalized = status.toLowerCase().trim();
+  return normalized == 'not due' || normalized == 'wip';
+}
+
+bool isPaymentStatusPending(String status) {
+  return !isPaymentStatusPaid(status) && !isPaymentStatusScheduled(status);
+}
+
+double _paymentValueToDouble(dynamic value) {
+  if (value == null) return 0;
+  if (value is num) return value.toDouble();
+  return double.tryParse(
+          value.toString().replaceAll(RegExp('[^0-9\\.]'), '')) ??
+      0;
+}
+
+/// Fetches payment summary plus tender and non-tender line items.
+Future<ProjectPaymentsSnapshot> fetchProjectPaymentsSnapshot(
+  String projectId, {
+  Duration timeout = const Duration(seconds: 20),
+}) async {
+  final paymentUrl =
+      'https://office1.buildahome.in/API/get_payment?project_id=$projectId';
+  final tenderUrl =
+      'https://office1.buildahome.in/API/get_all_tasks?project_id=$projectId&nt_toggle=0';
+  final nonTenderUrl =
+      'https://office1.buildahome.in/API/get_all_non_tender?project_id=$projectId';
+
+  Future<http.Response?> safeGet(String url) async {
+    try {
+      return await http.get(Uri.parse(url)).timeout(timeout);
+    } catch (e) {
+      print('[Payments] fetchProjectPaymentsSnapshot request error: $e');
+      return null;
+    }
+  }
+
+  final results = await Future.wait([
+    safeGet(paymentUrl),
+    safeGet(tenderUrl),
+    safeGet(nonTenderUrl),
+  ]);
+
+  final paymentResponse = results[0];
+  if (paymentResponse == null || paymentResponse.statusCode != 200) {
+    throw Exception('Unable to load payment summary right now.');
+  }
+
+  List<dynamic> tenderData = [];
+  List<dynamic> nonTenderData = [];
+
+  final tenderResponse = results[1];
+  if (tenderResponse != null && tenderResponse.statusCode == 200) {
+    final decoded = jsonDecode(tenderResponse.body);
+    if (decoded is List) tenderData = decoded;
+  }
+
+  final nonTenderResponse = results[2];
+  if (nonTenderResponse != null && nonTenderResponse.statusCode == 200) {
+    final decoded = jsonDecode(nonTenderResponse.body);
+    if (decoded is List) nonTenderData = decoded;
+  }
+
+  final paymentDetails = jsonDecode(paymentResponse.body);
+  final summary = (paymentDetails is List && paymentDetails.isNotEmpty)
+      ? Map<String, dynamic>.from(paymentDetails[0] as Map)
+      : <String, dynamic>{};
+
+  final tenderSummary = PaymentSummary(
+    value: (summary['value'] ?? '0').toString(),
+    totalPaid: (summary['total_paid'] ?? '0').toString(),
+    outstanding: (summary['outstanding'] ?? '0').toString(),
+  );
+
+  final nonTenderSummary = PaymentSummary(
+    value: (summary['nt_value'] ?? summary['value'] ?? '0').toString(),
+    totalPaid: (summary['nt_total_paid'] ?? '0').toString(),
+    outstanding: (summary['nt_outstanding'] ?? '0').toString(),
+  );
+
+  final tenderItems = tenderData
+      .map<PaymentItem>((item) => PaymentItem(
+            name: (item['task_name'] ?? 'Milestone').toString(),
+            percentage: _paymentValueToDouble(item['payment']),
+            status: (item['paid'] ?? '').toString(),
+            note: item['p_note']?.toString(),
+            startDate: item['start_date']?.toString(),
+            endDate: item['end_date']?.toString(),
+            markedAsDueOn: item['marked_as_due_on']?.toString(),
+            markedAsPaidOn: item['marked_as_paid_on']?.toString(),
+            isTender: true,
+          ))
+      .toList();
+
+  final nonTenderItems = nonTenderData
+      .map<PaymentItem>((item) => PaymentItem(
+            name: (item['task_name'] ?? 'Non tender item').toString(),
+            percentage: _paymentValueToDouble(item['payment']),
+            status: (item['paid'] ?? '').toString(),
+            startDate: item['start_date']?.toString(),
+            endDate: item['end_date']?.toString(),
+            markedAsDueOn: item['marked_as_due_on']?.toString(),
+            markedAsPaidOn: item['marked_as_paid_on']?.toString(),
+            isTender: false,
+            amountOverride: _paymentValueToDouble(item['payment']),
+          ))
+      .toList();
+
+  return ProjectPaymentsSnapshot(
+    tenderSummary: tenderSummary,
+    nonTenderSummary: nonTenderSummary,
+    tenderItems: tenderItems,
+    nonTenderItems: nonTenderItems,
+  );
+}
+
 class PaymentTaskWidget extends StatelessWidget {
   final PaymentCategory initialCategory;
 
@@ -256,6 +433,8 @@ class _PaymentsDashboardState extends State<PaymentsDashboard> {
                 name: (item['task_name'] ?? 'Non tender item').toString(),
                 percentage: _toDouble(item['payment']),
                 status: (item['paid'] ?? '').toString(),
+                startDate: item['start_date']?.toString(),
+                endDate: item['end_date']?.toString(),
                 markedAsDueOn: item['marked_as_due_on']?.toString(),
                 markedAsPaidOn: item['marked_as_paid_on']?.toString(),
                 isTender: false,
@@ -312,7 +491,7 @@ class _PaymentsDashboardState extends State<PaymentsDashboard> {
   @override
   Widget build(BuildContext context) {
     final title = selectedCategory == PaymentCategory.nonTender
-        ? 'Non Tender Payments'
+        ? 'Upwind Additions Cost'
         : 'Payments';
     return ThemedScaffold(
       title: title,
@@ -336,6 +515,9 @@ class _PaymentsDashboardState extends State<PaymentsDashboard> {
 
     final items = _filteredItems;
     final summary = _currentSummary;
+    final isNonTender = selectedCategory == PaymentCategory.nonTender;
+    final useNtSections = isNonTender && !_isSearching;
+
     return RefreshIndicator(
       onRefresh: () => _loadData(showLoader: false),
       color: AppTheme.navy,
@@ -361,7 +543,9 @@ class _PaymentsDashboardState extends State<PaymentsDashboard> {
               ),
             ),
           ),
-          if (items.isNotEmpty)
+          if (items.isNotEmpty && useNtSections)
+            ..._buildNtSectionedPaymentSlivers(items, summary)
+          else if (items.isNotEmpty)
             SliverPadding(
               padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
               sliver: _buildPaymentTableSliver(items, summary),
@@ -371,8 +555,135 @@ class _PaymentsDashboardState extends State<PaymentsDashboard> {
     );
   }
 
+  List<Widget> _buildNtSectionedPaymentSlivers(
+    List<PaymentItem> items,
+    PaymentSummary summary,
+  ) {
+    final sections = <_NtPaymentSection>[
+      _NtPaymentSection(
+        title: 'Pending',
+        emptyHint: 'No pending Upwind Additions items',
+        items: items.where((item) => item.isPending).toList(),
+        accent: Colors.red[700]!,
+      ),
+      _NtPaymentSection(
+        title: 'Scheduled',
+        emptyHint: 'No scheduled Upwind Additions items',
+        items: items.where((item) => item.isScheduled).toList(),
+        accent: Colors.amber[800]!,
+      ),
+      _NtPaymentSection(
+        title: 'Paid',
+        emptyHint: 'No paid Upwind Additions items',
+        items: items.where((item) => item.isPaid).toList(),
+        accent: Colors.green[700]!,
+      ),
+    ];
+
+    final slivers = <Widget>[];
+    for (var i = 0; i < sections.length; i++) {
+      final section = sections[i];
+      final isLast = i == sections.length - 1;
+      final amount = section.items.fold<double>(
+        0,
+        (sum, item) => sum + item.resolvedAmount(summary),
+      );
+
+      slivers.add(
+        SliverPadding(
+          padding: EdgeInsets.fromLTRB(20, i == 0 ? 0 : 8, 20, 8),
+          sliver: SliverToBoxAdapter(
+            child: _buildNtSectionHeader(
+              title: section.title,
+              count: section.items.length,
+              amountText: _formatCurrency(amount),
+              accent: section.accent,
+            ),
+          ),
+        ),
+      );
+
+      if (section.items.isEmpty) {
+        slivers.add(
+          SliverPadding(
+            padding: EdgeInsets.fromLTRB(20, 0, 20, isLast ? 24 : 12),
+            sliver: SliverToBoxAdapter(
+              child: Container(
+                width: double.infinity,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                decoration: BoxDecoration(
+                  color: AppTheme.getBackgroundSecondary(context),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: AppTheme.getPrimaryColor(context).withOpacity(0.08),
+                  ),
+                ),
+                child: Text(
+                  section.emptyHint,
+                  style: TextStyle(
+                    color: AppTheme.getTextSecondary(context),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      } else {
+        slivers.add(
+          SliverPadding(
+            padding: EdgeInsets.fromLTRB(20, 0, 20, isLast ? 24 : 12),
+            sliver: _buildPaymentTableSliver(section.items, summary),
+          ),
+        );
+      }
+    }
+    return slivers;
+  }
+
+  Widget _buildNtSectionHeader({
+    required String title,
+    required int count,
+    required String amountText,
+    required Color accent,
+  }) {
+    return Row(
+      children: [
+        Container(
+          width: 8,
+          height: 8,
+          decoration: BoxDecoration(
+            color: accent,
+            shape: BoxShape.circle,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            '$title · $count',
+            style: TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w800,
+              color: AppTheme.getTextPrimary(context),
+            ),
+          ),
+        ),
+        Text(
+          amountText,
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w700,
+            color: accent,
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildHeader() {
-    return const Column(
+    return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
@@ -386,7 +697,7 @@ class _PaymentsDashboardState extends State<PaymentsDashboard> {
         ),
         SizedBox(height: 6),
         Text(
-          'Switch between project and non tender payments using the filters below.',
+          'Switch between project payments and Upwind Additions Cost using the filters below.',
           style: TextStyle(
             color: AppTheme.mutedGrey,
             fontSize: 13.5,
@@ -402,7 +713,7 @@ class _PaymentsDashboardState extends State<PaymentsDashboard> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
+        Text(
           'Filter by',
           style: TextStyle(
             color: AppTheme.darkTextPrimary,
@@ -425,7 +736,7 @@ class _PaymentsDashboardState extends State<PaymentsDashboard> {
               ),
               Expanded(
                 child: _buildChip(
-                    'Non Tender Payments', PaymentCategory.nonTender),
+                    'Upwind Additions Cost', PaymentCategory.nonTender),
               ),
             ],
           ),
@@ -445,7 +756,7 @@ class _PaymentsDashboardState extends State<PaymentsDashboard> {
           setState(() => _searchQuery = value);
         });
       },
-      style: const TextStyle(
+      style: TextStyle(
         color: AppTheme.darkTextPrimary,
         fontWeight: FontWeight.w600,
       ),
@@ -470,7 +781,7 @@ class _PaymentsDashboardState extends State<PaymentsDashboard> {
         fillColor: AppTheme.darkBackgroundPrimaryLight,
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: AppTheme.border),
+          borderSide: BorderSide(color: AppTheme.border),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
@@ -478,7 +789,7 @@ class _PaymentsDashboardState extends State<PaymentsDashboard> {
         ),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: AppTheme.border),
+          borderSide: BorderSide(color: AppTheme.border),
         ),
       ),
     );
@@ -518,40 +829,93 @@ class _PaymentsDashboardState extends State<PaymentsDashboard> {
 
   Widget _buildSummaryCards(PaymentSummary summary) {
     final bool isNonTender = selectedCategory == PaymentCategory.nonTender;
-    
-    // Calculate total percentage or total amount based on category
-    double totalPercentageOrAmount = 0.0;
+
     if (isNonTender) {
-      // For non-tender: calculate total amount from items that are paid or pending
-      totalPercentageOrAmount = _currentItems.fold(0.0, (sum, item) {
-        final status = item.status.toLowerCase().trim();
-        if (status == 'paid' || status == 'pending') {
-          final amount = item.amountOverride ?? (summary.valueNumeric * (item.percentage / 100));
-          return sum + amount;
-        }
-        return sum;
-      });
-    } else {
-      // For tender: calculate total percentage
-      totalPercentageOrAmount = _currentItems.fold(0.0, (sum, item) {
-        final status = item.status.toLowerCase().trim();
-        if (status == 'paid' || status == 'pending') {
-          return sum + item.percentage;
-        }
-        return sum;
-      });
+      final pendingItems = _currentItems.where((item) => item.isPending).toList();
+      final scheduledItems =
+          _currentItems.where((item) => item.isScheduled).toList();
+      final pendingAmount = pendingItems.fold<double>(
+        0,
+        (sum, item) => sum + item.resolvedAmount(summary),
+      );
+      final scheduledAmount = scheduledItems.fold<double>(
+        0,
+        (sum, item) => sum + item.resolvedAmount(summary),
+      );
+
+      return Wrap(
+        spacing: 16,
+        runSpacing: 16,
+        children: [
+          _SummaryCard(
+            title: 'NT Value',
+            subtitle: 'Total budgeted amount',
+            value: _formatCurrency(summary.valueNumeric),
+            icon: Icons.account_balance_wallet,
+            gradient: const [
+              Color(0xFFE3F2FD),
+              Color(0xFFBBDEFB),
+            ],
+          ),
+          _SummaryCard(
+            title: 'Paid till date',
+            subtitle: 'Approved & released',
+            value: _formatCurrency(summary.totalPaidNumeric),
+            icon: Icons.check_circle_outline,
+            valueColor: Colors.green[700],
+            gradient: const [
+              Color(0xFFE8F5E9),
+              Color(0xFFC8E6C9),
+            ],
+          ),
+          _SummaryCard(
+            title: 'Pending',
+            subtitle: pendingItems.isEmpty
+                ? 'No items due'
+                : '${pendingItems.length} item${pendingItems.length == 1 ? '' : 's'} due now',
+            value: _formatCurrency(pendingAmount),
+            icon: Icons.pending_actions,
+            valueColor: Colors.red[700],
+            gradient: const [
+              Color(0xFF3F1D24),
+              Color(0xFF7F1D1D),
+            ],
+          ),
+          _SummaryCard(
+            title: 'Scheduled',
+            subtitle: scheduledItems.isEmpty
+                ? 'No upcoming items'
+                : '${scheduledItems.length} item${scheduledItems.length == 1 ? '' : 's'} upcoming',
+            value: _formatCurrency(scheduledAmount),
+            icon: Icons.event_available_outlined,
+            valueColor: Colors.amber[800],
+            gradient: [
+              Colors.amber.withOpacity(0.25),
+              Colors.amber.withOpacity(0.12),
+            ],
+          ),
+        ],
+      );
     }
-    
+
+    // Tender: calculate total percentage for paid + pending milestones.
+    final totalPercentage = _currentItems.fold<double>(0.0, (sum, item) {
+      if (item.isPaid || item.isPending) {
+        return sum + item.percentage;
+      }
+      return sum;
+    });
+
     return Wrap(
       spacing: 16,
       runSpacing: 16,
       children: [
         _SummaryCard(
-          title: isNonTender ? 'NT Value' : 'Contract Value',
+          title: 'Contract Value',
           subtitle: 'Total budgeted amount',
           value: _formatCurrency(summary.valueNumeric),
           icon: Icons.account_balance_wallet,
-          gradient: [
+          gradient: const [
             Color(0xFFE3F2FD),
             Color(0xFFBBDEFB),
           ],
@@ -562,7 +926,7 @@ class _PaymentsDashboardState extends State<PaymentsDashboard> {
           value: _formatCurrency(summary.totalPaidNumeric),
           icon: Icons.check_circle_outline,
           valueColor: Colors.green[700],
-          gradient: [
+          gradient: const [
             Color(0xFFE8F5E9),
             Color(0xFFC8E6C9),
           ],
@@ -573,18 +937,16 @@ class _PaymentsDashboardState extends State<PaymentsDashboard> {
           value: _formatCurrency(summary.outstandingNumeric),
           icon: Icons.pending_actions,
           valueColor: Colors.red[700],
-          gradient: [
+          gradient: const [
             Color(0xFF3F1D24),
             Color(0xFF7F1D1D),
           ],
         ),
         _SummaryCard(
-          title: isNonTender ? 'Total Amount' : 'Total Percentage',
-          subtitle: isNonTender ? 'Total amount billed' : 'Total percentage billed',
-          value: isNonTender 
-              ? _formatCurrency(totalPercentageOrAmount)
-              : '${totalPercentageOrAmount.toStringAsFixed(1)}%',
-          icon: isNonTender ? Icons.currency_rupee : Icons.percent,
+          title: 'Total Percentage',
+          subtitle: 'Total percentage billed',
+          value: '${totalPercentage.toStringAsFixed(1)}%',
+          icon: Icons.percent,
           valueColor: AppTheme.getPrimaryColor(context),
           gradient: [
             AppTheme.getPrimaryColor(context).withOpacity(0.15),
@@ -633,7 +995,9 @@ class _PaymentsDashboardState extends State<PaymentsDashboard> {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Text(
-              selectedCategory == PaymentCategory.tender ? 'Milestone payments' : 'Non tender payments',
+              selectedCategory == PaymentCategory.tender
+                  ? 'Milestone payments'
+                  : 'Upwind Additions Cost',
               style: TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.bold,
@@ -826,28 +1190,11 @@ class _PaymentsDashboardState extends State<PaymentsDashboard> {
                               ),
                             ),
                           ],
-                          if (item.markedAsDueOn != null && item.markedAsDueOn!.isNotEmpty && item.markedAsDueOn != 'null') ...[
-                            SizedBox(height: 4 * _zoomLevel),
-                            Text(
-                              'Due on: ${item.markedAsDueOn!}',
-                              style: TextStyle(
-                                fontSize: noteFontSize - 1,
-                                color: AppTheme.getTextSecondary(context),
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ],
-                          if (item.markedAsPaidOn != null && item.markedAsPaidOn!.isNotEmpty && item.markedAsPaidOn != 'null') ...[
-                            SizedBox(height: 4 * _zoomLevel),
-                            Text(
-                              'Paid on: ${item.markedAsPaidOn!}',
-                              style: TextStyle(
-                                fontSize: noteFontSize - 1,
-                                color: AppTheme.getTextSecondary(context),
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ],
+                          ..._buildPaymentDateLines(
+                            item,
+                            isNonTender: isNonTender,
+                            fontSize: noteFontSize - 1,
+                          ),
                         ],
                       ),
                     ),
@@ -912,15 +1259,14 @@ class _PaymentsDashboardState extends State<PaymentsDashboard> {
 
 
   _StatusStyle _statusStyle(String status) {
-    final normalized = status.toLowerCase().trim();
-    if (normalized == 'paid') {
+    if (isPaymentStatusPaid(status)) {
       return _StatusStyle(
         label: 'Paid',
         background: Colors.green.withOpacity(0.15),
         foreground: Colors.green[800]!,
       );
     }
-    if (normalized == 'not due' || normalized == 'wip') {
+    if (isPaymentStatusScheduled(status)) {
       return _StatusStyle(
         label: 'Scheduled',
         background: Colors.amber.withOpacity(0.2),
@@ -1062,13 +1408,19 @@ class _PaymentsDashboardState extends State<PaymentsDashboard> {
     return _currentItems.where((item) {
       final note = item.note?.toLowerCase() ?? '';
       final status = item.status.toLowerCase();
+      final statusLabel = _statusStyle(item.status).label.toLowerCase();
       final percentage = '${item.percentage.toStringAsFixed(1)}%'.toLowerCase();
-      final amount = item.amountOverride ?? (currentSummary.valueNumeric * (item.percentage / 100));
+      final amount = item.resolvedAmount(currentSummary);
       final amountText = amount > 0 ? currencyFormatter.format(amount).toLowerCase() : '';
+      final raisedOn = (item.raisedOnDisplay ?? item.dueOnDisplay ?? '').toLowerCase();
+      final paidOn = (item.paidOnDisplay ?? '').toLowerCase();
       return item.name.toLowerCase().contains(query) ||
           note.contains(query) ||
           status.contains(query) ||
+          statusLabel.contains(query) ||
           percentage.contains(query) ||
+          raisedOn.contains(query) ||
+          paidOn.contains(query) ||
           amountText.contains(query.replaceAll(RegExp(r'[₹,\s]'), ''));
     }).toList();
   }
@@ -1082,6 +1434,45 @@ class _PaymentsDashboardState extends State<PaymentsDashboard> {
   String _formatCurrency(double amount) {
     if (amount == 0) return '₹ 0';
     return currencyFormatter.format(amount);
+  }
+
+  List<Widget> _buildPaymentDateLines(
+    PaymentItem item, {
+    required bool isNonTender,
+    required double fontSize,
+  }) {
+    final raisedOn = isNonTender ? item.raisedOnDisplay : item.dueOnDisplay;
+    final paidOn = item.paidOnDisplay;
+    final raisedLabel = isNonTender ? 'Raised on' : 'Due on';
+    final lines = <Widget>[];
+
+    if (raisedOn != null) {
+      lines.add(SizedBox(height: 4 * _zoomLevel));
+      lines.add(
+        Text(
+          '$raisedLabel: $raisedOn',
+          style: TextStyle(
+            fontSize: fontSize,
+            color: AppTheme.getTextSecondary(context),
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      );
+    }
+    if (paidOn != null) {
+      lines.add(SizedBox(height: 4 * _zoomLevel));
+      lines.add(
+        Text(
+          'Paid on: $paidOn',
+          style: TextStyle(
+            fontSize: fontSize,
+            color: AppTheme.getTextSecondary(context),
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      );
+    }
+    return lines;
   }
 }
 
@@ -1133,6 +1524,58 @@ class PaymentItem {
     this.markedAsPaidOn,
     this.amountOverride,
   });
+
+  bool get isPaid => isPaymentStatusPaid(status);
+
+  bool get isScheduled => isPaymentStatusScheduled(status);
+
+  bool get isPending => isPaymentStatusPending(status);
+
+  /// Tender "due" timestamp, when present.
+  String? get dueOnDisplay => _displayPaymentDate(markedAsDueOn);
+
+  /// NT bills expose raised date via `start_date` (or `marked_as_due_on`).
+  String? get raisedOnDisplay =>
+      _displayPaymentDate(markedAsDueOn) ?? _displayPaymentDate(startDate);
+
+  /// Paid timestamp when available; NT falls back to `end_date` for paid rows.
+  String? get paidOnDisplay {
+    final markedPaid = _displayPaymentDate(markedAsPaidOn);
+    if (markedPaid != null) return markedPaid;
+    if (!isTender && isPaid) return _displayPaymentDate(endDate);
+    return null;
+  }
+
+  double resolvedAmount(PaymentSummary summary) {
+    if (amountOverride != null) return amountOverride!;
+    return summary.valueNumeric * (percentage / 100);
+  }
+}
+
+bool _hasPaymentDate(String? value) {
+  if (value == null) return false;
+  final trimmed = value.trim();
+  return trimmed.isNotEmpty && trimmed.toLowerCase() != 'null';
+}
+
+String? _displayPaymentDate(String? value) {
+  if (!_hasPaymentDate(value)) return null;
+  final raw = value!.trim();
+
+  // ISO / YYYY-MM-DD from NT start_date / end_date.
+  final ymd = DateTime.tryParse(raw);
+  if (ymd != null) {
+    return DateFormat('dd MMM yyyy').format(ymd);
+  }
+
+  // Common API form: "Sat, 03 Oct 2026 16:08:47 GMT"
+  final httpDate = raw.replaceFirst(RegExp(r'\s*GMT$', caseSensitive: false), '');
+  try {
+    final parsed = DateFormat('EEE, dd MMM yyyy HH:mm:ss').parse(httpDate, true);
+    return DateFormat('dd MMM yyyy, hh:mm a').format(parsed.toLocal());
+  } catch (_) {}
+
+  return raw;
 }
 
 Color _iconOnChip(Color background) {
@@ -1204,7 +1647,7 @@ class _SummaryCard extends StatelessWidget {
               Expanded(
                 child: Text(
                   title,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontWeight: FontWeight.w800,
                     color: AppTheme.darkTextPrimary,
                     fontSize: 12,
@@ -1245,6 +1688,20 @@ class _StatusStyle {
     required this.label,
     required this.background,
     required this.foreground,
+  });
+}
+
+class _NtPaymentSection {
+  final String title;
+  final String emptyHint;
+  final List<PaymentItem> items;
+  final Color accent;
+
+  const _NtPaymentSection({
+    required this.title,
+    required this.emptyHint,
+    required this.items,
+    required this.accent,
   });
 }
 

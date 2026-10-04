@@ -10,9 +10,12 @@ class LegacyClientFeatures {
   /// Working tiles for a legacy client, in the original dashboard order.
   static const List<String> allowedTitles = [
     'Payments',
+    'Upwind Additions Cost',
     'NT Payments',
     'Non Tender Payments',
     'Documents',
+    'Profile',
+    'Upload proof',
     'Gallery',
     'Updates',
     'Scheduler',
@@ -44,7 +47,9 @@ class LegacyClientFeatures {
     if (allowedTitles.any((item) => _normalize(item) == normalized)) {
       return true;
     }
-    if (normalized.contains('non tender') || normalized == 'nt payments') {
+    if (normalized.contains('non tender') ||
+        normalized == 'nt payments' ||
+        normalized.contains('upwind additions')) {
       return true;
     }
     if (normalized == 'latest updates' || normalized.startsWith('payments')) {
@@ -71,7 +76,7 @@ Future<void> showFeatureComingSoon(
     builder: (dialogContext) {
       return AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text(
+        title: Text(
           LegacyClientFeatures.comingSoonMessage,
           style: TextStyle(
             fontSize: 17,
@@ -91,7 +96,7 @@ Future<void> showFeatureComingSoon(
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text(
+            child: Text(
               'OK',
               style: TextStyle(
                 fontWeight: FontWeight.w700,

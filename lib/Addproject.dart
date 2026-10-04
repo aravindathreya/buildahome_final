@@ -26,8 +26,8 @@ class AddProject extends StatelessWidget {
           backgroundColor: AppTheme.darkBackgroundSecondary,
           foregroundColor: AppTheme.darkTextPrimary,
           elevation: 0,
-          iconTheme: const IconThemeData(color: AppTheme.darkTextPrimary),
-          titleTextStyle: const TextStyle(color: AppTheme.darkTextPrimary, fontSize: 18, fontWeight: FontWeight.w800),
+          iconTheme: IconThemeData(color: AppTheme.darkTextPrimary),
+          titleTextStyle: TextStyle(color: AppTheme.darkTextPrimary, fontSize: 18, fontWeight: FontWeight.w800),
         ),
 
         drawer: NavMenuWidget(),
@@ -180,7 +180,7 @@ class TaskBlockState extends State<TaskBlock> with SingleTickerProviderStateMixi
                       onPressed: _selectStartDate,
                       child: Row(
                         children: <Widget>[
-                          const Icon(
+                          Icon(
                             Icons.calendar_today,
                             size: 18,
                             color: AppTheme.darkTextPrimary,
@@ -191,7 +191,7 @@ class TaskBlockState extends State<TaskBlock> with SingleTickerProviderStateMixi
                               '$taskStartDate',
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 14,
                                 fontWeight: FontWeight.normal,
                                 color: AppTheme.darkTextSecondary,
@@ -208,7 +208,7 @@ class TaskBlockState extends State<TaskBlock> with SingleTickerProviderStateMixi
                       onPressed: _selectFinishDate,
                       child: Row(
                         children: <Widget>[
-                          const Icon(
+                          Icon(
                             Icons.calendar_today,
                             size: 18,
                             color: AppTheme.darkTextPrimary,
@@ -219,7 +219,7 @@ class TaskBlockState extends State<TaskBlock> with SingleTickerProviderStateMixi
                               '$taskFinishDate',
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 14,
                                 fontWeight: FontWeight.normal,
                                 color: AppTheme.darkTextSecondary,

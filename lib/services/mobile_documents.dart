@@ -233,6 +233,23 @@ bool isGalleryCatalogNode(Map<String, dynamic> map) {
   return false;
 }
 
+/// Drop the unused Uncategorized bucket from mobile catalog payloads.
+bool isUncategorizedCatalogNode(Map<String, dynamic> map) {
+  return isUncategorizedDocumentCategoryRef(
+    id: (map['id'] ?? map['category_id'] ?? map['category_key'] ?? map['slug'])
+        ?.toString(),
+    label: (map['name'] ??
+            map['label'] ??
+            map['title'] ??
+            map['category_name'] ??
+            map['category_label'])
+        ?.toString(),
+    libraryGroupKey: map['library_group_key']?.toString(),
+    clientJourneyKey:
+        (map['client_journey_key'] ?? map['journey_key'])?.toString(),
+  );
+}
+
 /// Catalog IDs only — never dashboard_card / dashboard_section / task_id.
 String? catalogIdFromMap(
   Map<String, dynamic> map, {
@@ -399,6 +416,7 @@ WorkflowDocumentLibrary buildWorkflowDocumentLibraryFromCatalog(
 
 WorkflowDocumentCategory? _categoryFromMap(Map<String, dynamic> map) {
   if (isGalleryCatalogNode(map)) return null;
+  if (isUncategorizedCatalogNode(map)) return null;
 
   final id = catalogIdFromMap(
         map,
@@ -413,6 +431,9 @@ WorkflowDocumentCategory? _categoryFromMap(Map<String, dynamic> map) {
   if (id.isEmpty && label.isEmpty) return null;
   final resolvedId = id.isEmpty ? _slug(label) : id;
   if (resolvedId.isEmpty) return null;
+  if (isUncategorizedDocumentCategoryRef(id: resolvedId, label: label)) {
+    return null;
+  }
 
   final typeMaps = _extractTypeMaps(map);
   final sections = <WorkflowDocumentSection>[];

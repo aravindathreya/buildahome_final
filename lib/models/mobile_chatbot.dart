@@ -176,6 +176,15 @@ class MobileChatbotStage {
     final out = <MobileChatbotStageImage>[];
     for (final item in [...attachments, ...images]) {
       if (!item.isDocument || item.url.isEmpty) continue;
+      // Client chatbot must never surface Area Statement.
+      final caption = item.caption.toLowerCase();
+      final url = item.url.toLowerCase();
+      if (url.contains('area_statement') ||
+          url.contains('area-statement') ||
+          caption.contains('area statement') ||
+          caption.contains('area_statement')) {
+        continue;
+      }
       if (!seen.add(item.url)) continue;
       out.add(item);
     }

@@ -95,9 +95,9 @@ class ProjectFocusScreen extends StatefulWidget {
 }
 
 class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
-  static const _ink = AppTheme.darkTextPrimary;
-  static const _muted = AppTheme.darkTextSecondary;
-  static const _pageBg = AppTheme.darkBackgroundPrimary;
+  static Color get _ink => AppTheme.darkTextPrimary;
+  static Color get _muted => AppTheme.darkTextSecondary;
+  static Color get _pageBg => AppTheme.darkBackgroundPrimary;
 
   bool _loading = true;
   String? _error;
@@ -286,12 +286,12 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
           foregroundColor: AppTheme.darkTextPrimary,
           elevation: 0,
           scrolledUnderElevation: 0,
-          iconTheme: const IconThemeData(color: AppTheme.darkTextPrimary),
+          iconTheme: IconThemeData(color: AppTheme.darkTextPrimary),
           leading: IconButton(
             icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
             onPressed: () => Navigator.maybePop(context),
           ),
-          title: const Text(
+          title: Text(
             'Project Focus',
             style: TextStyle(
               color: AppTheme.darkTextPrimary,
@@ -325,7 +325,7 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
               tooltip: 'Refresh',
               onPressed: _loading ? null : _onRefresh,
               icon: _loading && _focus != null
-                  ? const SizedBox(
+                  ? SizedBox(
                       width: 18,
                       height: 18,
                       child: CircularProgressIndicator(
@@ -333,7 +333,7 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
                         color: AppTheme.darkTextPrimary,
                       ),
                     )
-                  : const Icon(Icons.refresh_rounded, color: AppTheme.darkTextPrimary),
+                  : Icon(Icons.refresh_rounded, color: AppTheme.darkTextPrimary),
             ),
             const SizedBox(width: 4),
           ],
@@ -443,7 +443,7 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
             children: [
               Text(
                 name,
-                style: const TextStyle(
+                style: TextStyle(
                   color: _ink,
                   fontSize: 16,
                   fontWeight: FontWeight.w800,
@@ -456,7 +456,7 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
                   waiting == 1
                       ? 'Waiting for 1 task'
                       : 'Waiting for $waiting tasks',
-                  style: const TextStyle(
+                  style: TextStyle(
                     color: _muted,
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
@@ -502,7 +502,7 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
                 item?.name ??
                     focus.projectActivity?.label ??
                     'Workflow attention needed',
-                style: const TextStyle(
+                style: TextStyle(
                   color: _ink,
                   fontSize: 16,
                   fontWeight: FontWeight.w800,
@@ -601,7 +601,7 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
       children: [
         const _SectionLabel("What's happening now"),
         if (!focus.hasActiveWork)
-          const _FocusCard(
+          _FocusCard(
             child: Text(
               'No active work reported right now.',
               style: TextStyle(
@@ -647,7 +647,7 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
               padding: const EdgeInsets.only(left: 2, bottom: 8),
               child: Text(
                 branches[b].label!,
-                style: const TextStyle(
+                style: TextStyle(
                   color: AppTheme.darkTextPrimary,
                   fontSize: 12.5,
                   fontWeight: FontWeight.w800,
@@ -691,7 +691,7 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
       children: [
         const _SectionLabel('What can you do now?'),
         if (!focus.hasMyActions)
-          const _FocusCard(
+          _FocusCard(
             color: Color(0xFF241A33),
             borderColor: Color(0xFF5B3A8C),
             child: Row(
@@ -761,12 +761,12 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
         padding: const EdgeInsets.all(32),
         children: [
           const SizedBox(height: 80),
-          const Icon(Icons.cloud_off_outlined, size: 46, color: _muted),
+          Icon(Icons.cloud_off_outlined, size: 46, color: _muted),
           const SizedBox(height: 16),
           Text(
             _error ?? 'Could not load project focus',
             textAlign: TextAlign.center,
-            style: const TextStyle(
+            style: TextStyle(
               color: _ink,
               fontSize: 16,
               fontWeight: FontWeight.w700,
@@ -774,7 +774,7 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
             ),
           ),
           const SizedBox(height: 8),
-          const Text(
+          Text(
             'Pull to refresh or try again.',
             textAlign: TextAlign.center,
             style: TextStyle(color: _muted, fontSize: 14),
@@ -882,7 +882,7 @@ class _SectionLabel extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 10, left: 2),
       child: Text(
         text.toUpperCase(),
-        style: const TextStyle(
+        style: TextStyle(
           fontSize: 11,
           fontWeight: FontWeight.w800,
           letterSpacing: 0.9,
@@ -958,7 +958,7 @@ class _PhaseHeroCard extends StatelessWidget {
                   (label == null || label.isEmpty)
                       ? 'Phase unavailable'
                       : label.toUpperCase(),
-                  style: const TextStyle(
+                  style: TextStyle(
                     color: AppTheme.darkTextPrimary,
                     fontSize: 24,
                     fontWeight: FontWeight.w800,
@@ -967,7 +967,7 @@ class _PhaseHeroCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 6),
-                const Text(
+                Text(
                   'Currently in this phase',
                   style: TextStyle(
                     color: AppTheme.darkTextSecondary,
@@ -1166,7 +1166,7 @@ class _PersonTaskCard extends StatelessWidget {
               Expanded(
                 child: Text(
                   title,
-                  style: const TextStyle(
+                  style: TextStyle(
                     color: AppTheme.darkTextPrimary,
                     fontSize: 15.5,
                     fontWeight: FontWeight.w800,
@@ -1175,7 +1175,7 @@ class _PersonTaskCard extends StatelessWidget {
                 ),
               ),
               if (onOpen != null)
-                const Icon(
+                Icon(
                   Icons.chevron_right_rounded,
                   color: AppTheme.darkTextSecondary,
                 ),
@@ -1185,7 +1185,7 @@ class _PersonTaskCard extends StatelessWidget {
             const SizedBox(height: 4),
             Text(
               category!,
-              style: const TextStyle(
+              style: TextStyle(
                 color: AppTheme.darkTextSecondary,
                 fontSize: 12.5,
                 fontWeight: FontWeight.w600,
@@ -1266,7 +1266,7 @@ class _AttentionCard extends StatelessWidget {
           const SizedBox(height: 10),
           Text(
             item.name,
-            style: const TextStyle(
+            style: TextStyle(
               color: AppTheme.darkTextPrimary,
               fontSize: 15.5,
               fontWeight: FontWeight.w800,
@@ -1314,7 +1314,7 @@ class _NoInvolvementCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
+          Text(
             'Nothing is assigned to you right now.',
             style: TextStyle(
               color: AppTheme.darkTextPrimary,
@@ -1325,7 +1325,7 @@ class _NoInvolvementCard extends StatelessWidget {
           ),
           if (current != null) ...[
             const SizedBox(height: 12),
-            const Text(
+            Text(
               'The project is currently progressing with:',
               style: TextStyle(
                 color: AppTheme.darkTextSecondary,
@@ -1337,7 +1337,7 @@ class _NoInvolvementCard extends StatelessWidget {
             if (current.assignee != null && current.assignee!.isNotEmpty)
               Text(
                 current.assignee!,
-                style: const TextStyle(
+                style: TextStyle(
                   color: AppTheme.darkTextPrimary,
                   fontSize: 15,
                   fontWeight: FontWeight.w800,
@@ -1345,7 +1345,7 @@ class _NoInvolvementCard extends StatelessWidget {
               ),
             Text(
               current.name,
-              style: const TextStyle(
+              style: TextStyle(
                 color: AppTheme.darkTextSecondary,
                 fontSize: 13.5,
                 fontWeight: FontWeight.w600,
@@ -1372,7 +1372,7 @@ class _InvolvementCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
+          Text(
             'Your next task',
             style: TextStyle(
               color: AppTheme.darkTextSecondary,
@@ -1383,7 +1383,7 @@ class _InvolvementCard extends StatelessWidget {
           const SizedBox(height: 6),
           Text(
             involvement.name ?? 'Upcoming involvement',
-            style: const TextStyle(
+            style: TextStyle(
               color: AppTheme.darkTextPrimary,
               fontSize: 15.5,
               fontWeight: FontWeight.w800,
@@ -1399,7 +1399,7 @@ class _InvolvementCard extends StatelessWidget {
           ],
           if (involvement.waitingFor.isNotEmpty) ...[
             const SizedBox(height: 14),
-            const Text(
+            Text(
               'Waiting for',
               style: TextStyle(
                 color: AppTheme.darkTextSecondary,
@@ -1414,14 +1414,14 @@ class _InvolvementCard extends StatelessWidget {
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('•  ',
+                    Text('•  ',
                         style: TextStyle(
                             color: AppTheme.darkTextSecondary,
                             fontWeight: FontWeight.w800)),
                     Expanded(
                       child: Text(
                         dep.name,
-                        style: const TextStyle(
+                        style: TextStyle(
                           color: AppTheme.darkTextPrimary,
                           fontSize: 13.5,
                           fontWeight: FontWeight.w600,
@@ -1439,7 +1439,7 @@ class _InvolvementCard extends StatelessWidget {
             const SizedBox(height: 10),
             Text(
               involvement.message!,
-              style: const TextStyle(
+              style: TextStyle(
                 color: AppTheme.darkTextSecondary,
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
@@ -1466,7 +1466,7 @@ class _FlowChain extends StatelessWidget {
           for (var i = 0; i < items.length; i++) ...[
             _FlowStep(item: items[i], isFirst: i == 0),
             if (i != items.length - 1)
-              const Padding(
+              Padding(
                 padding: EdgeInsets.symmetric(vertical: 6),
                 child: Icon(
                   Icons.arrow_downward_rounded,
@@ -1523,7 +1523,7 @@ class _FlowStep extends StatelessWidget {
                 const SizedBox(height: 3),
                 Text(
                   meta,
-                  style: const TextStyle(
+                  style: TextStyle(
                     color: AppTheme.darkTextSecondary,
                     fontSize: 12.5,
                     fontWeight: FontWeight.w600,
@@ -1577,7 +1577,7 @@ class _OwnerLine extends StatelessWidget {
             children: [
               Text(
                 hasName ? name! : (hasRole ? role! : 'Unassigned'),
-                style: const TextStyle(
+                style: TextStyle(
                   color: AppTheme.darkTextPrimary,
                   fontSize: 14,
                   fontWeight: FontWeight.w800,
@@ -1586,7 +1586,7 @@ class _OwnerLine extends StatelessWidget {
               if (hasName && hasRole)
                 Text(
                   role!,
-                  style: const TextStyle(
+                  style: TextStyle(
                     color: AppTheme.darkTextSecondary,
                     fontSize: 12.5,
                     fontWeight: FontWeight.w600,
@@ -1716,7 +1716,7 @@ class _FocusStatusStyle {
         return const _FocusStatusStyle(Color(0xFFFBBF24), 'Waiting');
       case 'not_started':
       case 'notstarted':
-        return const _FocusStatusStyle(AppTheme.darkTextSecondary, 'Not started');
+        return _FocusStatusStyle(AppTheme.darkTextSecondary, 'Not started');
       case 'blocked':
         return const _FocusStatusStyle(Color(0xFFF87171), 'Blocked');
       default:

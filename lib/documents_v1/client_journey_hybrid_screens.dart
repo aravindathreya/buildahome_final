@@ -165,7 +165,7 @@ class _ClientFloorPlanElevationScreenState
         backgroundColor: AppTheme.getBackgroundSecondary(context),
         foregroundColor: AppTheme.darkTextPrimary,
         elevation: 0,
-        title: const Text(
+        title: Text(
           'Floor Plan & Elevation',
           style: TextStyle(
             color: AppTheme.darkTextPrimary,
@@ -415,7 +415,7 @@ class _ClientDesignElementsScreenState
         backgroundColor: AppTheme.getBackgroundSecondary(context),
         foregroundColor: AppTheme.darkTextPrimary,
         elevation: 0,
-        title: const Text(
+        title: Text(
           'Design Elements',
           style: TextStyle(
             color: AppTheme.darkTextPrimary,

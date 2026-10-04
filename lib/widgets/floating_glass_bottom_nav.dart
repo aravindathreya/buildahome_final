@@ -33,7 +33,8 @@ class FloatingGlassBottomNav extends StatelessWidget {
   final List<FloatingGlassBottomNavItem> items;
   final Key? navKey;
 
-  static const double _horizontalInset = 16;
+  /// Screen edge padding; +20 each side vs the original 16 to narrow the bar.
+  static const double _horizontalInset = 36;
   static const double _bottomInset = 10;
   static const double _barRadius = 28;
 

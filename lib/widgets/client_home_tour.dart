@@ -388,7 +388,7 @@ class _TourCard extends StatelessWidget {
                       const SizedBox(height: 12),
                       Text(
                         step.title,
-                        style: const TextStyle(
+                        style: TextStyle(
                           color: AppTheme.darkTextPrimary,
                           fontSize: 18,
                           fontWeight: FontWeight.w800,
@@ -399,7 +399,7 @@ class _TourCard extends StatelessWidget {
                       const SizedBox(height: 8),
                       Text(
                         step.body,
-                        style: const TextStyle(
+                        style: TextStyle(
                           color: AppTheme.darkTextSecondary,
                           fontSize: 14,
                           fontWeight: FontWeight.w500,

@@ -15,6 +15,7 @@ import 'client_portal/kyc_document_record.dart';
 import 'documents_v1/documents_v1_home_screen.dart';
 import 'models/workflow_document.dart';
 import 'SalesSopCardsScreen.dart';
+import 'UploadPaymentProofScreen.dart';
 import 'services/client_portal_service.dart';
 import 'services/data_provider.dart';
 import 'services/mobile_documents.dart';
@@ -22,7 +23,7 @@ import 'services/mobile_documents_service.dart';
 import 'services/workflow_document_service.dart';
 import 'widgets/skeleton_loader.dart';
 
-/// Client Portal hub — pre-construction documents, design, site prep & inspection.
+/// Client Portal hub — documents & screenshots (post 10% payment client access).
 class ClientPortalScreen extends StatefulWidget {
   /// When true (Super Admin), load this project's client portal as the client.
   final bool impersonatingClient;
@@ -45,6 +46,8 @@ class _ClientPortalScreenState extends State<ClientPortalScreen> {
   bool _tutorialDone = false;
   WorkflowDocumentLibrary? _docLibrary;
   String _impersonatedClientName = '';
+  /// KYC hub row: Client + Super Admin only (not other staff roles).
+  bool _canSeeKyc = false;
 
   @override
   void initState() {
@@ -70,6 +73,7 @@ class _ClientPortalScreenState extends State<ClientPortalScreen> {
     });
     try {
       final prefs = await SharedPreferences.getInstance();
+      _canSeeKyc = roleCanSeeClientPortalKyc(prefs.getString('role'));
       _tutorialDone = prefs.getBool('client_portal_tutorial_done') ?? false;
       if (widget.impersonatingClient) {
         _impersonatedClientName =
@@ -228,6 +232,7 @@ class _ClientPortalScreenState extends State<ClientPortalScreen> {
     required SharedPreferences prefs,
     Object? portalError,
   }) async {
+    _canSeeKyc = roleCanSeeClientPortalKyc(prefs.getString('role'));
     final projectId = (prefs.getString('project_id') ?? '').trim();
     final clientName = (prefs.getString('client_name') ??
             prefs.getString('project_name') ??
@@ -279,33 +284,42 @@ class _ClientPortalScreenState extends State<ClientPortalScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final title = widget.impersonatingClient
-        ? (_impersonatedClientName.isNotEmpty
-            ? 'For me · $_impersonatedClientName'
-            : 'For me · Client view')
-        : 'Client Portal';
-    return Scaffold(
-      backgroundColor: AppTheme.getBackgroundPrimary(context),
-      appBar: AppBar(
-        backgroundColor: AppTheme.getBackgroundSecondary(context),
-        foregroundColor: AppTheme.darkTextPrimary,
-        elevation: 0,
-        title: Text(
-          title,
-          style: const TextStyle(
-            color: AppTheme.darkTextPrimary,
-            fontSize: 18,
-            fontWeight: FontWeight.w800,
+    return DefaultTabController(
+      length: 2,
+      child: Scaffold(
+        backgroundColor: AppTheme.getBackgroundPrimary(context),
+        appBar: AppBar(
+          backgroundColor: AppTheme.getBackgroundSecondary(context),
+          foregroundColor: AppTheme.darkTextPrimary,
+          elevation: 0,
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.refresh_rounded),
+              onPressed: _loading ? null : _bootstrap,
+            ),
+          ],
+          bottom: TabBar(
+            labelColor: AppTheme.darkTextPrimary,
+            unselectedLabelColor: AppTheme.mutedGrey,
+            indicatorColor: AppTheme.navy,
+            tabs: [
+              Tab(text: 'Documents'),
+              Tab(text: 'Screenshots'),
+            ],
           ),
         ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh_rounded),
-            onPressed: _loading ? null : _bootstrap,
+        body: SafeArea(
+          child: TabBarView(
+            children: [
+              _buildBody(),
+              const UploadPaymentProofScreen(
+                embedded: true,
+                showPendingPayments: false,
+              ),
+            ],
           ),
-        ],
+        ),
       ),
-      body: SafeArea(child: _buildBody()),
     );
   }
 
@@ -411,7 +425,37 @@ class _ClientPortalScreenState extends State<ClientPortalScreen> {
     );
   }
 
+  /// KYC / site forms can change hub badges; document browsing should not
+  /// force a full For me reload on back (that feels slow for Architectural).
+  bool _shouldRefreshPortalOnReturn(ClientPortalHubKind kind) {
+    switch (kind) {
+      case ClientPortalHubKind.kyc:
+      case ClientPortalHubKind.sitePrep:
+      case ClientPortalHubKind.demolition:
+      case ClientPortalHubKind.inspection:
+        return true;
+      case ClientPortalHubKind.officeDocuments:
+      case ClientPortalHubKind.receipts:
+      case ClientPortalHubKind.catalog:
+        return false;
+    }
+  }
+
+  Future<void> _pushPortalSection(
+    Widget page, {
+    required bool refreshOnReturn,
+  }) async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => page),
+    );
+    if (!mounted || !refreshOnReturn) return;
+    await _bootstrap();
+  }
+
   void _openSection(ClientPortalHubItem section) {
+    final refreshOnReturn = _shouldRefreshPortalOnReturn(section.kind);
+
     // Super Admin impersonation: avoid client-session-only portal APIs and
     // open staff-safe detail screens for this project instead.
     if (widget.impersonatingClient) {
@@ -454,10 +498,7 @@ class _ClientPortalScreenState extends State<ClientPortalScreen> {
           );
           break;
       }
-      Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => page),
-      ).then((_) => _bootstrap());
+      _pushPortalSection(page, refreshOnReturn: refreshOnReturn);
       return;
     }
 
@@ -498,14 +539,14 @@ class _ClientPortalScreenState extends State<ClientPortalScreen> {
         page = const _SiteInspectionScreen();
         break;
     }
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => page),
-    ).then((_) => _bootstrap());
+    _pushPortalSection(page, refreshOnReturn: refreshOnReturn);
   }
 
   List<ClientPortalHubItem> get _visiblePortalSections {
-    return buildClientPortalHubItems(_docLibrary);
+    return buildClientPortalHubItems(
+      _docLibrary,
+      includeKyc: _canSeeKyc,
+    );
   }
 }
 
@@ -677,7 +718,7 @@ class _PortalScaffold extends StatelessWidget {
         elevation: 0,
         title: Text(
           title,
-          style: const TextStyle(
+          style: TextStyle(
             color: AppTheme.darkTextPrimary,
             fontSize: 17,
             fontWeight: FontWeight.w800,
@@ -754,7 +795,7 @@ Widget _docTile(
     contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
     shape: RoundedRectangleBorder(
       borderRadius: BorderRadius.circular(12),
-      side: const BorderSide(color: AppTheme.border),
+      side: BorderSide(color: AppTheme.border),
     ),
     tileColor: AppTheme.darkBackgroundSecondary,
     leading: Container(
@@ -1260,7 +1301,7 @@ class _FloorPlanElevationScreenState extends State<_FloorPlanElevationScreen> {
                             status == 'finalized'
                                 ? 'Elevation finalized'
                                 : 'Drawings in progress',
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontWeight: FontWeight.w700,
                               color: AppTheme.darkTextPrimary,
                             ),
@@ -1341,7 +1382,7 @@ class _DesignElementScreenState extends State<_DesignElementScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(title,
-                style: const TextStyle(
+                style: TextStyle(
                     fontWeight: FontWeight.w800, color: AppTheme.darkTextPrimary)),
             const SizedBox(height: 8),
             _emptyDocHint(context, title),
@@ -1355,7 +1396,7 @@ class _DesignElementScreenState extends State<_DesignElementScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(title,
-              style: const TextStyle(
+              style: TextStyle(
                   fontWeight: FontWeight.w800, color: AppTheme.darkTextPrimary)),
           const SizedBox(height: 8),
           ...items.map((raw) {
@@ -1536,7 +1577,7 @@ class _SitePreparationScreenState extends State<_SitePreparationScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(label,
-              style: const TextStyle(
+              style: TextStyle(
                   fontWeight: FontWeight.w700, color: AppTheme.darkTextPrimary)),
           const SizedBox(height: 8),
           Row(
@@ -1742,7 +1783,7 @@ class _DemolitionScreenState extends State<_DemolitionScreen> {
                     SwitchListTile.adaptive(
                       value: _required,
                       onChanged: (v) => setState(() => _required = v),
-                      title: const Text(
+                      title: Text(
                         'Demolition required',
                         style: TextStyle(
                           fontWeight: FontWeight.w700,
@@ -1755,7 +1796,7 @@ class _DemolitionScreenState extends State<_DemolitionScreen> {
                     const SizedBox(height: 8),
                     ListTile(
                       contentPadding: EdgeInsets.zero,
-                      title: const Text(
+                      title: Text(
                         'Completion date',
                         style: TextStyle(
                           fontWeight: FontWeight.w700,
@@ -1993,7 +2034,7 @@ class _SiteInspectionScreenState extends State<_SiteInspectionScreen> {
           backgroundColor: AppTheme.getBackgroundSecondary(context),
           foregroundColor: AppTheme.darkTextPrimary,
           elevation: 0,
-          title: const Text(
+          title: Text(
             'Site Inspection',
             style: TextStyle(
               color: AppTheme.darkTextPrimary,
@@ -2004,7 +2045,7 @@ class _SiteInspectionScreenState extends State<_SiteInspectionScreen> {
           actions: [
             IconButton(onPressed: _load, icon: const Icon(Icons.refresh_rounded)),
           ],
-          bottom: const TabBar(
+          bottom: TabBar(
             labelColor: AppTheme.darkTextPrimary,
             unselectedLabelColor: AppTheme.mutedGrey,
             indicatorColor: AppTheme.navy,
@@ -2131,7 +2172,7 @@ class _SiteInspectionBookSlotTab extends StatelessWidget {
           const SizedBox(height: 12),
         ],
         if (booking.isNotEmpty) ...[
-          const Text(
+          Text(
             'Current booking',
             style: TextStyle(
               fontWeight: FontWeight.w800,
@@ -2228,7 +2269,7 @@ class _SiteInspectionBookSlotTab extends StatelessWidget {
                 children: [
                   Text(
                     'Slot ${i + 1}',
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontWeight: FontWeight.w800,
                       color: AppTheme.darkTextPrimary,
                     ),
@@ -2462,18 +2503,14 @@ class _AllDocumentsScreenState extends State<_AllDocumentsScreen> {
                         'url': docs['elevation_url'],
                         'icon': Icons.apartment_outlined,
                       },
-                      {
-                        'title': 'Area statement',
-                        'url': docs['area_statement_url'],
-                        'icon': Icons.square_foot_outlined,
-                      },
+                      // Area Statement is intentionally hidden from Client everywhere.
                       {
                         'title': 'Inspection report',
                         'url': docs['site_inspection_report_url'],
                         'icon': Icons.assignment_outlined,
                       },
                       {
-                        'title': 'Drafting agreement',
+                        'title': 'Agreement',
                         'url': docs['drafting_agreement_url'],
                         'icon': Icons.gavel_outlined,
                       },
@@ -2502,7 +2539,7 @@ class _AllDocumentsScreenState extends State<_AllDocumentsScreen> {
                           ),
                         )),
                     const SizedBox(height: 10),
-                    const Text(
+                    Text(
                       'Client KYC',
                       style: TextStyle(
                         fontWeight: FontWeight.w800,
