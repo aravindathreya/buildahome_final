@@ -16,6 +16,7 @@ import 'TimelineGallery.dart';
 import 'NotesAndComments.dart';
 import 'chat_v1/chat_v1_app.dart';
 import 'ProjectFocusScreen.dart';
+import 'ProjectSituationShell.dart';
 import 'checklist_categories.dart';
 import 'services/data_provider.dart';
 import 'services/notification_service.dart';
@@ -368,13 +369,12 @@ class UserDashboardLayoutState extends State<UserDashboardLayout> {
         snapshot: snapshot,
       ),
     );
-    // Docs tab: staff only (never clients). Clients also drop "More" —
-    // the side drawer is removed and remaining screens are quick actions.
-    keys = _layoutIsClientUser
-        ? withoutProjectHomeDocsTabs(keys)
-            .where((key) => key != kMobileBottomNavMoreKey)
-            .toList()
-        : ensureProjectHomeDocsTab(keys);
+    // Docs is not on the project home bottom bar (use quick actions / More).
+    // Clients also drop "More" — the side drawer is removed.
+    keys = withoutProjectHomeDocsTabs(keys);
+    if (_layoutIsClientUser) {
+      keys = keys.where((key) => key != kMobileBottomNavMoreKey).toList();
+    }
     // "For me" / client portal: clients + Super Admin only.
     if (!_layoutIsClientUser && !_layoutIsSuperAdmin) {
       keys = keys.where((key) => key != 'client_portal').toList();
@@ -824,7 +824,7 @@ class UserDashboardLayoutState extends State<UserDashboardLayout> {
                   ClientTourStep(
                     title: 'Quick actions',
                     body:
-                        'For me, Slots, Payments, Upwind, Project Gallery, Docs, Timeline, and Profile.',
+                        'For me, Slots, Payments, Upgrades, Project Gallery, Daily updates, Timeline, and Profile.',
                     targetKey: _tourActionsKey,
                     holeRadius: 16,
                     holePadding: const EdgeInsets.fromLTRB(6, 4, 6, 8),
@@ -1375,7 +1375,9 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
     return role == 'super admin' || role == 'admin';
   }
 
-  bool get _canSeeForMe => _isClientUser || _isSuperAdminUser;
+  /// Project home quick actions include "For me" for everyone who can open
+  /// the client project shell (clients + staff viewing a project).
+  bool get _canSeeForMe => true;
 
   bool get isReadyForTour => !_shouldShowInitialPageSkeleton;
 
@@ -2951,13 +2953,13 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
     final rbac = RBACService();
 
     if (_currentRole != 'Billing') {
-      // "For me" / Client Portal: clients always; Super Admin can impersonate.
+      // "For me" / Client Portal — same tile for clients and staff on project home.
       if (_canSeeForMe) {
         menuItems.add({
           'title': 'Client Portal',
           'icon': Icons.dashboard_customize_rounded,
           'route': () async {
-            if (_isSuperAdminUser && !_isClientUser) {
+            if (!_isClientUser) {
               final prefs = await SharedPreferences.getInstance();
               final projectId = (prefs.getString('project_id') ?? '').trim();
               final apiToken = (prefs.getString('api_token') ?? '').trim();
@@ -2984,7 +2986,7 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
       menuItems.add({
         'title': 'Project Timeline',
         'icon': Icons.view_timeline_rounded,
-        'route': () => const ProjectTimelineScreen(),
+        'route': () => ProjectSituationShell.timeline(),
       });
       // Clients: shared Client Information card only.
       if (_currentRole?.toLowerCase() == 'client') {
@@ -3063,30 +3065,26 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
     //   });
     // }
 
-    // Payments is part of the shared project home, including staff.
+    // Payments + Upgrades are part of the shared project home, including staff.
     menuItems.add({
       'title': 'Payments',
       'icon': Icons.account_balance_wallet_rounded,
       'route': () => PaymentTaskWidget(),
     });
-    if (_isClientUser ||
-        rbac.canViewSync(_currentRole, RBACService.payments)) {
-      menuItems.add({
-        'title': 'Upwind Additions Cost',
-        'icon': Icons.receipt_long_rounded,
-        'route': () => const PaymentTaskWidget(
-              initialCategory: PaymentCategory.nonTender,
-            ),
-      });
-    }
+    menuItems.add({
+      'title': 'Upgrades and Additions',
+      'icon': Icons.receipt_long_rounded,
+      'route': () => const PaymentTaskWidget(
+            initialCategory: PaymentCategory.nonTender,
+          ),
+    });
 
-    if (_isClientUser) {
-      menuItems.add({
-        'title': 'Updates',
-        'icon': Icons.campaign_rounded,
-        'route': () => const DprScreen(title: 'Updates'),
-      });
-    }
+    // Daily updates — pinned on the shared project home quick-action grid.
+    menuItems.add({
+      'title': 'Updates',
+      'icon': Icons.campaign_rounded,
+      'route': () => const DprScreen(title: 'Updates'),
+    });
 
     // Upload proof: clients get it on home now that the side drawer is gone.
     menuItems.add({
@@ -3097,14 +3095,9 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
           ),
     });
 
-    // Documents — clients get Docs as a quick action; staff keep both entries.
-    if (_isClientUser) {
-      menuItems.add({
-        'title': 'Documents',
-        'icon': Icons.folder_copy_rounded,
-        'route': () => const DocumentsV1HomeScreen(clientMode: true),
-      });
-    } else if (rbac.canViewSync(_currentRole, RBACService.documents)) {
+    // Documents — staff only (via More / catalog); not a client quick action.
+    if (!_isClientUser &&
+        rbac.canViewSync(_currentRole, RBACService.documents)) {
       menuItems.add({
         'title': 'Documents',
         'icon': Icons.folder_copy_rounded,
@@ -3239,31 +3232,23 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
     return menuItems;
   }
 
-  /// Staff project home keeps a fixed 3×2 quick-action grid.
-  static const int _quickActionSlotCount = 6;
-
-  /// Prefer these when staffing the fixed 6-slot staff grid.
-  static const List<String> _quickActionFillerTitles = [
-    'Documents',
-    'Profile',
-  ];
-
-  /// Pinned quick actions for clients on the project dashboard — exact set (4×2).
+  /// Pinned quick actions on the project dashboard — exact set (4×2).
+  /// Used for clients and for staff when they open a project.
   static const List<String> _clientPinnedQuickActionTitles = [
     'Client Portal',
+    'Project Timeline',
     'Slots',
     'Payments',
-    'Upwind Additions Cost',
+    'Upgrades and Additions',
     'Timeline Gallery',
-    'Documents',
-    'Project Timeline',
+    'Updates',
     'Profile',
   ];
 
   /// Working tiles from commit 440e62a, then newer tiles marked coming soon.
   static const List<String> _legacyClientPinnedQuickActionTitles = [
     'Payments',
-    'Upwind Additions Cost',
+    'Upgrades and Additions',
     'Gallery',
     'Updates',
     'Scheduler',
@@ -3298,42 +3283,8 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
 
   List<Map<String, dynamic>> _pinnedQuickActions(
       List<Map<String, dynamic>> items) {
-    // Clients always show the fixed 8 quick actions — no remote expansion.
-    if (_isClientUser) {
-      return _hardcodedPinnedQuickActions(items);
-    }
-
-    final actions = resolveMobileQuickActions(
-      surface: MobileQuickActionSurface.projectHomeNew,
-      catalog: items,
-      fallback: _hardcodedPinnedQuickActions(items),
-      snapshot: MobileQuickActionsService.instance
-          .snapshot(MobileQuickActionSurface.projectHomeNew),
-    );
-    final visible = actions
-        .where((item) => item['title']?.toString() != '3D House Tour')
-        .toList();
-    final hasSlots = visible.any((item) => item['title']?.toString() == 'Slots');
-    if (!hasSlots) {
-      for (final item in items) {
-        if (item['title']?.toString() == 'Slots') {
-          visible.insert(visible.isEmpty ? 0 : 1, item);
-          break;
-        }
-      }
-    }
-    final hasPayments =
-        visible.any((item) => item['title']?.toString() == 'Payments');
-    if (!hasPayments) {
-      for (final item in items) {
-        if (item['title']?.toString() == 'Payments') {
-          final insertAt = visible.length < 4 ? visible.length : 4;
-          visible.insert(insertAt, item);
-          break;
-        }
-      }
-    }
-    return _normalizeQuickActionSlots(visible, items);
+    // Project home (clients + staff opening a project) uses the fixed 4×2 set.
+    return _hardcodedPinnedQuickActions(items);
   }
 
   Map<String, Map<String, dynamic>> _quickActionCatalogByTitle(
@@ -3346,11 +3297,11 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
       byTitle.putIfAbsent(title, () => item);
     }
     byTitle.putIfAbsent(
-      'Documents',
+      'Updates',
       () => {
-        'title': 'Documents',
-        'icon': Icons.folder_copy_rounded,
-        'route': () => DocumentsV1HomeScreen(clientMode: _isClientUser),
+        'title': 'Updates',
+        'icon': Icons.campaign_rounded,
+        'route': () => const DprScreen(title: 'Updates'),
       },
     );
     byTitle.putIfAbsent(
@@ -3366,7 +3317,7 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
       () => {
         'title': 'Project Timeline',
         'icon': Icons.view_timeline_rounded,
-        'route': () => const ProjectTimelineScreen(),
+        'route': () => ProjectSituationShell.timeline(),
       },
     );
     byTitle.putIfAbsent(
@@ -3378,33 +3329,6 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
       },
     );
     return byTitle;
-  }
-
-  /// Staff project home: keep the quick-action grid at exactly 6.
-  List<Map<String, dynamic>> _normalizeQuickActionSlots(
-    List<Map<String, dynamic>> actions,
-    List<Map<String, dynamic>> catalog,
-  ) {
-    final byTitle = _quickActionCatalogByTitle(catalog);
-
-    final normalized = <Map<String, dynamic>>[];
-    final seen = <String>{};
-    for (final item in actions) {
-      final title = item['title']?.toString() ?? '';
-      if (title.isEmpty || !seen.add(title)) continue;
-      normalized.add(item);
-      if (normalized.length >= _quickActionSlotCount) {
-        return normalized;
-      }
-    }
-
-    for (final title in _quickActionFillerTitles) {
-      if (normalized.length >= _quickActionSlotCount) break;
-      if (!seen.add(title)) continue;
-      final item = byTitle[title];
-      if (item != null) normalized.add(item);
-    }
-    return normalized;
   }
 
   Widget build(BuildContext context) {
@@ -3473,11 +3397,11 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
               child: GridView.builder(
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
-                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: _isClientUser ? 4 : 3,
-                  crossAxisSpacing: _isClientUser ? 8 : 12,
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 4,
+                  crossAxisSpacing: 8,
                   mainAxisSpacing: 8,
-                  childAspectRatio: _isClientUser ? 0.78 : 0.9,
+                  childAspectRatio: 0.78,
                 ),
                 itemCount: pinnedActions.length,
                 itemBuilder: (BuildContext context, int index) {
@@ -3516,7 +3440,7 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
     }
     _openingMenu = true;
     try {
-      await _navigateToWidget(const ProjectTimelineScreen());
+      await _navigateToWidget(ProjectSituationShell.timeline());
     } finally {
       _openingMenu = false;
     }
@@ -3976,7 +3900,7 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
 
     items.add(
       _DashboardSearchItem(
-        title: 'Payments • Upwind Additions Cost',
+        title: 'Payments • Upgrades and Additions',
         subtitle: 'Monitor custom expenses',
         icon: Icons.receipt_long,
         keywords: [
@@ -4072,14 +3996,8 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
       );
       return;
     }
-    // Docs tab is staff-only on the project home bar.
+    // Docs is not on the project home bottom bar.
     if (canonical == 'documents' || canonical == 'documents_v1') {
-      if (_isClientUser) return;
-      await _navigateToWidget(
-        const DocumentsV1HomeScreen(clientMode: false),
-        chromeStyle: chromeStyle,
-        appBarColor: appBarColor,
-      );
       return;
     }
 
@@ -4128,9 +4046,9 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
     final label = _restrictLegacyClientFeatures && title == 'ChatBox'
         ? 'Notes & Comments'
         : _quickActionLabel(title);
-    final circleSize = _isClientUser ? 56.0 : 72.0;
-    final iconSize = _isClientUser ? 28.0 : 36.0;
-    final labelSize = _isClientUser ? 11.0 : 12.0;
+    const circleSize = 56.0;
+    const iconSize = 28.0;
+    const labelSize = 11.0;
 
     return InkWell(
       onTap: () => _handleMenuTap(item),
@@ -4223,11 +4141,11 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
                   ),
               ],
             ),
-            SizedBox(height: _isClientUser ? 6 : 8),
+            const SizedBox(height: 6),
             Text(
               label,
               textAlign: TextAlign.center,
-              style: TextStyle(
+              style: const TextStyle(
                 color: _ink,
                 fontSize: labelSize,
                 fontWeight: FontWeight.w500,
@@ -4271,19 +4189,18 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
       case 'Site Visit Reports':
         return 'Upcoming visits';
       case 'Timeline Gallery':
-        return _isClientUser ? 'Project Gallery' : 'Timeline Gallery';
       case 'Gallery':
-        return _isClientUser ? 'Project Gallery' : 'Gallery';
+        return 'Project Gallery';
       case '3D House Tour':
         return '3D House Tour';
       case 'Client Portal':
         return 'For me';
-      case 'Upwind Additions Cost':
+      case 'Upgrades and Additions':
       case 'NT Payments':
       case 'Non Tender Payments':
-        return 'Upwind Additions Cost';
+        return 'Upgrades and Additions';
       case 'Updates':
-        return 'Updates';
+        return 'Daily updates';
       default:
         return title;
     }
@@ -4321,7 +4238,7 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
         return Icons.person_rounded;
       case 'Payments':
         return Icons.account_balance_wallet_rounded;
-      case 'Upwind Additions Cost':
+      case 'Upgrades and Additions':
       case 'NT Payments':
       case 'Non Tender Payments':
         return Icons.receipt_long_rounded;

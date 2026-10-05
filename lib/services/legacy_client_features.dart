@@ -10,7 +10,7 @@ class LegacyClientFeatures {
   /// Working tiles for a legacy client, in the original dashboard order.
   static const List<String> allowedTitles = [
     'Payments',
-    'Upwind Additions Cost',
+    'Upgrades and Additions',
     'NT Payments',
     'Non Tender Payments',
     'Documents',
@@ -49,7 +49,8 @@ class LegacyClientFeatures {
     }
     if (normalized.contains('non tender') ||
         normalized == 'nt payments' ||
-        normalized.contains('upwind additions')) {
+        normalized.contains('upgrades and additions') ||
+        normalized.contains('upgrades and additions') || normalized.contains('upwind additions')) {
       return true;
     }
     if (normalized == 'latest updates' || normalized.startsWith('payments')) {

@@ -297,9 +297,10 @@ void main() {
       expect(keys.contains('updates'), isFalse);
     });
 
-    test('project fallback omits updates and chat', () {
+    test('project fallback omits updates, chat, and docs', () {
       expect(kMobileBottomNavProjectFallback.contains('updates'), isFalse);
       expect(kMobileBottomNavProjectFallback.contains('chatbox'), isFalse);
+      expect(kMobileBottomNavProjectFallback.contains('documents'), isFalse);
       final keys = resolveMobileBottomNavActionKeys(
         surface: MobileBottomNavSurface.projectNew,
         fallbackKeys: kMobileBottomNavProjectFallback,
@@ -308,6 +309,21 @@ void main() {
       expect(keys, kMobileBottomNavProjectFallback);
       expect(keys.contains('updates'), isFalse);
       expect(keys.contains('chatbox'), isFalse);
+      expect(keys.contains('documents'), isFalse);
+    });
+
+    test('withoutProjectHomeDocsTabs strips documents keys', () {
+      expect(
+        withoutProjectHomeDocsTabs([
+          'home',
+          'my_tasks',
+          'documents',
+          'documents_v1',
+          'payments',
+          'more',
+        ]),
+        ['home', 'my_tasks', 'payments', 'more'],
+      );
     });
   });
 }

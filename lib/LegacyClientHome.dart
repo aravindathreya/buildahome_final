@@ -444,7 +444,7 @@ class LegacyClientDashboardScreenState extends State<LegacyClientDashboardScreen
     });
 
     menuItems.add({
-      'title': 'Upwind Additions Cost',
+      'title': 'Upgrades and Additions',
       'icon': Icons.receipt_long,
       'route': () => const PaymentTaskWidget(
             initialCategory: PaymentCategory.nonTender,
@@ -854,7 +854,7 @@ class LegacyClientDashboardScreenState extends State<LegacyClientDashboardScreen
 
     items.add(
       _DashboardSearchItem(
-        title: 'Payments • Upwind Additions Cost',
+        title: 'Payments • Upgrades and Additions',
         subtitle: 'Monitor custom expenses',
         icon: Icons.receipt_long,
         keywords: [

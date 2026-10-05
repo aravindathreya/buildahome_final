@@ -162,7 +162,7 @@ const Map<String, String> kMobileMoreMenuProjectTitles = {
   'virtual_tour': '3D House Tour',
   'slots': 'Slots',
   'payments': 'Payments',
-  'nt_payments': 'Upwind Additions Cost',
+  'nt_payments': 'Upgrades and Additions',
   'upload_payment_proof': 'Upload proof',
   'indents': 'Indents',
   'chatbox': 'Chat V1',

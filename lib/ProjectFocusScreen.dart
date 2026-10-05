@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:shimmer/shimmer.dart';
 
 import 'MyTasksScreen.dart';
-import 'ProjectTimelineScreen.dart';
-import 'ProjectTimelineStatusScreen.dart';
+import 'ProjectSituationShell.dart';
 import 'app_theme.dart';
 import 'chat_v1/chat_v1_controller.dart';
 import 'models/project_focus.dart';
@@ -20,16 +20,21 @@ import 'widgets/skeleton_loader.dart';
 /// Does not compute workflow dependencies or blockers locally.
 class ProjectFocusScreen extends StatefulWidget {
   final String? salesSopId;
+  final bool embedded;
 
-  const ProjectFocusScreen({super.key, this.salesSopId});
+  const ProjectFocusScreen({
+    super.key,
+    this.salesSopId,
+    this.embedded = false,
+  });
 
   /// Sync entry from Quick Actions / menus.
-  static ProjectFocusScreen openQuick({
+  static Widget openQuick({
     String? erpProjectId,
     Map<String, dynamic>? project,
     Iterable<dynamic>? tasksHint,
   }) {
-    return ProjectFocusScreen(
+    return ProjectSituationShell.focus(
       salesSopId: _resolveSalesSopIdSync(
         erpProjectId: erpProjectId,
         project: project,
@@ -91,10 +96,11 @@ class ProjectFocusScreen extends StatefulWidget {
   }
 
   @override
-  State<ProjectFocusScreen> createState() => _ProjectFocusScreenState();
+  State<ProjectFocusScreen> createState() => ProjectFocusScreenState();
 }
 
-class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
+class ProjectFocusScreenState extends State<ProjectFocusScreen>
+    with AutomaticKeepAliveClientMixin {
   static Color get _ink => AppTheme.darkTextPrimary;
   static Color get _muted => AppTheme.darkTextSecondary;
   static Color get _pageBg => AppTheme.darkBackgroundPrimary;
@@ -103,6 +109,17 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
   String? _error;
   String? _salesSopId;
   ProjectFocus? _focus;
+  Map<String, dynamic>? _statusSummary;
+  List<Map<String, dynamic>> _criticalTasks = [];
+  bool _aiLoading = false;
+  String? _aiError;
+
+  @override
+  bool get wantKeepAlive => true;
+
+  bool get isRefreshing => _loading || _aiLoading;
+
+  Future<void> refresh() => _onRefresh();
 
   @override
   void initState() {
@@ -177,7 +194,18 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
         _focus = focus;
         _loading = false;
         _error = null;
+        // Seed AI card from cache while fresh fetch runs.
+        if (DataProvider().clientStatusSummaryLoaded) {
+          _statusSummary = DataProvider().clientStatusSummary;
+        }
+        if (DataProvider().clientCriticalTimelineLoaded) {
+          _criticalTasks = List<Map<String, dynamic>>.from(
+            DataProvider().clientCriticalTimelineTasks,
+          );
+        }
       });
+      // Load AI critical review after focus paints.
+      _loadAiReview();
     } on SessionInvalidatedException {
       rethrow;
     } catch (e) {
@@ -185,6 +213,41 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
       setState(() {
         _loading = false;
         _error = e.toString().replaceFirst('Exception: ', '');
+      });
+    }
+  }
+
+  Future<void> _loadAiReview() async {
+    if (!mounted) return;
+    setState(() {
+      _aiLoading = true;
+      _aiError = null;
+    });
+    try {
+      await Future.wait([
+        DataProvider().loadStatusSummary(force: true, criticalOnly: true),
+        DataProvider().loadCriticalTimeline(force: true),
+      ]);
+      if (!mounted) return;
+      setState(() {
+        _statusSummary = DataProvider().clientStatusSummary;
+        _criticalTasks = List<Map<String, dynamic>>.from(
+          DataProvider().clientCriticalTimelineTasks,
+        );
+        _aiLoading = false;
+        _aiError = null;
+      });
+    } on SessionInvalidatedException {
+      return;
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _statusSummary = DataProvider().clientStatusSummary;
+        _criticalTasks = List<Map<String, dynamic>>.from(
+          DataProvider().clientCriticalTimelineTasks,
+        );
+        _aiLoading = false;
+        _aiError = e.toString().replaceFirst('Exception: ', '');
       });
     }
   }
@@ -274,6 +337,10 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
+    final body = _buildBody();
+    if (widget.embedded) return body;
+
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: SystemUiOverlayStyle.light.copyWith(
         statusBarColor: Colors.transparent,
@@ -300,26 +367,6 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
               letterSpacing: -0.4,
             ),
           ),
-          bottom: ProjectSituationSwitcher(
-            selected: ProjectSituationTab.focus,
-            onChanged: (tab) {
-              if (tab == ProjectSituationTab.focus) return;
-              final Widget page;
-              switch (tab) {
-                case ProjectSituationTab.focus:
-                  return;
-                case ProjectSituationTab.status:
-                  page = const ProjectTimelineStatusScreen();
-                  break;
-                case ProjectSituationTab.timeline:
-                  page = const ProjectTimelineScreen();
-                  break;
-              }
-              Navigator.of(context).pushReplacement(
-                MaterialPageRoute(builder: (_) => page),
-              );
-            },
-          ),
           actions: [
             IconButton(
               tooltip: 'Refresh',
@@ -338,7 +385,7 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
             const SizedBox(width: 4),
           ],
         ),
-        body: SafeArea(child: _buildBody()),
+        body: SafeArea(child: body),
       ),
     );
   }
@@ -378,27 +425,13 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
           // 1. Where the project is
           _buildWhereSection(focus),
           const SizedBox(height: 18),
-          // 2. Project state
-          _buildProjectStateCard(focus),
+          // 2. Combined project status + AI review
+          _buildCombinedStatusAiCard(focus),
           if (showBlockerDetails) ...[
             const SizedBox(height: 14),
             _buildBlockerDetails(focus),
           ],
-          // 3. What can you do now? (user-first)
-          const SizedBox(height: 22),
-          _buildMyActionsSection(focus),
-          // 4. What's happening now? (other people's work)
-          const SizedBox(height: 22),
-          _buildActiveWorkSection(focus),
-          // 5. Your next involvement
-          const SizedBox(height: 22),
-          _buildInvolvementSection(focus),
-          // 6. What happens after this?
-          if (focus.activeFlow.isNotEmpty) ...[
-            const SizedBox(height: 22),
-            _buildActiveFlowSection(focus),
-          ],
-          // 7. Workflow attention — only when present
+          // 3. Workflow attention — only when present
           if (showAttention) ...[
             const SizedBox(height: 22),
             _buildAttentionSection(focus),
@@ -423,7 +456,7 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
     );
   }
 
-  Widget _buildProjectStateCard(ProjectFocus focus) {
+  _FocusStatusHeader _statusHeader(ProjectFocus focus) {
     final state = focus.resolvedActivityState;
     switch (state) {
       case ProjectActivityState.blocked:
@@ -432,11 +465,9 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
             focus.projectActivity?.label ??
             'Project is blocked';
         final waiting = blocker?.waitingCount ?? 0;
-        return _StatusBanner(
+        return _FocusStatusHeader(
           title: 'PROJECT IS BLOCKED',
           color: const Color(0xFFF87171),
-          background: const Color(0xFF2C1618),
-          border: const Color(0xFF7F1D1D),
           icon: Icons.lock_rounded,
           body: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -445,13 +476,13 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
                 name,
                 style: TextStyle(
                   color: _ink,
-                  fontSize: 16,
+                  fontSize: 15,
                   fontWeight: FontWeight.w800,
                   height: 1.25,
                 ),
               ),
               if (waiting > 0) ...[
-                const SizedBox(height: 6),
+                const SizedBox(height: 4),
                 Text(
                   waiting == 1
                       ? 'Waiting for 1 task'
@@ -467,18 +498,16 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
           ),
         );
       case ProjectActivityState.waiting:
-        return _StatusBanner(
+        return _FocusStatusHeader(
           title: 'PROJECT IS WAITING',
           color: const Color(0xFFFBBF24),
-          background: const Color(0xFF2A2112),
-          border: const Color(0xFF92400E),
           icon: Icons.hourglass_top_rounded,
           body: Text(
             focus.projectActivity?.message ??
                 focus.projectActivity?.label ??
                 'Work is waiting on a dependency.',
-            style: const TextStyle(
-              color: Color(0xFFFDE68A),
+            style: TextStyle(
+              color: _ink,
               fontSize: 13.5,
               fontWeight: FontWeight.w600,
               height: 1.35,
@@ -489,11 +518,9 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
         final item = focus.workflowAttention.isNotEmpty
             ? focus.workflowAttention.first
             : null;
-        return _StatusBanner(
+        return _FocusStatusHeader(
           title: 'PROJECT NEEDS ATTENTION',
           color: const Color(0xFFC4B5FD),
-          background: const Color(0xFF241A33),
-          border: const Color(0xFF5B3A8C),
           icon: Icons.warning_amber_rounded,
           body: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -504,18 +531,18 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
                     'Workflow attention needed',
                 style: TextStyle(
                   color: _ink,
-                  fontSize: 16,
+                  fontSize: 15,
                   fontWeight: FontWeight.w800,
                   height: 1.25,
                 ),
               ),
-              const SizedBox(height: 6),
+              const SizedBox(height: 4),
               Text(
                 item?.message ??
                     focus.projectActivity?.message ??
                     'Expected task was not triggered.',
-                style: const TextStyle(
-                  color: Color(0xFFDDD6FE),
+                style: TextStyle(
+                  color: _muted,
                   fontSize: 13.5,
                   fontWeight: FontWeight.w600,
                   height: 1.35,
@@ -526,22 +553,325 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
         );
       case ProjectActivityState.moving:
       case ProjectActivityState.unknown:
-        return _StatusBanner(
+        return _FocusStatusHeader(
           title: 'PROJECT IS MOVING',
           color: const Color(0xFF34D399),
-          background: const Color(0xFF12261C),
-          border: const Color(0xFF065F46),
           icon: Icons.check_circle_rounded,
           body: Text(
             focus.projectActivity?.message ?? 'No current blocker',
-            style: const TextStyle(
-              color: Color(0xFFA7F3D0),
+            style: TextStyle(
+              color: _ink,
               fontSize: 13.5,
               fontWeight: FontWeight.w600,
             ),
           ),
         );
     }
+  }
+
+  Widget _buildCombinedStatusAiCard(ProjectFocus focus) {
+    final status = _statusHeader(focus);
+    final summaryText = _extractStatusSummaryText(_statusSummary);
+    final pending = _criticalTasks
+        .where((t) =>
+            timelineTaskTruthy(t['is_pending']) &&
+            !timelineTaskTruthy(t['is_completed']) &&
+            !timelineTaskTruthy(t['is_cancelled']) &&
+            !timelineTaskTruthy(t['is_upcoming']) &&
+            !timelineTaskTruthy(t['is_not_started']))
+        .length;
+    final completed = _criticalTasks
+        .where((t) => timelineTaskTruthy(t['is_completed']))
+        .length;
+    final upcoming = _criticalTasks
+        .where((t) =>
+            timelineTaskTruthy(t['is_upcoming']) ||
+            timelineTaskTruthy(t['is_not_started']))
+        .length;
+    final completedWindow = _taskNamesFromSummaryWindow(
+      _statusSummary,
+      const [
+        'completed_tasks',
+        'last_completed',
+        'recently_completed',
+        'recent_completed_tasks',
+      ],
+    );
+    final pendingWindow = _taskNamesFromSummaryWindow(
+      _statusSummary,
+      const [
+        'pending_tasks',
+        'next_pending',
+        'upcoming_tasks',
+        'next_pending_tasks',
+      ],
+    );
+    final showSkeleton = _aiLoading && summaryText == null;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(18),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            AppTheme.navy.withValues(alpha: 0.55),
+            AppTheme.accentBlue.withValues(alpha: 0.28),
+            AppTheme.darkBackgroundSecondary,
+          ],
+        ),
+        border: Border.all(
+          color: AppTheme.accentBlue.withValues(alpha: 0.45),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Status header
+          Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: status.color.withValues(alpha: 0.18),
+                  borderRadius: BorderRadius.circular(11),
+                ),
+                child: Icon(status.icon, color: status.color, size: 18),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  status.title,
+                  style: TextStyle(
+                    color: status.color,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.4,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              _StatusMotionIndicator(
+                state: focus.resolvedActivityState,
+                color: status.color,
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          status.body,
+          const SizedBox(height: 14),
+          Divider(
+            height: 1,
+            color: AppTheme.accentBlue.withValues(alpha: 0.28),
+          ),
+          const SizedBox(height: 14),
+          // AI review
+          Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: AppTheme.accentBlue.withValues(alpha: 0.22),
+                  borderRadius: BorderRadius.circular(11),
+                ),
+                child: Icon(
+                  Icons.auto_awesome_rounded,
+                  color: AppTheme.accentBlue,
+                  size: 18,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Project AI review',
+                      style: TextStyle(
+                        color: _ink,
+                        fontSize: 14.5,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    Text(
+                      "What's done and what's yet to happen",
+                      style: TextStyle(
+                        color: AppTheme.accentBlue.withValues(alpha: 0.9),
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          if (showSkeleton)
+            const _AiReviewSkeleton()
+          else if (summaryText != null && summaryText.isNotEmpty)
+            Text(
+              summaryText,
+              style: TextStyle(
+                color: _ink,
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                height: 1.45,
+              ),
+            )
+          else
+            Text(
+              _aiError ??
+                  'Critical task summary is not available yet. Pull to refresh.',
+              style: TextStyle(
+                color: _muted,
+                fontSize: 13.5,
+                fontWeight: FontWeight.w600,
+                height: 1.4,
+              ),
+            ),
+          if (!showSkeleton && _criticalTasks.isNotEmpty) ...[
+            const SizedBox(height: 14),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                _AiStatChip(
+                  label: '$completed done',
+                  color: const Color(0xFF34D399),
+                ),
+                _AiStatChip(
+                  label: '$pending pending',
+                  color: const Color(0xFFFBBF24),
+                ),
+                _AiStatChip(
+                  label: '$upcoming upcoming',
+                  color: const Color(0xFF94A3B8),
+                ),
+              ],
+            ),
+          ],
+          if (!showSkeleton &&
+              (completedWindow.isNotEmpty || pendingWindow.isNotEmpty)) ...[
+            const SizedBox(height: 14),
+            if (completedWindow.isNotEmpty) ...[
+              Text(
+                'Recent completions',
+                style: TextStyle(
+                  color: _muted,
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                completedWindow.take(5).join(' · '),
+                style: TextStyle(
+                  color: AppTheme.accentBlue.withValues(alpha: 0.95),
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w600,
+                  height: 1.35,
+                ),
+              ),
+            ],
+            if (pendingWindow.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              Text(
+                'Next up',
+                style: TextStyle(
+                  color: _muted,
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                pendingWindow.take(3).join(' · '),
+                style: TextStyle(
+                  color: _ink,
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w600,
+                  height: 1.35,
+                ),
+              ),
+            ],
+          ],
+          if (!showSkeleton && _aiError != null && summaryText != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              _aiError!,
+              style: const TextStyle(
+                color: Color(0xFFFCA5A5),
+                fontSize: 11.5,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  String? _extractStatusSummaryText(Map<String, dynamic>? payload) {
+    if (payload == null) return null;
+    for (final key in const [
+      'summary',
+      'status_summary',
+      'ai_summary',
+      'review',
+      'message',
+    ]) {
+      final value = payload[key]?.toString().trim();
+      if (value != null && value.isNotEmpty && value.toLowerCase() != 'null') {
+        return value;
+      }
+    }
+    final nested = payload['data'];
+    if (nested is Map) {
+      return _extractStatusSummaryText(Map<String, dynamic>.from(nested));
+    }
+    return null;
+  }
+
+  List<String> _taskNamesFromSummaryWindow(
+    Map<String, dynamic>? payload,
+    List<String> keys,
+  ) {
+    if (payload == null) return const [];
+    for (final key in keys) {
+      final raw = payload[key];
+      if (raw is! List) continue;
+      final names = <String>[];
+      for (final item in raw) {
+        if (item is Map) {
+          final name = (item['task_name'] ??
+                  item['name'] ??
+                  item['note'] ??
+                  item['title'])
+              ?.toString()
+              .trim();
+          if (name != null && name.isNotEmpty && name.toLowerCase() != 'null') {
+            names.add(name);
+          }
+        } else {
+          final name = item?.toString().trim();
+          if (name != null && name.isNotEmpty) names.add(name);
+        }
+      }
+      if (names.isNotEmpty) return names;
+    }
+    final windows = payload['task_windows'] ?? payload['windows'];
+    if (windows is Map) {
+      return _taskNamesFromSummaryWindow(
+        Map<String, dynamic>.from(windows),
+        keys,
+      );
+    }
+    return const [];
   }
 
   Widget _buildAttentionSection(ProjectFocus focus) {
@@ -591,163 +921,6 @@ class _ProjectFocusScreenState extends State<ProjectFocusScreen> {
           ),
           if (i != waiting.length - 1) const SizedBox(height: 10),
         ],
-      ],
-    );
-  }
-
-  Widget _buildActiveWorkSection(ProjectFocus focus) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const _SectionLabel("What's happening now"),
-        if (!focus.hasActiveWork)
-          _FocusCard(
-            child: Text(
-              'No active work reported right now.',
-              style: TextStyle(
-                color: _muted,
-                fontSize: 13.5,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          )
-        else
-          for (var i = 0; i < focus.activeWork.length; i++) ...[
-            _PersonTaskCard(
-              title: focus.activeWork[i].name,
-              statusLabel: focus.activeWork[i].statusLabel,
-              statusKey: focus.activeWork[i].status,
-              assignee: focus.activeWork[i].assignee,
-              role: focus.activeWork[i].role,
-              category: focus.activeWork[i].category,
-              emphasizeStatus: true,
-              onOpen: focus.activeWork[i].canOpen
-                  ? () => _openWorkflowTask(
-                        runId: focus.activeWork[i].workflowItemRunId!,
-                        name: focus.activeWork[i].name,
-                        status: focus.activeWork[i].status,
-                      )
-                  : null,
-            ),
-            if (i != focus.activeWork.length - 1) const SizedBox(height: 10),
-          ],
-      ],
-    );
-  }
-
-  Widget _buildActiveFlowSection(ProjectFocus focus) {
-    final branches = focus.activeFlow;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const _SectionLabel('What happens after this?'),
-        for (var b = 0; b < branches.length; b++) ...[
-          if (branches[b].label != null && branches.length > 1) ...[
-            Padding(
-              padding: const EdgeInsets.only(left: 2, bottom: 8),
-              child: Text(
-                branches[b].label!,
-                style: TextStyle(
-                  color: AppTheme.darkTextPrimary,
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-            ),
-          ],
-          _FlowChain(items: branches[b].items.take(5).toList()),
-          if (b != branches.length - 1) const SizedBox(height: 14),
-        ],
-      ],
-    );
-  }
-
-  Widget _buildInvolvementSection(ProjectFocus focus) {
-    final involvement = focus.myNextInvolvement;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const _SectionLabel('Your next involvement'),
-        if (involvement == null)
-          _NoInvolvementCard(focus: focus)
-        else
-          _InvolvementCard(
-            involvement: involvement,
-            onOpen: involvement.canOpen
-                ? () => _openWorkflowTask(
-                      runId: involvement.workflowItemRunId!,
-                      name: involvement.name ?? 'Your next task',
-                      status: involvement.status,
-                    )
-                : null,
-          ),
-      ],
-    );
-  }
-
-  Widget _buildMyActionsSection(ProjectFocus focus) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const _SectionLabel('What can you do now?'),
-        if (!focus.hasMyActions)
-          _FocusCard(
-            color: Color(0xFF241A33),
-            borderColor: Color(0xFF5B3A8C),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Icon(Icons.info_outline_rounded,
-                    color: AppTheme.accentBlue, size: 22),
-                SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Nothing assigned to you right now',
-                        style: TextStyle(
-                          color: AppTheme.darkTextPrimary,
-                          fontSize: 14.5,
-                          fontWeight: FontWeight.w800,
-                          height: 1.3,
-                        ),
-                      ),
-                      SizedBox(height: 4),
-                      Text(
-                        'The project is progressing with other team members.',
-                        style: TextStyle(
-                          color: AppTheme.darkTextSecondary,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          height: 1.35,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          )
-        else
-          for (var i = 0; i < focus.myNextActions.length; i++) ...[
-            _PersonTaskCard(
-              title: focus.myNextActions[i].name,
-              statusLabel: focus.myNextActions[i].statusLabel,
-              statusKey: focus.myNextActions[i].status,
-              category: focus.myNextActions[i].category,
-              emphasizeStatus: true,
-              actionLabel: 'Open Task',
-              onOpen: focus.myNextActions[i].canOpen
-                  ? () => _openWorkflowTask(
-                        runId: focus.myNextActions[i].workflowItemRunId!,
-                        name: focus.myNextActions[i].name,
-                        status: focus.myNextActions[i].status,
-                      )
-                  : null,
-            ),
-            if (i != focus.myNextActions.length - 1) const SizedBox(height: 10),
-          ],
       ],
     );
   }
@@ -871,6 +1044,217 @@ String _normalizePhaseKey(String raw) {
 }
 
 // ── Shared widgets ───────────────────────────────────────────────────────────
+
+class _FocusStatusHeader {
+  final String title;
+  final Color color;
+  final IconData icon;
+  final Widget body;
+
+  const _FocusStatusHeader({
+    required this.title,
+    required this.color,
+    required this.icon,
+    required this.body,
+  });
+}
+
+/// Right-aligned motion cue for project status (moving / blocked / waiting).
+class _StatusMotionIndicator extends StatefulWidget {
+  final ProjectActivityState state;
+  final Color color;
+
+  const _StatusMotionIndicator({
+    required this.state,
+    required this.color,
+  });
+
+  @override
+  State<_StatusMotionIndicator> createState() => _StatusMotionIndicatorState();
+}
+
+class _StatusMotionIndicatorState extends State<_StatusMotionIndicator>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: _durationFor(widget.state),
+    )..repeat(reverse: _reverses(widget.state));
+  }
+
+  @override
+  void didUpdateWidget(covariant _StatusMotionIndicator oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.state != widget.state) {
+      _controller
+        ..duration = _durationFor(widget.state)
+        ..repeat(reverse: _reverses(widget.state));
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Duration _durationFor(ProjectActivityState state) {
+    switch (state) {
+      case ProjectActivityState.moving:
+      case ProjectActivityState.unknown:
+        return const Duration(milliseconds: 1400);
+      case ProjectActivityState.blocked:
+        return const Duration(milliseconds: 900);
+      case ProjectActivityState.waiting:
+        return const Duration(milliseconds: 1600);
+      case ProjectActivityState.workflowAttention:
+        return const Duration(milliseconds: 1100);
+    }
+  }
+
+  bool _reverses(ProjectActivityState state) {
+    // Continuous spin for "moving"; pulse / shake for others.
+    return state != ProjectActivityState.moving &&
+        state != ProjectActivityState.unknown;
+  }
+
+  IconData get _icon {
+    switch (widget.state) {
+      case ProjectActivityState.moving:
+      case ProjectActivityState.unknown:
+        return Icons.sync_rounded;
+      case ProjectActivityState.blocked:
+        return Icons.lock_rounded;
+      case ProjectActivityState.waiting:
+        return Icons.hourglass_top_rounded;
+      case ProjectActivityState.workflowAttention:
+        return Icons.warning_amber_rounded;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        final t = _controller.value;
+        Widget badge = child!;
+
+        switch (widget.state) {
+          case ProjectActivityState.moving:
+          case ProjectActivityState.unknown:
+            badge = Transform.rotate(
+              angle: t * 6.28318530718,
+              child: child,
+            );
+            break;
+          case ProjectActivityState.blocked:
+            final shake = (t - 0.5) * 6;
+            badge = Transform.translate(
+              offset: Offset(shake, 0),
+              child: Opacity(
+                opacity: 0.65 + (0.35 * (1 - (t - 0.5).abs() * 2)),
+                child: child,
+              ),
+            );
+            break;
+          case ProjectActivityState.waiting:
+          case ProjectActivityState.workflowAttention:
+            final scale = 0.88 + (0.12 * t);
+            badge = Transform.scale(
+              scale: scale,
+              child: Opacity(
+                opacity: 0.7 + (0.3 * t),
+                child: child,
+              ),
+            );
+            break;
+        }
+
+        return Container(
+          width: 34,
+          height: 34,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: widget.color.withValues(alpha: 0.14),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: widget.color.withValues(alpha: 0.35),
+            ),
+          ),
+          child: badge,
+        );
+      },
+      child: Icon(_icon, color: widget.color, size: 18),
+    );
+  }
+}
+
+class _AiReviewSkeleton extends StatelessWidget {
+  const _AiReviewSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    return Shimmer.fromColors(
+      baseColor: AppTheme.navy.withValues(alpha: 0.35),
+      highlightColor: AppTheme.accentBlue.withValues(alpha: 0.35),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: const [
+          SkeletonBar(height: 14),
+          SizedBox(height: 10),
+          SkeletonBar(height: 14),
+          SizedBox(height: 10),
+          SkeletonBar(width: 180, height: 14),
+          SizedBox(height: 16),
+          Row(
+            children: [
+              SkeletonBar(width: 72, height: 28, radius: 999),
+              SizedBox(width: 8),
+              SkeletonBar(width: 84, height: 28, radius: 999),
+              SizedBox(width: 8),
+              SkeletonBar(width: 96, height: 28, radius: 999),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AiStatChip extends StatelessWidget {
+  final String label;
+  final Color color;
+
+  const _AiStatChip({
+    required this.label,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: color.withValues(alpha: 0.28)),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: color,
+          fontSize: 11.5,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+    );
+  }
+}
 
 class _SectionLabel extends StatelessWidget {
   final String text;
@@ -1001,14 +1385,30 @@ class _PhaseRoadmap extends StatelessWidget {
   final List<CurrentPhase> phases;
   const _PhaseRoadmap({required this.phases});
 
+  /// Parent Focus list pads 18px each side — keep in sync with that padding.
+  static const double _parentHorizontalPadding = 18;
+
+  /// How many cards fit in view: 3 full + half of the next (scroll affordance).
+  static const double _visibleCardSlots = 3.5;
+  static const double _gap = 8;
+
   @override
   Widget build(BuildContext context) {
+    final viewportWidth =
+        MediaQuery.sizeOf(context).width - (_parentHorizontalPadding * 2);
+    // Separators between the visible slots (floor of 3.5 → 3 gaps).
+    final gapCount = _visibleCardSlots.floor();
+    final cardWidth =
+        (viewportWidth - (_gap * gapCount)) / _visibleCardSlots;
+
     return SizedBox(
       height: 88,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
+        clipBehavior: Clip.none,
+        padding: EdgeInsets.zero,
         itemCount: phases.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 8),
+        separatorBuilder: (_, __) => const SizedBox(width: _gap),
         itemBuilder: (context, index) {
           final phase = phases[index];
           final current = phase.isCurrent;
@@ -1019,7 +1419,7 @@ class _PhaseRoadmap extends StatelessWidget {
                   ? const Color(0xFF34D399)
                   : AppTheme.darkTextSecondary;
           return Container(
-            width: 84,
+            width: cardWidth,
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
             decoration: BoxDecoration(
               color: current
@@ -1053,73 +1453,13 @@ class _PhaseRoadmap extends StatelessWidget {
                     fontSize: 11,
                     height: 1.15,
                     fontWeight: current ? FontWeight.w800 : FontWeight.w600,
-                    color: current || completed
-                        ? AppTheme.darkTextPrimary
-                        : AppTheme.darkTextSecondary,
+                    color: accent,
                   ),
                 ),
               ],
             ),
           );
         },
-      ),
-    );
-  }
-}
-
-class _StatusBanner extends StatelessWidget {
-  final String title;
-  final Color color;
-  final Color background;
-  final Color border;
-  final IconData icon;
-  final Widget body;
-
-  const _StatusBanner({
-    required this.title,
-    required this.color,
-    required this.background,
-    required this.border,
-    required this.icon,
-    required this.body,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return _FocusCard(
-      color: background,
-      borderColor: border,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 34,
-                height: 34,
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.16),
-                  borderRadius: BorderRadius.circular(11),
-                ),
-                child: Icon(icon, color: color, size: 18),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  title,
-                  style: TextStyle(
-                    color: color,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 0.4,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          body,
-        ],
       ),
     );
   }
@@ -1299,252 +1639,6 @@ class _AttentionCard extends StatelessWidget {
           ],
         ],
       ),
-    );
-  }
-}
-
-class _NoInvolvementCard extends StatelessWidget {
-  final ProjectFocus focus;
-  const _NoInvolvementCard({required this.focus});
-
-  @override
-  Widget build(BuildContext context) {
-    final current = focus.activeWork.isNotEmpty ? focus.activeWork.first : null;
-    return _FocusCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Nothing is assigned to you right now.',
-            style: TextStyle(
-              color: AppTheme.darkTextPrimary,
-              fontSize: 14.5,
-              fontWeight: FontWeight.w700,
-              height: 1.35,
-            ),
-          ),
-          if (current != null) ...[
-            const SizedBox(height: 12),
-            Text(
-              'The project is currently progressing with:',
-              style: TextStyle(
-                color: AppTheme.darkTextSecondary,
-                fontSize: 12.5,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(height: 8),
-            if (current.assignee != null && current.assignee!.isNotEmpty)
-              Text(
-                current.assignee!,
-                style: TextStyle(
-                  color: AppTheme.darkTextPrimary,
-                  fontSize: 15,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-            Text(
-              current.name,
-              style: TextStyle(
-                color: AppTheme.darkTextSecondary,
-                fontSize: 13.5,
-                fontWeight: FontWeight.w600,
-                height: 1.3,
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-class _InvolvementCard extends StatelessWidget {
-  final MyNextInvolvement involvement;
-  final VoidCallback? onOpen;
-
-  const _InvolvementCard({required this.involvement, this.onOpen});
-
-  @override
-  Widget build(BuildContext context) {
-    return _FocusCard(
-      onTap: onOpen,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Your next task',
-            style: TextStyle(
-              color: AppTheme.darkTextSecondary,
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            involvement.name ?? 'Upcoming involvement',
-            style: TextStyle(
-              color: AppTheme.darkTextPrimary,
-              fontSize: 15.5,
-              fontWeight: FontWeight.w800,
-              height: 1.25,
-            ),
-          ),
-          if (involvement.statusLabel.isNotEmpty) ...[
-            const SizedBox(height: 10),
-            _StatusDot(
-              label: involvement.statusLabel,
-              color: _FocusStatusStyle.from(involvement.status).color,
-            ),
-          ],
-          if (involvement.waitingFor.isNotEmpty) ...[
-            const SizedBox(height: 14),
-            Text(
-              'Waiting for',
-              style: TextStyle(
-                color: AppTheme.darkTextSecondary,
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            const SizedBox(height: 8),
-            for (final dep in involvement.waitingFor.take(4)) ...[
-              Padding(
-                padding: const EdgeInsets.only(bottom: 6),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('•  ',
-                        style: TextStyle(
-                            color: AppTheme.darkTextSecondary,
-                            fontWeight: FontWeight.w800)),
-                    Expanded(
-                      child: Text(
-                        dep.name,
-                        style: TextStyle(
-                          color: AppTheme.darkTextPrimary,
-                          fontSize: 13.5,
-                          fontWeight: FontWeight.w600,
-                          height: 1.3,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ],
-          if (involvement.message != null &&
-              involvement.message!.isNotEmpty) ...[
-            const SizedBox(height: 10),
-            Text(
-              involvement.message!,
-              style: TextStyle(
-                color: AppTheme.darkTextSecondary,
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                height: 1.35,
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-class _FlowChain extends StatelessWidget {
-  final List<ActiveFlowItem> items;
-  const _FlowChain({required this.items});
-
-  @override
-  Widget build(BuildContext context) {
-    return _FocusCard(
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-      child: Column(
-        children: [
-          for (var i = 0; i < items.length; i++) ...[
-            _FlowStep(item: items[i], isFirst: i == 0),
-            if (i != items.length - 1)
-              Padding(
-                padding: EdgeInsets.symmetric(vertical: 6),
-                child: Icon(
-                  Icons.arrow_downward_rounded,
-                  size: 16,
-                  color: AppTheme.darkTextSecondary,
-                ),
-              ),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-class _FlowStep extends StatelessWidget {
-  final ActiveFlowItem item;
-  final bool isFirst;
-  const _FlowStep({required this.item, required this.isFirst});
-
-  @override
-  Widget build(BuildContext context) {
-    final style = _FocusStatusStyle.from(item.status, fallback: item.statusLabel);
-    final meta = [
-      if (item.assignee != null && item.assignee!.isNotEmpty) item.assignee!,
-      if (item.role != null && item.role!.isNotEmpty) item.role!,
-    ].join(' · ');
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Container(
-          width: 10,
-          height: 10,
-          margin: const EdgeInsets.only(top: 5),
-          decoration: BoxDecoration(
-            color: isFirst ? const Color(0xFFC4B5FD) : AppTheme.border,
-            shape: BoxShape.circle,
-          ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                item.name,
-                style: TextStyle(
-                  color: AppTheme.darkTextPrimary,
-                  fontSize: 14.5,
-                  fontWeight: isFirst ? FontWeight.w800 : FontWeight.w700,
-                  height: 1.3,
-                ),
-              ),
-              if (meta.isNotEmpty) ...[
-                const SizedBox(height: 3),
-                Text(
-                  meta,
-                  style: TextStyle(
-                    color: AppTheme.darkTextSecondary,
-                    fontSize: 12.5,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-              if (item.statusLabel.isNotEmpty || item.status.isNotEmpty) ...[
-                const SizedBox(height: 4),
-                Text(
-                  style.label,
-                  style: TextStyle(
-                    color: style.color,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ],
-            ],
-          ),
-        ),
-      ],
     );
   }
 }

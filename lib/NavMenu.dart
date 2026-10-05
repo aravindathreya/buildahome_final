@@ -14,6 +14,7 @@ import 'MyTasksScreen.dart';
 import 'chat_v1/chat_v1_app.dart';
 import 'ProjectFocusScreen.dart';
 import 'Payments.dart';
+import 'ProjectSituationShell.dart';
 import 'ProjectTimelineScreen.dart';
 import 'Scheduler.dart';
 import 'SiteVisitReports.dart';
@@ -520,7 +521,7 @@ class NavMenuWidgetState extends State<NavMenuWidget> {
           actionKey: 'project_timeline',
           title: 'Project Timeline',
           icon: Icons.timeline_rounded,
-          route: () => const ProjectTimelineScreen(),
+          route: () => ProjectSituationShell.timeline(),
         ),
       );
     }
@@ -629,7 +630,7 @@ class NavMenuWidgetState extends State<NavMenuWidget> {
     if (isClient || rbac.canViewSync(currentRole, RBACService.payments)) {
       projectEntries.add(_NavEntry(
         actionKey: 'nt_payments',
-        title: 'Upwind Additions Cost',
+        title: 'Upgrades and Additions',
         icon: Icons.receipt_long_rounded,
         route: isClient
             ? () => const PaymentTaskWidget(

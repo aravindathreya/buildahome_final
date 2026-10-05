@@ -158,7 +158,7 @@ const Map<String, String> kMobileBottomNavLabels = {
   'gallery': 'Gallery',
   'scheduler': 'Schedule',
   'payments': 'Payments',
-  'nt_payments': 'Upwind',
+  'nt_payments': 'Upgrades',
   'upload_payment_proof': 'Proof',
   'indents': 'Indents',
   'approved_pos': 'POs',
@@ -262,7 +262,7 @@ const Map<MobileBottomNavSurface, Map<String, String>>
     'gallery': 'Gallery',
     'scheduler': 'Scheduler',
     'payments': 'Payments',
-    'nt_payments': 'Upwind Additions Cost',
+    'nt_payments': 'Upgrades and Additions',
     'upload_payment_proof': 'Upload proof',
     'indents': 'Indents',
     'approved_pos': 'Approved POs',
@@ -291,7 +291,7 @@ const Map<MobileBottomNavSurface, Map<String, String>>
     'gallery': 'Gallery',
     'scheduler': 'Scheduler',
     'payments': 'Payments',
-    'nt_payments': 'Upwind Additions Cost',
+    'nt_payments': 'Upgrades and Additions',
     'upload_payment_proof': 'Upload proof',
     'indents': 'Indents',
     'approved_pos': 'Approved POs',
@@ -316,7 +316,7 @@ const Map<MobileBottomNavSurface, Map<String, String>>
     'gallery': 'Gallery',
     'scheduler': 'Scheduler',
     'payments': 'Payments',
-    'nt_payments': 'Upwind Additions Cost',
+    'nt_payments': 'Upgrades and Additions',
     'upload_payment_proof': 'Upload proof',
     'indents': 'Indents',
     'client_portal': 'Client Portal',
@@ -342,7 +342,6 @@ const List<String> kMobileBottomNavStaffFallback = [
 const List<String> kMobileBottomNavProjectFallback = [
   kMobileBottomNavHomeKey,
   'my_tasks',
-  'documents',
   kMobileBottomNavMoreKey,
 ];
 
@@ -396,46 +395,7 @@ List<String> ensureProjectHomePaymentsTab(List<String> keys) {
   return next;
 }
 
-/// Staff/project home shows Docs for non-clients. Clients never get this tab.
-List<String> ensureProjectHomeDocsTab(List<String> keys) {
-  if (keys.contains('documents') || keys.contains('documents_v1')) {
-    return List<String>.from(keys);
-  }
-
-  final next = List<String>.from(keys);
-  // Prefer a stable slot after Tasks / Payments so Docs stays visible.
-  final paymentsIndex = next.indexOf('payments');
-  final tasksIndex = next.indexOf('my_tasks');
-  final moreIndex = next.indexOf(kMobileBottomNavMoreKey);
-  final insertAt = paymentsIndex >= 0
-      ? paymentsIndex + 1
-      : tasksIndex >= 0
-          ? tasksIndex + 1
-          : moreIndex >= 0
-              ? moreIndex
-              : next.length;
-  next.insert(insertAt, 'documents');
-
-  while (next.length > kMobileBottomNavHardMaxTabs) {
-    var dropAt = -1;
-    for (var i = next.length - 1; i >= 0; i--) {
-      final key = next[i];
-      if (key == 'documents' ||
-          key == 'documents_v1' ||
-          key == 'payments' ||
-          isPinnedBottomNavKey(key)) {
-        continue;
-      }
-      dropAt = i;
-      break;
-    }
-    if (dropAt < 0) break;
-    next.removeAt(dropAt);
-  }
-  return next;
-}
-
-/// Remove Docs tabs (clients must not see them on the project home bar).
+/// Remove Docs tabs from the project home bottom bar.
 List<String> withoutProjectHomeDocsTabs(List<String> keys) {
   return keys
       .where((key) => key != 'documents' && key != 'documents_v1')

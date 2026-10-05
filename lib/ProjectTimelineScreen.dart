@@ -1,19 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 
-import 'ProjectFocusScreen.dart';
-import 'ProjectTimelineStatusScreen.dart';
 import 'app_theme.dart';
 import 'services/data_provider.dart';
-import 'widgets/project_situation_switcher.dart';
 import 'widgets/skeleton_loader.dart';
 import 'widgets/tentative_handover_card.dart';
 
-Color get _pageBackground => AppTheme.darkBackgroundPrimary;
 Color get _cardSurface => AppTheme.darkBackgroundSecondary;
 Color get _ink => AppTheme.darkTextPrimary;
 Color get _muted => AppTheme.darkTextSecondary;
-
-enum _TimelineFilter { all, completed, pending, upcoming }
 
 bool _timelineTruthy(dynamic value) {
   if (value == true || value == 1) return true;
@@ -61,44 +56,118 @@ String? _timelineDurationLabel(Map<String, dynamic> task) {
   return null;
 }
 
-bool _isMainCriticalTask(Map<String, dynamic> task) {
-  return _timelineTruthy(_timelineField(task, 'is_main_critical'));
+int? _indexOfOngoingTimelineTask(List<Map<String, dynamic>> tasks) {
+  bool looksInProgress(Map<String, dynamic> task) {
+    final status =
+        '${task['timeline_status'] ?? ''} ${task['status'] ?? ''}'.toLowerCase();
+    return status.contains('progress') || status.contains('ongoing');
+  }
+
+  // Prefer explicit pending (not upcoming / not started).
+  for (var i = 0; i < tasks.length; i++) {
+    final task = tasks[i];
+    final ongoing = _timelineTruthy(task['is_pending']) &&
+        !_timelineTruthy(task['is_completed']) &&
+        !_timelineTruthy(task['is_cancelled']) &&
+        !_timelineTruthy(task['is_upcoming']) &&
+        !_timelineTruthy(task['is_not_started']);
+    if (ongoing) return i;
+  }
+  // Status text fallback (e.g. "In progress").
+  for (var i = 0; i < tasks.length; i++) {
+    final task = tasks[i];
+    if (!_timelineTruthy(task['is_completed']) &&
+        !_timelineTruthy(task['is_cancelled']) &&
+        looksInProgress(task)) {
+      return i;
+    }
+  }
+  // First incomplete non-cancelled task.
+  for (var i = 0; i < tasks.length; i++) {
+    final task = tasks[i];
+    if (!_timelineTruthy(task['is_completed']) &&
+        !_timelineTruthy(task['is_cancelled'])) {
+      return i;
+    }
+  }
+  return null;
 }
 
-bool _isClientRole([String? role]) {
-  final value = (role ?? DataProvider().currentRole ?? '').trim().toLowerCase();
-  return value == 'client';
-}
-
+/// Critical-path timeline (tab 3). Use [ProjectScheduleScreen] for full schedule.
 class ProjectTimelineScreen extends StatefulWidget {
-  const ProjectTimelineScreen({super.key});
+  final bool criticalOnly;
+  final bool embedded;
+
+  const ProjectTimelineScreen({
+    super.key,
+    this.embedded = false,
+  }) : criticalOnly = true;
+
+  const ProjectTimelineScreen.fullSchedule({
+    super.key,
+    this.embedded = false,
+  }) : criticalOnly = false;
+
+  /// Menu / dashboard entry — opens the swipeable situation shell.
+  /// Prefer [ProjectSituationShell.timeline] / [.schedule] from call sites.
+  static Widget open({bool schedule = false}) {
+    // Deferred import avoided — call sites use ProjectSituationShell directly.
+    return schedule
+        ? const ProjectTimelineScreen.fullSchedule(embedded: true)
+        : const ProjectTimelineScreen(embedded: true);
+  }
 
   @override
-  State<ProjectTimelineScreen> createState() => _ProjectTimelineScreenState();
+  State<ProjectTimelineScreen> createState() => ProjectTimelineScreenState();
 }
 
-class _ProjectTimelineScreenState extends State<ProjectTimelineScreen> {
+class ProjectTimelineScreenState extends State<ProjectTimelineScreen>
+    with AutomaticKeepAliveClientMixin {
+  final ScrollController _scrollController = ScrollController();
+  final GlobalKey _ongoingKey = GlobalKey();
+
   List<Map<String, dynamic>> _tasks = [];
-  int _timelineTaskCount = 0;
   int _pendingCount = 0;
   int _completedCount = 0;
   int _upcomingCount = 0;
   int? _remainingDays;
-  _TimelineFilter _filter = _TimelineFilter.all;
+  int? _ongoingIndex;
   bool _isLoading = true;
+  bool _ongoingInView = true;
+  bool _didAutoScroll = false;
   String? _errorMessage;
+
+  bool get _criticalOnly => widget.criticalOnly;
+
+  @override
+  bool get wantKeepAlive => true;
+
+  bool get isRefreshing => _isLoading;
+
+  Future<void> refresh() => _loadTimeline();
 
   @override
   void initState() {
     super.initState();
+    _scrollController.addListener(_onScroll);
     _hydrateFromProvider();
     _loadTimeline();
+  }
+
+  @override
+  void dispose() {
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
+    super.dispose();
   }
 
   void _hydrateFromProvider() {
     final provider = DataProvider();
     _remainingDays = provider.clientRemainingDays;
-    if (!provider.clientTimelineLoaded) return;
+    final loaded = _criticalOnly
+        ? provider.clientCriticalTimelineLoaded
+        : provider.clientTimelineLoaded;
+    if (!loaded) return;
     setState(() {
       _applyProviderData(provider);
       _isLoading = false;
@@ -106,18 +175,15 @@ class _ProjectTimelineScreenState extends State<ProjectTimelineScreen> {
   }
 
   void _applyProviderData(DataProvider provider) {
-    final allTasks =
-        List<Map<String, dynamic>>.from(provider.clientTimelineTasks);
-    // Clients only ever see Main Critical construction timeline tasks.
-    final tasks = _isClientRole(provider.currentRole)
-        ? allTasks.where(_isMainCriticalTask).toList()
-        : allTasks;
+    final tasks = _criticalOnly
+        ? List<Map<String, dynamic>>.from(provider.clientCriticalTimelineTasks)
+        : List<Map<String, dynamic>>.from(provider.clientTimelineTasks);
     _tasks = tasks;
-    _timelineTaskCount = tasks.length;
     _pendingCount = tasks.where((t) => t['is_pending'] == true).length;
     _completedCount = tasks.where((t) => t['is_completed'] == true).length;
     _upcomingCount = tasks.where((t) => t['is_upcoming'] == true).length;
     _remainingDays = provider.clientRemainingDays;
+    _ongoingIndex = _indexOfOngoingTimelineTask(tasks);
   }
 
   Future<void> _loadTimeline({bool showLoader = true}) async {
@@ -125,12 +191,16 @@ class _ProjectTimelineScreenState extends State<ProjectTimelineScreen> {
       setState(() {
         _isLoading = true;
         _errorMessage = null;
+        _didAutoScroll = false;
       });
     }
 
     try {
       await Future.wait([
-        DataProvider().loadProjectTimeline(force: true),
+        if (_criticalOnly)
+          DataProvider().loadCriticalTimeline(force: true)
+        else
+          DataProvider().loadProjectTimeline(force: true),
         DataProvider().refreshProjectPercentage(),
       ]);
       if (!mounted) return;
@@ -138,7 +208,13 @@ class _ProjectTimelineScreenState extends State<ProjectTimelineScreen> {
         _applyProviderData(DataProvider());
         _isLoading = false;
         _errorMessage = null;
+        // Until the ongoing row is measured, assume it may be off-screen so the
+        // jump control can appear if auto-scroll needs a second try.
+        if (_ongoingIndex != null && _ongoingIndex! > 1) {
+          _ongoingInView = false;
+        }
       });
+      _scheduleAutoScroll();
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -149,30 +225,126 @@ class _ProjectTimelineScreenState extends State<ProjectTimelineScreen> {
     }
   }
 
-  List<Map<String, dynamic>> get _filteredTasks {
-    switch (_filter) {
-      case _TimelineFilter.completed:
-        return _tasks.where((task) => task['is_completed'] == true).toList();
-      case _TimelineFilter.pending:
-        return _tasks.where((task) => task['is_pending'] == true).toList();
-      case _TimelineFilter.upcoming:
-        return _tasks.where((task) => task['is_upcoming'] == true).toList();
-      case _TimelineFilter.all:
-        return _tasks;
+  void _scheduleAutoScroll() {
+    if (_didAutoScroll || _ongoingIndex == null || _tasks.isEmpty) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted || _didAutoScroll) return;
+      // Wait for the ListView to attach its ScrollPosition.
+      for (var i = 0; i < 20 && mounted && !_scrollController.hasClients; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 32));
+      }
+      if (!mounted || !_scrollController.hasClients) return;
+      await _jumpToOngoing(animated: true);
+      if (!mounted) return;
+      _didAutoScroll = true;
+      _updateOngoingVisibility();
+    });
+  }
+
+  void _onScroll() => _updateOngoingVisibility();
+
+  void _updateOngoingVisibility() {
+    if (_ongoingIndex == null) {
+      if (!_ongoingInView) setState(() => _ongoingInView = true);
+      return;
+    }
+
+    // Lazy ListView: off-screen rows are not built, so the GlobalKey has no
+    // context until we scroll near them. Treat that as "not in view".
+    final ctx = _ongoingKey.currentContext;
+    if (ctx == null) {
+      if (_ongoingInView) setState(() => _ongoingInView = false);
+      return;
+    }
+
+    final renderObject = ctx.findRenderObject();
+    if (renderObject is! RenderBox || !renderObject.hasSize) {
+      if (_ongoingInView) setState(() => _ongoingInView = false);
+      return;
+    }
+
+    final listBox = context.findRenderObject();
+    if (listBox is! RenderBox || !listBox.hasSize) return;
+
+    final topLeft = renderObject.localToGlobal(Offset.zero);
+    final listTopLeft = listBox.localToGlobal(Offset.zero);
+    final relativeTop = topLeft.dy - listTopLeft.dy;
+    final relativeBottom = relativeTop + renderObject.size.height;
+    final viewHeight = listBox.size.height;
+
+    // Consider "in view" when a meaningful portion of the card is visible.
+    final inView = relativeBottom > 48 && relativeTop < viewHeight - 48;
+
+    if (inView != _ongoingInView) {
+      setState(() => _ongoingInView = inView);
     }
   }
 
-  int _countForFilter(_TimelineFilter filter) {
-    switch (filter) {
-      case _TimelineFilter.completed:
-        return _completedCount;
-      case _TimelineFilter.pending:
-        return _pendingCount;
-      case _TimelineFilter.upcoming:
-        return _upcomingCount;
-      case _TimelineFilter.all:
-        return _timelineTaskCount;
+  /// Lazy lists don't build off-screen children, so [Scrollable.ensureVisible]
+  /// alone fails when the ongoing row has never been painted. Jump by offset
+  /// first, then refine with ensureVisible once the row exists.
+  Future<void> _jumpToOngoing({bool animated = true}) async {
+    final index = _ongoingIndex;
+    if (index == null || _tasks.isEmpty) return;
+
+    if (!_scrollController.hasClients) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _jumpToOngoing(animated: animated);
+      });
+      return;
     }
+
+    final position = _scrollController.position;
+    // Card + separator estimate; refined below once the row is built.
+    const estimatedItemExtent = 156.0;
+    const separator = 12.0;
+    final rawTarget = index * (estimatedItemExtent + separator);
+    final target = rawTarget.clamp(0.0, position.maxScrollExtent);
+
+    if (animated) {
+      await _scrollController.animateTo(
+        target,
+        duration: const Duration(milliseconds: 420),
+        curve: Curves.easeOutCubic,
+      );
+    } else {
+      _scrollController.jumpTo(target);
+    }
+
+    // Give the lazy list a frame to build the target row.
+    await Future<void>.delayed(const Duration(milliseconds: 32));
+    if (!mounted) return;
+
+    final ctx = _ongoingKey.currentContext;
+    if (ctx != null) {
+      await Scrollable.ensureVisible(
+        ctx,
+        duration: animated
+            ? const Duration(milliseconds: 240)
+            : Duration.zero,
+        curve: Curves.easeOutCubic,
+        alignment: 0.22,
+      );
+    } else if (_scrollController.hasClients) {
+      // Estimation was short/long — nudge further and retry once.
+      final nudged = (target + 220)
+          .clamp(0.0, _scrollController.position.maxScrollExtent);
+      _scrollController.jumpTo(nudged);
+      await Future<void>.delayed(const Duration(milliseconds: 32));
+      if (!mounted) return;
+      final retryCtx = _ongoingKey.currentContext;
+      if (retryCtx != null) {
+        await Scrollable.ensureVisible(
+          retryCtx,
+          duration: Duration.zero,
+          alignment: 0.22,
+        );
+      }
+    }
+
+    if (!mounted) return;
+    setState(() => _ongoingInView = true);
+    _updateOngoingVisibility();
   }
 
   void _openTaskDetail(Map<String, dynamic> task) {
@@ -186,66 +358,60 @@ class _ProjectTimelineScreenState extends State<ProjectTimelineScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppTheme.getBackgroundPrimary(context),
-      appBar: AppBar(
-        backgroundColor: AppTheme.getBackgroundSecondary(context),
-        foregroundColor: AppTheme.darkTextPrimary,
-        elevation: 0,
-        scrolledUnderElevation: 0,
-        iconTheme: IconThemeData(color: AppTheme.darkTextPrimary),
-        actionsIconTheme: IconThemeData(color: AppTheme.darkTextPrimary),
-        leading: IconButton(
-          icon: Icon(Icons.arrow_back_ios_new_rounded,
-              color: AppTheme.darkTextPrimary, size: 20),
-          onPressed: () => Navigator.maybePop(context),
-        ),
-        title: Text(
-          'Project Timeline',
-          style: TextStyle(
-            color: AppTheme.darkTextPrimary,
-            fontSize: 20,
-            fontWeight: FontWeight.w800,
-            letterSpacing: -0.4,
+    super.build(context);
+
+    final body = _buildBody();
+    final showJump = !_ongoingInView && _ongoingIndex != null;
+
+    if (!widget.embedded) {
+      return Scaffold(
+        backgroundColor: AppTheme.getBackgroundPrimary(context),
+        appBar: AppBar(
+          backgroundColor: AppTheme.getBackgroundSecondary(context),
+          foregroundColor: AppTheme.darkTextPrimary,
+          elevation: 0,
+          title: Text(
+            _criticalOnly ? 'Project Timeline' : 'Schedule',
+            style: TextStyle(
+              color: AppTheme.darkTextPrimary,
+              fontSize: 20,
+              fontWeight: FontWeight.w800,
+            ),
           ),
         ),
-        bottom: ProjectSituationSwitcher(
-          selected: ProjectSituationTab.timeline,
-          onChanged: (tab) {
-            if (tab == ProjectSituationTab.timeline) return;
-            final Widget page;
-            switch (tab) {
-              case ProjectSituationTab.focus:
-                page = ProjectFocusScreen.openQuick();
-                break;
-              case ProjectSituationTab.status:
-                page = const ProjectTimelineStatusScreen();
-                break;
-              case ProjectSituationTab.timeline:
-                return;
-            }
-            Navigator.of(context).pushReplacement(
-              MaterialPageRoute(builder: (_) => page),
-            );
-          },
-        ),
-        actions: [
-          IconButton(
-            tooltip: 'Refresh',
-            onPressed: _isLoading ? null : () => _loadTimeline(),
-            icon: _isLoading
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(
-                        strokeWidth: 2, color: AppTheme.navy),
-                  )
-                : Icon(Icons.refresh_rounded, color: AppTheme.darkTextPrimary),
+        body: SafeArea(
+          child: Stack(
+            children: [
+              body,
+              if (showJump) _jumpButton(),
+            ],
           ),
-          const SizedBox(width: 8),
-        ],
+        ),
+      );
+    }
+
+    return Stack(
+      children: [
+        body,
+        if (showJump) _jumpButton(),
+      ],
+    );
+  }
+
+  Widget _jumpButton() {
+    return Positioned(
+      right: 16,
+      bottom: 16,
+      child: FloatingActionButton.extended(
+        onPressed: () => _jumpToOngoing(),
+        backgroundColor: AppTheme.navy,
+        foregroundColor: Colors.white,
+        icon: const Icon(Icons.my_location_rounded, size: 18),
+        label: const Text(
+          'Jump to current',
+          style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
+        ),
       ),
-      body: SafeArea(child: _buildBody()),
     );
   }
 
@@ -258,7 +424,7 @@ class _ProjectTimelineScreenState extends State<ProjectTimelineScreen> {
       return _buildErrorState();
     }
 
-    if (_timelineTaskCount == 0 && _tasks.isEmpty) {
+    if (_tasks.isEmpty) {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -273,36 +439,33 @@ class _ProjectTimelineScreenState extends State<ProjectTimelineScreen> {
       );
     }
 
-    final filtered = _filteredTasks;
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _buildSummaryBanner(),
-        _buildFilterChips(),
         Expanded(
           child: RefreshIndicator(
             color: AppTheme.getPrimaryColor(context),
             onRefresh: () => _loadTimeline(showLoader: false),
-            child: filtered.isEmpty
-                ? ListView(
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    children: [
-                      SizedBox(
-                          height: MediaQuery.of(context).size.height * 0.18),
-                      _buildFilterEmptyState(),
-                    ],
-                  )
-                : ListView.separated(
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    padding: const EdgeInsets.fromLTRB(18, 8, 18, 28),
-                    itemCount: filtered.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: 12),
-                    itemBuilder: (context, index) => _TimelineTaskCard(
-                      task: filtered[index],
-                      onTap: () => _openTaskDetail(filtered[index]),
-                    ),
+            child: ListView.separated(
+              controller: _scrollController,
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.fromLTRB(18, 8, 18, 88),
+              itemCount: _tasks.length,
+              separatorBuilder: (_, __) => const SizedBox(height: 12),
+              itemBuilder: (context, index) {
+                final task = _tasks[index];
+                final isOngoing = index == _ongoingIndex;
+                return KeyedSubtree(
+                  key: isOngoing ? _ongoingKey : ValueKey('task_$index'),
+                  child: _TimelineTaskCard(
+                    task: task,
+                    highlight: isOngoing,
+                    onTap: () => _openTaskDetail(task),
                   ),
+                );
+              },
+            ),
           ),
         ),
       ],
@@ -311,7 +474,6 @@ class _ProjectTimelineScreenState extends State<ProjectTimelineScreen> {
 
   Widget _buildSummaryBanner() {
     final remaining = _remainingDays;
-
     return Container(
       margin: const EdgeInsets.fromLTRB(18, 4, 18, 12),
       padding: const EdgeInsets.all(16),
@@ -319,13 +481,6 @@ class _ProjectTimelineScreenState extends State<ProjectTimelineScreen> {
         color: AppTheme.darkBackgroundSecondary,
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: AppTheme.border),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 14,
-            offset: const Offset(0, 6),
-          ),
-        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -339,19 +494,39 @@ class _ProjectTimelineScreenState extends State<ProjectTimelineScreen> {
                   color: AppTheme.getPrimaryColor(context).withOpacity(0.1),
                   borderRadius: BorderRadius.circular(14),
                 ),
-                child: Icon(Icons.timeline_rounded,
-                    color: AppTheme.getPrimaryColor(context), size: 24),
+                child: Icon(
+                  _criticalOnly
+                      ? Icons.bolt_rounded
+                      : Icons.calendar_month_rounded,
+                  color: AppTheme.getPrimaryColor(context),
+                  size: 24,
+                ),
               ),
               const SizedBox(width: 12),
               Expanded(
-                child: Text(
-                  '$_pendingCount pending · $_completedCount completed · $_upcomingCount upcoming',
-                  style: TextStyle(
-                    color: _ink,
-                    fontSize: 13.5,
-                    fontWeight: FontWeight.w700,
-                    height: 1.35,
-                  ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _criticalOnly
+                          ? 'Critical path'
+                          : 'Full project schedule',
+                      style: TextStyle(
+                        color: _ink,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '$_pendingCount pending · $_completedCount completed · $_upcomingCount upcoming',
+                      style: TextStyle(
+                        color: _muted,
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
@@ -368,51 +543,6 @@ class _ProjectTimelineScreenState extends State<ProjectTimelineScreen> {
     );
   }
 
-  Widget _buildFilterChips() {
-    final filters = <MapEntry<_TimelineFilter, String>>[
-      MapEntry(_TimelineFilter.all, 'All'),
-      MapEntry(_TimelineFilter.completed, 'Completed'),
-      MapEntry(_TimelineFilter.pending, 'Pending'),
-      MapEntry(_TimelineFilter.upcoming, 'Upcoming'),
-    ];
-
-    return SizedBox(
-      height: 44,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 18),
-        itemCount: filters.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 8),
-        itemBuilder: (context, index) {
-          final filter = filters[index].key;
-          final label = filters[index].value;
-          final selected = _filter == filter;
-          final count = _countForFilter(filter);
-          return ChoiceChip(
-            label: Text('$label ($count)'),
-            selected: selected,
-            onSelected: (_) => setState(() => _filter = filter),
-            labelStyle: TextStyle(
-              color: selected ? Colors.white : AppTheme.darkTextPrimary,
-              fontWeight: FontWeight.w700,
-              fontSize: 12,
-            ),
-            selectedColor: AppTheme.navy,
-            backgroundColor: AppTheme.darkBackgroundSecondary,
-            side: BorderSide(
-              color: selected
-                  ? AppTheme.navy
-                  : AppTheme.border,
-            ),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(999),
-            ),
-          );
-        },
-      ),
-    );
-  }
-
   Widget _buildEmptyTimelineState() {
     return Center(
       child: Padding(
@@ -424,9 +554,9 @@ class _ProjectTimelineScreenState extends State<ProjectTimelineScreen> {
                 size: 56, color: AppTheme.getTextSecondary(context)),
             const SizedBox(height: 20),
             Text(
-              _isClientRole()
-                  ? 'No critical timeline tasks yet'
-                  : 'No timeline tasks yet',
+              _criticalOnly
+                  ? 'No critical tasks from server'
+                  : 'No schedule tasks yet',
               style: TextStyle(
                 color: _ink,
                 fontSize: 22,
@@ -435,9 +565,9 @@ class _ProjectTimelineScreenState extends State<ProjectTimelineScreen> {
             ),
             const SizedBox(height: 8),
             Text(
-              _isClientRole()
-                  ? 'Main Critical construction tasks will appear here once they are available.'
-                  : 'Project timeline tasks will appear here once they are created.',
+              _criticalOnly
+                  ? 'The critical timeline API returned 0 tasks. Full schedule may still have work — Main Critical flags are missing on the server for this project.'
+                  : 'Project schedule tasks will appear here once they are created.',
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: _muted,
@@ -454,43 +584,6 @@ class _ProjectTimelineScreenState extends State<ProjectTimelineScreen> {
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _buildFilterEmptyState() {
-    String label;
-    switch (_filter) {
-      case _TimelineFilter.completed:
-        label = 'No completed tasks in this filter.';
-        break;
-      case _TimelineFilter.pending:
-        label = 'No pending tasks in this filter.';
-        break;
-      case _TimelineFilter.upcoming:
-        label = 'No upcoming tasks in this filter.';
-        break;
-      case _TimelineFilter.all:
-        label = 'No tasks to show.';
-        break;
-    }
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24),
-      child: Column(
-        children: [
-          Icon(Icons.filter_list_off_rounded, size: 40, color: _muted),
-          const SizedBox(height: 12),
-          Text(
-            label,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: _muted,
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ],
       ),
     );
   }
@@ -517,7 +610,9 @@ class _ProjectTimelineScreenState extends State<ProjectTimelineScreen> {
             Text(
               isAuthError
                   ? 'Could not authorize this request'
-                  : 'Could not load project timeline',
+                  : (_criticalOnly
+                      ? 'Could not load critical timeline'
+                      : 'Could not load schedule'),
               style: TextStyle(
                 color: _ink,
                 fontSize: 18,
@@ -549,10 +644,12 @@ class _ProjectTimelineScreenState extends State<ProjectTimelineScreen> {
 class _TimelineTaskCard extends StatelessWidget {
   final Map<String, dynamic> task;
   final VoidCallback onTap;
+  final bool highlight;
 
   const _TimelineTaskCard({
     required this.task,
     required this.onTap,
+    this.highlight = false,
   });
 
   String? _value(String key) {
@@ -570,13 +667,13 @@ class _TimelineTaskCard extends StatelessWidget {
     final assigneeName = _value('assigned_to_name') ?? '—';
     final assigneeRole =
         _value('assigned_role') ?? _value('assigned_to_role') ?? '—';
-    final timelineStatus = _value('timeline_status') ??
-        _value('status') ??
-        'Pending';
+    final timelineStatus =
+        _value('timeline_status') ?? _value('status') ?? 'Pending';
     final completedAt = _value('completed_at_display');
     final isWorkflow = _timelineTruthy(task['is_workflow_task']);
     final triggerLabel = _value('workflow_trigger_label');
-    final isMainCritical = _timelineTruthy(_timelineField(task, 'is_main_critical'));
+    final isMainCritical =
+        _timelineTruthy(_timelineField(task, 'is_main_critical'));
     final durationLabel = _timelineDurationLabel(task);
     final showDuration = durationLabel != null &&
         (isMainCritical ||
@@ -587,7 +684,8 @@ class _TimelineTaskCard extends StatelessWidget {
     final isCancelled = task['is_cancelled'] == true;
     final isRedoPending = task['is_redo_pending'] == true;
     final isBlocked = task['is_flow_blocked'] == true;
-    final isUpcoming = task['is_upcoming'] == true || task['is_not_started'] == true;
+    final isUpcoming =
+        task['is_upcoming'] == true || task['is_not_started'] == true;
     final showWorkflowMeta = !isClient && isWorkflow;
     final showAssignee = !isClient;
     final statusColor = _timelineStatusColor(
@@ -609,9 +707,12 @@ class _TimelineTaskCard extends StatelessWidget {
             color: _cardSurface,
             borderRadius: BorderRadius.circular(20),
             border: Border.all(
-              color: isCompleted
-                  ? const Color(0xFF14532D)
-                  : AppTheme.border,
+              color: highlight
+                  ? AppTheme.accentBlue
+                  : isCompleted
+                      ? const Color(0xFF14532D)
+                      : AppTheme.border,
+              width: highlight ? 1.6 : 1,
             ),
             boxShadow: [
               BoxShadow(
@@ -624,6 +725,24 @@ class _TimelineTaskCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              if (highlight) ...[
+                Row(
+                  children: [
+                    Icon(Icons.play_circle_filled_rounded,
+                        size: 14, color: AppTheme.accentBlue),
+                    const SizedBox(width: 6),
+                    Text(
+                      'Current ongoing',
+                      style: TextStyle(
+                        color: AppTheme.accentBlue,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+              ],
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -785,8 +904,8 @@ class _TimelineTaskCard extends StatelessWidget {
               ],
               if (isBlocked) ...[
                 const SizedBox(height: 10),
-                Row(
-                  children: const [
+                const Row(
+                  children: [
                     Icon(Icons.lock_outline_rounded,
                         size: 15, color: Color(0xFFE11D48)),
                     SizedBox(width: 6),
@@ -911,9 +1030,11 @@ class _TimelineTaskDetailSheet extends StatelessWidget {
                       if (_value('workflow_name') != null)
                         _detailLine('Workflow', _value('workflow_name')!),
                       if (_value('workflow_trigger_label') != null)
-                        _detailLine('Trigger', _value('workflow_trigger_label')!),
+                        _detailLine(
+                            'Trigger', _value('workflow_trigger_label')!),
                       if (_value('workflow_status') != null)
-                        _detailLine('Workflow status', _value('workflow_status')!),
+                        _detailLine(
+                            'Workflow status', _value('workflow_status')!),
                     ],
                     if (!isClient &&
                         !isWorkflow &&

@@ -63,6 +63,19 @@ class DataProvider {
   int clientTimelineCompletedCount = 0;
   int clientTimelineUpcomingCount = 0;
   bool clientTimelineLoaded = false;
+
+  /// Critical-only timeline from `/API/sales_sop_project_critical_timeline`.
+  List<Map<String, dynamic>> clientCriticalTimelineTasks = [];
+  int clientCriticalTimelineTaskCount = 0;
+  int clientCriticalTimelinePendingCount = 0;
+  int clientCriticalTimelineCompletedCount = 0;
+  int clientCriticalTimelineUpcomingCount = 0;
+  bool clientCriticalTimelineLoaded = false;
+
+  /// AI status summary from `/API/sales_sop_project_status_summary`.
+  Map<String, dynamic>? clientStatusSummary;
+  bool clientStatusSummaryLoaded = false;
+
   bool clientDataLoading = false;
   DateTime? lastClientDataLoad;
   DateTime? lastUpdatesLoad;
@@ -605,6 +618,248 @@ class DataProvider {
     throw Exception(
       lastError?.toString().replaceFirst('Exception: ', '') ??
           'Unable to load project timeline right now.',
+    );
+  }
+
+  /// Critical tasks only:
+  /// GET /API/sales_sop_project_critical_timeline
+  Future<void> loadCriticalTimeline({bool force = false}) async {
+    if (!force && clientCriticalTimelineLoaded) return;
+
+    final prefs = await SharedPreferences.getInstance();
+    final projectId = prefs.getString('project_id');
+    final role = prefs.getString('role');
+    final apiToken = _normalizeApiToken(prefs.getString('api_token'));
+    currentApiToken = apiToken;
+    currentRole = role;
+
+    if (apiToken == null) {
+      clientCriticalTimelineTasks = [];
+      clientCriticalTimelineTaskCount = 0;
+      clientCriticalTimelinePendingCount = 0;
+      clientCriticalTimelineCompletedCount = 0;
+      clientCriticalTimelineUpcomingCount = 0;
+      clientCriticalTimelineLoaded = true;
+      throw Exception(
+        'API token missing. Please log out and log in again.',
+      );
+    }
+
+    final salesSopId = await resolveSalesSopId(
+      projectId: projectId,
+      apiToken: apiToken,
+    );
+    final isClient = role == 'Client';
+
+    final decoded = await _fetchTimelinePayload(
+      endpointName: 'sales_sop_project_critical_timeline',
+      apiToken: apiToken,
+      salesSopId: salesSopId,
+      projectId: projectId,
+      isClient: isClient,
+      logLabel: 'critical timeline',
+    );
+
+    await _cacheSalesSopIdFromPayload(decoded, projectId);
+
+    clientCriticalTimelineTasks = _sortTimelineTasks(
+      _enrichTimelineMainCriticalFields(
+        _parsePendingTaskList(
+          decoded['timeline_tasks'] ??
+              decoded['critical_timeline_tasks'] ??
+              decoded['tasks'],
+        ),
+      ),
+    );
+    clientCriticalTimelineTaskCount =
+        int.tryParse(decoded['timeline_task_count']?.toString() ?? '') ??
+            int.tryParse(decoded['critical_task_count']?.toString() ?? '') ??
+            clientCriticalTimelineTasks.length;
+    clientCriticalTimelinePendingCount =
+        int.tryParse(decoded['pending_count']?.toString() ?? '') ??
+            int.tryParse(decoded['pending_task_count']?.toString() ?? '') ??
+            clientCriticalTimelineTasks
+                .where((t) => t['is_pending'] == true)
+                .length;
+    clientCriticalTimelineCompletedCount =
+        int.tryParse(decoded['completed_count']?.toString() ?? '') ??
+            clientCriticalTimelineTasks
+                .where((t) => t['is_completed'] == true)
+                .length;
+    clientCriticalTimelineUpcomingCount =
+        int.tryParse(decoded['upcoming_count']?.toString() ?? '') ??
+            clientCriticalTimelineTasks
+                .where((t) => t['is_upcoming'] == true)
+                .length;
+    clientCriticalTimelineLoaded = true;
+  }
+
+  /// AI status summary:
+  /// GET /API/sales_sop_project_status_summary
+  Future<Map<String, dynamic>> loadStatusSummary({
+    bool force = false,
+    bool criticalOnly = true,
+  }) async {
+    if (!force && clientStatusSummaryLoaded && clientStatusSummary != null) {
+      return clientStatusSummary!;
+    }
+
+    final prefs = await SharedPreferences.getInstance();
+    final projectId = prefs.getString('project_id');
+    final role = prefs.getString('role');
+    final apiToken = _normalizeApiToken(prefs.getString('api_token'));
+    currentApiToken = apiToken;
+    currentRole = role;
+
+    if (apiToken == null) {
+      clientStatusSummary = null;
+      clientStatusSummaryLoaded = true;
+      throw Exception(
+        'API token missing. Please log out and log in again.',
+      );
+    }
+
+    final salesSopId = await resolveSalesSopId(
+      projectId: projectId,
+      apiToken: apiToken,
+    );
+    final isClient = role == 'Client';
+
+    final decoded = await _fetchTimelinePayload(
+      endpointName: 'sales_sop_project_status_summary',
+      apiToken: apiToken,
+      salesSopId: salesSopId,
+      projectId: projectId,
+      isClient: isClient,
+      logLabel: 'status summary',
+      extraQuery: criticalOnly ? {'critical_only': '1'} : const {},
+    );
+
+    await _cacheSalesSopIdFromPayload(decoded, projectId);
+    clientStatusSummary = decoded;
+    clientStatusSummaryLoaded = true;
+    return decoded;
+  }
+
+  Future<Map<String, dynamic>> _fetchTimelinePayload({
+    required String endpointName,
+    required String apiToken,
+    required String? salesSopId,
+    required String? projectId,
+    required bool isClient,
+    required String logLabel,
+    Map<String, String> extraQuery = const {},
+  }) async {
+    final timelinePaths = [
+      'https://office.buildahome.in/API/$endpointName',
+      'https://office.buildahome.in/api/$endpointName',
+    ];
+
+    final endpointAttempts = <Map<String, dynamic>>[];
+    for (final basePath in timelinePaths) {
+      if (salesSopId != null && salesSopId.isNotEmpty) {
+        endpointAttempts.add({
+          'uri': Uri.parse('$basePath/$salesSopId'),
+          'query': {'api_token': apiToken, ...extraQuery},
+        });
+        endpointAttempts.add({
+          'uri': Uri.parse(basePath),
+          'query': {
+            'api_token': apiToken,
+            'sales_sop_id': salesSopId,
+            ...extraQuery,
+          },
+        });
+        endpointAttempts.add({
+          'uri': Uri.parse(basePath),
+          'query': {
+            'api_token': apiToken,
+            'id': salesSopId,
+            ...extraQuery,
+          },
+        });
+      }
+      if (!isClient &&
+          (salesSopId == null || salesSopId.isEmpty) &&
+          projectId != null &&
+          projectId.isNotEmpty) {
+        continue;
+      }
+      if (projectId != null && projectId.isNotEmpty) {
+        endpointAttempts.add({
+          'uri': Uri.parse(basePath),
+          'query': {
+            'api_token': apiToken,
+            'project_id': projectId,
+            ...extraQuery,
+          },
+        });
+      }
+      if (isClient) {
+        endpointAttempts.add({
+          'uri': Uri.parse(basePath),
+          'query': {'api_token': apiToken, ...extraQuery},
+        });
+      }
+    }
+
+    Object? lastError;
+    int? lastStatusCode;
+    for (final attempt in endpointAttempts) {
+      try {
+        final uri = (attempt['uri'] as Uri).replace(
+          queryParameters:
+              Map<String, String>.from(attempt['query'] as Map<String, String>),
+        );
+        print('[DataProvider] Loading $logLabel: $uri');
+        final response = await ApiHttp.get(
+          uri,
+          headers: _apiAuthHeaders(apiToken),
+        ).timeout(Duration(seconds: 45));
+
+        lastStatusCode = response.statusCode;
+        if (response.statusCode != 200) {
+          lastError = _timelineErrorMessage(response);
+          final query = attempt['query'] as Map<String, String>;
+          final usedSop = (salesSopId != null &&
+              salesSopId.isNotEmpty &&
+              ((attempt['uri'] as Uri).path.contains('/$salesSopId') ||
+                  query['sales_sop_id'] == salesSopId ||
+                  query['id'] == salesSopId));
+          if (response.statusCode == 401 && usedSop) {
+            break;
+          }
+          continue;
+        }
+
+        final body = jsonDecode(response.body);
+        if (body is! Map || body['success'] != true) {
+          lastError = _timelineErrorMessageFromBody(body);
+          continue;
+        }
+        return Map<String, dynamic>.from(body);
+      } catch (e) {
+        lastError = e;
+        print('[DataProvider] $logLabel attempt skipped: $e');
+      }
+    }
+
+    if (salesSopId == null || salesSopId.isEmpty) {
+      if (!isClient) {
+        throw Exception(
+          'This project does not have a sales SOP id yet, so $logLabel cannot load. '
+          'Select the project again or contact support.',
+        );
+      }
+    }
+    if (lastStatusCode == 401) {
+      throw Exception(
+        'Unauthorized. Your API token is missing or expired. Please log out and log in again.',
+      );
+    }
+    throw Exception(
+      lastError?.toString().replaceFirst('Exception: ', '') ??
+          'Unable to load $logLabel right now.',
     );
   }
 
@@ -2458,6 +2713,14 @@ class DataProvider {
     clientTimelineCompletedCount = 0;
     clientTimelineUpcomingCount = 0;
     clientTimelineLoaded = false;
+    clientCriticalTimelineTasks = [];
+    clientCriticalTimelineTaskCount = 0;
+    clientCriticalTimelinePendingCount = 0;
+    clientCriticalTimelineCompletedCount = 0;
+    clientCriticalTimelineUpcomingCount = 0;
+    clientCriticalTimelineLoaded = false;
+    clientStatusSummary = null;
+    clientStatusSummaryLoaded = false;
     lastClientDataLoad = null;
     lastUpdatesLoad = null;
     lastUserTasksLoad = null;
@@ -2512,6 +2775,14 @@ class DataProvider {
     clientTimelineCompletedCount = 0;
     clientTimelineUpcomingCount = 0;
     clientTimelineLoaded = false;
+    clientCriticalTimelineTasks = [];
+    clientCriticalTimelineTaskCount = 0;
+    clientCriticalTimelinePendingCount = 0;
+    clientCriticalTimelineCompletedCount = 0;
+    clientCriticalTimelineUpcomingCount = 0;
+    clientCriticalTimelineLoaded = false;
+    clientStatusSummary = null;
+    clientStatusSummaryLoaded = false;
     lastProjectsLoad = null;
     lastClientDataLoad = null;
     lastUpdatesLoad = null;

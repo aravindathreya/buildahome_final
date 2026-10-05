@@ -491,7 +491,7 @@ class _PaymentsDashboardState extends State<PaymentsDashboard> {
   @override
   Widget build(BuildContext context) {
     final title = selectedCategory == PaymentCategory.nonTender
-        ? 'Upwind Additions Cost'
+        ? 'Upgrades and Additions'
         : 'Payments';
     return ThemedScaffold(
       title: title,
@@ -562,19 +562,19 @@ class _PaymentsDashboardState extends State<PaymentsDashboard> {
     final sections = <_NtPaymentSection>[
       _NtPaymentSection(
         title: 'Pending',
-        emptyHint: 'No pending Upwind Additions items',
+        emptyHint: 'No pending Upgrades and Additions items',
         items: items.where((item) => item.isPending).toList(),
         accent: Colors.red[700]!,
       ),
       _NtPaymentSection(
         title: 'Scheduled',
-        emptyHint: 'No scheduled Upwind Additions items',
+        emptyHint: 'No scheduled Upgrades and Additions items',
         items: items.where((item) => item.isScheduled).toList(),
         accent: Colors.amber[800]!,
       ),
       _NtPaymentSection(
         title: 'Paid',
-        emptyHint: 'No paid Upwind Additions items',
+        emptyHint: 'No paid Upgrades and Additions items',
         items: items.where((item) => item.isPaid).toList(),
         accent: Colors.green[700]!,
       ),
@@ -697,7 +697,7 @@ class _PaymentsDashboardState extends State<PaymentsDashboard> {
         ),
         SizedBox(height: 6),
         Text(
-          'Switch between project payments and Upwind Additions Cost using the filters below.',
+          'Switch between project payments and Upgrades and Additions using the filters below.',
           style: TextStyle(
             color: AppTheme.mutedGrey,
             fontSize: 13.5,
@@ -736,7 +736,7 @@ class _PaymentsDashboardState extends State<PaymentsDashboard> {
               ),
               Expanded(
                 child: _buildChip(
-                    'Upwind Additions Cost', PaymentCategory.nonTender),
+                    'Upgrades and Additions', PaymentCategory.nonTender),
               ),
             ],
           ),
@@ -997,7 +997,7 @@ class _PaymentsDashboardState extends State<PaymentsDashboard> {
             Text(
               selectedCategory == PaymentCategory.tender
                   ? 'Milestone payments'
-                  : 'Upwind Additions Cost',
+                  : 'Upgrades and Additions',
               style: TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.bold,

@@ -1,10 +1,7 @@
 import 'package:flutter/material.dart';
 
-import 'ProjectFocusScreen.dart';
-import 'ProjectTimelineScreen.dart';
 import 'app_theme.dart';
 import 'services/data_provider.dart';
-import 'widgets/project_situation_switcher.dart';
 import 'widgets/skeleton_loader.dart';
 
 Color get _ink => AppTheme.darkTextPrimary;
@@ -31,20 +28,33 @@ int _orderIdx(Map<String, dynamic> task) {
   return int.tryParse(task['order_idx']?.toString() ?? '') ?? 0;
 }
 
-/// Client-facing project activity: recently closed, ongoing, and upcoming tasks.
+/// Critical-path status: last 5 completed, all pending, all upcoming.
 class ProjectTimelineStatusScreen extends StatefulWidget {
-  const ProjectTimelineStatusScreen({super.key});
+  final bool embedded;
+
+  const ProjectTimelineStatusScreen({
+    super.key,
+    this.embedded = false,
+  });
 
   @override
   State<ProjectTimelineStatusScreen> createState() =>
-      _ProjectTimelineStatusScreenState();
+      ProjectTimelineStatusScreenState();
 }
 
-class _ProjectTimelineStatusScreenState
-    extends State<ProjectTimelineStatusScreen> {
+class ProjectTimelineStatusScreenState
+    extends State<ProjectTimelineStatusScreen>
+    with AutomaticKeepAliveClientMixin {
   List<Map<String, dynamic>> _tasks = [];
   bool _isLoading = true;
   String? _errorMessage;
+
+  @override
+  bool get wantKeepAlive => true;
+
+  bool get isRefreshing => _isLoading;
+
+  Future<void> refresh() => _loadStatus();
 
   @override
   void initState() {
@@ -55,9 +65,10 @@ class _ProjectTimelineStatusScreenState
 
   void _hydrateFromProvider() {
     final provider = DataProvider();
-    if (!provider.clientTimelineLoaded) return;
+    if (!provider.clientCriticalTimelineLoaded) return;
     setState(() {
-      _tasks = List<Map<String, dynamic>>.from(provider.clientTimelineTasks);
+      _tasks =
+          List<Map<String, dynamic>>.from(provider.clientCriticalTimelineTasks);
       _isLoading = false;
     });
   }
@@ -71,19 +82,19 @@ class _ProjectTimelineStatusScreenState
     }
 
     try {
-      await DataProvider().loadProjectTimeline(force: true);
+      await DataProvider().loadCriticalTimeline(force: true);
       if (!mounted) return;
       setState(() {
-        _tasks =
-            List<Map<String, dynamic>>.from(DataProvider().clientTimelineTasks);
+        _tasks = List<Map<String, dynamic>>.from(
+            DataProvider().clientCriticalTimelineTasks);
         _isLoading = false;
         _errorMessage = null;
       });
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _tasks =
-            List<Map<String, dynamic>>.from(DataProvider().clientTimelineTasks);
+        _tasks = List<Map<String, dynamic>>.from(
+            DataProvider().clientCriticalTimelineTasks);
         _isLoading = false;
         _errorMessage = e.toString().replaceFirst('Exception: ', '');
       });
@@ -115,7 +126,7 @@ class _ProjectTimelineStatusScreenState
     return closed.take(5).toList();
   }
 
-  List<Map<String, dynamic>> get _ongoingPending {
+  List<Map<String, dynamic>> get _allPending {
     final pending = _tasks
         .where((task) =>
             _statusTruthy(task['is_pending']) &&
@@ -128,7 +139,7 @@ class _ProjectTimelineStatusScreenState
     return pending;
   }
 
-  List<Map<String, dynamic>> get _upcomingNext {
+  List<Map<String, dynamic>> get _allUpcoming {
     final upcoming = _tasks
         .where((task) =>
             (_statusTruthy(task['is_upcoming']) ||
@@ -137,11 +148,15 @@ class _ProjectTimelineStatusScreenState
             !_statusTruthy(task['is_cancelled']))
         .toList();
     upcoming.sort((a, b) => _orderIdx(a).compareTo(_orderIdx(b)));
-    return upcoming.take(5).toList();
+    return upcoming;
   }
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
+    final body = _buildBody();
+    if (widget.embedded) return body;
+
     return Scaffold(
       backgroundColor: AppTheme.getBackgroundPrimary(context),
       appBar: AppBar(
@@ -149,60 +164,23 @@ class _ProjectTimelineStatusScreenState
         foregroundColor: AppTheme.darkTextPrimary,
         elevation: 0,
         scrolledUnderElevation: 0,
-        iconTheme: IconThemeData(color: AppTheme.darkTextPrimary),
-        actionsIconTheme: IconThemeData(color: AppTheme.darkTextPrimary),
-        leading: IconButton(
-          icon: Icon(Icons.arrow_back_ios_new_rounded,
-              color: AppTheme.darkTextPrimary, size: 20),
-          onPressed: () => Navigator.maybePop(context),
-        ),
         title: Text(
           'Project Status',
           style: TextStyle(
             color: AppTheme.darkTextPrimary,
             fontSize: 20,
             fontWeight: FontWeight.w800,
-            letterSpacing: -0.4,
           ),
-        ),
-        bottom: ProjectSituationSwitcher(
-          selected: ProjectSituationTab.status,
-          onChanged: (tab) {
-            if (tab == ProjectSituationTab.status) return;
-            final Widget page;
-            switch (tab) {
-              case ProjectSituationTab.focus:
-                page = ProjectFocusScreen.openQuick();
-                break;
-              case ProjectSituationTab.status:
-                return;
-              case ProjectSituationTab.timeline:
-                page = const ProjectTimelineScreen();
-                break;
-            }
-            Navigator.of(context).pushReplacement(
-              MaterialPageRoute(builder: (_) => page),
-            );
-          },
         ),
         actions: [
           IconButton(
             tooltip: 'Refresh',
             onPressed: _isLoading ? null : () => _loadStatus(),
-            icon: _isLoading
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(
-                        strokeWidth: 2, color: AppTheme.navy),
-                  )
-                : Icon(Icons.refresh_rounded,
-                    color: AppTheme.darkTextPrimary),
+            icon: Icon(Icons.refresh_rounded, color: AppTheme.darkTextPrimary),
           ),
-          const SizedBox(width: 8),
         ],
       ),
-      body: SafeArea(child: _buildBody()),
+      body: SafeArea(child: body),
     );
   }
 
@@ -216,10 +194,10 @@ class _ProjectTimelineStatusScreenState
     }
 
     final recentlyClosed = _recentlyClosed;
-    final ongoing = _ongoingPending;
-    final upcoming = _upcomingNext;
+    final pending = _allPending;
+    final upcoming = _allUpcoming;
 
-    if (recentlyClosed.isEmpty && ongoing.isEmpty && upcoming.isEmpty) {
+    if (recentlyClosed.isEmpty && pending.isEmpty && upcoming.isEmpty) {
       return _buildEmptyState();
     }
 
@@ -232,25 +210,25 @@ class _ProjectTimelineStatusScreenState
         children: [
           _buildSection(
             title: 'Recently closed',
-            subtitle: 'Last 5 completed tasks',
+            subtitle: 'Top 5 completed critical tasks',
             tasks: recentlyClosed,
-            emptyLabel: 'No recently closed tasks yet.',
+            emptyLabel: 'No recently closed critical tasks yet.',
             accent: const Color(0xFF059669),
           ),
           const SizedBox(height: 22),
           _buildSection(
-            title: 'Ongoing',
-            subtitle: 'Pending tasks in progress',
-            tasks: ongoing,
-            emptyLabel: 'No ongoing pending tasks right now.',
+            title: 'Pending',
+            subtitle: 'All pending critical tasks',
+            tasks: pending,
+            emptyLabel: 'No pending critical tasks right now.',
             accent: const Color(0xFFD97706),
           ),
           const SizedBox(height: 22),
           _buildSection(
             title: 'Upcoming',
-            subtitle: 'Next 5 tasks',
+            subtitle: 'All upcoming critical tasks',
             tasks: upcoming,
-            emptyLabel: 'No upcoming tasks yet.',
+            emptyLabel: 'No upcoming critical tasks yet.',
             accent: const Color(0xFF9CA3AF),
           ),
         ],
@@ -353,7 +331,7 @@ class _ProjectTimelineStatusScreenState
                 size: 56, color: AppTheme.getTextSecondary(context)),
             const SizedBox(height: 20),
             Text(
-              'No project activity yet',
+              'No critical tasks from server',
               style: TextStyle(
                 color: _ink,
                 fontSize: 22,
@@ -362,7 +340,8 @@ class _ProjectTimelineStatusScreenState
             ),
             const SizedBox(height: 8),
             Text(
-              'Recently closed, ongoing, and upcoming tasks will appear here.',
+              'The critical timeline API returned successfully but with 0 tasks. '
+              'This is a server/data issue — Main Critical tasks are not flagged for this project yet.',
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: _muted,
@@ -454,10 +433,8 @@ class _StatusTaskRow extends StatelessWidget {
     final isClient =
         (DataProvider().currentRole ?? '').trim().toLowerCase() == 'client';
     final orderIdx = int.tryParse(task['order_idx']?.toString() ?? '');
-    final taskName = _value('task_name') ??
-        _value('note') ??
-        _value('name') ??
-        'Task';
+    final taskName =
+        _value('task_name') ?? _value('note') ?? _value('name') ?? 'Task';
     final status = _value('timeline_status') ?? _value('status') ?? '—';
     final completedAt = _value('completed_at_display');
     final assignee = _value('assigned_to_name');
@@ -477,7 +454,7 @@ class _StatusTaskRow extends StatelessWidget {
             width: 32,
             height: 32,
             decoration: BoxDecoration(
-              color: accent.withOpacity(0.14),
+              color: accent.withValues(alpha: 0.14),
               borderRadius: BorderRadius.circular(9),
             ),
             child: Center(

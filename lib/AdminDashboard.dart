@@ -41,6 +41,7 @@ import 'mobile_live_test_screen.dart';
 import 'services/mobile_live_test_access.dart';
 import 'NavMenu.dart';
 import 'ProjectFocusScreen.dart';
+import 'ProjectSituationShell.dart';
 import 'utilities/role_app_bar_color.dart';
 import 'widgets/dashboard_chrome.dart';
 import 'widgets/floating_glass_bottom_nav.dart';
@@ -1276,7 +1277,7 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
         route: () => _routeForCurrentProject(() => PaymentTaskWidget()),
       ),
       _quickActionTile(
-        title: 'Upwind Additions Cost',
+        title: 'Upgrades and Additions',
         icon: Icons.receipt_long,
         route: () => _routeForCurrentProject(
           () => const PaymentTaskWidget(
@@ -1349,7 +1350,7 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
       _quickActionTile(
         title: 'Project Timeline',
         icon: Icons.timeline_rounded,
-        route: () => _routeForCurrentProject(() => const ProjectTimelineScreen()),
+        route: () => _routeForCurrentProject(() => ProjectSituationShell.timeline()),
       ),
       _quickActionTile(
         title: 'Chat V1',
@@ -2083,9 +2084,9 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
         return 'New Indent';
       case 'Upload proof':
         return 'Proof';
-      case 'Upwind Additions Cost':
+      case 'Upgrades and Additions':
       case 'NT Payments':
-        return 'Upwind Additions Cost';
+        return 'Upgrades and Additions';
       case '3D House Tour':
         return '3D House Tour';
       case 'Work orders':
@@ -2133,7 +2134,7 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
         return Icons.phonelink_setup_rounded;
       case 'Payments':
         return Icons.payments_rounded;
-      case 'Upwind Additions Cost':
+      case 'Upgrades and Additions':
       case 'NT Payments':
         return Icons.receipt_long_rounded;
       case 'Upload proof':
