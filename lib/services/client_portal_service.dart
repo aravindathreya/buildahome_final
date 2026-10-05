@@ -525,6 +525,19 @@ class ClientPortalService {
   Future<Map<String, dynamic>> getPaymentProof() =>
       getSection('payment_proof');
 
+  /// POST /api/client_portal/nt-bill/approve
+  /// Completes the client task for this NT bill only.
+  Future<Map<String, dynamic>> approveNtBill({
+    int billingTaskId = 0,
+    String? erpTaskId,
+  }) {
+    return _postJson('/api/client_portal/nt-bill/approve', {
+      if (billingTaskId > 0) 'billing_task_id': billingTaskId,
+      if (erpTaskId != null && erpTaskId.trim().isNotEmpty)
+        'erp_task_id': erpTaskId.trim(),
+    });
+  }
+
   Map<String, dynamic> sectionOf(Map<String, dynamic> payload) {
     if (payload['section'] is Map) {
       return Map<String, dynamic>.from(payload['section'] as Map);

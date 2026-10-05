@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../chat_v1_mentions.dart';
+import '../chat_v1_mention_draft.dart';
 import '../chat_v1_theme.dart';
+import '../chat_v1_utils.dart';
 
 /// Shared layout tokens for the WhatsApp-inspired composer.
 class ChatComposerTokens {
@@ -100,6 +103,10 @@ class ChatComposer extends StatefulWidget {
   final ValueChanged<String>? onChanged;
   final bool enabled;
   final List<AttachmentOption> extraAttachmentOptions;
+  final List<ChatV1MentionPerson> mentionPeople;
+  final ChatV1MentionDraft? mentionDraft;
+  final bool mentionsLoading;
+  final String? mentionsError;
 
   const ChatComposer({
     super.key,
@@ -111,6 +118,10 @@ class ChatComposer extends StatefulWidget {
     this.onChanged,
     this.enabled = true,
     this.extraAttachmentOptions = const [],
+    this.mentionPeople = const [],
+    this.mentionDraft,
+    this.mentionsLoading = false,
+    this.mentionsError,
   });
 
   @override
@@ -119,11 +130,17 @@ class ChatComposer extends StatefulWidget {
 
 class _ChatComposerState extends State<ChatComposer> {
   bool _hasText = false;
+  ChatV1MentionTrigger? _mention;
 
   @override
   void initState() {
     super.initState();
     _hasText = widget.controller.text.trim().isNotEmpty;
+    final selection = widget.controller.selection;
+    final cursor = selection.isValid
+        ? selection.extentOffset
+        : widget.controller.text.length;
+    _mention = detectChatMentionTrigger(widget.controller.text, cursor);
     widget.controller.addListener(_onControllerTick);
   }
 
@@ -133,7 +150,7 @@ class _ChatComposerState extends State<ChatComposer> {
     if (oldWidget.controller != widget.controller) {
       oldWidget.controller.removeListener(_onControllerTick);
       widget.controller.addListener(_onControllerTick);
-      _syncHasText();
+      _onControllerTick();
     }
   }
 
@@ -143,13 +160,47 @@ class _ChatComposerState extends State<ChatComposer> {
     super.dispose();
   }
 
-  void _onControllerTick() => _syncHasText();
-
-  void _syncHasText() {
-    final next = widget.controller.text.trim().isNotEmpty;
-    if (next != _hasText && mounted) {
-      setState(() => _hasText = next);
+  void _onControllerTick() {
+    widget.mentionDraft?.updateText(widget.controller.text);
+    final nextHas = widget.controller.text.trim().isNotEmpty;
+    final selection = widget.controller.selection;
+    final cursor = selection.isValid
+        ? selection.extentOffset
+        : widget.controller.text.length;
+    final nextMention =
+        detectChatMentionTrigger(widget.controller.text, cursor);
+    final mentionChanged = nextMention?.start != _mention?.start ||
+        nextMention?.end != _mention?.end ||
+        nextMention?.query != _mention?.query ||
+        (nextMention == null) != (_mention == null);
+    if ((nextHas != _hasText || mentionChanged) && mounted) {
+      setState(() {
+        _hasText = nextHas;
+        if (mentionChanged) _mention = nextMention;
+      });
     }
+  }
+
+  void _insertMention(ChatV1MentionPerson person) {
+    final trigger = _mention;
+    if (trigger == null || !widget.enabled) return;
+    final result = widget.mentionDraft?.insert(
+          text: widget.controller.text,
+          trigger: trigger,
+          person: person,
+          people: widget.mentionPeople,
+        ) ??
+        applyChatMention(
+          text: widget.controller.text,
+          trigger: trigger,
+          person: person,
+          people: widget.mentionPeople,
+        );
+    widget.controller.value = TextEditingValue(
+      text: result.text,
+      selection: TextSelection.collapsed(offset: result.caret),
+    );
+    widget.onChanged?.call(result.text);
   }
 
   void _handleChanged(String value) {
@@ -200,58 +251,72 @@ class _ChatComposerState extends State<ChatComposer> {
         ChatComposerTokens.outerHMargin,
         ChatComposerTokens.outerBottom + bottomInset,
       ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Expanded(
-            child: AnimatedContainer(
-              duration: ChatComposerTokens.anim,
-              curve: Curves.easeOut,
-              constraints: const BoxConstraints(
-                minHeight: ChatComposerTokens.barMinHeight,
-              ),
-              decoration: BoxDecoration(
-                color: ChatComposerTokens.barFill(context),
-                borderRadius:
-                    BorderRadius.circular(ChatComposerTokens.barRadius),
-                boxShadow: ChatComposerTokens.barShadow(context),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: ChatComposerTokens.barInnerH,
-                  // (60 − 40) / 2 → centers 40px circles in a 60px bar.
-                  vertical: 10,
-                ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    AttachmentButton(
-                      onTap: _openAttachments,
-                      enabled: widget.enabled,
-                    ),
-                    const SizedBox(width: ChatComposerTokens.iconGap),
-                    Expanded(
-                      child: ExpandableMessageField(
-                        controller: widget.controller,
-                        enabled: widget.enabled,
-                        onChanged: _handleChanged,
-                        onSubmitted: (_) {
-                          if (_hasText) widget.onSend();
-                        },
-                      ),
-                    ),
-                    CameraButton(
-                      visible: !_hasText,
-                      onTap: widget.enabled ? widget.onCamera : null,
-                    ),
-                  ],
-                ),
-              ),
+          if (_mention != null)
+            _MentionPicker(
+              query: _mention!.query,
+              people: widget.mentionPeople,
+              loading: widget.mentionsLoading,
+              error: widget.mentionsError,
+              onSelect: _insertMention,
             ),
-          ),
-          SendButton(
-            visible: _hasText,
-            onTap: widget.enabled ? widget.onSend : null,
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Expanded(
+                child: AnimatedContainer(
+                  duration: ChatComposerTokens.anim,
+                  curve: Curves.easeOut,
+                  constraints: const BoxConstraints(
+                    minHeight: ChatComposerTokens.barMinHeight,
+                  ),
+                  decoration: BoxDecoration(
+                    color: ChatComposerTokens.barFill(context),
+                    borderRadius:
+                        BorderRadius.circular(ChatComposerTokens.barRadius),
+                    boxShadow: ChatComposerTokens.barShadow(context),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: ChatComposerTokens.barInnerH,
+                      // (60 − 40) / 2 → centers 40px circles in a 60px bar.
+                      vertical: 10,
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        AttachmentButton(
+                          onTap: _openAttachments,
+                          enabled: widget.enabled,
+                        ),
+                        const SizedBox(width: ChatComposerTokens.iconGap),
+                        Expanded(
+                          child: ExpandableMessageField(
+                            controller: widget.controller,
+                            enabled: widget.enabled,
+                            onChanged: _handleChanged,
+                            onSubmitted: (_) {
+                              if (_hasText) widget.onSend();
+                            },
+                          ),
+                        ),
+                        CameraButton(
+                          visible: !_hasText,
+                          onTap: widget.enabled ? widget.onCamera : null,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              SendButton(
+                visible: _hasText,
+                onTap: widget.enabled ? widget.onSend : null,
+              ),
+            ],
           ),
         ],
       ),
@@ -385,7 +450,8 @@ class CameraButton extends StatelessWidget {
         curve: Curves.easeOut,
         child: visible
             ? Padding(
-                padding: const EdgeInsets.only(left: ChatComposerTokens.iconGap),
+                padding:
+                    const EdgeInsets.only(left: ChatComposerTokens.iconGap),
                 child: SizedBox(
                   width: ChatComposerTokens.iconCircle,
                   height: ChatComposerTokens.iconCircle,
@@ -664,6 +730,166 @@ class _AttachmentTile extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// People list that sits just above the composer while an @ query is active.
+class _MentionPicker extends StatelessWidget {
+  final String query;
+  final List<ChatV1MentionPerson> people;
+  final bool loading;
+  final String? error;
+  final ValueChanged<ChatV1MentionPerson> onSelect;
+
+  const _MentionPicker({
+    required this.query,
+    required this.people,
+    required this.loading,
+    required this.error,
+    required this.onSelect,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final matches = filterMentionPeople(people, query);
+    final dark = ChatV1Theme.isDark(context);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: ChatV1Theme.card(context),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: ChatV1Theme.border(context)),
+          boxShadow: ChatComposerTokens.barShadow(context),
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(18),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 248),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(14, 10, 14, 6),
+                  child: Text(
+                    'Mention',
+                    style: TextStyle(
+                      color: ChatV1Theme.textMuted(context),
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.4,
+                    ),
+                  ),
+                ),
+                if (loading && people.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.fromLTRB(14, 4, 14, 14),
+                    child: Row(
+                      children: [
+                        SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                        SizedBox(width: 10),
+                        Text('Loading people…'),
+                      ],
+                    ),
+                  )
+                else if (matches.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(14, 2, 14, 14),
+                    child: Text(
+                      error ??
+                          (people.isEmpty
+                              ? 'No one in this chat to mention'
+                              : 'No matches'),
+                      style: TextStyle(
+                        color: ChatV1Theme.textSecondary(context),
+                        fontSize: 13.5,
+                      ),
+                    ),
+                  )
+                else
+                  Flexible(
+                    child: ListView.builder(
+                      shrinkWrap: true,
+                      padding: const EdgeInsets.only(bottom: 6),
+                      itemCount: matches.length,
+                      itemBuilder: (context, index) {
+                        final person = matches[index];
+                        final role = person.displayRole;
+                        return InkWell(
+                          onTap: () => onSelect(person),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 6,
+                            ),
+                            child: Row(
+                              children: [
+                                CircleAvatar(
+                                  radius: 16,
+                                  backgroundColor: ChatV1Utils.colorForId(
+                                    person.userId,
+                                  ).withValues(alpha: dark ? 0.28 : 0.16),
+                                  child: Text(
+                                    ChatV1Utils.initials(person.name),
+                                    style: TextStyle(
+                                      color: ChatV1Utils.colorForId(
+                                        person.userId,
+                                      ),
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        person.name,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          color: ChatV1Theme.text(context),
+                                          fontSize: 14.5,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                      if (role.isNotEmpty)
+                                        Text(
+                                          role,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(
+                                            color: ChatV1Theme.textSecondary(
+                                              context,
+                                            ),
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }

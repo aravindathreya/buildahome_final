@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
@@ -117,6 +118,9 @@ class _MultiMaterialSiteProofScreenState
     'Pickup',
     'Other',
   ];
+
+  /// Unit under Measurement is always Sqft and is not user-editable.
+  static const _fixedMeasurementUnit = 'Sqft';
 
   @override
   void initState() {
@@ -272,9 +276,8 @@ class _MultiMaterialSiteProofScreenState
     _session = session;
     _radiusMeters = session.nearSiteRadiusMeters;
     _measurementController.text = session.common.measurement;
-    _measurementUnitController.text = session.common.measurementUnit.isNotEmpty
-        ? session.common.measurementUnit
-        : 'Sq. ft';
+    _measurementUnitController.text =
+        _measurementQuantityFromStored(session.common.measurementUnit);
     _vehicleNumberController.text = session.common.vehicleNumber;
     _driverNameController.text = session.common.driverName;
     _driverPhoneController.text = session.common.driverPhone;
@@ -341,7 +344,7 @@ class _MultiMaterialSiteProofScreenState
     try {
       final fields = MultiMaterialCommonFields(
         measurement: _measurementController.text.trim(),
-        measurementUnit: _measurementUnitController.text.trim(),
+        measurementUnit: _storedMeasurementUnit(),
         siteComment: _siteCommentController.text.trim(),
         vehicleNumber: _normalizeIndianVehicleNumber(
           _vehicleNumberController.text,
@@ -583,9 +586,8 @@ class _MultiMaterialSiteProofScreenState
     r')$',
   );
 
-  /// Quantity + unit label, e.g. "450 CFT", "12.5 Sq. ft".
-  static final RegExp _measurementUnitPattern = RegExp(
-    r'^\d+(?:[.,]\d+)?\s+[A-Za-z][A-Za-z.\s]*$',
+  static final RegExp _measurementQuantityPattern = RegExp(
+    r'^\d+(?:[.,]\d+)?$',
   );
 
   String _normalizeIndianVehicleNumber(String raw) {
@@ -598,10 +600,20 @@ class _MultiMaterialSiteProofScreenState
     return _indianVehicleNumberPattern.hasMatch(normalized);
   }
 
-  bool _isValidMeasurementUnit(String raw) {
-    final value = raw.trim();
-    if (value.isEmpty) return false;
-    return _measurementUnitPattern.hasMatch(value);
+  /// Pulls the numeric part from a stored value such as "450 Sqft" or "12.5 Sq. ft".
+  String _measurementQuantityFromStored(String raw) {
+    final match = RegExp(r'^(\d+(?:[.,]\d+)?)').firstMatch(raw.trim());
+    return match?.group(1) ?? '';
+  }
+
+  String _storedMeasurementUnit() {
+    final qty = _measurementUnitController.text.trim();
+    if (qty.isEmpty) return '';
+    return '$qty $_fixedMeasurementUnit';
+  }
+
+  bool _isValidMeasurementQuantity(String raw) {
+    return _measurementQuantityPattern.hasMatch(raw.trim());
   }
 
   Future<void> _submitAll() async {
@@ -623,14 +635,11 @@ class _MultiMaterialSiteProofScreenState
     }
     final unitRaw = _measurementUnitController.text.trim();
     if (unitRaw.isEmpty) {
-      _snack('Unit is required (e.g. 450 CFT).', error: true);
+      _snack('Enter the measurement in Sqft.', error: true);
       return;
     }
-    if (!_isValidMeasurementUnit(unitRaw)) {
-      _snack(
-        'Unit must include a number and text (e.g. 450 CFT).',
-        error: true,
-      );
+    if (!_isValidMeasurementQuantity(unitRaw)) {
+      _snack('Enter a number. Unit is Sqft.', error: true);
       return;
     }
 
@@ -678,7 +687,7 @@ class _MultiMaterialSiteProofScreenState
       // 2) Delivery-level common fields
       final fields = MultiMaterialCommonFields(
         measurement: _measurementController.text.trim(),
-        measurementUnit: _measurementUnitController.text.trim(),
+        measurementUnit: _storedMeasurementUnit(),
         siteComment: _siteCommentController.text.trim(),
         vehicleNumber: normalizedVehicle,
         vehicleType: _vehicleType,
@@ -1308,11 +1317,22 @@ class _MultiMaterialSiteProofScreenState
               const SizedBox(height: 10),
               TextField(
                 controller: _measurementUnitController,
-                decoration: _inputDecoration('Unit * (e.g. 450 CFT)'),
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                inputFormatters: [
+                  FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
+                ],
+                decoration: _inputDecoration('e.g. 450').copyWith(
+                  suffixText: _fixedMeasurementUnit,
+                  suffixStyle: TextStyle(
+                    color: AppTheme.darkTextPrimary,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
               ),
               const SizedBox(height: 4),
               const Text(
-                'Enter a number followed by the unit label. Example: 450 CFT',
+                'Enter the number. Unit is Sqft.',
                 style: TextStyle(
                   color: AppTheme.mutedGrey,
                   fontSize: 12,

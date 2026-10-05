@@ -9,6 +9,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'app_theme.dart';
+import 'slots/site_visits_ui.dart';
+import 'slots/site_visit_booking.dart';
 import 'models/sales_sop_slot.dart';
 import 'services/sales_sop_slots_service.dart';
 import 'services/session_manager.dart';
@@ -24,7 +26,7 @@ class SlotsScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     if (embedded) return const SlotsView();
     return const ThemedScaffold(
-      title: 'Slots',
+      title: 'Site visits',
       body: SlotsView(showInlineTitle: false),
     );
   }
@@ -53,6 +55,7 @@ class SlotsViewState extends State<SlotsView> {
   static const _draftPicksKey = 'sales_sop_slot_draft_picks';
   static const _draftNotesKey = 'sales_sop_slot_draft_notes';
 
+  bool _showVisitDetails = false;
   bool _loading = true;
   bool _confirming = false;
   String? _submittingSelectId;
@@ -495,25 +498,25 @@ class SlotsViewState extends State<SlotsView> {
     return errors;
   }
 
-  Future<void> _submitPreferredSlots(SalesSopSlot slot) async {
-    if (!_canSelectPreferred(slot) || _busy) return;
+  Future<bool> _submitPreferredSlots(SalesSopSlot slot) async {
+    if (!_canSelectPreferred(slot) || _busy) return false;
     final id = _idFor(slot);
     final rowErrors = _validatePreferredRows(slot);
-    final note = slot.allowNote ? _selectNoteController(id).text.trim() : '';
+    final note = (slot.allowNote || slot.requireNote) ? _selectNoteController(id).text.trim() : '';
     if (slot.requireNote && note.isEmpty) {
       setState(() {
         _selectRowErrors[id] = rowErrors;
         _errors[id] = 'A comment is required.';
         _collapsed.remove(id);
       });
-      return;
+      return false;
     }
     if (rowErrors.isNotEmpty) {
       setState(() {
         _selectRowErrors[id] = rowErrors;
         _collapsed.remove(id);
       });
-      return;
+      return false;
     }
 
     final payload = <Map<String, dynamic>>[];
@@ -542,7 +545,7 @@ class SlotsViewState extends State<SlotsView> {
         slots: payload,
         note: note,
       );
-      if (!mounted) return;
+      if (!mounted) return false;
       if (result != null) {
         setState(() {
           _applyResult(result);
@@ -552,18 +555,20 @@ class SlotsViewState extends State<SlotsView> {
         setState(() => _submittingSelectId = null);
         await reload();
       }
-      if (!mounted) return;
+      if (!mounted) return false;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Preferred slots submitted')),
       );
+      return true;
     } on SessionInvalidatedException {
-      return;
+      return false;
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted) return false;
       setState(() {
         _submittingSelectId = null;
         _errors[id] = e.toString().replaceFirst('Exception: ', '');
       });
+      return false;
     }
   }
 
@@ -676,8 +681,90 @@ class SlotsViewState extends State<SlotsView> {
     );
   }
 
+  Future<void> _openVisitBooking(SalesSopSlot slot) async {
+    if (_busy) return;
+    final preferred = _canSelectPreferred(slot);
+    final canBook = _canPick(slot) || preferred;
+    final id = _idFor(slot);
+    final changed = await Navigator.of(context).push<bool>(MaterialPageRoute(
+      builder: (_) => SiteVisitBooking(
+        slot: slot,
+        selectPreferred: preferred,
+        readOnly: !canBook,
+        initialIndex: _pickedIndex(slot),
+        initialNote: preferred ? _selectNoteController(id).text : _noteController(id).text,
+        initialPreferences: preferred ? [
+          for (final row in _rowsFor(slot))
+            if (row.dateTime != null || (row.date != null && row.timeOption != null))
+              VisitPreference(row.dateTime ?? _combineDateAndTime(row.date!, row.timeOption!.time), row.timeOption),
+        ] : const [],
+        onDraft: (index, preferences, note) {
+          if (preferred) {
+            _selectRows[id] = List.generate(slot.selectionSlotCount, (i) {
+              final row = _PreferredSlotRow();
+              if (i < preferences.length) {
+                row.date = preferences[i].dateTime;
+                row.dateTime = preferences[i].dateTime;
+                row.timeOption = preferences[i].timeOption;
+              }
+              return row;
+            });
+            _selectNoteController(id).text = note;
+          } else {
+            if (index != null) _picks[id] = index;
+            _notes[id] = note;
+            _noteController(id).text = note;
+            _persistDrafts();
+          }
+        },
+        onSubmit: (index, preferences, note) async {
+          if (preferred) {
+            _selectRows[id] = [for (final p in preferences)
+              _PreferredSlotRow()..date = p.dateTime..dateTime = p.dateTime..timeOption = p.timeOption];
+            _selectNoteController(id).text = note;
+            final ok = await _submitPreferredSlots(slot);
+            if (!ok) throw Exception(_errors[id] ??
+              (_selectRowErrors[id]?.isNotEmpty == true ? _selectRowErrors[id]!.values.first : 'Could not submit preferred times.'));
+          } else {
+            if (index == null || _optionFor(slot, index) == null) throw Exception('Choose an available slot.');
+            if (slot.requireNote && note.trim().isEmpty) throw Exception('A comment is required.');
+            _picks[id] = index;
+            _notes[id] = note;
+            _noteController(id).text = note;
+            await _persistDrafts();
+            if (!mounted) throw Exception('Visit screen closed.');
+            setState(() => _confirming = true);
+            try {
+              final result = await SalesSopSlotsService().confirmSlot(
+                slot: slot, acceptedSlotIndex: index, note: note);
+              if (mounted && result != null) setState(() => _applyResult(result));
+            } finally {
+              if (mounted) setState(() => _confirming = false);
+            }
+          }
+        },
+      ),
+    ));
+    if (changed == true && mounted) await reload();
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (_showVisitDetails) {
+      return Column(children: [
+        Align(alignment: Alignment.centerLeft, child: TextButton.icon(
+          onPressed: () => setState(() => _showVisitDetails = false),
+          icon: const Icon(Icons.arrow_back), label: const Text('Site visits'))),
+        Expanded(child: _buildVisitDetails(context)),
+      ]);
+    }
+    return SiteVisitsOverview(slots: _slots, showInlineTitle: widget.showInlineTitle, loading: _loading, error: _error,
+      onRefresh: reload, onHelp: _showHowItWorks,
+      onDetails: () => setState(() => _showVisitDetails = true),
+      onOpen: _openVisitBooking);
+  }
+
+  Widget _buildVisitDetails(BuildContext context) {
     if (_loading && _slots.isEmpty) {
       return const SkeletonListLoader(
         showSummary: true,

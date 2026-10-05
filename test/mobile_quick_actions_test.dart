@@ -108,18 +108,49 @@ void main() {
       );
     });
 
-    test('does not leak staff_home titles onto project homes', () {
+    test('new project home maps actions the Quick Actions admin can enable', () {
+      expect(
+        flutterTitleForMobileQuickAction(
+          MobileQuickActionSurface.projectHomeNew,
+          'slots',
+        ),
+        'Slots',
+      );
+      expect(
+        flutterTitleForMobileQuickAction(
+          MobileQuickActionSurface.projectHomeNew,
+          'stock_report',
+        ),
+        'Stock Report',
+      );
+      expect(
+        flutterTitleForMobileQuickAction(
+          MobileQuickActionSurface.projectHomeNew,
+          'payments',
+        ),
+        'Payments',
+      );
       expect(
         flutterTitleForMobileQuickAction(
           MobileQuickActionSurface.projectHomeNew,
           'attendance',
+        ),
+        'Attendance',
+      );
+    });
+
+    test('old project home does not take staff-only titles', () {
+      expect(
+        flutterTitleForMobileQuickAction(
+          MobileQuickActionSurface.projectHomeOld,
+          'projects',
         ),
         isNull,
       );
       expect(
         flutterTitleForMobileQuickAction(
           MobileQuickActionSurface.projectHomeOld,
-          'projects',
+          'attendance',
         ),
         isNull,
       );
@@ -266,6 +297,25 @@ void main() {
         ),
       );
       expect(result, isEmpty);
+    });
+
+    test('saved project-home keys omit actions that were turned off', () {
+      final catalog = [
+        ...newHomeCatalog,
+        _item('Slots'),
+        _item('Stock Report'),
+      ];
+      final result = resolveMobileQuickActions(
+        surface: MobileQuickActionSurface.projectHomeNew,
+        catalog: catalog,
+        fallback: hardcoded,
+        snapshot: const MobileQuickActionsSnapshot(
+          surface: MobileQuickActionSurface.projectHomeNew,
+          configured: true,
+          actionKeys: ['slots', 'stock_report'],
+        ),
+      );
+      expect(result.map((e) => e['title']), ['Slots', 'Stock Report']);
     });
 
     test('honors backend order and skips unknown keys', () {

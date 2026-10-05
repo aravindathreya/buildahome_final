@@ -8,7 +8,11 @@ import 'package:image_picker/image_picker.dart';
 import '../../services/camera_permission.dart';
 import '../chat_v1_api.dart';
 import '../chat_v1_controller.dart';
+import '../chat_v1_importance.dart';
 import '../chat_v1_mapper.dart';
+import '../chat_v1_mentions.dart';
+import '../chat_v1_mention_draft.dart';
+import '../widgets/chat_v1_mention_banner.dart';
 import '../chat_v1_models.dart';
 import '../chat_v1_socket.dart';
 import '../chat_v1_theme.dart';
@@ -18,6 +22,13 @@ import '../widgets/chat_v1_composer.dart';
 import '../widgets/chat_v1_message_bubble.dart';
 import 'chat_v1_group_info_screen.dart';
 import 'chat_v1_task_details_sheet.dart';
+
+/// The visible conversation must retain the same confirmed metadata as its cache.
+/// Partial socket/upload events can omit mentions without revoking existing tags.
+ChatV1Message mergeConversationScreenMessage(
+  ChatV1Message existing,
+  ChatV1Message incoming,
+) => ChatV1Controller.preferRicherMessage(existing, incoming);
 
 class ChatV1ConversationScreen extends StatefulWidget {
   final ChatV1ConvMeta meta;
@@ -36,6 +47,7 @@ class ChatV1ConversationScreen extends StatefulWidget {
 
 class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
   final _composer = TextEditingController();
+  final _mentionDraft = ChatV1MentionDraft();
   final _scroll = ScrollController();
   final _stickKey = GlobalKey<Cv1StickToBottomState>();
   final _api = ChatV1Api.instance;
@@ -62,28 +74,53 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
   Timer? _typingIdle;
   bool _amTyping = false;
 
+  List<ChatV1MentionPerson> _mentionPeople = const [];
+  bool _mentionsLoading = false;
+  String? _mentionsError;
+
+  /// Server pin from GET conversation `pinned_message`. Null until that call
+  /// returns. Empty string means the conversation has no pin.
+  String? _pinnedMessageId;
+  String? _pinnedPreview;
+
+  String? get _taggedMessageId {
+    if (_userId.isEmpty) return null;
+    final focus = widget.meta.focusMessageId;
+    if (focus != null && focus.isNotEmpty) {
+      final target = _messages.where((m) => m.id == focus);
+      if (target.any((m) => !m.isDeleted && !m.isMine &&
+          m.mentions.any((mention) => mention.userId == _userId))) {
+        return focus;
+      }
+    }
+    for (final message in _messages.reversed) {
+      if (!message.isDeleted && !message.isMine &&
+          message.mentions.any((mention) => mention.userId == _userId)) {
+        return message.id;
+      }
+    }
+    return null;
+  }
+
   String get _conversationId => widget.meta.id;
   String get _userId => ChatV1Controller.instance.currentUserId ?? '';
   bool get _isErpTask => widget.meta.contextType == 'erp_task';
   bool get _othersTyping => _typingUserIds.isNotEmpty;
 
-  /// Same rule as web: hide Share to General when already in General.
-  bool get _isGeneralChannel {
-    final title =
-        ChatV1Utils.canonicalChannelTitle(widget.meta.title).toLowerCase();
-    if (title != 'general') return false;
-    final ctx = (widget.meta.contextType ?? '').toLowerCase();
-    // Channels are usually sales_sop-scoped; also accept empty/legacy.
-    return ctx.isEmpty || ctx == 'sales_sop';
+  /// Same rule as web: hide Mark as important when already in Important.
+  bool get _isImportantChannel {
+    if ((widget.meta.contextType ?? '').toLowerCase() != 'sales_sop') {
+      return false;
+    }
+    return widget.meta.title.trim() == 'Important';
   }
 
   GlobalKey _keyForMessage(String id) =>
       _messageKeys.putIfAbsent(id, GlobalKey.new);
 
   String get _typingLabel {
-    final names = _typingUserIds
-        .map((id) => _typingNames[id] ?? 'Someone')
-        .toList();
+    final names =
+        _typingUserIds.map((id) => _typingNames[id] ?? 'Someone').toList();
     if (names.isEmpty) return '';
     if (names.length == 1) return '${names.first} is typing…';
     if (names.length == 2) return '${names[0]} and ${names[1]} are typing…';
@@ -95,13 +132,13 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
     super.initState();
     _scroll.addListener(_onScroll);
     // Warm open: restore cache before first frame (no full-screen spinner).
-    final cached =
-        ChatV1Controller.instance.cachedMessages(_conversationId);
+    final cached = ChatV1Controller.instance.cachedMessages(_conversationId);
     if (cached != null && cached.isNotEmpty) {
       _messages = _enrichReplyPreviews(cached);
       _loading = false;
     }
     _load();
+    _loadMentionPeople();
     _bindSocket();
     if (_isErpTask) _loadErpDetails();
   }
@@ -124,7 +161,14 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
 
     if (hadCache) {
       // Jump once to latest; background refresh must not flash top→bottom again.
-      WidgetsBinding.instance.addPostFrameCallback((_) => _jumpToBottom());
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final focusId = (widget.meta.focusMessageId ?? '').trim();
+        if (focusId.isNotEmpty && _messages.any((m) => m.id == focusId)) {
+          _scrollToMessage(focusId);
+        } else {
+          _jumpToBottom();
+        }
+      });
     } else {
       if (mounted) {
         setState(() {
@@ -138,8 +182,8 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
     }
 
     try {
-      // Messages API embeds extras (include_extras=true). No getConversation on
-      // the critical path — its result was unused for the message UI.
+      // Pin lives on the conversation (pinned_message), not on each message row.
+      final detailFuture = _api.getConversation(_conversationId);
       final rows = await _api.listMessages(_conversationId, pageSize: 50);
       final uid = _userId;
       final mapped = rows
@@ -148,19 +192,36 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
         ..sort((a, b) => a.sentAt.compareTo(b.sentAt));
       if (!mounted) return;
 
-      final merged = _enrichReplyPreviews(
-        hadCache
-            ? ctrl.mergeConversationMessages(_messages, mapped)
-            : mapped,
+      var merged = _enrichReplyPreviews(
+        hadCache ? ctrl.mergeConversationMessages(_messages, mapped) : mapped,
       );
+      final focusId = (widget.meta.focusMessageId ?? '').trim();
+      if (focusId.isNotEmpty && !merged.any((m) => m.id == focusId)) {
+        final around = await _messagesAround(focusId);
+        if (around.isNotEmpty) {
+          merged = _enrichReplyPreviews(around);
+        }
+      }
+      final focusLoaded =
+          focusId.isNotEmpty && merged.any((m) => m.id == focusId);
+      await _takeConversationPin(detailFuture);
+      if (!mounted) return;
+      merged = _applyPinnedFlags(merged);
+      final listChanged = !_messageListsVisuallySame(_messages, merged);
 
       if (!hadCache) {
         setState(() {
           _messages = merged;
           _loading = false;
         });
-        WidgetsBinding.instance.addPostFrameCallback((_) => _jumpToBottom());
-      } else if (!_messageListsVisuallySame(_messages, merged)) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (focusLoaded) {
+            _scrollToMessage(focusId);
+          } else {
+            _jumpToBottom();
+          }
+        });
+      } else if (listChanged || _pinnedMessageId != null) {
         // Background refresh: update without blanking; avoid unexpected jumps.
         final pos = _scroll.hasClients ? _scroll.position : null;
         final prevPixels = pos?.pixels;
@@ -172,11 +233,13 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
 
         setState(() => _messages = merged);
 
-        if (prevPixels != null && prevMax != null) {
+        if (listChanged && prevPixels != null && prevMax != null) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (!mounted || !_scroll.hasClients) return;
             final newMax = _scroll.position.maxScrollExtent;
-            if (nearBottom) {
+            if (focusLoaded) {
+              _scrollToMessage(focusId);
+            } else if (nearBottom) {
               _jumpToBottom();
             } else {
               // Keep the same distance from the bottom when content grows.
@@ -192,12 +255,16 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
       ctrl.putCachedMessages(_conversationId, _messages);
 
       final newest = _messages.isNotEmpty ? _messages.last.id : null;
-      await _api.markConversationRead(
-        _conversationId,
-        upToMessageId: newest,
-      );
-      ctrl.markConversationSeen(_conversationId);
-      _socket.conversationRead(_conversationId);
+      // Keep the @ until the mention is actually in view. Otherwise marking
+      // the latest page read would clear an older mention the user never saw.
+      if (focusId.isEmpty || focusLoaded) {
+        await _api.markConversationRead(
+          _conversationId,
+          upToMessageId: newest,
+        );
+        ctrl.markConversationSeen(_conversationId);
+        // REST publishes the read event with this exact message boundary.
+      }
     } catch (e) {
       if (!mounted) return;
       // Keep cached messages visible on refresh failure.
@@ -261,6 +328,7 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
           x.isPinned != y.isPinned ||
           x.isDeleted != y.isDeleted ||
           x.read != y.read ||
+          !ChatV1Utils.messageMentionsEqual(x, y) ||
           x.attachments.length != y.attachments.length ||
           x.reactions.length != y.reactions.length) {
         return false;
@@ -286,6 +354,58 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
     ChatV1Controller.instance.putCachedMessages(_conversationId, _messages);
   }
 
+
+  Future<List<ChatV1Message>> _messagesAround(String messageId) async {
+    try {
+      final before = await _api.listMessages(
+        _conversationId,
+        pageSize: 40,
+        beforeId: messageId,
+      );
+      final after = await _api.listMessages(
+        _conversationId,
+        pageSize: 40,
+        afterId: messageId,
+      );
+      Map<String, dynamic>? center;
+      final raw = await _api.get('${ChatV1Api.chatPrefix}/messages/$messageId');
+      if (raw is Map) {
+        final msg = raw['message'];
+        center = Map<String, dynamic>.from(msg is Map ? msg : raw);
+      }
+      final rows = <Map<String, dynamic>>[
+        ...before,
+        if (center != null) center,
+        ...after,
+      ];
+      final byId = <String, ChatV1Message>{};
+      for (final row in rows) {
+        final message = ChatV1Mapper.messageFromJson(row, currentUserId: _userId);
+        if (message.id.isEmpty) continue;
+        var next = message;
+        if (message.id == messageId &&
+            next.mentions.every((m) => m.userId != _userId) &&
+            _userId.isNotEmpty) {
+          next = next.copyWith(
+            mentions: [
+              ...next.mentions,
+              ChatV1Mention(
+                userId: _userId,
+                name: ChatV1Controller.instance.currentUserName,
+              ),
+            ],
+          );
+        }
+        byId[message.id] = next;
+      }
+      final list = byId.values.toList()
+        ..sort((a, b) => a.sentAt.compareTo(b.sentAt));
+      return list;
+    } catch (_) {
+      return const [];
+    }
+  }
+
   Future<void> _loadOlder() async {
     if (_messages.isEmpty || _loadingOlder) return;
     setState(() => _loadingOlder = true);
@@ -298,21 +418,21 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
       );
       if (rows.isEmpty) return;
       final mapped = rows
-          .map((r) =>
-              ChatV1Mapper.messageFromJson(r, currentUserId: _userId))
+          .map((r) => ChatV1Mapper.messageFromJson(r, currentUserId: _userId))
           .toList();
       if (!mounted) return;
       final existing = _messages.map((m) => m.id).toSet();
-      final older =
-          mapped.where((m) => !existing.contains(m.id)).toList()
-            ..sort((a, b) => a.sentAt.compareTo(b.sentAt));
+      final older = mapped.where((m) => !existing.contains(m.id)).toList()
+        ..sort((a, b) => a.sentAt.compareTo(b.sentAt));
       if (older.isEmpty) return;
 
       final pos = _scroll.hasClients ? _scroll.position : null;
       final prevPixels = pos?.pixels;
       final prevMax = pos?.maxScrollExtent;
 
-      final next = _enrichReplyPreviews([...older, ..._messages]);
+      final next = _applyPinnedFlags(
+        _enrichReplyPreviews([...older, ..._messages]),
+      );
       setState(() => _messages = next);
       _persistMessagesCache();
 
@@ -379,6 +499,36 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
     );
   }
 
+  Future<void> _loadMentionPeople() async {
+    if (mounted) {
+      setState(() {
+        _mentionsLoading = true;
+        _mentionsError = null;
+      });
+    } else {
+      _mentionsLoading = true;
+      _mentionsError = null;
+    }
+    try {
+      final rows = await _api.listMentionParticipants(_conversationId);
+      final people = mentionPeopleFromParticipants(
+        rows,
+        excludeUserId: _userId,
+      );
+      if (!mounted) return;
+      setState(() {
+        _mentionPeople = people;
+        _mentionsLoading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _mentionsLoading = false;
+        _mentionsError = "Couldn't load people";
+      });
+    }
+  }
+
   void _onComposerChanged(String v) {
     _typingDebounce?.cancel();
     _typingIdle?.cancel();
@@ -414,8 +564,7 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
     final msg = Map<String, dynamic>.from(unwrapped['message'] as Map);
     // Extras default to empty in the mapper. Do NOT fan-out HTTP for
     // attachments/reactions/mentions/reads — attachment_uploaded refreshes one msg.
-    final mapped =
-        ChatV1Mapper.messageFromJson(msg, currentUserId: _userId);
+    final mapped = ChatV1Mapper.messageFromJson(msg, currentUserId: _userId);
     if (!mounted) return;
 
     // Clear typing for this sender.
@@ -432,8 +581,7 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
   void _onAttachmentUploaded(dynamic data) async {
     final map = ChatV1Socket.asMap(data);
     if (map == null) return;
-    final messageId =
-        (map['message_id'] ?? map['messageId'] ?? '').toString();
+    final messageId = (map['message_id'] ?? map['messageId'] ?? '').toString();
     if (messageId.isEmpty) return;
     final idx = _messages.indexWhere((m) => m.id == messageId);
     if (idx < 0) return;
@@ -590,7 +738,8 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
 
     final emoji = _emojiFromReactionPayload(map);
     if (emoji == null) return;
-    final uid = (map['user_id'] ?? map['userId'] ?? map['sender_id'])?.toString();
+    final uid =
+        (map['user_id'] ?? map['userId'] ?? map['sender_id'])?.toString();
     final mine = uid != null && uid.isNotEmpty && uid == _userId;
     _applyReaction(messageId, emoji, add: true, mine: mine);
   }
@@ -605,7 +754,8 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
 
     final emoji = _emojiFromReactionPayload(map);
     if (emoji == null) return;
-    final uid = (map['user_id'] ?? map['userId'] ?? map['sender_id'])?.toString();
+    final uid =
+        (map['user_id'] ?? map['userId'] ?? map['sender_id'])?.toString();
     final mine = uid != null && uid.isNotEmpty && uid == _userId;
     _applyReaction(messageId, emoji, add: false, mine: mine);
   }
@@ -710,12 +860,11 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
 
   Future<void> _reactToMessage(ChatV1Message msg, String emoji) async {
     final latest = _messages.cast<ChatV1Message?>().firstWhere(
-          (m) => m?.id == msg.id,
-          orElse: () => msg,
-        ) ??
+              (m) => m?.id == msg.id,
+              orElse: () => msg,
+            ) ??
         msg;
-    final alreadyMine =
-        latest.reactions.any((r) => r.emoji == emoji && r.mine);
+    final alreadyMine = latest.reactions.any((r) => r.emoji == emoji && r.mine);
     // Optimistic UI so the chip shows immediately.
     _applyReaction(latest.id, emoji, add: !alreadyMine, mine: true);
     try {
@@ -799,64 +948,16 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
         _messages = [..._messages, message];
       } else {
         final existing = _messages[idx];
-        final merged = _mergeMessages(existing, message);
+        final merged = mergeConversationScreenMessage(existing, message);
         _messages = [
           for (var i = 0; i < _messages.length; i++)
             if (i == idx) merged else _messages[i],
         ];
       }
+      _messages = _applyPinnedFlags(_messages);
     });
     _persistMessagesCache();
     WidgetsBinding.instance.addPostFrameCallback((_) => _jumpToBottom());
-  }
-
-  ChatV1Message _mergeMessages(ChatV1Message a, ChatV1Message b) {
-    final aHas = a.attachments.isNotEmpty;
-    final bHas = b.attachments.isNotEmpty;
-    if (bHas && !aHas) return b;
-    if (aHas && !bHas) return a;
-    if (bHas && aHas) {
-      // Prefer remote/hydrated paths, but keep local preview bytes if useful.
-      final mergedAtts = <ChatV1Attachment>[];
-      for (var i = 0; i < b.attachments.length; i++) {
-        final nb = b.attachments[i];
-        final na = i < a.attachments.length ? a.attachments[i] : null;
-        mergedAtts.add(
-          ChatV1Attachment(
-            id: nb.id.isNotEmpty ? nb.id : (na?.id ?? nb.id),
-            messageId: nb.messageId ?? na?.messageId,
-            fileName: nb.fileName.isNotEmpty
-                ? nb.fileName
-                : (na?.fileName ?? nb.fileName),
-            contentType: nb.contentType.isNotEmpty
-                ? nb.contentType
-                : (na?.contentType ?? ''),
-            fileSize: nb.fileSize > 0 ? nb.fileSize : (na?.fileSize ?? 0),
-            storagePath: nb.storagePath.isNotEmpty
-                ? nb.storagePath
-                : (na?.storagePath ?? ''),
-            previewBytes: nb.previewBytes ?? na?.previewBytes,
-          ),
-        );
-      }
-      return b.copyWith(
-        attachments: mergedAtts,
-        type: mergedAtts.every((x) => x.isImage)
-            ? ChatV1MsgType.image
-            : (mergedAtts.any((x) => x.isPdf)
-                ? ChatV1MsgType.pdf
-                : ChatV1MsgType.document),
-        fileName: mergedAtts.first.fileName,
-        fileMeta: mergedAtts.first.contentType,
-      );
-    }
-    // Neither has attachments — prefer non-placeholder body / later type.
-    final aPlaceholder = a.body.toLowerCase().startsWith('uploaded:');
-    final bPlaceholder = b.body.toLowerCase().startsWith('uploaded:');
-    if (aPlaceholder && !bPlaceholder) return b;
-    if (!aPlaceholder && bPlaceholder) return a;
-    if (b.type != ChatV1MsgType.text && a.type == ChatV1MsgType.text) return b;
-    return b;
   }
 
   Future<void> _send({List<int>? fileBytes, String? fileName}) async {
@@ -864,9 +965,8 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
     final hasFile = fileBytes != null && fileName != null;
     if ((text.isEmpty && !hasFile) || _sending) return;
     setState(() => _sending = true);
-    final body = text.isNotEmpty
-        ? text
-        : (hasFile ? 'Uploaded: $fileName' : '');
+    final body =
+        text.isNotEmpty ? text : (hasFile ? 'Uploaded: $fileName' : '');
     final replyParentId = _replyToId;
     final parentMsg = replyParentId == null
         ? null
@@ -884,32 +984,21 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
                     ? ChatV1Utils.replySnippet(parentMsg)
                     : 'Message'),
           );
+    _mentionDraft.updateText(_composer.text);
+    final mentionedUserIds = _mentionDraft.mentionedUserIds;
     _composer.clear();
     _stopMyTyping();
     try {
       final parentId = int.tryParse(replyParentId ?? '');
-      Map<String, dynamic>? created;
-
-      // Prefer socket send (same as web); fall back to REST.
-      // File messages go through REST so we can attach uploads reliably.
-      if (!hasFile) {
-        try {
-          created = await _socket.sendMessage(
-            conversationId: _conversationId,
-            body: body,
-            parentMessageId: parentId,
-          );
-        } catch (e) {
-          print('[ChatV1] socket send failed: $e');
-        }
-      }
-      if (created == null) {
-        created = await _api.sendMessage(
-          _conversationId,
-          body: body,
-          parentMessageId: parentId,
-        );
-      }
+      // Persist once through REST. A socket ACK can be lost after the server
+      // has committed; retrying that write over REST would create a duplicate.
+      // Socket events still deliver the saved message to all live participants.
+      final created = await _api.sendMessage(
+        _conversationId,
+        body: body,
+        parentMessageId: parentId,
+        mentionedUserIds: mentionedUserIds,
+      );
 
       var mapped =
           ChatV1Mapper.messageFromJson(created, currentUserId: _userId);
@@ -920,10 +1009,10 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
                 apiPreview == null ||
                 apiPreview.isEmpty);
         mapped = mapped.copyWith(
-          parentMessageId:
-              (mapped.parentMessageId == null || mapped.parentMessageId!.isEmpty)
-                  ? replyParentId
-                  : mapped.parentMessageId,
+          parentMessageId: (mapped.parentMessageId == null ||
+                  mapped.parentMessageId!.isEmpty)
+              ? replyParentId
+              : mapped.parentMessageId,
           replyPreview: useLocal ? replyPreviewLocal : apiPreview,
         );
       }
@@ -935,9 +1024,8 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
         final url = ChatV1Utils.resolveMediaUrl(
           _extractUploadUrl(upload) ?? '',
         );
-        final name =
-            (upload?['filename'] ?? upload?['file_name'] ?? fileName)
-                .toString();
+        final name = (upload?['filename'] ?? upload?['file_name'] ?? fileName)
+            .toString();
         if (url.isNotEmpty) {
           final contentType = _guessContentType(name);
           await _api.attachMessageFiles(mapped.id, [
@@ -1214,6 +1302,12 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
                     ],
                   ),
                 ),
+              if (_taggedMessageId != null)
+                Cv1MentionBanner(
+                  onTap: () => _scrollToMessage(_taggedMessageId!),
+                ),
+              if (_pinnedMessageId != null && _pinnedMessageId!.isNotEmpty)
+                _pinnedBanner(context),
               Expanded(child: _body(context)),
               ChatComposer(
                 controller: _composer,
@@ -1223,6 +1317,10 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
                 onDocument: _pickFile,
                 onChanged: _onComposerChanged,
                 enabled: !_sending,
+                mentionPeople: _mentionPeople,
+                mentionDraft: _mentionDraft,
+                mentionsLoading: _mentionsLoading,
+                mentionsError: _mentionsError,
               ),
             ],
           ),
@@ -1287,8 +1385,7 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
                           label: d.statusDisplay, color: ChatV1Theme.accent),
                       if (d.assigneeLabel.isNotEmpty)
                         Cv1Badge(
-                            label: d.assigneeLabel,
-                            color: ChatV1Theme.mention),
+                            label: d.assigneeLabel, color: ChatV1Theme.mention),
                     ],
                   ),
                 ],
@@ -1325,58 +1422,59 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
       key: _stickKey,
       controller: _scroll,
       child: ListView.builder(
-      controller: _scroll,
-      physics: const BouncingScrollPhysics(),
-      padding: const EdgeInsets.only(top: 8, bottom: 12),
-      itemCount: _messages.length + (_othersTyping ? 2 : 1) + (_loadingOlder ? 1 : 0),
-      itemBuilder: (_, i) {
-        var index = i;
-        if (_loadingOlder) {
-          if (index == 0) {
-            return const Padding(
-              padding: EdgeInsets.all(12),
-              child: Center(
-                child: SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2),
+        controller: _scroll,
+        physics: const BouncingScrollPhysics(),
+        padding: const EdgeInsets.only(top: 8, bottom: 12),
+        itemCount: _messages.length +
+            (_othersTyping ? 2 : 1) +
+            (_loadingOlder ? 1 : 0),
+        itemBuilder: (_, i) {
+          var index = i;
+          if (_loadingOlder) {
+            if (index == 0) {
+              return const Padding(
+                padding: EdgeInsets.all(12),
+                child: Center(
+                  child: SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
                 ),
-              ),
-            );
+              );
+            }
+            index -= 1;
           }
-          index -= 1;
-        }
-        if (index == 0) {
-          final label = _messages.isEmpty
-              ? 'Start of conversation'
-              : ChatV1Utils.dateLabel(_messages.first.sentAt);
-          return _dateChip(context, label);
-        }
-        final msgIndex = index - 1;
-        if (_othersTyping && msgIndex == _messages.length) {
-          return _typingRow(context);
-        }
-        if (msgIndex >= _messages.length) return const SizedBox.shrink();
-        final msg = _messages[msgIndex];
-        final showAuthor = msgIndex == 0 ||
-            _messages[msgIndex - 1].authorId != msg.authorId;
-        return RepaintBoundary(
-          child: Cv1MessageBubble(
-          message: msg,
-          showAuthor: showAuthor,
-          highlighted: _highlightMessageId == msg.id,
-          messageKey: _keyForMessage(msg.id),
-          onLongPress: () => _messageActions(context, msg),
-          onReplyTap: msg.parentMessageId == null ||
-                  msg.parentMessageId!.isEmpty
-              ? null
-              : () => _scrollToMessage(msg.parentMessageId!),
-          onReactionTap: msg.isDeleted
-              ? null
-              : (emoji) => _reactToMessage(msg, emoji),
-        ),
-        );
-      },
+          if (index == 0) {
+            final label = _messages.isEmpty
+                ? 'Start of conversation'
+                : ChatV1Utils.dateLabel(_messages.first.sentAt);
+            return _dateChip(context, label);
+          }
+          final msgIndex = index - 1;
+          if (_othersTyping && msgIndex == _messages.length) {
+            return _typingRow(context);
+          }
+          if (msgIndex >= _messages.length) return const SizedBox.shrink();
+          final msg = _messages[msgIndex];
+          final showAuthor =
+              msgIndex == 0 || _messages[msgIndex - 1].authorId != msg.authorId;
+          return RepaintBoundary(
+            child: Cv1MessageBubble(
+              message: msg,
+              showAuthor: showAuthor,
+              highlighted: _highlightMessageId == msg.id,
+              messageKey: _keyForMessage(msg.id),
+              onLongPress: () => _messageActions(context, msg),
+              onReplyTap:
+                  msg.parentMessageId == null || msg.parentMessageId!.isEmpty
+                      ? null
+                      : () => _scrollToMessage(msg.parentMessageId!),
+              onReactionTap:
+                  msg.isDeleted ? null : (emoji) => _reactToMessage(msg, emoji),
+            ),
+          );
+        },
       ),
     );
   }
@@ -1470,8 +1568,7 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
       // +1 accounts for the leading date chip in the list.
       final itemIndex = idx + 1 + (_loadingOlder ? 1 : 0);
       final ratio = itemIndex / (_messages.length + 2);
-      final target =
-          (ratio * _scroll.position.maxScrollExtent).clamp(
+      final target = (ratio * _scroll.position.maxScrollExtent).clamp(
         0.0,
         _scroll.position.maxScrollExtent,
       );
@@ -1526,27 +1623,100 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
     _toast('Copied');
   }
 
-  Future<void> _pinMessage(ChatV1Message msg) async {
+  Future<void> _takeConversationPin(
+    Future<Map<String, dynamic>> detailFuture,
+  ) async {
     try {
-      if (msg.isPinned) {
+      final detail = await detailFuture;
+      final pinned = _pinnedPayload(detail);
+      if (pinned == null || pinned['is_deleted'] == true) {
+        _pinnedMessageId = '';
+        _pinnedPreview = null;
+        return;
+      }
+      final id = pinned['id']?.toString() ?? '';
+      _pinnedMessageId = id;
+      _pinnedPreview = id.isEmpty ? null : _previewFromPinnedMap(pinned);
+    } catch (_) {
+      // Keep the last server pin. A failed details call must not clear it.
+    }
+  }
+
+  Map<String, dynamic>? _pinnedPayload(Map<String, dynamic> detail) {
+    final direct = detail['pinned_message'];
+    if (direct is Map) return Map<String, dynamic>.from(direct);
+    final nested = detail['conversation'];
+    if (nested is Map && nested['pinned_message'] is Map) {
+      return Map<String, dynamic>.from(nested['pinned_message'] as Map);
+    }
+    return null;
+  }
+
+  String _previewFromPinnedMap(Map<String, dynamic> pinned) {
+    final body = (pinned['body'] ?? pinned['body_placeholder'] ?? '').toString();
+    final visible =
+        ChatV1Importance.parse(body).body.replaceAll(RegExp(r'\s+'), ' ').trim();
+    if (visible.isNotEmpty) return visible;
+    final name = (pinned['file_name'] ?? '').toString();
+    return name.isEmpty ? 'Pinned message' : name;
+  }
+
+  String _previewForMessage(ChatV1Message msg) {
+    final visible = ChatV1Importance.parse(msg.body)
+        .body
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+    if (visible.isNotEmpty) return visible;
+    final name = msg.fileName ?? '';
+    return name.isEmpty ? 'Pinned message' : name;
+  }
+
+  List<ChatV1Message> _applyPinnedFlags(List<ChatV1Message> messages) {
+    final id = _pinnedMessageId;
+    if (id == null) return messages;
+    var changed = false;
+    final next = <ChatV1Message>[];
+    for (final message in messages) {
+      final pinned = id.isNotEmpty && message.id == id;
+      if (message.isPinned == pinned) {
+        next.add(message);
+      } else {
+        changed = true;
+        next.add(message.copyWith(isPinned: pinned));
+      }
+    }
+    return changed ? next : messages;
+  }
+
+  Future<void> _pinMessage(ChatV1Message msg) async {
+    final already = msg.isPinned ||
+        (_pinnedMessageId != null &&
+            _pinnedMessageId!.isNotEmpty &&
+            _pinnedMessageId == msg.id);
+    try {
+      if (already) {
         await _api.unpinConversation(_conversationId);
+        if (!mounted) return;
         setState(() {
-          _messages = [
-            for (final m in _messages)
-              m.id == msg.id ? m.copyWith(isPinned: false) : m.copyWith(isPinned: false),
-          ];
+          _pinnedMessageId = '';
+          _pinnedPreview = null;
+          _messages = _applyPinnedFlags(_messages);
         });
         _persistMessagesCache();
         _toast('Unpinned');
       } else {
-        await _api.pinMessage(msg.id);
+        final data = await _api.pinMessage(msg.id);
+        final pinned = data['pinned_message'] ?? data['message'];
+        final id = pinned is Map
+            ? (pinned['id']?.toString() ?? msg.id)
+            : msg.id;
+        if (!mounted) return;
         setState(() {
-          _messages = [
-            for (final m in _messages)
-              m.id == msg.id
-                  ? m.copyWith(isPinned: true)
-                  : m.copyWith(isPinned: false),
-          ];
+          _pinnedMessageId = id;
+          _pinnedPreview = pinned is Map
+              ? _previewFromPinnedMap(Map<String, dynamic>.from(pinned))
+              : _previewForMessage(msg);
+          _messages = _applyPinnedFlags(_messages);
         });
         _persistMessagesCache();
         _toast('Pinned');
@@ -1556,8 +1726,77 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
     }
   }
 
+  Widget _pinnedBanner(BuildContext context) {
+    final id = _pinnedMessageId;
+    if (id == null || id.isEmpty) return const SizedBox.shrink();
+    ChatV1Message? message;
+    for (final item in _messages) {
+      if (item.id == id && !item.isDeleted) {
+        message = item;
+        break;
+      }
+    }
+    final preview = message == null ? (_pinnedPreview ?? 'Pinned message') : _previewForMessage(message);
+    return Material(
+      color: ChatV1Theme.card(context),
+      child: InkWell(
+        onTap: () => _scrollToMessage(id),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 8, 4, 8),
+          child: Row(
+            children: [
+              const Icon(Icons.push_pin_rounded, size: 16, color: ChatV1Theme.accent),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  preview,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: ChatV1Theme.text(context),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              IconButton(
+                tooltip: 'Unpin',
+                icon: Icon(Icons.close, size: 18, color: ChatV1Theme.textMuted(context)),
+                onPressed: () {
+                  final pinned = message;
+                  if (pinned != null) {
+                    _pinMessage(pinned);
+                  } else {
+                    _unpinWithoutMessage();
+                  }
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _unpinWithoutMessage() async {
+    try {
+      await _api.unpinConversation(_conversationId);
+      if (!mounted) return;
+      setState(() {
+        _pinnedMessageId = '';
+        _pinnedPreview = null;
+        _messages = _applyPinnedFlags(_messages);
+      });
+      _persistMessagesCache();
+      _toast('Unpinned');
+    } catch (e) {
+      _toast(e.toString().replaceFirst('Exception: ', ''));
+    }
+  }
+
   Future<void> _editMessage(ChatV1Message msg) async {
-    final controller = TextEditingController(text: msg.body);
+    final visible = ChatV1Importance.parse(msg.body).body;
+    final controller = TextEditingController(text: visible);
     final next = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -1585,7 +1824,7 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
       ),
     );
     controller.dispose();
-    if (next == null || next.isEmpty || next == msg.body) return;
+    if (next == null || next.isEmpty || next == visible) return;
     try {
       final updated = await _api.editMessage(msg.id, body: next);
       final mapped =
@@ -1643,19 +1882,31 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
   Future<void> _shareToGeneral(ChatV1Message msg) async {
     try {
       final result = await _api.shareMessageToGeneral(msg.id);
-      final generalId = (result['general_conversation_id'] ??
-              result['conversation_id'] ??
-              '')
-          .toString();
+      final generalId =
+          (result['general_conversation_id'] ?? result['conversation_id'] ?? '')
+              .toString();
+      final source = result['source_message'];
+      if (source is Map && mounted) {
+        final newBody = (source['body'] ?? '').toString();
+        if (newBody.isNotEmpty) {
+          setState(() {
+            _messages = [
+              for (final m in _messages)
+                if (m.id == msg.id) m.copyWith(body: newBody) else m,
+            ];
+          });
+          _persistMessagesCache();
+        }
+      }
       _toast(
-        'Shared to General',
+        'Marked as important',
         action: generalId.isEmpty
             ? null
             : SnackBarAction(
                 label: 'Open',
                 onPressed: () => _openConversationById(
                   generalId,
-                  titleFallback: 'General',
+                  titleFallback: 'Important',
                 ),
               ),
       );
@@ -1670,9 +1921,11 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
   }) async {
     final ctrl = ChatV1Controller.instance;
     final existing = ctrl.findChatById(conversationId) ??
-        (titleFallback.toLowerCase() == 'general'
-            ? ctrl.findGeneralChannel()
-            : null);
+        (titleFallback.toLowerCase() == 'important'
+            ? ctrl.findImportantChannel()
+            : titleFallback.toLowerCase() == 'general'
+                ? ctrl.findGeneralChannel()
+                : null);
     final meta = existing != null
         ? ctrl.metaFor(existing)
         : ChatV1ConvMeta(
@@ -1706,7 +1959,7 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
 
   void _messageActions(BuildContext context, ChatV1Message msg) {
     if (msg.isDeleted) return;
-    final canShareGeneral = !_isGeneralChannel;
+    final canShareGeneral = !_isImportantChannel;
     showModalBottomSheet(
       context: context,
       backgroundColor: ChatV1Theme.secondary(context),
@@ -1715,7 +1968,8 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
       ),
       builder: (sheetContext) => SafeArea(
-        child: Padding(
+        child: SingleChildScrollView(
+          child: Padding(
           padding: const EdgeInsets.fromLTRB(8, 10, 8, 12),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -1759,7 +2013,7 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
               if (canShareGeneral)
                 ListTile(
                   leading: const Icon(Icons.campaign_outlined),
-                  title: const Text('Share to General'),
+                  title: const Text('Mark as important'),
                   onTap: () {
                     Navigator.pop(sheetContext);
                     _shareToGeneral(msg);
@@ -1807,6 +2061,7 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
               ],
             ],
           ),
+        ),
         ),
       ),
     );

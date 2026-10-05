@@ -50,6 +50,12 @@ import 'NavMenu.dart';
 import 'ProfileScreen.dart';
 import 'notifcations.dart';
 import 'Dpr.dart';
+import 'AddDailyUpdate.dart';
+import 'AttendanceScreen.dart';
+import 'TestReportsScreen.dart';
+import 'project_picker.dart';
+import 'stock_report.dart';
+import 'work_orders_screen.dart';
 import 'services/client_generation_service.dart';
 import 'services/legacy_client_features.dart';
 import 'services/mobile_bottom_nav.dart';
@@ -362,22 +368,26 @@ class UserDashboardLayoutState extends State<UserDashboardLayout> {
   List<String> _resolvedBottomNavKeys() {
     final surface = _bottomNavSurface;
     final snapshot = MobileBottomNavService.instance.snapshot(surface);
-    var keys = ensureProjectHomePaymentsTab(
-      resolveMobileBottomNavActionKeys(
-        surface: surface,
-        fallbackKeys: fallbackBottomNavKeysFor(surface),
-        snapshot: snapshot,
-      ),
+    var keys = resolveMobileBottomNavActionKeys(
+      surface: surface,
+      fallbackKeys: fallbackBottomNavKeysFor(surface),
+      snapshot: snapshot,
     );
-    // Docs is not on the project home bottom bar (use quick actions / More).
-    // Clients also drop "More" — the side drawer is removed.
-    keys = withoutProjectHomeDocsTabs(keys);
-    if (_layoutIsClientUser) {
-      keys = keys.where((key) => key != kMobileBottomNavMoreKey).toList();
-    }
-    // "For me" / client portal: clients + Super Admin only.
-    if (!_layoutIsClientUser && !_layoutIsSuperAdmin) {
-      keys = keys.where((key) => key != 'client_portal').toList();
+    // No saved config yet: keep the previous project bar (Payments + Docs).
+    // A saved Mobile → Bottom Nav config is the bar itself.
+    if (snapshot?.configured != true) {
+      keys = ensureProjectHomePaymentsTab(keys);
+      // Docs tab: staff only (never clients). Clients also drop "More" —
+      // the side drawer is removed and remaining screens are quick actions.
+      keys = _layoutIsClientUser
+          ? withoutProjectHomeDocsTabs(keys)
+              .where((key) => key != kMobileBottomNavMoreKey)
+              .toList()
+          : ensureProjectHomeDocsTab(keys);
+      // "For me" / client portal: clients + Super Admin only.
+      if (!_layoutIsClientUser && !_layoutIsSuperAdmin) {
+        keys = keys.where((key) => key != 'client_portal').toList();
+      }
     }
     final previous = _lastLoggedBottomNavKeys;
     if (previous == null ||
@@ -3283,8 +3293,142 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
 
   List<Map<String, dynamic>> _pinnedQuickActions(
       List<Map<String, dynamic>> items) {
-    // Project home (clients + staff opening a project) uses the fixed 4×2 set.
-    return _hardcodedPinnedQuickActions(items);
+    final snapshot = MobileQuickActionsService.instance
+        .snapshot(MobileQuickActionSurface.projectHomeNew);
+    // Saved Mobile → Quick Actions config is the full grid for this role.
+    // Do not put Payments, Slots, or filler tiles back after Super Admin
+    // removed them, and do not drop an action they turned on.
+    if (snapshot != null && snapshot.configured) {
+      return resolveMobileQuickActions(
+        surface: MobileQuickActionSurface.projectHomeNew,
+        catalog: _configurableProjectQuickActions(items),
+        fallback: const [],
+        snapshot: snapshot,
+      );
+    }
+
+    // No saved config yet: keep the previous hardcoded project-home grid.
+    if (_isClientUser) {
+      return _hardcodedPinnedQuickActions(items);
+    }
+
+    final actions = resolveMobileQuickActions(
+      surface: MobileQuickActionSurface.projectHomeNew,
+      catalog: items,
+      fallback: _hardcodedPinnedQuickActions(items),
+      snapshot: snapshot,
+    );
+    final visible = actions
+        .where((item) => item['title']?.toString() != '3D House Tour')
+        .toList();
+    final hasSlots = visible.any((item) => item['title']?.toString() == 'Slots');
+    if (!hasSlots) {
+      for (final item in items) {
+        if (item['title']?.toString() == 'Slots') {
+          visible.insert(visible.isEmpty ? 0 : 1, item);
+          break;
+        }
+      }
+    }
+    final hasPayments =
+        visible.any((item) => item['title']?.toString() == 'Payments');
+    if (!hasPayments) {
+      for (final item in items) {
+        if (item['title']?.toString() == 'Payments') {
+          final insertAt = visible.length < 4 ? visible.length : 4;
+          visible.insert(insertAt, item);
+          break;
+        }
+      }
+    }
+    return _normalizeQuickActionSlots(visible, items);
+  }
+
+  /// Every New Project Home action the Quick Actions admin can enable.
+  /// Role menus stay as the base; extras fill actions that menu never listed.
+  List<Map<String, dynamic>> _configurableProjectQuickActions(
+    List<Map<String, dynamic>> items,
+  ) {
+    final byTitle = _quickActionCatalogByTitle(items);
+    for (final extra in _extraProjectQuickActions()) {
+      final title = extra['title']?.toString();
+      if (title == null || title.isEmpty) continue;
+      byTitle.putIfAbsent(title, () => extra);
+    }
+    return byTitle.values.toList();
+  }
+
+  List<Map<String, dynamic>> _extraProjectQuickActions() {
+    return [
+      {
+        'title': 'Stock Report',
+        'icon': Icons.inventory,
+        'route': () => const StockReportLayout(),
+      },
+      {
+        'title': 'Create Indent',
+        'icon': Icons.add_box_outlined,
+        'route': () async {
+          final prefs = await SharedPreferences.getInstance();
+          return IndentsScreenLayout(
+            initialTab: kIndentsCreateTab,
+            initialProjectId: prefs.getString('project_id'),
+            initialProjectName: prefs.getString('client_name'),
+          );
+        },
+      },
+      {
+        'title': 'Attendance',
+        'icon': Icons.fingerprint_rounded,
+        'route': () => const AttendanceScreen(),
+      },
+      {
+        'title': 'Test Reports',
+        'icon': Icons.science,
+        'route': () async {
+          final prefs = await SharedPreferences.getInstance();
+          final projectId = prefs.getString('project_id');
+          return TestReportsScreen(
+            fixedProjectId: projectId,
+            projectFixed: projectId != null && projectId.isNotEmpty,
+          );
+        },
+      },
+      {
+        'title': 'My Notifications',
+        'icon': Icons.notifications_on,
+        'route': () => Notifications(),
+      },
+      {
+        'title': 'Projects',
+        'icon': Icons.list,
+        'route': () => const SizedBox.shrink(),
+      },
+      {
+        'title': 'Work orders',
+        'icon': Icons.engineering_outlined,
+        'route': () async {
+          final prefs = await SharedPreferences.getInstance();
+          return WorkOrdersScreenLayout(
+            salesSopId: prefs.getString('sales_sop_id'),
+            projectId: prefs.getString('project_id'),
+            initialProjectName: prefs.getString('client_name'),
+          );
+        },
+      },
+      {
+        'title': 'Updates',
+        'icon': Icons.campaign_rounded,
+        'route': () async {
+          if (_isClientUser) return const DprScreen(title: 'Updates');
+          final prefs = await SharedPreferences.getInstance();
+          return AddDailyUpdate(
+            initialProjectId: prefs.getString('project_id'),
+            initialProjectName: prefs.getString('client_name'),
+          );
+        },
+      },
+    ];
   }
 
   Map<String, Map<String, dynamic>> _quickActionCatalogByTitle(
@@ -3924,11 +4068,16 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
       await showFeatureComingSoon(context, featureName: title);
       return;
     }
+    if (title == 'Projects') {
+      await ProjectPickerScreen.show(context);
+      return;
+    }
     if (_openingMenu) return;
     _openingMenu = true;
     try {
       final routeResult = item['route']();
       final widget = routeResult is Future ? await routeResult : routeResult;
+      if (widget is! Widget) return;
       await _navigateToWidget(widget);
     } finally {
       _openingMenu = false;
@@ -4000,11 +4149,16 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
     if (canonical == 'documents' || canonical == 'documents_v1') {
       return;
     }
+    if (canonical == 'projects') {
+      await ProjectPickerScreen.show(context);
+      return;
+    }
 
     final title = flutterTitleForMobileBottomNav(surface, canonical);
     if (title == null) return;
     Map<String, dynamic>? item;
-    for (final candidate in getMenuItems()) {
+    for (final candidate
+        in _configurableProjectQuickActions(getMenuItems())) {
       if (candidate['title']?.toString() == title) {
         item = candidate;
         break;

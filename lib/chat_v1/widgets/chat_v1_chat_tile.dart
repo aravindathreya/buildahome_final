@@ -29,6 +29,7 @@ class Cv1ChatTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final unread = item.unread > 0;
+    final tagged = item.mentions > 0;
 
     return Dismissible(
       key: ValueKey('swipe_${item.id}_${item.isPinned}_${item.isMuted}'),
@@ -58,7 +59,10 @@ class Cv1ChatTile extends StatelessWidget {
       child: Material(
         color: selected
             ? ChatV1Theme.accentSoft
-            : ChatV1Theme.bg(context),
+            : tagged
+                ? Color.alphaBlend(ChatV1Theme.unread.withValues(alpha: 0.08),
+                    ChatV1Theme.bg(context))
+                : ChatV1Theme.bg(context),
         child: InkWell(
           onTap: onTap,
           onLongPress: () {
@@ -71,7 +75,9 @@ class Cv1ChatTile extends StatelessWidget {
               children: [
                 Cv1Avatar(
                   initials: item.initials ??
-                      (item.title.isNotEmpty ? item.title[0].toUpperCase() : '?'),
+                      (item.title.isNotEmpty
+                          ? item.title[0].toUpperCase()
+                          : '?'),
                   color: item.accent,
                   online: item.isOnline,
                   icon: item.initials == null ? item.icon : null,
@@ -85,7 +91,8 @@ class Cv1ChatTile extends StatelessWidget {
                         children: [
                           if (item.isPinned) ...[
                             Icon(Icons.push_pin_rounded,
-                                size: 13, color: ChatV1Theme.textMuted(context)),
+                                size: 13,
+                                color: ChatV1Theme.textMuted(context)),
                             const SizedBox(width: 4),
                           ],
                           Expanded(
@@ -103,7 +110,7 @@ class Cv1ChatTile extends StatelessWidget {
                           Text(
                             ChatV1Utils.timeAgo(item.lastActivity),
                             style: TextStyle(
-                              color: unread
+                              color: (unread || tagged)
                                   ? ChatV1Theme.unread
                                   : ChatV1Theme.textMuted(context),
                               fontSize: 12,
@@ -136,39 +143,48 @@ class Cv1ChatTile extends StatelessWidget {
                             ),
                           Expanded(
                             child: Text(
-                              item.isTyping ? 'typing…' : item.lastMessage,
+                              item.isTyping
+                                  ? 'typing…'
+                                  : tagged
+                                      ? 'You were tagged · ${item.lastMessage}'
+                                      : item.lastMessage,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
                                 color: item.isTyping
                                     ? ChatV1Theme.accent
-                                    : ChatV1Theme.textSecondary(context),
+                                    : tagged
+                                        ? ChatV1Theme.unread
+                                        : ChatV1Theme.textSecondary(context),
                                 fontSize: 14,
                                 fontStyle: item.isTyping
                                     ? FontStyle.italic
                                     : FontStyle.normal,
-                                fontWeight: unread
-                                    ? FontWeight.w600
-                                    : FontWeight.w400,
+                                fontWeight:
+                                    unread ? FontWeight.w600 : FontWeight.w400,
                               ),
                             ),
                           ),
                           if (item.mentions > 0) ...[
                             const SizedBox(width: 6),
-                            Container(
-                              width: 18,
-                              height: 18,
-                              alignment: Alignment.center,
-                              decoration: const BoxDecoration(
-                                color: ChatV1Theme.mention,
-                                shape: BoxShape.circle,
-                              ),
-                              child: const Text(
-                                '@',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w800,
+                            Tooltip(
+                              message:
+                                  '${item.mentions} unread mentions of you',
+                              child: Container(
+                                width: 20,
+                                height: 20,
+                                alignment: Alignment.center,
+                                decoration: BoxDecoration(
+                                  color: ChatV1Theme.unread,
+                                  borderRadius: BorderRadius.circular(99),
+                                ),
+                                child: const Text(
+                                  '@',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w800,
+                                  ),
                                 ),
                               ),
                             ),

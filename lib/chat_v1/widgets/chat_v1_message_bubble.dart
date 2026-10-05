@@ -3,6 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../chat_v1_controller.dart';
+import '../chat_v1_importance.dart';
+import '../chat_v1_mentions.dart';
 import '../chat_v1_models.dart';
 import '../chat_v1_theme.dart';
 import '../chat_v1_utils.dart';
@@ -36,6 +39,10 @@ class Cv1MessageBubble extends StatelessWidget {
     }
 
     final mine = message.isMine;
+    final taggedMe = !mine &&
+        !message.isDeleted &&
+        message.mentions
+            .any((m) => m.userId == ChatV1Controller.instance.currentUserId);
     return Padding(
       key: messageKey,
       padding: EdgeInsets.only(
@@ -60,7 +67,11 @@ class Cv1MessageBubble extends StatelessWidget {
                 decoration: BoxDecoration(
                   color: mine
                       ? ChatV1Theme.bubbleMe(context)
-                      : ChatV1Theme.bubbleOther(context),
+                      : taggedMe
+                          ? Color.alphaBlend(
+                              ChatV1Theme.unread.withValues(alpha: 0.12),
+                              ChatV1Theme.bubbleOther(context))
+                          : ChatV1Theme.bubbleOther(context),
                   borderRadius: BorderRadius.only(
                     topLeft: const Radius.circular(14),
                     topRight: const Radius.circular(14),
@@ -70,26 +81,59 @@ class Cv1MessageBubble extends StatelessWidget {
                   boxShadow: ChatV1Theme.shadow(context),
                   border: highlighted
                       ? Border.all(color: ChatV1Theme.accent, width: 1.5)
-                      : mine
-                          ? null
-                          : Border.all(
-                              color: ChatV1Theme.border(context)
-                                  .withValues(alpha: 0.6)),
+                      : taggedMe
+                          ? Border.all(color: ChatV1Theme.unread, width: 1.2)
+                          : mine
+                              ? null
+                              : Border.all(
+                                  color: ChatV1Theme.border(context)
+                                      .withValues(alpha: 0.6)),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    if (!mine && showAuthor)
+                    if (!mine && showAuthor && _importance.kind != 'shared')
                       Padding(
                         padding: const EdgeInsets.only(bottom: 3),
                         child: Text(
                           message.authorName,
-                          style: TextStyle(
-                            color: message.authorColor,
-                            fontSize: 12.5,
-                            fontWeight: FontWeight.w700,
-                          ),
+                          style: _nameStyle,
                         ),
+                      ),
+                    if (!message.isDeleted && _importance.kind.isNotEmpty)
+                      _importanceCaption(context),
+                    if (taggedMe)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 7),
+                        child: Row(mainAxisSize: MainAxisSize.min, children: [
+                          Container(
+                            key: const ValueKey('personal-mention-chip'),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 7, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: ChatV1Theme.unread.withValues(alpha: 0.18),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text('@You',
+                                style: TextStyle(
+                                    color: Theme.of(context).brightness ==
+                                            Brightness.dark
+                                        ? const Color(0xFF7DE5A8)
+                                        : const Color(0xFF157A42),
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w700)),
+                          ),
+                          const SizedBox(width: 8),
+                          Flexible(
+                              child: Text('You were tagged here',
+                                  style: TextStyle(
+                                      color: Theme.of(context).brightness ==
+                                              Brightness.dark
+                                          ? const Color(0xFF7DE5A8)
+                                          : const Color(0xFF157A42),
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600))),
+                        ]),
                       ),
                     if (message.replyPreview != null) _reply(context),
                     if (message.isDeleted)
@@ -107,17 +151,10 @@ class Cv1MessageBubble extends StatelessWidget {
                       _body(context),
                     if (!message.isDeleted &&
                         message.attachments.isNotEmpty &&
-                        message.body.trim().isNotEmpty &&
-                        !message.body.trim().toLowerCase().startsWith('uploaded:')) ...[
+                        _visibleBody.trim().isNotEmpty &&
+                        !_visibleBody.trim().toLowerCase().startsWith('uploaded:')) ...[
                       const SizedBox(height: 6),
-                      Text(
-                        message.body,
-                        style: TextStyle(
-                          color: ChatV1Theme.text(context),
-                          fontSize: 15,
-                          height: 1.35,
-                        ),
-                      ),
+                      _mentionText(context, _visibleBody),
                     ],
                     const SizedBox(height: 3),
                     Row(
@@ -200,6 +237,53 @@ class Cv1MessageBubble extends StatelessWidget {
               ],
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  ChatV1Importance get _importance => ChatV1Importance.parse(message.body);
+
+  String get _visibleBody =>
+      _importance.kind.isEmpty ? message.body : _importance.body;
+
+  TextStyle get _nameStyle => TextStyle(
+        fontFamily: ChatV1Theme.fontFamily,
+        color: message.authorColor,
+        fontSize: 12.5,
+        fontWeight: FontWeight.w700,
+        height: 1.2,
+      );
+
+  Widget _importanceCaption(BuildContext context) {
+    final imp = _importance;
+    final name = imp.by.isNotEmpty
+        ? imp.by
+        : (imp.kind == 'shared'
+            ? (message.isMine ? 'You' : message.authorName)
+            : '');
+    final channel = imp.channel.isEmpty ? 'this chat' : imp.channel;
+    final label = imp.kind == 'shared'
+        ? 'marked as important · shared from $channel'
+        : 'marked as important';
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Text.rich(
+        TextSpan(
+          children: [
+            if (name.isNotEmpty) TextSpan(text: name, style: _nameStyle),
+            if (name.isNotEmpty) const TextSpan(text: ' '),
+            TextSpan(
+              text: label,
+              style: TextStyle(
+                fontFamily: ChatV1Theme.fontFamily,
+                color: ChatV1Theme.textMuted(context),
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+                height: 1.25,
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -647,6 +731,50 @@ class Cv1MessageBubble extends StatelessWidget {
     await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 
+
+  Widget _mentionText(BuildContext context, String visible) {
+    final base = TextStyle(
+      fontFamily: ChatV1Theme.fontFamily,
+      color: ChatV1Theme.text(context),
+      fontSize: 15,
+      height: 1.35,
+    );
+    final ctrl = ChatV1Controller.instance;
+    final segments = splitChatMentionSegments(
+      visible,
+      currentUserId: ctrl.currentUserId,
+      currentUserName: ctrl.currentUserName,
+      mentions: message.mentions,
+    );
+    if (!segments.any((s) => s.isMention)) {
+      return Text(visible, style: base);
+    }
+    final mentionStyle = base.copyWith(
+      color: Theme.of(context).brightness == Brightness.dark
+          ? const Color(0xFF8AC8FF)
+          : const Color(0xFF0B5CAB),
+      fontWeight: FontWeight.w600,
+    );
+    final selfStyle = mentionStyle.copyWith(
+      color: Theme.of(context).brightness == Brightness.dark
+          ? const Color(0xFF7DE5A8)
+          : const Color(0xFF157A42),
+    );
+    return Text.rich(
+      TextSpan(
+        children: [
+          for (final segment in segments)
+            TextSpan(
+              text: segment.text,
+              style: segment.isSelf
+                  ? selfStyle
+                  : segment.isMention ? mentionStyle : base,
+            ),
+        ],
+      ),
+    );
+  }
+
   Widget _body(BuildContext context) {
     switch (message.type) {
       case ChatV1MsgType.pdf:
@@ -666,14 +794,9 @@ class Cv1MessageBubble extends StatelessWidget {
       case ChatV1MsgType.siteUpdate:
         return _erpCard(context, Icons.task_alt_rounded, 'Task');
       default:
-        return Text(
-          message.body,
-          style: TextStyle(
-            color: ChatV1Theme.text(context),
-            fontSize: 15,
-            height: 1.35,
-          ),
-        );
+        final visible = _visibleBody;
+        if (visible.trim().isEmpty) return const SizedBox.shrink();
+        return _mentionText(context, visible);
     }
   }
 
