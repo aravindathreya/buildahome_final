@@ -630,7 +630,7 @@ class NavMenuWidgetState extends State<NavMenuWidget> {
     if (isClient || rbac.canViewSync(currentRole, RBACService.payments)) {
       projectEntries.add(_NavEntry(
         actionKey: 'nt_payments',
-        title: 'Upgrades and Additions',
+        title: 'Upgrades and Additions Cost',
         icon: Icons.receipt_long_rounded,
         route: isClient
             ? () => const PaymentTaskWidget(

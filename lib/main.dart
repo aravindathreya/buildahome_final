@@ -1,6 +1,8 @@
 // Built in packages
+import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:screen_protector/screen_protector.dart';
 import 'Skin2/loginPage.dart';
 import 'UserDashboard.dart';
 import 'app_navigator.dart';
@@ -15,10 +17,22 @@ export 'app_navigator.dart';
 final UserDashboardNavigatorObserver globalNavigatorObserver =
     UserDashboardNavigatorObserver();
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   GestureBinding.instance.resamplingEnabled = true;
+  await _enableScreenshotProtection();
   runApp(App());
+}
+
+/// Blocks screenshots / screen capture for the whole app (all routes).
+Future<void> _enableScreenshotProtection() async {
+  if (kIsWeb) return;
+  try {
+    await ScreenProtector.preventScreenshotOn();
+    await ScreenProtector.protectDataLeakageOn();
+  } catch (_) {
+    // Native channel may be unavailable on desktop/unsupported targets.
+  }
 }
 
 class App extends StatefulWidget {

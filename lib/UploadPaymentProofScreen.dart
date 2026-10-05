@@ -23,13 +23,19 @@ class UploadPaymentProofScreen extends StatefulWidget {
   final bool showPendingPayments;
 
   /// When true, render only the body (no scaffold / back header) for embedding
-  /// inside Client Portal / For me tabs.
+  /// inside Payments / other tabs.
   final bool embedded;
+
+  /// When false (e.g. Payments → Previous payment), hide upload controls and
+  /// show proofs with bill association only. Upload stays available when the
+  /// client opens this screen from a payment-pending task.
+  final bool allowUpload;
 
   const UploadPaymentProofScreen({
     super.key,
     this.showPendingPayments = false,
     this.embedded = false,
+    this.allowUpload = true,
   });
 
   @override
@@ -200,6 +206,8 @@ class _UploadPaymentProofScreenState extends State<UploadPaymentProofScreen>
     _noProject = false;
   }
 
+  bool get _uploadEnabled => widget.allowUpload && _canUpload;
+
   List<PaymentProofStageSection> get _gallerySections =>
       PaymentProofItem.buildGallerySections(
         items: _items,
@@ -237,7 +245,7 @@ class _UploadPaymentProofScreenState extends State<UploadPaymentProofScreen>
   }
 
   Future<void> _takePhoto({int? stageTaskId}) async {
-    if (_uploading || !_canUpload) return;
+    if (_uploading || !_uploadEnabled) return;
     if (!await ensureCameraPermission(context)) return;
     if (!mounted) return;
     try {
@@ -255,7 +263,7 @@ class _UploadPaymentProofScreenState extends State<UploadPaymentProofScreen>
   }
 
   Future<void> _chooseFromGalleryOrFiles({int? stageTaskId}) async {
-    if (_uploading || !_canUpload) return;
+    if (_uploading || !_uploadEnabled) return;
     final choice = await showModalBottomSheet<String>(
       context: context,
       backgroundColor: AppTheme.darkBackgroundSecondary,
@@ -614,29 +622,43 @@ class _UploadPaymentProofScreenState extends State<UploadPaymentProofScreen>
             _buildPendingPaymentsSection(),
             const SizedBox(height: 22),
           ],
-          Text(
-            'Upload screenshots or photos of your payment (UPI, bank transfer, cheque, or receipt). You can add more than one file.',
-            style: TextStyle(
-              color: _textSecondary,
-              fontSize: 13.5,
-              height: 1.4,
+          if (widget.allowUpload) ...[
+            Text(
+              'Upload screenshots or photos of your payment (UPI, bank transfer, cheque, or receipt). You can add more than one file.',
+              style: TextStyle(
+                color: _textSecondary,
+                fontSize: 13.5,
+                height: 1.4,
+              ),
             ),
-          ),
-          const SizedBox(height: 14),
+            const SizedBox(height: 14),
+          ] else ...[
+            Text(
+              'Previous payment screenshots and the bills they were applied to.',
+              style: TextStyle(
+                color: _textSecondary,
+                fontSize: 13.5,
+                height: 1.4,
+              ),
+            ),
+            const SizedBox(height: 14),
+          ],
           if (_error != null) ...[
             _ErrorBanner(message: _error!),
             const SizedBox(height: 14),
           ],
-          _UploadZone(
-            enabled: _canUpload && !_uploading,
-            uploading: _uploading,
-            onTakePhoto: _takePhoto,
-            onChooseFiles: _chooseFromGalleryOrFiles,
-          ),
-          const SizedBox(height: 22),
+          if (widget.allowUpload) ...[
+            _UploadZone(
+              enabled: _uploadEnabled && !_uploading,
+              uploading: _uploading,
+              onTakePhoto: _takePhoto,
+              onChooseFiles: _chooseFromGalleryOrFiles,
+            ),
+            const SizedBox(height: 22),
+          ],
           if (_items.isEmpty) ...[
             Text(
-              'Uploaded proofs',
+              widget.allowUpload ? 'Uploaded proofs' : 'Previous payment',
               style: TextStyle(
                 color: _textPrimary,
                 fontSize: 15.5,
@@ -655,7 +677,40 @@ class _UploadPaymentProofScreenState extends State<UploadPaymentProofScreen>
 
   /// Gallery-style stage cards (like Timeline Gallery). Flat grid only when
   /// there are no pending stage tasks and no per-proof stage/bill linkage.
+  /// From Payments (view-only), keep a flat grid so each screenshot shows its
+  /// bill association inline.
   List<Widget> _buildProofSections() {
+    if (!widget.allowUpload) {
+      return [
+        Text(
+          'Previous payment',
+          style: TextStyle(
+            color: _textPrimary,
+            fontSize: 15.5,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'Each screenshot shows the NT / non-NT bills it was applied to.',
+          style: TextStyle(
+            color: _textSecondary,
+            fontSize: 12.5,
+            height: 1.35,
+          ),
+        ),
+        const SizedBox(height: 12),
+        _ProofGrid(
+          items: _items,
+          imageHeaders: _imageHeaders,
+          removingUrl: null,
+          onTap: _openItem,
+          onRemove: (_) async {},
+          allowRemove: false,
+        ),
+      ];
+    }
+
     final useGallery = _pendingStageTasks.isNotEmpty ||
         _items.any((e) => e.billStages.isNotEmpty || e.stageTaskId != null);
     if (!useGallery) {
@@ -737,9 +792,11 @@ class _UploadPaymentProofScreenState extends State<UploadPaymentProofScreen>
           initialItems: List<PaymentProofItem>.from(section.items),
           allItems: _items,
           imageHeaders: _imageHeaders,
-          canUpload: _canUpload && !section.isAwaiting,
+          canUpload: _uploadEnabled && !section.isAwaiting,
           portal: _portal,
           onOpenItem: _openItem,
+          proofsSectionTitle:
+              widget.allowUpload ? 'Screenshots' : 'Previous payment',
         ),
       ),
     );
@@ -907,6 +964,7 @@ class _ProofGrid extends StatelessWidget {
   final String? removingUrl;
   final Future<void> Function(PaymentProofItem item) onTap;
   final Future<void> Function(PaymentProofItem item) onRemove;
+  final bool allowRemove;
 
   const _ProofGrid({
     required this.items,
@@ -914,6 +972,7 @@ class _ProofGrid extends StatelessWidget {
     required this.removingUrl,
     required this.onTap,
     required this.onRemove,
+    this.allowRemove = true,
   });
 
   @override
@@ -934,7 +993,9 @@ class _ProofGrid extends StatelessWidget {
                   imageHeaders: imageHeaders,
                   removing: removingUrl == item.url,
                   onTap: () => onTap(item),
-                  onRemove: item.canRemove ? () => onRemove(item) : null,
+                  onRemove: allowRemove && item.canRemove
+                      ? () => onRemove(item)
+                      : null,
                 ),
               ),
           ],
@@ -1140,6 +1201,7 @@ class _ProofStageDetailScreen extends StatefulWidget {
   final List<PaymentProofItem> allItems;
   final Map<String, String> imageHeaders;
   final bool canUpload;
+  final String proofsSectionTitle;
   final ClientPortalService portal;
   final Future<void> Function(PaymentProofItem item) onOpenItem;
 
@@ -1153,6 +1215,7 @@ class _ProofStageDetailScreen extends StatefulWidget {
     required this.allItems,
     required this.imageHeaders,
     required this.canUpload,
+    this.proofsSectionTitle = 'Screenshots',
     required this.portal,
     required this.onOpenItem,
   });
@@ -1366,7 +1429,7 @@ class _ProofStageDetailScreenState extends State<_ProofStageDetailScreen> {
               const SizedBox(height: 18),
             ],
             Text(
-              'Screenshots',
+              widget.proofsSectionTitle,
               style: TextStyle(
                 color: _UploadPaymentProofScreenState._textPrimary,
                 fontSize: 15.5,
@@ -1380,9 +1443,10 @@ class _ProofStageDetailScreenState extends State<_ProofStageDetailScreen> {
               _ProofGrid(
                 items: _items,
                 imageHeaders: widget.imageHeaders,
-                removingUrl: _removingUrl,
+                removingUrl: widget.canUpload ? _removingUrl : null,
                 onTap: _open,
                 onRemove: _remove,
+                allowRemove: widget.canUpload,
               ),
           ],
         ),

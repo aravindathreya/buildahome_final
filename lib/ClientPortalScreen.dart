@@ -15,7 +15,6 @@ import 'client_portal/kyc_document_record.dart';
 import 'documents_v1/documents_v1_home_screen.dart';
 import 'models/workflow_document.dart';
 import 'SalesSopCardsScreen.dart';
-import 'UploadPaymentProofScreen.dart';
 import 'services/client_portal_service.dart';
 import 'services/data_provider.dart';
 import 'services/mobile_documents.dart';
@@ -23,7 +22,8 @@ import 'services/mobile_documents_service.dart';
 import 'services/workflow_document_service.dart';
 import 'widgets/skeleton_loader.dart';
 
-/// Client Portal hub — documents & screenshots (post 10% payment client access).
+/// Client Portal hub — documents (post 10% payment client access).
+/// Previous payment screenshots live under Payments.
 class ClientPortalScreen extends StatefulWidget {
   /// When true (Super Admin), load this project's client portal as the client.
   final bool impersonatingClient;
@@ -284,42 +284,21 @@ class _ClientPortalScreenState extends State<ClientPortalScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return DefaultTabController(
-      length: 2,
-      child: Scaffold(
-        backgroundColor: AppTheme.getBackgroundPrimary(context),
-        appBar: AppBar(
-          backgroundColor: AppTheme.getBackgroundSecondary(context),
-          foregroundColor: AppTheme.darkTextPrimary,
-          elevation: 0,
-          actions: [
-            IconButton(
-              icon: const Icon(Icons.refresh_rounded),
-              onPressed: _loading ? null : _bootstrap,
-            ),
-          ],
-          bottom: TabBar(
-            labelColor: AppTheme.darkTextPrimary,
-            unselectedLabelColor: AppTheme.mutedGrey,
-            indicatorColor: AppTheme.navy,
-            tabs: [
-              Tab(text: 'Documents'),
-              Tab(text: 'Screenshots'),
-            ],
+    return Scaffold(
+      backgroundColor: AppTheme.getBackgroundPrimary(context),
+      appBar: AppBar(
+        backgroundColor: AppTheme.getBackgroundSecondary(context),
+        foregroundColor: AppTheme.darkTextPrimary,
+        elevation: 0,
+        title: const Text('Documents'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh_rounded),
+            onPressed: _loading ? null : _bootstrap,
           ),
-        ),
-        body: SafeArea(
-          child: TabBarView(
-            children: [
-              _buildBody(),
-              const UploadPaymentProofScreen(
-                embedded: true,
-                showPendingPayments: false,
-              ),
-            ],
-          ),
-        ),
+        ],
       ),
+      body: SafeArea(child: _buildBody()),
     );
   }
 

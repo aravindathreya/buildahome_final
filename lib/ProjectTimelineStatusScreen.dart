@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app_theme.dart';
 import 'services/data_provider.dart';
@@ -28,7 +29,8 @@ int _orderIdx(Map<String, dynamic> task) {
   return int.tryParse(task['order_idx']?.toString() ?? '') ?? 0;
 }
 
-/// Critical-path status: last 5 completed, all pending, all upcoming.
+/// Critical-path status: last 5 completed, pending, upcoming.
+/// Site Engineer all-tasks status: last 5 closed, ongoing, next 5 future.
 class ProjectTimelineStatusScreen extends StatefulWidget {
   final bool embedded;
 
@@ -48,6 +50,15 @@ class ProjectTimelineStatusScreenState
   List<Map<String, dynamic>> _tasks = [];
   bool _isLoading = true;
   String? _errorMessage;
+  String? _role;
+
+  bool get _isSiteEngineer {
+    final role = (_role ?? DataProvider().currentRole ?? '').trim().toLowerCase();
+    return role == 'site engineer';
+  }
+
+  /// Site Engineer Status uses the full (all-tasks) schedule, not critical-only.
+  bool get _useAllTasksForSiteEngineer => _isSiteEngineer;
 
   @override
   bool get wantKeepAlive => true;
@@ -59,12 +70,31 @@ class ProjectTimelineStatusScreenState
   @override
   void initState() {
     super.initState();
+    _role = DataProvider().currentRole;
     _hydrateFromProvider();
     _loadStatus();
   }
 
+  Future<void> _ensureRole() async {
+    if (_role != null && _role!.trim().isNotEmpty) return;
+    final prefs = await SharedPreferences.getInstance();
+    final role = prefs.getString('role') ?? DataProvider().currentRole;
+    if (role != null && role.trim().isNotEmpty) {
+      DataProvider().currentRole = role;
+      _role = role;
+    }
+  }
+
   void _hydrateFromProvider() {
     final provider = DataProvider();
+    if (_useAllTasksForSiteEngineer) {
+      if (!provider.clientTimelineLoaded) return;
+      setState(() {
+        _tasks = List<Map<String, dynamic>>.from(provider.clientTimelineTasks);
+        _isLoading = false;
+      });
+      return;
+    }
     if (!provider.clientCriticalTimelineLoaded) return;
     setState(() {
       _tasks =
@@ -82,19 +112,30 @@ class ProjectTimelineStatusScreenState
     }
 
     try {
-      await DataProvider().loadCriticalTimeline(force: true);
+      await _ensureRole();
+      if (_useAllTasksForSiteEngineer) {
+        await DataProvider().loadProjectTimeline(force: true);
+      } else {
+        await DataProvider().loadCriticalTimeline(force: true);
+      }
       if (!mounted) return;
       setState(() {
-        _tasks = List<Map<String, dynamic>>.from(
-            DataProvider().clientCriticalTimelineTasks);
+        _tasks = _useAllTasksForSiteEngineer
+            ? List<Map<String, dynamic>>.from(
+                DataProvider().clientTimelineTasks)
+            : List<Map<String, dynamic>>.from(
+                DataProvider().clientCriticalTimelineTasks);
         _isLoading = false;
         _errorMessage = null;
       });
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _tasks = List<Map<String, dynamic>>.from(
-            DataProvider().clientCriticalTimelineTasks);
+        _tasks = _useAllTasksForSiteEngineer
+            ? List<Map<String, dynamic>>.from(
+                DataProvider().clientTimelineTasks)
+            : List<Map<String, dynamic>>.from(
+                DataProvider().clientCriticalTimelineTasks);
         _isLoading = false;
         _errorMessage = e.toString().replaceFirst('Exception: ', '');
       });
@@ -148,7 +189,9 @@ class ProjectTimelineStatusScreenState
             !_statusTruthy(task['is_cancelled']))
         .toList();
     upcoming.sort((a, b) => _orderIdx(a).compareTo(_orderIdx(b)));
-    return upcoming;
+    return _useAllTasksForSiteEngineer
+        ? upcoming.take(5).toList()
+        : upcoming;
   }
 
   @override
@@ -196,6 +239,7 @@ class ProjectTimelineStatusScreenState
     final recentlyClosed = _recentlyClosed;
     final pending = _allPending;
     final upcoming = _allUpcoming;
+    final siteEngineerAllTasks = _useAllTasksForSiteEngineer;
 
     if (recentlyClosed.isEmpty && pending.isEmpty && upcoming.isEmpty) {
       return _buildEmptyState();
@@ -210,25 +254,37 @@ class ProjectTimelineStatusScreenState
         children: [
           _buildSection(
             title: 'Recently closed',
-            subtitle: 'Top 5 completed critical tasks',
+            subtitle: siteEngineerAllTasks
+                ? 'Last 5 completed tasks'
+                : 'Top 5 completed critical tasks',
             tasks: recentlyClosed,
-            emptyLabel: 'No recently closed critical tasks yet.',
+            emptyLabel: siteEngineerAllTasks
+                ? 'No recently closed tasks yet.'
+                : 'No recently closed critical tasks yet.',
             accent: const Color(0xFF059669),
           ),
           const SizedBox(height: 22),
           _buildSection(
-            title: 'Pending',
-            subtitle: 'All pending critical tasks',
+            title: siteEngineerAllTasks ? 'Ongoing' : 'Pending',
+            subtitle: siteEngineerAllTasks
+                ? 'Current in-progress tasks'
+                : 'All pending critical tasks',
             tasks: pending,
-            emptyLabel: 'No pending critical tasks right now.',
+            emptyLabel: siteEngineerAllTasks
+                ? 'No ongoing tasks right now.'
+                : 'No pending critical tasks right now.',
             accent: const Color(0xFFD97706),
           ),
           const SizedBox(height: 22),
           _buildSection(
-            title: 'Upcoming',
-            subtitle: 'All upcoming critical tasks',
+            title: siteEngineerAllTasks ? 'Future' : 'Upcoming',
+            subtitle: siteEngineerAllTasks
+                ? 'Next 5 upcoming tasks'
+                : 'All upcoming critical tasks',
             tasks: upcoming,
-            emptyLabel: 'No upcoming critical tasks yet.',
+            emptyLabel: siteEngineerAllTasks
+                ? 'No future tasks yet.'
+                : 'No upcoming critical tasks yet.',
             accent: const Color(0xFF9CA3AF),
           ),
         ],
@@ -321,6 +377,7 @@ class ProjectTimelineStatusScreenState
   }
 
   Widget _buildEmptyState() {
+    final siteEngineerAllTasks = _useAllTasksForSiteEngineer;
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32),
@@ -331,7 +388,9 @@ class ProjectTimelineStatusScreenState
                 size: 56, color: AppTheme.getTextSecondary(context)),
             const SizedBox(height: 20),
             Text(
-              'No critical tasks from server',
+              siteEngineerAllTasks
+                  ? 'No schedule tasks yet'
+                  : 'No critical tasks from server',
               style: TextStyle(
                 color: _ink,
                 fontSize: 22,
@@ -340,8 +399,10 @@ class ProjectTimelineStatusScreenState
             ),
             const SizedBox(height: 8),
             Text(
-              'The critical timeline API returned successfully but with 0 tasks. '
-              'This is a server/data issue — Main Critical tasks are not flagged for this project yet.',
+              siteEngineerAllTasks
+                  ? 'Project schedule tasks will appear here once they are created.'
+                  : 'The critical timeline API returned successfully but with 0 tasks. '
+                      'This is a server/data issue — Main Critical tasks are not flagged for this project yet.',
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: _muted,

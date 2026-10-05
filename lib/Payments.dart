@@ -6,8 +6,10 @@ import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'UploadPaymentProofScreen.dart';
 import 'app_theme.dart';
 import 'services/data_provider.dart';
+import 'widgets/dashboard_chrome.dart';
 import 'widgets/themed_scaffold.dart';
 
 enum PaymentCategory {
@@ -491,14 +493,46 @@ class _PaymentsDashboardState extends State<PaymentsDashboard> {
   @override
   Widget build(BuildContext context) {
     final title = selectedCategory == PaymentCategory.nonTender
-        ? 'Upgrades and Additions'
+        ? 'Upgrades and Additions Cost'
         : 'Payments';
-    return ThemedScaffold(
-      title: title,
-      body: SafeArea(
-        child: AnimatedSwitcher(
-          duration: const Duration(milliseconds: 300),
-          child: _buildBody(),
+    final isAdminChrome =
+        DashboardChrome.of(context) == DashboardChromeStyle.admin;
+    final tabLabelColor =
+        isAdminChrome ? Colors.white : AppTheme.darkTextPrimary;
+    final tabUnselectedColor = isAdminChrome
+        ? Colors.white.withValues(alpha: 0.7)
+        : AppTheme.mutedGrey;
+    final tabIndicatorColor =
+        isAdminChrome ? Colors.white : AppTheme.navy;
+
+    return DefaultTabController(
+      length: 2,
+      child: ThemedScaffold(
+        title: title,
+        bottom: TabBar(
+          labelColor: tabLabelColor,
+          unselectedLabelColor: tabUnselectedColor,
+          indicatorColor: tabIndicatorColor,
+          tabs: const [
+            Tab(text: 'Schedule'),
+            Tab(text: 'Previous payment'),
+          ],
+        ),
+        body: SafeArea(
+          child: TabBarView(
+            children: [
+              AnimatedSwitcher(
+                duration: const Duration(milliseconds: 300),
+                child: _buildBody(),
+              ),
+              // View-only previous proofs + bill association (no upload from Payments).
+              const UploadPaymentProofScreen(
+                embedded: true,
+                allowUpload: false,
+                showPendingPayments: false,
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -562,19 +596,19 @@ class _PaymentsDashboardState extends State<PaymentsDashboard> {
     final sections = <_NtPaymentSection>[
       _NtPaymentSection(
         title: 'Pending',
-        emptyHint: 'No pending Upgrades and Additions items',
+        emptyHint: 'No pending Upgrades and Additions Cost items',
         items: items.where((item) => item.isPending).toList(),
         accent: Colors.red[700]!,
       ),
       _NtPaymentSection(
         title: 'Scheduled',
-        emptyHint: 'No scheduled Upgrades and Additions items',
+        emptyHint: 'No scheduled Upgrades and Additions Cost items',
         items: items.where((item) => item.isScheduled).toList(),
         accent: Colors.amber[800]!,
       ),
       _NtPaymentSection(
         title: 'Paid',
-        emptyHint: 'No paid Upgrades and Additions items',
+        emptyHint: 'No paid Upgrades and Additions Cost items',
         items: items.where((item) => item.isPaid).toList(),
         accent: Colors.green[700]!,
       ),
@@ -697,7 +731,7 @@ class _PaymentsDashboardState extends State<PaymentsDashboard> {
         ),
         SizedBox(height: 6),
         Text(
-          'Switch between project payments and Upgrades and Additions using the filters below.',
+          'Switch between project payments and Upgrades and Additions Cost using the filters below.',
           style: TextStyle(
             color: AppTheme.mutedGrey,
             fontSize: 13.5,
@@ -736,7 +770,7 @@ class _PaymentsDashboardState extends State<PaymentsDashboard> {
               ),
               Expanded(
                 child: _buildChip(
-                    'Upgrades and Additions', PaymentCategory.nonTender),
+                    'Upgrades and Additions Cost', PaymentCategory.nonTender),
               ),
             ],
           ),
@@ -997,7 +1031,7 @@ class _PaymentsDashboardState extends State<PaymentsDashboard> {
             Text(
               selectedCategory == PaymentCategory.tender
                   ? 'Milestone payments'
-                  : 'Upgrades and Additions',
+                  : 'Upgrades and Additions Cost',
               style: TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.bold,

@@ -53,6 +53,7 @@ dependencies:
   webview_flutter: ^4.13.0
   pdfx: ^2.9.2
   package_info_plus: ^8.3.0
+  screen_protector: ^1.5.1
 
 dependency_overrides:
   win32: 5.15.0

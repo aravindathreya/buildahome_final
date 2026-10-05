@@ -359,12 +359,6 @@ class UserDashboardLayoutState extends State<UserDashboardLayout> {
   bool get _layoutIsClientUser =>
       (_userRole ?? '').trim().toLowerCase() == 'client';
 
-  bool get _layoutIsSuperAdmin {
-    final role =
-        (_userRole ?? '').trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
-    return role == 'super admin' || role == 'admin';
-  }
-
   List<String> _resolvedBottomNavKeys() {
     final surface = _bottomNavSurface;
     final snapshot = MobileBottomNavService.instance.snapshot(surface);
@@ -373,22 +367,19 @@ class UserDashboardLayoutState extends State<UserDashboardLayout> {
       fallbackKeys: fallbackBottomNavKeysFor(surface),
       snapshot: snapshot,
     );
-    // No saved config yet: keep the previous project bar (Payments + Docs).
+    // No saved config yet: keep the previous project bar (Payments).
     // A saved Mobile → Bottom Nav config is the bar itself.
     if (snapshot?.configured != true) {
       keys = ensureProjectHomePaymentsTab(keys);
-      // Docs tab: staff only (never clients). Clients also drop "More" —
-      // the side drawer is removed and remaining screens are quick actions.
-      keys = _layoutIsClientUser
-          ? withoutProjectHomeDocsTabs(keys)
-              .where((key) => key != kMobileBottomNavMoreKey)
-              .toList()
-          : ensureProjectHomeDocsTab(keys);
-      // "For me" / client portal: clients + Super Admin only.
-      if (!_layoutIsClientUser && !_layoutIsSuperAdmin) {
-        keys = keys.where((key) => key != 'client_portal').toList();
+      // Docs is not on the project home bottom bar (use quick actions / More).
+      // Clients also drop "More" — the side drawer is removed.
+      keys = withoutProjectHomeDocsTabs(keys);
+      if (_layoutIsClientUser) {
+        keys = keys.where((key) => key != kMobileBottomNavMoreKey).toList();
       }
     }
+    // "For me" stays on project home for every role (clients + staff).
+    keys = ensureProjectHomeForMeTab(keys);
     final previous = _lastLoggedBottomNavKeys;
     if (previous == null ||
         previous.length != keys.length ||
@@ -1376,15 +1367,6 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
   bool get _isClientUser =>
       (_currentRole ?? '').trim().toLowerCase() == 'client';
 
-  /// Super Admin is often stored as `Admin` in prefs.
-  bool get _isSuperAdminUser {
-    final role = (_currentRole ?? '')
-        .trim()
-        .toLowerCase()
-        .replaceAll(RegExp(r'\s+'), ' ');
-    return role == 'super admin' || role == 'admin';
-  }
-
   /// Project home quick actions include "For me" for everyone who can open
   /// the client project shell (clients + staff viewing a project).
   bool get _canSeeForMe => true;
@@ -1951,7 +1933,10 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
               onSelected: (value) {
                 if (value == 'payment_proof') {
                   _navigateToWidget(
-                    const UploadPaymentProofScreen(showPendingPayments: true),
+                    const UploadPaymentProofScreen(
+                      showPendingPayments: true,
+                      allowUpload: true,
+                    ),
                   );
                 }
               },
@@ -2395,7 +2380,10 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
   void _openTaskDetails(Map<String, dynamic> task) {
     if (isClearOutstandingPaymentTask(task)) {
       _navigateToWidget(
-        const UploadPaymentProofScreen(showPendingPayments: true),
+        const UploadPaymentProofScreen(
+          showPendingPayments: true,
+          allowUpload: true,
+        ),
       ).then((_) {
         unawaited(_loadOutstandingPayments());
       });
@@ -2962,29 +2950,30 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
     List<Map<String, dynamic>> menuItems = [];
     final rbac = RBACService();
 
-    if (_currentRole != 'Billing') {
-      // "For me" / Client Portal — same tile for clients and staff on project home.
-      if (_canSeeForMe) {
-        menuItems.add({
-          'title': 'Client Portal',
-          'icon': Icons.dashboard_customize_rounded,
-          'route': () async {
-            if (!_isClientUser) {
-              final prefs = await SharedPreferences.getInstance();
-              final projectId = (prefs.getString('project_id') ?? '').trim();
-              final apiToken = (prefs.getString('api_token') ?? '').trim();
-              if (projectId.isNotEmpty && apiToken.isNotEmpty) {
-                await DataProvider().resolveSalesSopId(
-                  projectId: projectId,
-                  apiToken: apiToken,
-                );
-              }
-              return const ClientPortalScreen(impersonatingClient: true);
+    // "For me" / Client Portal — available to every role on project home.
+    if (_canSeeForMe) {
+      menuItems.add({
+        'title': 'Client Portal',
+        'icon': Icons.dashboard_customize_rounded,
+        'route': () async {
+          if (!_isClientUser) {
+            final prefs = await SharedPreferences.getInstance();
+            final projectId = (prefs.getString('project_id') ?? '').trim();
+            final apiToken = (prefs.getString('api_token') ?? '').trim();
+            if (projectId.isNotEmpty && apiToken.isNotEmpty) {
+              await DataProvider().resolveSalesSopId(
+                projectId: projectId,
+                apiToken: apiToken,
+              );
             }
-            return const ClientPortalScreen();
-          },
-        });
-      }
+            return const ClientPortalScreen(impersonatingClient: true);
+          }
+          return const ClientPortalScreen();
+        },
+      });
+    }
+
+    if (_currentRole != 'Billing') {
       menuItems.add({
         'title': 'My tasks',
         'icon': Icons.pending_actions_rounded,
@@ -3082,7 +3071,7 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
       'route': () => PaymentTaskWidget(),
     });
     menuItems.add({
-      'title': 'Upgrades and Additions',
+      'title': 'Upgrades and Additions Cost',
       'icon': Icons.receipt_long_rounded,
       'route': () => const PaymentTaskWidget(
             initialCategory: PaymentCategory.nonTender,
@@ -3102,6 +3091,7 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
       'icon': Icons.cloud_upload_rounded,
       'route': () => UploadPaymentProofScreen(
             showPendingPayments: !_isClientUser,
+            allowUpload: true,
           ),
     });
 
@@ -3244,12 +3234,20 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
 
   /// Pinned quick actions on the project dashboard — exact set (4×2).
   /// Used for clients and for staff when they open a project.
+  static const int _quickActionSlotCount = 8;
+
+  /// Prefer these when staffing the fixed staff grid.
+  static const List<String> _quickActionFillerTitles = [
+    'Profile',
+    'Updates',
+  ];
+
   static const List<String> _clientPinnedQuickActionTitles = [
     'Client Portal',
     'Project Timeline',
     'Slots',
     'Payments',
-    'Upgrades and Additions',
+    'Upgrades and Additions Cost',
     'Timeline Gallery',
     'Updates',
     'Profile',
@@ -3258,7 +3256,7 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
   /// Working tiles from commit 440e62a, then newer tiles marked coming soon.
   static const List<String> _legacyClientPinnedQuickActionTitles = [
     'Payments',
-    'Upgrades and Additions',
+    'Upgrades and Additions Cost',
     'Gallery',
     'Updates',
     'Scheduler',
@@ -3299,12 +3297,13 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
     // Do not put Payments, Slots, or filler tiles back after Super Admin
     // removed them, and do not drop an action they turned on.
     if (snapshot != null && snapshot.configured) {
-      return resolveMobileQuickActions(
+      final configured = resolveMobileQuickActions(
         surface: MobileQuickActionSurface.projectHomeNew,
         catalog: _configurableProjectQuickActions(items),
         fallback: const [],
         snapshot: snapshot,
       );
+      return _ensureForMeQuickAction(configured, items);
     }
 
     // No saved config yet: keep the previous hardcoded project-home grid.
@@ -3341,7 +3340,59 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
         }
       }
     }
-    return _normalizeQuickActionSlots(visible, items);
+    return _normalizeQuickActionSlots(
+      _ensureForMeQuickAction(visible, items),
+      items,
+    );
+  }
+
+  /// Keep "For me" / Client Portal first for every role on project home.
+  List<Map<String, dynamic>> _ensureForMeQuickAction(
+    List<Map<String, dynamic>> actions,
+    List<Map<String, dynamic>> catalog,
+  ) {
+    if (!_canSeeForMe) return actions;
+    final hasForMe =
+        actions.any((item) => item['title']?.toString() == 'Client Portal');
+    if (hasForMe) return actions;
+
+    Map<String, dynamic>? forMe;
+    for (final item in catalog) {
+      if (item['title']?.toString() == 'Client Portal') {
+        forMe = item;
+        break;
+      }
+    }
+    forMe ??= _quickActionCatalogByTitle(catalog)['Client Portal'];
+    if (forMe == null) return actions;
+
+    return [forMe, ...actions];
+  }
+
+  List<Map<String, dynamic>> _normalizeQuickActionSlots(
+    List<Map<String, dynamic>> actions,
+    List<Map<String, dynamic>> catalog,
+  ) {
+    final byTitle = _quickActionCatalogByTitle(catalog);
+
+    final normalized = <Map<String, dynamic>>[];
+    final seen = <String>{};
+    for (final item in actions) {
+      final title = item['title']?.toString() ?? '';
+      if (title.isEmpty || !seen.add(title)) continue;
+      normalized.add(item);
+      if (normalized.length >= _quickActionSlotCount) {
+        return normalized;
+      }
+    }
+
+    for (final title in _quickActionFillerTitles) {
+      if (normalized.length >= _quickActionSlotCount) break;
+      if (!seen.add(title)) continue;
+      final item = byTitle[title];
+      if (item != null) normalized.add(item);
+    }
+    return normalized;
   }
 
   /// Every New Project Home action the Quick Actions admin can enable.
@@ -4044,7 +4095,7 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
 
     items.add(
       _DashboardSearchItem(
-        title: 'Payments • Upgrades and Additions',
+        title: 'Payments • Upgrades and Additions Cost',
         subtitle: 'Monitor custom expenses',
         icon: Icons.receipt_long,
         keywords: [
@@ -4349,10 +4400,10 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
         return '3D House Tour';
       case 'Client Portal':
         return 'For me';
-      case 'Upgrades and Additions':
+      case 'Upgrades and Additions Cost':
       case 'NT Payments':
       case 'Non Tender Payments':
-        return 'Upgrades and Additions';
+        return 'Upgrades and Additions Cost';
       case 'Updates':
         return 'Daily updates';
       default:
@@ -4392,7 +4443,7 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
         return Icons.person_rounded;
       case 'Payments':
         return Icons.account_balance_wallet_rounded;
-      case 'Upgrades and Additions':
+      case 'Upgrades and Additions Cost':
       case 'NT Payments':
       case 'Non Tender Payments':
         return Icons.receipt_long_rounded;

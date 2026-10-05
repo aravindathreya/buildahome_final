@@ -39,12 +39,29 @@ class TaskScreen extends State<TaskScreenClass> {
   TaskStatusFilter _selectedFilter = TaskStatusFilter.all;
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
+  String? _currentRole;
   static const Duration _requestTimeout = Duration(seconds: 20);
+
+  bool get _isSiteEngineer {
+    final role = (_currentRole ?? DataProvider().currentRole ?? '')
+        .trim()
+        .toLowerCase();
+    return role == 'site engineer';
+  }
 
   @override
   void initState() {
     super.initState();
+    _loadCurrentRole();
     _loadTasks();
+  }
+
+  Future<void> _loadCurrentRole() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    setState(() {
+      _currentRole = prefs.getString('role') ?? DataProvider().currentRole;
+    });
   }
 
   Future<void> _loadTasks({bool showLoader = true}) async {
@@ -167,7 +184,14 @@ class TaskScreen extends State<TaskScreenClass> {
     final theme = Theme.of(context);
     final stats = _computeStats(_tasks);
     final filteredTasks = _filterTasks(_tasks);
-    final showFilteredEmpty = !_isLoading && _errorMessage == null && (_tasks?.isNotEmpty ?? false) && filteredTasks.isEmpty;
+    final showFilteredEmpty = !_isLoading &&
+        _errorMessage == null &&
+        (_tasks?.isNotEmpty ?? false) &&
+        filteredTasks.isEmpty &&
+        !_isSiteEngineer;
+    final recentlyClosed = _recentlyClosedTasks(_tasks);
+    final ongoing = _ongoingTasks(_tasks);
+    final future = _futureTasks(_tasks);
 
     return RefreshIndicator(
       color: AppTheme.getPrimaryColor(context),
@@ -181,20 +205,55 @@ class TaskScreen extends State<TaskScreenClass> {
           if (_tasks != null && _tasks!.isNotEmpty) ...[
             _buildSummaryCards(stats),
             const SizedBox(height: 16),
-            _buildFilterChips(),
-            const SizedBox(height: 16),
-            _buildSearchBar(),
-            const SizedBox(height: 20),
+            if (!_isSiteEngineer) ...[
+              _buildFilterChips(),
+              const SizedBox(height: 16),
+              _buildSearchBar(),
+              const SizedBox(height: 20),
+            ],
           ],
           if (_errorMessage != null) _buildErrorCard(_errorMessage!),
-          if (_isLoading && (_tasks == null || _tasks!.isEmpty)) _buildSkeletonLoader(),
-          if (!_isLoading && _errorMessage == null && (_tasks == null || _tasks!.isEmpty)) _buildEmptyState(),
-          if (showFilteredEmpty) _buildFilteredEmptyState(isSearchEmpty: _isSearching),
-          if (!_isLoading && filteredTasks.isNotEmpty)
+          if (_isLoading && (_tasks == null || _tasks!.isEmpty))
+            _buildSkeletonLoader(),
+          if (!_isLoading &&
+              _errorMessage == null &&
+              (_tasks == null || _tasks!.isEmpty))
+            _buildEmptyState(),
+          if (showFilteredEmpty)
+            _buildFilteredEmptyState(isSearchEmpty: _isSearching),
+          if (!_isLoading &&
+              _isSiteEngineer &&
+              (_tasks?.isNotEmpty ?? false)) ...[
+            _buildSiteEngineerSection(
+              title: 'Recently closed',
+              subtitle: 'Last 5 completed tasks',
+              tasks: recentlyClosed,
+              emptyLabel: 'No recently closed tasks yet.',
+              accent: const Color(0xFF059669),
+            ),
+            const SizedBox(height: 22),
+            _buildSiteEngineerSection(
+              title: 'Ongoing',
+              subtitle: 'Current in-progress tasks',
+              tasks: ongoing,
+              emptyLabel: 'No ongoing tasks right now.',
+              accent: const Color(0xFFD97706),
+            ),
+            const SizedBox(height: 22),
+            _buildSiteEngineerSection(
+              title: 'Future',
+              subtitle: 'Next 5 upcoming tasks',
+              tasks: future,
+              emptyLabel: 'No future tasks yet.',
+              accent: const Color(0xFF9CA3AF),
+            ),
+          ] else if (!_isLoading && filteredTasks.isNotEmpty)
             ...List.generate(filteredTasks.length, (index) {
               final task = filteredTasks[index];
               return AnimatedWidgetSlide(
-                direction: index % 2 == 0 ? SlideDirection.leftToRight : SlideDirection.rightToLeft,
+                direction: index % 2 == 0
+                    ? SlideDirection.leftToRight
+                    : SlideDirection.rightToLeft,
                 duration: const Duration(milliseconds: 450),
                 child: TaskItem(
                   task['task_name'].toString(),
@@ -211,12 +270,167 @@ class TaskScreen extends State<TaskScreenClass> {
     );
   }
 
+  Widget _buildSiteEngineerSection({
+    required String title,
+    required String subtitle,
+    required List<dynamic> tasks,
+    required String emptyLabel,
+    required Color accent,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Container(
+              width: 8,
+              height: 8,
+              decoration: BoxDecoration(
+                color: accent,
+                shape: BoxShape.circle,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(
+                      color: AppTheme.darkTextPrimary,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: -0.2,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: TextStyle(
+                      color: AppTheme.mutedGrey,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Text(
+              '${tasks.length}',
+              style: TextStyle(
+                color: accent,
+                fontSize: 13,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        if (tasks.isEmpty)
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
+            margin: const EdgeInsets.only(bottom: 4),
+            decoration: BoxDecoration(
+              color: AppTheme.darkBackgroundSecondary,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: AppTheme.border),
+            ),
+            child: Text(
+              emptyLabel,
+              style: TextStyle(
+                color: AppTheme.mutedGrey,
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          )
+        else
+          ...List.generate(tasks.length, (index) {
+            final task = tasks[index];
+            return AnimatedWidgetSlide(
+              direction: index % 2 == 0
+                  ? SlideDirection.leftToRight
+                  : SlideDirection.rightToLeft,
+              duration: const Duration(milliseconds: 450),
+              child: TaskItem(
+                task['task_name'].toString(),
+                task['start_date'].toString(),
+                task['end_date'].toString(),
+                task['sub_tasks'].toString(),
+                task['progress'].toString(),
+                task['s_note'].toString(),
+              ),
+            );
+          }),
+      ],
+    );
+  }
+
+  List<dynamic> _recentlyClosedTasks(List<dynamic>? tasks) {
+    if (tasks == null) return [];
+    final closed = tasks.where((task) => _taskProgress(task) >= 0.99).toList();
+    closed.sort((a, b) {
+      final aDate = _parseTaskDate(a, const ['end_date', 'updated_at', 'completed_at']);
+      final bDate = _parseTaskDate(b, const ['end_date', 'updated_at', 'completed_at']);
+      if (aDate != null && bDate != null) return bDate.compareTo(aDate);
+      if (aDate != null) return -1;
+      if (bDate != null) return 1;
+      return 0;
+    });
+    return closed.take(5).toList();
+  }
+
+  List<dynamic> _ongoingTasks(List<dynamic>? tasks) {
+    if (tasks == null) return [];
+    return tasks
+        .where((task) {
+          final progress = _taskProgress(task);
+          return progress > 0.01 && progress < 0.99;
+        })
+        .toList();
+  }
+
+  List<dynamic> _futureTasks(List<dynamic>? tasks) {
+    if (tasks == null) return [];
+    final upcoming =
+        tasks.where((task) => _taskProgress(task) <= 0.01).toList();
+    upcoming.sort((a, b) {
+      final aDate = _parseTaskDate(a, const ['start_date']);
+      final bDate = _parseTaskDate(b, const ['start_date']);
+      if (aDate != null && bDate != null) return aDate.compareTo(bDate);
+      if (aDate != null) return -1;
+      if (bDate != null) return 1;
+      return 0;
+    });
+    return upcoming.take(5).toList();
+  }
+
+  DateTime? _parseTaskDate(dynamic task, List<String> keys) {
+    if (task is! Map) return null;
+    for (final key in keys) {
+      final raw = task[key]?.toString().trim();
+      if (raw == null || raw.isEmpty || raw.toLowerCase() == 'null') continue;
+      final iso = DateTime.tryParse(raw);
+      if (iso != null) return iso;
+      try {
+        return DateFormat('dd/MM/yyyy').parse(raw);
+      } catch (_) {
+        try {
+          return DateFormat('yyyy-MM-dd').parse(raw);
+        } catch (_) {}
+      }
+    }
+    return null;
+  }
+
   Widget _buildHeader(ThemeData theme) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Home construction schedule',
+          _isSiteEngineer ? 'All tasks' : 'Home construction schedule',
           style: TextStyle(
             color: AppTheme.darkTextPrimary,
             fontSize: 18,
@@ -226,7 +440,9 @@ class TaskScreen extends State<TaskScreenClass> {
         ),
         SizedBox(height: 6),
         Text(
-          'Preview milestone timelines, monitor progress and stay aligned with buildAhome.',
+          _isSiteEngineer
+              ? 'Recently closed, ongoing, and upcoming tasks for this project.'
+              : 'Preview milestone timelines, monitor progress and stay aligned with buildAhome.',
           style: TextStyle(
             color: AppTheme.mutedGrey,
             fontSize: 13.5,

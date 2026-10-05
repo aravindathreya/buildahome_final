@@ -163,7 +163,7 @@ const Map<String, String> kMobileBottomNavLabels = {
   'indents': 'Indents',
   'approved_pos': 'POs',
   'work_orders': 'WOs',
-  'client_portal': 'Portal',
+  'client_portal': 'For me',
   'project_timeline': 'Timeline',
   'slots': 'Slots',
   'attendance': 'Attendance',
@@ -262,7 +262,7 @@ const Map<MobileBottomNavSurface, Map<String, String>>
     'gallery': 'Gallery',
     'scheduler': 'Scheduler',
     'payments': 'Payments',
-    'nt_payments': 'Upgrades and Additions',
+    'nt_payments': 'Upgrades and Additions Cost',
     'upload_payment_proof': 'Upload proof',
     'indents': 'Indents',
     'approved_pos': 'Approved POs',
@@ -291,7 +291,7 @@ const Map<MobileBottomNavSurface, Map<String, String>>
     'gallery': 'Gallery',
     'scheduler': 'Scheduler',
     'payments': 'Payments',
-    'nt_payments': 'Upgrades and Additions',
+    'nt_payments': 'Upgrades and Additions Cost',
     'upload_payment_proof': 'Upload proof',
     'indents': 'Indents',
     'approved_pos': 'Approved POs',
@@ -321,7 +321,7 @@ const Map<MobileBottomNavSurface, Map<String, String>>
     'gallery': 'Gallery',
     'scheduler': 'Scheduler',
     'payments': 'Payments',
-    'nt_payments': 'Upgrades and Additions',
+    'nt_payments': 'Upgrades and Additions Cost',
     'upload_payment_proof': 'Upload proof',
     'indents': 'Indents',
     'client_portal': 'Client Portal',
@@ -391,7 +391,43 @@ List<String> ensureProjectHomePaymentsTab(List<String> keys) {
     var dropAt = -1;
     for (var i = next.length - 1; i >= 0; i--) {
       final key = next[i];
-      if (key == 'payments' || isPinnedBottomNavKey(key)) continue;
+      if (key == 'payments' ||
+          key == 'client_portal' ||
+          isPinnedBottomNavKey(key)) {
+        continue;
+      }
+      dropAt = i;
+      break;
+    }
+    if (dropAt < 0) break;
+    next.removeAt(dropAt);
+  }
+  return next;
+}
+
+/// Project home always shows For me / Client Portal for every role.
+List<String> ensureProjectHomeForMeTab(List<String> keys) {
+  if (keys.contains('client_portal')) return List<String>.from(keys);
+
+  final next = List<String>.from(keys);
+  final homeIndex = next.indexOf(kMobileBottomNavHomeKey);
+  final moreIndex = next.indexOf(kMobileBottomNavMoreKey);
+  final insertAt = homeIndex >= 0
+      ? homeIndex + 1
+      : moreIndex >= 0
+          ? moreIndex
+          : next.length;
+  next.insert(insertAt, 'client_portal');
+
+  while (next.length > kMobileBottomNavHardMaxTabs) {
+    var dropAt = -1;
+    for (var i = next.length - 1; i >= 0; i--) {
+      final key = next[i];
+      if (key == 'client_portal' ||
+          key == 'payments' ||
+          isPinnedBottomNavKey(key)) {
+        continue;
+      }
       dropAt = i;
       break;
     }

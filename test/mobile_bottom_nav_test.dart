@@ -262,6 +262,40 @@ void main() {
       expect(keys.contains('indents'), isFalse);
     });
 
+    test('project home always inserts For me after Home', () {
+      final keys = ensureProjectHomeForMeTab([
+        'home',
+        'my_tasks',
+        'payments',
+        'more',
+      ]);
+      expect(keys, [
+        'home',
+        'client_portal',
+        'my_tasks',
+        'payments',
+        'more',
+      ]);
+      expect(labelForMobileBottomNav('client_portal'), 'For me');
+    });
+
+    test('project home keeps For me when fitting Payments under the cap', () {
+      final withForMe = ensureProjectHomeForMeTab([
+        'home',
+        'my_tasks',
+        'gallery',
+        'scheduler',
+        'documents',
+        'indents',
+        'more',
+      ]);
+      final keys = ensureProjectHomePaymentsTab(withForMe);
+      expect(keys.first, 'home');
+      expect(keys.contains('client_portal'), isTrue);
+      expect(keys.contains('payments'), isTrue);
+      expect(keys.length, lessThanOrEqualTo(kMobileBottomNavHardMaxTabs));
+    });
+
     test('client project_new save keeps chat and updates on the bar', () {
       final snapshot = parseMobileBottomNavPayload(
         {

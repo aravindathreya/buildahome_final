@@ -1277,7 +1277,7 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
         route: () => _routeForCurrentProject(() => PaymentTaskWidget()),
       ),
       _quickActionTile(
-        title: 'Upgrades and Additions',
+        title: 'Upgrades and Additions Cost',
         icon: Icons.receipt_long,
         route: () => _routeForCurrentProject(
           () => const PaymentTaskWidget(
@@ -2084,9 +2084,9 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
         return 'New Indent';
       case 'Upload proof':
         return 'Proof';
-      case 'Upgrades and Additions':
+      case 'Upgrades and Additions Cost':
       case 'NT Payments':
-        return 'Upgrades and Additions';
+        return 'Upgrades and Additions Cost';
       case '3D House Tour':
         return '3D House Tour';
       case 'Work orders':
@@ -2134,7 +2134,7 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
         return Icons.phonelink_setup_rounded;
       case 'Payments':
         return Icons.payments_rounded;
-      case 'Upgrades and Additions':
+      case 'Upgrades and Additions Cost':
       case 'NT Payments':
         return Icons.receipt_long_rounded;
       case 'Upload proof':

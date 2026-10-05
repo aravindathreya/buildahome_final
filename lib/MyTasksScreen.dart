@@ -2643,7 +2643,10 @@ class _TaskCardState extends State<_TaskCard> {
     if (!mounted) return;
     await Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => const UploadPaymentProofScreen(),
+        builder: (_) => const UploadPaymentProofScreen(
+          showPendingPayments: true,
+          allowUpload: true,
+        ),
       ),
     );
   }

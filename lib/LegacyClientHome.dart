@@ -444,7 +444,7 @@ class LegacyClientDashboardScreenState extends State<LegacyClientDashboardScreen
     });
 
     menuItems.add({
-      'title': 'Upgrades and Additions',
+      'title': 'Upgrades and Additions Cost',
       'icon': Icons.receipt_long,
       'route': () => const PaymentTaskWidget(
             initialCategory: PaymentCategory.nonTender,
@@ -854,7 +854,7 @@ class LegacyClientDashboardScreenState extends State<LegacyClientDashboardScreen
 
     items.add(
       _DashboardSearchItem(
-        title: 'Payments • Upgrades and Additions',
+        title: 'Payments • Upgrades and Additions Cost',
         subtitle: 'Monitor custom expenses',
         icon: Icons.receipt_long,
         keywords: [

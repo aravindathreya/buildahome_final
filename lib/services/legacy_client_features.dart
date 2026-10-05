@@ -10,7 +10,7 @@ class LegacyClientFeatures {
   /// Working tiles for a legacy client, in the original dashboard order.
   static const List<String> allowedTitles = [
     'Payments',
-    'Upgrades and Additions',
+    'Upgrades and Additions Cost',
     'NT Payments',
     'Non Tender Payments',
     'Documents',
