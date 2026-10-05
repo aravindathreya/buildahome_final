@@ -9,6 +9,9 @@ import '../services/session_manager.dart';
 /// REST client for `/api/v1/chat` (ERP session cookie + mobile api_token).
 class ChatV1Api {
   ChatV1Api._();
+
+  /// Allows offline transports to override requests in integration tests.
+  ChatV1Api.forTesting();
   static final ChatV1Api instance = ChatV1Api._();
 
   static const String baseUrl = 'https://office.buildahome.in';
@@ -174,7 +177,7 @@ class ChatV1Api {
   }) async {
     try {
       final uri = await _uri(path, query: query);
-      print('[ChatV1Api] POST $uri');
+      print('[ChatV1Api] POST ${uri.path}');
       final response = await ApiHttp.post(
         uri,
         headers: await _headers(jsonBody: true),
@@ -571,6 +574,7 @@ class ChatV1Api {
     required String body,
     String contentType = 'text',
     int? parentMessageId,
+    List<int>? mentionedUserIds,
   }) async {
     final data = await post(
       '$chatPrefix/conversations/$conversationId/messages',
@@ -578,6 +582,7 @@ class ChatV1Api {
         'body': body,
         'content_type': contentType,
         if (parentMessageId != null) 'parent_message_id': parentMessageId,
+        if (mentionedUserIds != null) 'mentioned_user_ids': mentionedUserIds,
       },
     );
     if (data is Map) {

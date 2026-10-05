@@ -201,6 +201,9 @@ class ChatV1Message {
   final String? senderRole;
   final List<ChatV1Attachment> attachments;
   final List<ChatV1Mention> mentions;
+
+  /// Distinguishes an authoritative empty API list from omitted metadata.
+  final bool mentionsResolved;
   final ChatV1ReadSummary readSummary;
 
   const ChatV1Message({
@@ -228,6 +231,7 @@ class ChatV1Message {
     this.senderRole,
     this.attachments = const [],
     this.mentions = const [],
+    this.mentionsResolved = false,
     this.readSummary = const ChatV1ReadSummary(),
   });
 
@@ -255,6 +259,7 @@ class ChatV1Message {
     String? parentMessageId,
     List<ChatV1Reaction>? reactions,
     List<ChatV1Mention>? mentions,
+    bool? mentionsResolved,
     ChatV1ReadSummary? readSummary,
   }) {
     return ChatV1Message(
@@ -282,6 +287,8 @@ class ChatV1Message {
       senderRole: senderRole,
       attachments: attachments ?? this.attachments,
       mentions: mentions ?? this.mentions,
+      mentionsResolved:
+          mentionsResolved ?? (mentions != null || this.mentionsResolved),
       readSummary: readSummary ?? this.readSummary,
     );
   }

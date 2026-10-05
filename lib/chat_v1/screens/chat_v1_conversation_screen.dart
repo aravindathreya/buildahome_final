@@ -11,6 +11,7 @@ import '../chat_v1_controller.dart';
 import '../chat_v1_importance.dart';
 import '../chat_v1_mapper.dart';
 import '../chat_v1_mentions.dart';
+import '../chat_v1_mention_draft.dart';
 import '../widgets/chat_v1_mention_banner.dart';
 import '../chat_v1_models.dart';
 import '../chat_v1_socket.dart';
@@ -21,6 +22,13 @@ import '../widgets/chat_v1_composer.dart';
 import '../widgets/chat_v1_message_bubble.dart';
 import 'chat_v1_group_info_screen.dart';
 import 'chat_v1_task_details_sheet.dart';
+
+/// The visible conversation must retain the same confirmed metadata as its cache.
+/// Partial socket/upload events can omit mentions without revoking existing tags.
+ChatV1Message mergeConversationScreenMessage(
+  ChatV1Message existing,
+  ChatV1Message incoming,
+) => ChatV1Controller.preferRicherMessage(existing, incoming);
 
 class ChatV1ConversationScreen extends StatefulWidget {
   final ChatV1ConvMeta meta;
@@ -39,6 +47,7 @@ class ChatV1ConversationScreen extends StatefulWidget {
 
 class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
   final _composer = TextEditingController();
+  final _mentionDraft = ChatV1MentionDraft();
   final _scroll = ScrollController();
   final _stickKey = GlobalKey<Cv1StickToBottomState>();
   final _api = ChatV1Api.instance;
@@ -319,6 +328,7 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
           x.isPinned != y.isPinned ||
           x.isDeleted != y.isDeleted ||
           x.read != y.read ||
+          !ChatV1Utils.messageMentionsEqual(x, y) ||
           x.attachments.length != y.attachments.length ||
           x.reactions.length != y.reactions.length) {
         return false;
@@ -938,7 +948,7 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
         _messages = [..._messages, message];
       } else {
         final existing = _messages[idx];
-        final merged = _mergeMessages(existing, message);
+        final merged = mergeConversationScreenMessage(existing, message);
         _messages = [
           for (var i = 0; i < _messages.length; i++)
             if (i == idx) merged else _messages[i],
@@ -948,55 +958,6 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
     });
     _persistMessagesCache();
     WidgetsBinding.instance.addPostFrameCallback((_) => _jumpToBottom());
-  }
-
-  ChatV1Message _mergeMessages(ChatV1Message a, ChatV1Message b) {
-    final aHas = a.attachments.isNotEmpty;
-    final bHas = b.attachments.isNotEmpty;
-    if (bHas && !aHas) return b;
-    if (aHas && !bHas) return a;
-    if (bHas && aHas) {
-      // Prefer remote/hydrated paths, but keep local preview bytes if useful.
-      final mergedAtts = <ChatV1Attachment>[];
-      for (var i = 0; i < b.attachments.length; i++) {
-        final nb = b.attachments[i];
-        final na = i < a.attachments.length ? a.attachments[i] : null;
-        mergedAtts.add(
-          ChatV1Attachment(
-            id: nb.id.isNotEmpty ? nb.id : (na?.id ?? nb.id),
-            messageId: nb.messageId ?? na?.messageId,
-            fileName: nb.fileName.isNotEmpty
-                ? nb.fileName
-                : (na?.fileName ?? nb.fileName),
-            contentType: nb.contentType.isNotEmpty
-                ? nb.contentType
-                : (na?.contentType ?? ''),
-            fileSize: nb.fileSize > 0 ? nb.fileSize : (na?.fileSize ?? 0),
-            storagePath: nb.storagePath.isNotEmpty
-                ? nb.storagePath
-                : (na?.storagePath ?? ''),
-            previewBytes: nb.previewBytes ?? na?.previewBytes,
-          ),
-        );
-      }
-      return b.copyWith(
-        attachments: mergedAtts,
-        type: mergedAtts.every((x) => x.isImage)
-            ? ChatV1MsgType.image
-            : (mergedAtts.any((x) => x.isPdf)
-                ? ChatV1MsgType.pdf
-                : ChatV1MsgType.document),
-        fileName: mergedAtts.first.fileName,
-        fileMeta: mergedAtts.first.contentType,
-      );
-    }
-    // Neither has attachments — prefer non-placeholder body / later type.
-    final aPlaceholder = a.body.toLowerCase().startsWith('uploaded:');
-    final bPlaceholder = b.body.toLowerCase().startsWith('uploaded:');
-    if (aPlaceholder && !bPlaceholder) return b;
-    if (!aPlaceholder && bPlaceholder) return a;
-    if (b.type != ChatV1MsgType.text && a.type == ChatV1MsgType.text) return b;
-    return b;
   }
 
   Future<void> _send({List<int>? fileBytes, String? fileName}) async {
@@ -1023,6 +984,8 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
                     ? ChatV1Utils.replySnippet(parentMsg)
                     : 'Message'),
           );
+    _mentionDraft.updateText(_composer.text);
+    final mentionedUserIds = _mentionDraft.mentionedUserIds;
     _composer.clear();
     _stopMyTyping();
     try {
@@ -1034,6 +997,7 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
         _conversationId,
         body: body,
         parentMessageId: parentId,
+        mentionedUserIds: mentionedUserIds,
       );
 
       var mapped =
@@ -1354,6 +1318,7 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
                 onChanged: _onComposerChanged,
                 enabled: !_sending,
                 mentionPeople: _mentionPeople,
+                mentionDraft: _mentionDraft,
                 mentionsLoading: _mentionsLoading,
                 mentionsError: _mentionsError,
               ),

@@ -57,7 +57,12 @@ class Cv1ChatTile extends StatelessWidget {
         return false;
       },
       child: Material(
-        color: selected ? ChatV1Theme.accentSoft : ChatV1Theme.bg(context),
+        color: selected
+            ? ChatV1Theme.accentSoft
+            : tagged
+                ? Color.alphaBlend(ChatV1Theme.unread.withValues(alpha: 0.08),
+                    ChatV1Theme.bg(context))
+                : ChatV1Theme.bg(context),
         child: InkWell(
           onTap: onTap,
           onLongPress: () {

@@ -39,6 +39,10 @@ class Cv1MessageBubble extends StatelessWidget {
     }
 
     final mine = message.isMine;
+    final taggedMe = !mine &&
+        !message.isDeleted &&
+        message.mentions
+            .any((m) => m.userId == ChatV1Controller.instance.currentUserId);
     return Padding(
       key: messageKey,
       padding: EdgeInsets.only(
@@ -63,7 +67,11 @@ class Cv1MessageBubble extends StatelessWidget {
                 decoration: BoxDecoration(
                   color: mine
                       ? ChatV1Theme.bubbleMe(context)
-                      : ChatV1Theme.bubbleOther(context),
+                      : taggedMe
+                          ? Color.alphaBlend(
+                              ChatV1Theme.unread.withValues(alpha: 0.12),
+                              ChatV1Theme.bubbleOther(context))
+                          : ChatV1Theme.bubbleOther(context),
                   borderRadius: BorderRadius.only(
                     topLeft: const Radius.circular(14),
                     topRight: const Radius.circular(14),
@@ -73,11 +81,13 @@ class Cv1MessageBubble extends StatelessWidget {
                   boxShadow: ChatV1Theme.shadow(context),
                   border: highlighted
                       ? Border.all(color: ChatV1Theme.accent, width: 1.5)
-                      : mine
-                          ? null
-                          : Border.all(
-                              color: ChatV1Theme.border(context)
-                                  .withValues(alpha: 0.6)),
+                      : taggedMe
+                          ? Border.all(color: ChatV1Theme.unread, width: 1.2)
+                          : mine
+                              ? null
+                              : Border.all(
+                                  color: ChatV1Theme.border(context)
+                                      .withValues(alpha: 0.6)),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -92,21 +102,38 @@ class Cv1MessageBubble extends StatelessWidget {
                       ),
                     if (!message.isDeleted && _importance.kind.isNotEmpty)
                       _importanceCaption(context),
-                    if (!message.isDeleted && !mine &&
-                        message.mentions.any((m) =>
-                            m.userId == ChatV1Controller.instance.currentUserId))
+                    if (taggedMe)
                       Padding(
-                        padding: const EdgeInsets.only(bottom: 5),
-                        child: Text(
-                          'You were tagged here',
-                          style: TextStyle(
-                            color: Theme.of(context).brightness == Brightness.dark
-                                ? const Color(0xFF7DE5A8)
-                                : const Color(0xFF157A42),
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
+                        padding: const EdgeInsets.only(bottom: 7),
+                        child: Row(mainAxisSize: MainAxisSize.min, children: [
+                          Container(
+                            key: const ValueKey('personal-mention-chip'),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 7, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: ChatV1Theme.unread.withValues(alpha: 0.18),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text('@You',
+                                style: TextStyle(
+                                    color: Theme.of(context).brightness ==
+                                            Brightness.dark
+                                        ? const Color(0xFF7DE5A8)
+                                        : const Color(0xFF157A42),
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w700)),
                           ),
-                        ),
+                          const SizedBox(width: 8),
+                          Flexible(
+                              child: Text('You were tagged here',
+                                  style: TextStyle(
+                                      color: Theme.of(context).brightness ==
+                                              Brightness.dark
+                                          ? const Color(0xFF7DE5A8)
+                                          : const Color(0xFF157A42),
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600))),
+                        ]),
                       ),
                     if (message.replyPreview != null) _reply(context),
                     if (message.isDeleted)

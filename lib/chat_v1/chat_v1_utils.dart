@@ -8,6 +8,23 @@ import 'chat_v1_theme.dart';
 class ChatV1Utils {
   ChatV1Utils._();
 
+  /// Mention-only history refreshes must repaint cached message bubbles.
+  static bool messageMentionsEqual(ChatV1Message a, ChatV1Message b) {
+    if (a.mentions.length != b.mentions.length) return false;
+    final left = a.mentions
+        .map((m) => '${m.userId}\u0000${m.name ?? ''}')
+        .toList()
+      ..sort();
+    final right = b.mentions
+        .map((m) => '${m.userId}\u0000${m.name ?? ''}')
+        .toList()
+      ..sort();
+    for (var i = 0; i < left.length; i++) {
+      if (left[i] != right[i]) return false;
+    }
+    return true;
+  }
+
   /// Preferred display titles + sort order when the API returns that channel.
   /// Do not use this list to invent/placeholder channels the user is not in.
   static const List<String> channelTitles = [

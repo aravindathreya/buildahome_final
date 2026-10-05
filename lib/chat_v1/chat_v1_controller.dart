@@ -211,10 +211,16 @@ class ChatV1Controller extends ChangeNotifier {
           ? attachments.first.contentType
           : (b.fileMeta ?? a.fileMeta),
       reactions: b.reactions.isNotEmpty ? b.reactions : a.reactions,
-      mentions: b.mentions.isNotEmpty ? b.mentions : a.mentions,
-      readSummary: (b.readSummary.readCount > 0 || b.readSummary.reads.isNotEmpty)
-          ? b.readSummary
-          : a.readSummary,
+      mentions:
+          b.mentionsResolved || b.mentions.isNotEmpty ? b.mentions : a.mentions,
+      mentionsResolved: b.mentionsResolved ||
+          b.mentions.isNotEmpty ||
+          a.mentionsResolved ||
+          a.mentions.isNotEmpty,
+      readSummary:
+          (b.readSummary.readCount > 0 || b.readSummary.reads.isNotEmpty)
+              ? b.readSummary
+              : a.readSummary,
       attachments: attachments,
     );
   }

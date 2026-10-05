@@ -71,6 +71,14 @@ void main() {
           ));
       await show(msg);
       expect(find.text('You were tagged here'), findsOneWidget);
+      expect(find.text('@You'), findsOneWidget);
+      final bubble = tester.widget<Container>(find
+          .ancestor(
+              of: find.byKey(const ValueKey('personal-mention-chip')),
+              matching: find.byType(Container))
+          .first);
+      final decoration = bubble.decoration! as BoxDecoration;
+      expect((decoration.border! as Border).left.color, ChatV1Theme.unread);
       final text = tester.widget<Text>(find.byWidgetPredicate(
           (w) => w is Text && w.textSpan?.toPlainText() == '@Test User hi'));
       final tag = (text.textSpan! as TextSpan).children!.first as TextSpan;
@@ -79,9 +87,11 @@ void main() {
       ctrl.currentUserId = '8';
       await show(msg);
       expect(find.text('You were tagged here'), findsNothing);
+      expect(find.text('@You'), findsNothing);
       ctrl.currentUserId = '7';
       await show(msg.copyWith(isDeleted: true));
       expect(find.text('You were tagged here'), findsNothing);
+      expect(find.text('@You'), findsNothing);
     });
   }
 }

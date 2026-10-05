@@ -524,6 +524,7 @@ class ChatV1Mapper {
       senderRole: role,
       attachments: parsedAttachments,
       mentions: mentions,
+      mentionsResolved: raw['mentions'] is List,
       readSummary: readSummary,
     );
   }

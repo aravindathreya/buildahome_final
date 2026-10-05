@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../chat_v1_mentions.dart';
+import '../chat_v1_mention_draft.dart';
 import '../chat_v1_theme.dart';
 import '../chat_v1_utils.dart';
 
@@ -103,6 +104,7 @@ class ChatComposer extends StatefulWidget {
   final bool enabled;
   final List<AttachmentOption> extraAttachmentOptions;
   final List<ChatV1MentionPerson> mentionPeople;
+  final ChatV1MentionDraft? mentionDraft;
   final bool mentionsLoading;
   final String? mentionsError;
 
@@ -117,6 +119,7 @@ class ChatComposer extends StatefulWidget {
     this.enabled = true,
     this.extraAttachmentOptions = const [],
     this.mentionPeople = const [],
+    this.mentionDraft,
     this.mentionsLoading = false,
     this.mentionsError,
   });
@@ -158,6 +161,7 @@ class _ChatComposerState extends State<ChatComposer> {
   }
 
   void _onControllerTick() {
+    widget.mentionDraft?.updateText(widget.controller.text);
     final nextHas = widget.controller.text.trim().isNotEmpty;
     final selection = widget.controller.selection;
     final cursor = selection.isValid
@@ -180,12 +184,18 @@ class _ChatComposerState extends State<ChatComposer> {
   void _insertMention(ChatV1MentionPerson person) {
     final trigger = _mention;
     if (trigger == null || !widget.enabled) return;
-    final result = applyChatMention(
-      text: widget.controller.text,
-      trigger: trigger,
-      person: person,
-      people: widget.mentionPeople,
-    );
+    final result = widget.mentionDraft?.insert(
+          text: widget.controller.text,
+          trigger: trigger,
+          person: person,
+          people: widget.mentionPeople,
+        ) ??
+        applyChatMention(
+          text: widget.controller.text,
+          trigger: trigger,
+          person: person,
+          people: widget.mentionPeople,
+        );
     widget.controller.value = TextEditingValue(
       text: result.text,
       selection: TextSelection.collapsed(offset: result.caret),
