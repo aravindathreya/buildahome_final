@@ -12,6 +12,7 @@ class ChatV1Utils {
   /// Do not use this list to invent/placeholder channels the user is not in.
   static const List<String> channelTitles = [
     'General',
+    'Important',
     'Internal',
     'Architectural',
     'MEP',
@@ -87,6 +88,8 @@ class ChatV1Utils {
     switch (_normalizeTitle(canonicalChannelTitle(title))) {
       case 'general':
         return Icons.tag_rounded;
+      case 'important':
+        return Icons.campaign_outlined;
       case 'internal':
         return Icons.lock_outline_rounded;
       case 'architectural':
@@ -114,6 +117,8 @@ class ChatV1Utils {
     switch (_normalizeTitle(canonicalChannelTitle(title))) {
       case 'general':
         return ChatV1Theme.accent;
+      case 'important':
+        return const Color(0xFFD97706);
       case 'internal':
         return const Color(0xFF3B82F6);
       case 'architectural':

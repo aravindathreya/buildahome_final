@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'dart:convert';
+import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -13,11 +15,32 @@ import 'chat_v1_utils.dart';
 
 /// Loads and buckets real chat data for a sales_sop project.
 class ChatV1Controller extends ChangeNotifier {
-  ChatV1Controller._();
+  ChatV1Controller._() : _socket = ChatV1Socket.instance;
+
+  @visibleForTesting
+  ChatV1Controller.forTesting({
+    required ChatV1Socket socket,
+    required Future<List<Map<String, dynamic>>> Function(
+            String conversationId, String? afterId, int pageSize)
+        messageLoader,
+    required Future<List<Map<String, dynamic>>> Function(String salesSopId)
+        conversationLoader,
+  })  : _socket = socket,
+        _recoveryMessageLoader = messageLoader,
+        _recoveryConversationLoader = conversationLoader;
   static final ChatV1Controller instance = ChatV1Controller._();
 
   final _api = ChatV1Api.instance;
-  final _socket = ChatV1Socket.instance;
+  final ChatV1Socket _socket;
+  Future<List<Map<String, dynamic>>> Function(String, String?, int)?
+      _recoveryMessageLoader;
+  Future<List<Map<String, dynamic>>> Function(String)?
+      _recoveryConversationLoader;
+  Timer? _recoveryTimer;
+  DateTime? _lastRecoveryAt;
+  bool _disposed = false;
+  static const int maxRecoveryPages = 3;
+  static const Duration recoveryCooldown = Duration(seconds: 15);
   bool _socketBound = false;
   bool _catchingUp = false;
   bool _catchUpAgain = false;
@@ -684,72 +707,177 @@ class ChatV1Controller extends ChangeNotifier {
     _socketBound = true;
     _socket.on('message_created', _onSocketMessageCreated);
     _socket.on('mention_received', _onMentionReceived);
-    _socket.on('connected', (_) => _catchUpAfterReconnect());
+    _socket.on('connected', _onSocketConnected);
+    _socket.on('logged_out', _onSocketLoggedOut);
   }
 
-  /// Pull messages missed while the socket was down. Merges by id, so a
-  /// reconnect cannot duplicate or reorder rows already on screen.
+  void _onSocketConnected(dynamic data) {
+    if (ChatV1Socket.asMap(data)?['recovered'] != true) return;
+    _scheduleRecovery();
+  }
+
+  void _scheduleRecovery() {
+    if (_disposed || _recoveryTimer != null) return;
+    if (_catchingUp) {
+      _catchUpAgain = true;
+      return;
+    }
+    final session = _socket.sessionGeneration;
+    final elapsed = _lastRecoveryAt == null
+        ? recoveryCooldown
+        : DateTime.now().difference(_lastRecoveryAt!);
+    final remaining = recoveryCooldown - elapsed;
+    final delay = (remaining.isNegative ? Duration.zero : remaining) +
+        Duration(milliseconds: 250 + Random().nextInt(1000));
+    _recoveryTimer = Timer(delay, () {
+      _recoveryTimer = null;
+      if (!_recoveryIsCurrent(session)) return;
+      unawaited(_catchUpAfterReconnect());
+    });
+  }
+
+  bool _recoveryIsCurrent(int session) =>
+      !_disposed && _socket.sessionGeneration == session && _socket.isConnected;
+
+  void _onSocketLoggedOut(dynamic _) {
+    _recoveryTimer?.cancel();
+    _recoveryTimer = null;
+    _catchUpAgain = false;
+    _lastRecoveryAt = null;
+    _messageCache.clear();
+    _messageCacheLru.clear();
+    _seenMentionMessageIds.clear();
+    channels = [];
+    customGroups = [];
+    dms = [];
+    taskConversations = [];
+    workflowConversations = [];
+    members = [];
+    salesSopId = null;
+    currentUserId = null;
+    currentUserName = null;
+    _flagsLoaded = false;
+    _localFlags.clear();
+    loading = false;
+    error = null;
+    notifyListeners();
+  }
+
+  Future<List<Map<String, dynamic>>> _recoveryMessages(String id,
+      {String? afterId, int pageSize = 100}) {
+    final loader = _recoveryMessageLoader;
+    return loader != null
+        ? loader(id, afterId, pageSize)
+        : _api.listMessages(id, afterId: afterId, pageSize: pageSize);
+  }
+
+  @visibleForTesting
+  Future<void> recoverAfterReconnectForTesting() {
+    _ensureSocketBound();
+    return _catchUpAfterReconnect();
+  }
+
+  /// One open conversation is recovered; inactive caches are refreshed on
+  /// their next open. The page cap prevents long outages from causing an
+  /// unbounded query storm across every chat previously visited on the phone.
   Future<void> _catchUpAfterReconnect() async {
     if (_catchingUp) {
       _catchUpAgain = true;
       return;
     }
-    final ids = _messageCache.keys.toList();
-    if (ids.isEmpty) return;
+    final session = _socket.sessionGeneration;
+    if (!_recoveryIsCurrent(session)) return;
+    final id = _socket.joinedConversationId;
+    final sopId = salesSopId;
     _catchingUp = true;
-    var added = 0;
-    print(
-      '[ChatV1] CHAT SOCKET message catch-up start conversations=${ids.length}',
-    );
+    _lastRecoveryAt = DateTime.now();
+    _messageCache.removeWhere((key, _) => key != id);
+    _messageCacheLru.removeWhere((key) => key != id);
     try {
-      for (final id in ids) {
-        final cached = _messageCache[id];
-        if (cached == null || cached.isEmpty) continue;
-        var cursor = cached.last.id;
+      if (id != null) {
+        var cursor = _messageCache[id]?.last.id;
         final fresh = <ChatV1Message>[];
-        while (true) {
-          final rows = await _api.listMessages(
-            id,
-            afterId: cursor,
-            pageSize: 100,
-          );
-          if (rows.isEmpty) break;
-          final mapped = rows
-              .map(
-                (row) => ChatV1Mapper.messageFromJson(
-                  row,
-                  currentUserId: currentUserId ?? '',
-                ),
-              )
-              .toList();
+        final recoveredRows = <String, Map<String, dynamic>>{};
+
+        void mergeRows(List<Map<String, dynamic>> rows) {
           final known = _messageCache[id]?.map((m) => m.id).toSet() ?? {};
-          for (final message in mapped) {
-            if (message.id.isEmpty || known.contains(message.id)) continue;
+          final mapped = rows
+              .map((row) => ChatV1Mapper.messageFromJson(row,
+                  currentUserId: currentUserId ?? ''))
+              .toList();
+          for (var index = 0; index < mapped.length; index++) {
+            final message = mapped[index];
+            if (message.id.isEmpty || !known.add(message.id)) continue;
             fresh.add(message);
-            known.add(message.id);
+            recoveredRows[message.id] = rows[index];
           }
-          putCachedMessages(
-            id,
-            mergeConversationMessages(_messageCache[id] ?? const [], mapped),
-          );
-          final next = mapped.last.id;
-          if (next.isEmpty || next == cursor || rows.length < 100) break;
-          cursor = next;
+          putCachedMessages(id,
+              mergeConversationMessages(_messageCache[id] ?? const [], mapped));
         }
-        if (fresh.isEmpty) continue;
-        added += fresh.length;
-        _applyCaughtUpPreview(id, fresh);
+
+        for (var page = 0; page < maxRecoveryPages; page++) {
+          final rows = await _recoveryMessages(id, afterId: cursor);
+          if (!_recoveryIsCurrent(session) ||
+              _socket.joinedConversationId != id) return;
+          if (rows.isEmpty) break;
+          mergeRows(rows);
+          final next =
+              (rows.last['id'] ?? rows.last['message_id'] ?? '').toString();
+          if (cursor == null ||
+              rows.length < 100 ||
+              next.isEmpty ||
+              next == cursor) {
+            break;
+          }
+          cursor = next;
+          if (page == maxRecoveryPages - 1) {
+            // Bound a long gap and still show the newest messages immediately.
+            final recent = await _recoveryMessages(id);
+            if (!_recoveryIsCurrent(session) ||
+                _socket.joinedConversationId != id) return;
+            mergeRows(recent);
+          }
+        }
+        if (fresh.isNotEmpty) _applyCaughtUpPreview(id, fresh);
+        for (final row in recoveredRows.values) {
+          if (!_recoveryIsCurrent(session)) return;
+          _socket.deliverRecoveredMessage(id, row);
+        }
       }
-    } catch (e) {
-      print('[ChatV1] CHAT SOCKET message catch-up error: $e');
+      if (!_recoveryIsCurrent(session) || sopId == null) return;
+      // Refresh authoritative channel previews and unread/mention counts once
+      // per recovery, rather than replaying all inactive histories.
+      final loader = _recoveryConversationLoader;
+      final rows = loader != null
+          ? await loader(sopId)
+          : await _api.listConversations(
+              contextType: 'sales_sop', contextId: sopId);
+      if (!_recoveryIsCurrent(session) || salesSopId != sopId) return;
+      _applyConversations(rows);
+      _applyLocalFlags();
+      notifyListeners();
+    } catch (error) {
+      print('[ChatV1] CHAT SOCKET message catch-up error: $error');
     } finally {
       _catchingUp = false;
-      print('[ChatV1] CHAT SOCKET message catch-up done added=$added');
       if (_catchUpAgain) {
         _catchUpAgain = false;
-        _catchUpAfterReconnect();
+        _scheduleRecovery();
       }
     }
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    _recoveryTimer?.cancel();
+    if (_socketBound) {
+      _socket.off('message_created', _onSocketMessageCreated);
+      _socket.off('mention_received', _onMentionReceived);
+      _socket.off('connected', _onSocketConnected);
+      _socket.off('logged_out', _onSocketLoggedOut);
+    }
+    super.dispose();
   }
 
   void _applyCaughtUpPreview(String conversationId, List<ChatV1Message> fresh) {
@@ -827,6 +955,9 @@ class ChatV1Controller extends ChangeNotifier {
   }
 
   void _onSocketMessageCreated(dynamic data) {
+    // Catch-up already merged the cache and counters. Replay only updates
+    // screen listeners; it must not increment unread a second time.
+    if (ChatV1Socket.asMap(data)?['_recovered'] == true) return;
     final unwrapped = ChatV1Socket.unwrapMessageEvent(data);
     if (unwrapped == null) return;
     final conversationId = (unwrapped['conversationId'] ?? '').toString();
@@ -978,6 +1109,20 @@ class ChatV1Controller extends ChangeNotifier {
           'general') {
         return item;
       }
+    }
+    return null;
+  }
+
+  /// Project Important channel (web copies marked messages here).
+  ChatV1ChatItem? findImportantChannel() {
+    for (final item in channels) {
+      if (item.title.trim() == 'Important' &&
+          (item.contextType ?? '').toLowerCase() == 'sales_sop') {
+        return item;
+      }
+    }
+    for (final item in channels) {
+      if (item.title.trim().toLowerCase() == 'important') return item;
     }
     return null;
   }

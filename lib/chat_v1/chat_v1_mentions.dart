@@ -1,11 +1,9 @@
-﻿import 'chat_v1_models.dart';
+import 'chat_v1_models.dart';
 
 /// @mention trigger detection and token insertion.
 ///
-/// The chat server does not take a separate mention payload. It parses the
-/// message body with `@token` (see chat/utils/mention_parser.py) and matches
-/// the token to a conversation participant's first name, full name, compact
-/// name, or email prefix. Tokens inserted here must stay compatible with that.
+/// Body tokens remain compatible with legacy server mention parsing. Confirmed
+/// mention metadata supplies the person's readable name when displaying messages.
 
 final RegExp _trigger = RegExp(r'(^|[\s(])@([^\s@]*)$');
 final RegExp _space = RegExp(r'\s+');
@@ -195,12 +193,13 @@ ChatV1MentionInsertion applyChatMention({
   return ChatV1MentionInsertion(text: next, caret: caret);
 }
 
-
 /// One slice of a message body. [isSelf] is only the current user's @name.
 class MentionTextSegment {
   final String text;
   final bool isSelf;
-  const MentionTextSegment(this.text, {this.isSelf = false});
+  final bool isMention;
+  const MentionTextSegment(this.text,
+      {this.isSelf = false, this.isMention = false});
 }
 
 bool chatTokenMatchesName(String token, String? name) {
@@ -220,7 +219,8 @@ List<MentionTextSegment> splitSelfMentionSegments(
   List<ChatV1Mention> mentions = const [],
 }) {
   final uid = (currentUserId ?? '').trim();
-  final self = mentions.where((m) => uid.isNotEmpty && m.userId == uid).toList();
+  final self =
+      mentions.where((m) => uid.isNotEmpty && m.userId == uid).toList();
   if (self.isEmpty) {
     return [MentionTextSegment(body)];
   }
@@ -229,6 +229,7 @@ List<MentionTextSegment> splitSelfMentionSegments(
     final trimmed = (name ?? '').trim();
     if (trimmed.isNotEmpty && !names.contains(trimmed)) names.add(trimmed);
   }
+
   addName(currentUserName);
   for (final mention in self) {
     addName(mention.name);
@@ -252,4 +253,61 @@ List<MentionTextSegment> splitSelfMentionSegments(
   }
   if (out.isEmpty) return [MentionTextSegment(body)];
   return out;
+}
+
+/// Display every confirmed tag with its readable name. Unconfirmed @text and
+/// email addresses remain plain text; participant names alone do not create tags.
+List<MentionTextSegment> splitChatMentionSegments(
+  String body, {
+  String? currentUserId,
+  String? currentUserName,
+  List<ChatV1Mention> mentions = const [],
+}) {
+  final aliases = <String, List<ChatV1Mention>>{};
+  final names = <String, String>{};
+  for (final mention in mentions) {
+    final name = (mention.name ??
+            (mention.userId == currentUserId ? currentUserName : null) ??
+            '')
+        .trim();
+    if (name.isEmpty) continue;
+    names[mention.userId] = name;
+    for (final alias in {
+      name,
+      name.split(_space).first,
+      name.replaceAll(_space, ''),
+    }) {
+      final key = alias.toLowerCase();
+      final people = aliases.putIfAbsent(key, () => []);
+      if (!people.any((person) => person.userId == mention.userId)) {
+        people.add(mention);
+      }
+    }
+  }
+  // A shared first name cannot identify one of several tagged people.
+  final keys = aliases.keys.where((key) => aliases[key]!.length == 1).toList()
+    ..sort((a, b) => b.length.compareTo(a.length));
+  if (keys.isEmpty) return [MentionTextSegment(body)];
+  final pattern = keys.map(RegExp.escape).join('|');
+  final re = RegExp(
+    r'(^|[\s(])@(' + pattern + r')(?=$|[\s@.,!?;:)])',
+    caseSensitive: false,
+  );
+  final out = <MentionTextSegment>[];
+  var index = 0;
+  for (final match in re.allMatches(body)) {
+    final start = match.start + match.group(1)!.length;
+    if (start > index) {
+      out.add(MentionTextSegment(body.substring(index, start)));
+    }
+    final person = aliases[match.group(2)!.toLowerCase()]!.single;
+    out.add(MentionTextSegment(
+      '@${names[person.userId]}',
+      isMention: true,
+      isSelf: person.userId == currentUserId,
+    ));
+    index = match.end;
+  }
+  if (index < body.length) out.add(MentionTextSegment(body.substring(index)));
+  return out.isEmpty ? [MentionTextSegment(body)] : out;
 }

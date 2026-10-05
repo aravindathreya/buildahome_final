@@ -199,6 +199,12 @@ const Map<MobileQuickActionSurface, Map<String, String>>
     'inspection_requests': 'Inspection Requests',
     'site_visit_reports': 'Site Visit Reports',
     'mobile_live_test': 'Mobile Live Test',
+    'create_indent': 'Create Indent',
+    'stock_report': 'Stock Report',
+    'attendance': 'Attendance',
+    'test_reports': 'Test Reports',
+    'notifications': 'My Notifications',
+    'projects': 'Projects',
   },
 };
 

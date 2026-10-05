@@ -85,7 +85,7 @@ class Cv1TaskCard extends StatelessWidget {
                         height: 18,
                         alignment: Alignment.center,
                         decoration: const BoxDecoration(
-                          color: ChatV1Theme.mention,
+                          color: ChatV1Theme.unread,
                           shape: BoxShape.circle,
                         ),
                         child: const Text(

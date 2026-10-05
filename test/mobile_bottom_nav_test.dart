@@ -151,7 +151,7 @@ void main() {
       ]);
     });
 
-    test('skips unknown and surface-invalid keys', () {
+    test('skips unknown keys and keeps saved project tabs', () {
       final keys = resolveMobileBottomNavActionKeys(
         surface: MobileBottomNavSurface.projectNew,
         fallbackKeys: kMobileBottomNavProjectFallback,
@@ -161,16 +161,20 @@ void main() {
           actionKeys: [
             'home',
             'future_tab',
-            'projects', // staff-only title map
+            'projects',
             'updates',
             'chatbox',
             'more',
           ],
         ),
       );
-      expect(keys, ['home', 'more']);
-      expect(keys.contains('updates'), isFalse);
-      expect(keys.contains('chatbox'), isFalse);
+      expect(keys, [
+        'home',
+        'projects',
+        'updates',
+        'chatbox',
+        'more',
+      ]);
     });
 
     test('caps middle tabs so total stays at hard max including pins', () {
@@ -220,26 +224,24 @@ void main() {
       expect(keys, ['home', 'more']);
     });
 
-    test('project home keeps a Payments tab when the saved bar omits it', () {
-      final keys = ensureProjectHomePaymentsTab(
-        resolveMobileBottomNavActionKeys(
+    test('saved project bar keeps Daily Updates and Chat without adding Payments', () {
+      final keys = resolveMobileBottomNavActionKeys(
+        surface: MobileBottomNavSurface.projectNew,
+        fallbackKeys: kMobileBottomNavProjectFallback,
+        snapshot: const MobileBottomNavSnapshot(
           surface: MobileBottomNavSurface.projectNew,
-          fallbackKeys: kMobileBottomNavProjectFallback,
-          snapshot: const MobileBottomNavSnapshot(
-            surface: MobileBottomNavSurface.projectNew,
-            configured: true,
-            actionKeys: ['home', 'my_tasks', 'updates', 'chatbox', 'more'],
-          ),
+          configured: true,
+          actionKeys: ['home', 'my_tasks', 'updates', 'chatbox', 'more'],
         ),
       );
       expect(keys, [
         'home',
         'my_tasks',
-        'payments',
+        'updates',
+        'chatbox',
         'more',
       ]);
-      expect(keys.contains('updates'), isFalse);
-      expect(keys.contains('chatbox'), isFalse);
+      expect(keys.contains('payments'), isFalse);
       expect(keys.length, lessThanOrEqualTo(kMobileBottomNavHardMaxTabs));
     });
 
@@ -260,7 +262,7 @@ void main() {
       expect(keys.contains('indents'), isFalse);
     });
 
-    test('client project_new save excludes chat and updates from the bar', () {
+    test('client project_new save keeps chat and updates on the bar', () {
       final snapshot = parseMobileBottomNavPayload(
         {
           'success': true,
@@ -292,9 +294,13 @@ void main() {
         fallbackKeys: kMobileBottomNavProjectFallback,
         snapshot: snapshot,
       );
-      expect(keys, ['home', 'my_tasks', 'more']);
-      expect(keys.contains('chatbox'), isFalse);
-      expect(keys.contains('updates'), isFalse);
+      expect(keys, [
+        'home',
+        'my_tasks',
+        'updates',
+        'chatbox',
+        'more',
+      ]);
     });
 
     test('project fallback omits updates and chat', () {

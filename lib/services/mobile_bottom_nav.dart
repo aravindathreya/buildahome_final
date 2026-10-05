@@ -299,7 +299,12 @@ const Map<MobileBottomNavSurface, Map<String, String>>
     'client_portal': 'Client Portal',
     'project_timeline': 'Project Timeline',
     'slots': 'Slots',
-    'notifications': 'Notifications',
+    'notifications': 'My Notifications',
+    'projects': 'Projects',
+    'attendance': 'Attendance',
+    'stock_report': 'Stock Report',
+    'test_reports': 'Test Reports',
+    'create_indent': 'Create Indent',
     'inspection_requests': 'Inspection Requests',
     'site_visit_reports': 'Site Visit Reports',
     'project_status': 'Project Status',
@@ -346,7 +351,8 @@ const List<String> kMobileBottomNavProjectFallback = [
   kMobileBottomNavMoreKey,
 ];
 
-/// Tabs intentionally excluded from the bottom bar (still available elsewhere).
+/// Dropped only when a role has no saved Bottom Nav config.
+/// A saved config can place Daily Updates and Chat on the bar.
 const Set<String> kMobileBottomNavExcludedKeys = {
   'updates',
   'chatbox',
@@ -551,7 +557,6 @@ List<String> resolveMobileBottomNavActionKeys({
 
   void addIfAllowed(String key, {required bool isMiddle}) {
     if (key.isEmpty) return;
-    if (kMobileBottomNavExcludedKeys.contains(key)) return;
     if (!allowed.contains(key)) return;
     if (!isKnownBottomNavKeyOnSurface(surface, key)) return;
     if (seen.contains(key)) return;

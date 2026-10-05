@@ -92,6 +92,22 @@ class Cv1MessageBubble extends StatelessWidget {
                       ),
                     if (!message.isDeleted && _importance.kind.isNotEmpty)
                       _importanceCaption(context),
+                    if (!message.isDeleted && !mine &&
+                        message.mentions.any((m) =>
+                            m.userId == ChatV1Controller.instance.currentUserId))
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 5),
+                        child: Text(
+                          'You were tagged here',
+                          style: TextStyle(
+                            color: Theme.of(context).brightness == Brightness.dark
+                                ? const Color(0xFF7DE5A8)
+                                : const Color(0xFF157A42),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
                     if (message.replyPreview != null) _reply(context),
                     if (message.isDeleted)
                       Text(
@@ -697,20 +713,25 @@ class Cv1MessageBubble extends StatelessWidget {
       height: 1.35,
     );
     final ctrl = ChatV1Controller.instance;
-    final segments = splitSelfMentionSegments(
+    final segments = splitChatMentionSegments(
       visible,
       currentUserId: ctrl.currentUserId,
       currentUserName: ctrl.currentUserName,
       mentions: message.mentions,
     );
-    if (!segments.any((s) => s.isSelf)) {
+    if (!segments.any((s) => s.isMention)) {
       return Text(visible, style: base);
     }
-    final mine = message.isMine;
-    final selfStyle = base.copyWith(
-      color: mine ? const Color(0xFF0B5CAB) : Colors.white,
-      backgroundColor: mine ? Colors.white : ChatV1Theme.mention,
-      fontWeight: FontWeight.w800,
+    final mentionStyle = base.copyWith(
+      color: Theme.of(context).brightness == Brightness.dark
+          ? const Color(0xFF8AC8FF)
+          : const Color(0xFF0B5CAB),
+      fontWeight: FontWeight.w600,
+    );
+    final selfStyle = mentionStyle.copyWith(
+      color: Theme.of(context).brightness == Brightness.dark
+          ? const Color(0xFF7DE5A8)
+          : const Color(0xFF157A42),
     );
     return Text.rich(
       TextSpan(
@@ -718,7 +739,9 @@ class Cv1MessageBubble extends StatelessWidget {
           for (final segment in segments)
             TextSpan(
               text: segment.text,
-              style: segment.isSelf ? selfStyle : base,
+              style: segment.isSelf
+                  ? selfStyle
+                  : segment.isMention ? mentionStyle : base,
             ),
         ],
       ),
