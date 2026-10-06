@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -81,6 +83,7 @@ class _ChatV1DocThreadScreenState extends State<ChatV1DocThreadScreen> {
         _doc = doc;
         _loading = false;
       });
+      unawaited(ChatV1Controller.instance.markDocsSeen([widget.docId]));
       WidgetsBinding.instance.addPostFrameCallback((_) {
         final pin = _stickKey.currentState;
         if (pin != null) {

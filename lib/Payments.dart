@@ -8,6 +8,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'UploadPaymentProofScreen.dart';
 import 'app_theme.dart';
+import 'models/payment_proof_item.dart';
+import 'services/client_portal_service.dart';
 import 'services/data_provider.dart';
 import 'widgets/dashboard_chrome.dart';
 import 'widgets/themed_scaffold.dart';
@@ -82,8 +84,98 @@ bool isPaymentStatusScheduled(String status) {
   return normalized == 'not due' || normalized == 'wip';
 }
 
+bool isPaymentStatusInReview(String status) {
+  final normalized = status.toLowerCase().trim().replaceAll('_', ' ');
+  return normalized == 'in review';
+}
+
 bool isPaymentStatusPending(String status) {
   return !isPaymentStatusPaid(status) && !isPaymentStatusScheduled(status);
+}
+
+/// A real screenshot that finance has not approved yet.
+bool paymentProofAwaitsFinanceReview(PaymentProofItem proof) {
+  if (proof.isNotABill || proof.isStatusRejected || proof.isApproved) {
+    return false;
+  }
+  return proof.url.trim().isNotEmpty || proof.filename.trim().isNotEmpty;
+}
+
+String _paymentMatchKey(String value) {
+  var text = value.trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
+  const prefix = 'completion of ';
+  if (text.startsWith(prefix)) {
+    text = text.substring(prefix.length).trim();
+  }
+  return text;
+}
+
+bool paymentHasUnapprovedScreenshot({
+  required String paymentName,
+  required bool isTender,
+  String? taskId,
+  required List<PaymentProofItem> proofs,
+}) {
+  final nameKey = _paymentMatchKey(paymentName);
+  final id = taskId?.trim() ?? '';
+  for (final proof in proofs) {
+    if (!paymentProofAwaitsFinanceReview(proof)) continue;
+    if (id.isNotEmpty && proof.stageTaskId?.toString() == id) return true;
+    if (nameKey.isNotEmpty &&
+        proof.stageName.isNotEmpty &&
+        _paymentMatchKey(proof.stageName) == nameKey) {
+      return true;
+    }
+    for (final stage in proof.billStages) {
+      if (isTender && stage.isNt) continue;
+      if (!isTender && !stage.isNt) continue;
+      final stageKey = _paymentMatchKey(stage.stageName);
+      final labelKey = _paymentMatchKey(stage.sectionLabel);
+      if (nameKey.isNotEmpty &&
+          (stageKey == nameKey || labelKey == nameKey)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+/// Paid stays paid. A linked screenshot that finance has not approved
+/// shows as in review. Scheduled rows stay scheduled so the list can hide them.
+String displayedPaymentStatus({
+  required String paidStatus,
+  required String name,
+  required bool isTender,
+  String? taskId,
+  required List<PaymentProofItem> proofs,
+}) {
+  if (isPaymentStatusPaid(paidStatus)) return paidStatus;
+  if (paymentHasUnapprovedScreenshot(
+    paymentName: name,
+    isTender: isTender,
+    taskId: taskId,
+    proofs: proofs,
+  )) {
+    return 'in review';
+  }
+  return paidStatus;
+}
+
+String? _paymentTaskId(Map item) {
+  final raw = item['id'] ?? item['task_id'];
+  final text = raw?.toString().trim() ?? '';
+  if (text.isEmpty || text == 'null') return null;
+  return text;
+}
+
+Future<List<PaymentProofItem>> _loadPaymentProofs() async {
+  try {
+    final payload = await ClientPortalService().getPaymentProof();
+    return PaymentProofItem.listFromPayload(payload);
+  } catch (e) {
+    print('[Payments] payment proof load skipped: $e');
+    return const [];
+  }
 }
 
 double _paymentValueToDouble(dynamic value) {
@@ -115,10 +207,11 @@ Future<ProjectPaymentsSnapshot> fetchProjectPaymentsSnapshot(
     }
   }
 
-  final results = await Future.wait([
+  final results = await Future.wait<dynamic>([
     safeGet(paymentUrl),
     safeGet(tenderUrl),
     safeGet(nonTenderUrl),
+    _loadPaymentProofs(),
   ]);
 
   final paymentResponse = results[0];
@@ -141,6 +234,7 @@ Future<ProjectPaymentsSnapshot> fetchProjectPaymentsSnapshot(
     if (decoded is List) nonTenderData = decoded;
   }
 
+  final proofs = results[3] as List<PaymentProofItem>;
   final paymentDetails = jsonDecode(paymentResponse.body);
   final summary = (paymentDetails is List && paymentDetails.isNotEmpty)
       ? Map<String, dynamic>.from(paymentDetails[0] as Map)
@@ -159,31 +253,51 @@ Future<ProjectPaymentsSnapshot> fetchProjectPaymentsSnapshot(
   );
 
   final tenderItems = tenderData
-      .map<PaymentItem>((item) => PaymentItem(
-            name: (item['task_name'] ?? 'Milestone').toString(),
+      .map<PaymentItem>((item) {
+        final name = (item['task_name'] ?? 'Milestone').toString();
+        final taskId = item is Map ? _paymentTaskId(Map<String, dynamic>.from(item)) : null;
+        return PaymentItem(
+            name: name,
             percentage: _paymentValueToDouble(item['payment']),
-            status: (item['paid'] ?? '').toString(),
+            status: displayedPaymentStatus(
+              paidStatus: (item['paid'] ?? '').toString(),
+              name: name,
+              isTender: true,
+              taskId: taskId,
+              proofs: proofs,
+            ),
             note: item['p_note']?.toString(),
             startDate: item['start_date']?.toString(),
             endDate: item['end_date']?.toString(),
             markedAsDueOn: item['marked_as_due_on']?.toString(),
             markedAsPaidOn: item['marked_as_paid_on']?.toString(),
             isTender: true,
-          ))
+          );
+      })
       .toList();
 
   final nonTenderItems = nonTenderData
-      .map<PaymentItem>((item) => PaymentItem(
-            name: (item['task_name'] ?? 'Non tender item').toString(),
+      .map<PaymentItem>((item) {
+        final name = (item['task_name'] ?? 'Non tender item').toString();
+        final taskId = item is Map ? _paymentTaskId(Map<String, dynamic>.from(item)) : null;
+        return PaymentItem(
+            name: name,
             percentage: _paymentValueToDouble(item['payment']),
-            status: (item['paid'] ?? '').toString(),
+            status: displayedPaymentStatus(
+              paidStatus: (item['paid'] ?? '').toString(),
+              name: name,
+              isTender: false,
+              taskId: taskId,
+              proofs: proofs,
+            ),
             startDate: item['start_date']?.toString(),
             endDate: item['end_date']?.toString(),
             markedAsDueOn: item['marked_as_due_on']?.toString(),
             markedAsPaidOn: item['marked_as_paid_on']?.toString(),
             isTender: false,
             amountOverride: _paymentValueToDouble(item['payment']),
-          ))
+          );
+      })
       .toList();
 
   return ProjectPaymentsSnapshot(
@@ -346,10 +460,11 @@ class _PaymentsDashboardState extends State<PaymentsDashboard> {
         }
       }
 
-      final results = await Future.wait([
+      final results = await Future.wait<dynamic>([
         safeGet('payment', paymentUrl),
         safeGet('tender', tenderUrl),
         safeGet('non-tender', nonTenderUrl),
+        _loadPaymentProofs(),
       ]);
 
       if (_shouldIgnoreLoad(requestId)) return;
@@ -385,6 +500,7 @@ class _PaymentsDashboardState extends State<PaymentsDashboard> {
             '[Payments] Non-tender request failed with status ${nonTenderResponse.statusCode}');
       }
 
+      final proofs = results[3] as List<PaymentProofItem>;
       final paymentDetails = jsonDecode(paymentResponse.body);
       final summary = (paymentDetails is List && paymentDetails.isNotEmpty) ? paymentDetails[0] : {};
 
@@ -394,13 +510,25 @@ class _PaymentsDashboardState extends State<PaymentsDashboard> {
         dataProvider.lastPaymentsLoad = DateTime.now();
       }
 
-      _processPaymentData(summary, tenderData, nonTenderData, requestId);
+      _processPaymentData(
+        summary,
+        tenderData,
+        nonTenderData,
+        requestId,
+        proofs: proofs,
+      );
     } catch (e) {
       rethrow;
     }
   }
 
-  void _processPaymentData(Map<String, dynamic> summary, List<dynamic> tenderData, List<dynamic> nonTenderData, int requestId) {
+  void _processPaymentData(
+    Map<String, dynamic> summary,
+    List<dynamic> tenderData,
+    List<dynamic> nonTenderData,
+    int requestId, {
+    List<PaymentProofItem> proofs = const [],
+  }) {
     if (_shouldIgnoreLoad(requestId)) return;
 
     _safeSetState(() {
@@ -417,31 +545,55 @@ class _PaymentsDashboardState extends State<PaymentsDashboard> {
       );
 
       tenderItems = tenderData
-          .map<PaymentItem>((item) => PaymentItem(
-                name: (item['task_name'] ?? 'Milestone').toString(),
+          .map<PaymentItem>((item) {
+            final name = (item['task_name'] ?? 'Milestone').toString();
+            final taskId = item is Map
+                ? _paymentTaskId(Map<String, dynamic>.from(item))
+                : null;
+            return PaymentItem(
+                name: name,
                 percentage: _toDouble(item['payment']),
-                status: (item['paid'] ?? '').toString(),
+                status: displayedPaymentStatus(
+                  paidStatus: (item['paid'] ?? '').toString(),
+                  name: name,
+                  isTender: true,
+                  taskId: taskId,
+                  proofs: proofs,
+                ),
                 note: item['p_note']?.toString(),
                 startDate: item['start_date']?.toString(),
                 endDate: item['end_date']?.toString(),
                 markedAsDueOn: item['marked_as_due_on']?.toString(),
                 markedAsPaidOn: item['marked_as_paid_on']?.toString(),
                 isTender: true,
-              ))
+              );
+          })
           .toList();
 
       nonTenderItems = nonTenderData
-          .map<PaymentItem>((item) => PaymentItem(
-                name: (item['task_name'] ?? 'Non tender item').toString(),
+          .map<PaymentItem>((item) {
+            final name = (item['task_name'] ?? 'Non tender item').toString();
+            final taskId = item is Map
+                ? _paymentTaskId(Map<String, dynamic>.from(item))
+                : null;
+            return PaymentItem(
+                name: name,
                 percentage: _toDouble(item['payment']),
-                status: (item['paid'] ?? '').toString(),
+                status: displayedPaymentStatus(
+                  paidStatus: (item['paid'] ?? '').toString(),
+                  name: name,
+                  isTender: false,
+                  taskId: taskId,
+                  proofs: proofs,
+                ),
                 startDate: item['start_date']?.toString(),
                 endDate: item['end_date']?.toString(),
                 markedAsDueOn: item['marked_as_due_on']?.toString(),
                 markedAsPaidOn: item['marked_as_paid_on']?.toString(),
                 isTender: false,
                 amountOverride: _toDouble(item['payment']),
-              ))
+              );
+          })
           .toList();
     });
   }
@@ -599,12 +751,6 @@ class _PaymentsDashboardState extends State<PaymentsDashboard> {
         emptyHint: 'No pending Upgrades and Additions Cost items',
         items: items.where((item) => item.isPending).toList(),
         accent: Colors.red[700]!,
-      ),
-      _NtPaymentSection(
-        title: 'Scheduled',
-        emptyHint: 'No scheduled Upgrades and Additions Cost items',
-        items: items.where((item) => item.isScheduled).toList(),
-        accent: Colors.amber[800]!,
       ),
       _NtPaymentSection(
         title: 'Paid',
@@ -866,13 +1012,7 @@ class _PaymentsDashboardState extends State<PaymentsDashboard> {
 
     if (isNonTender) {
       final pendingItems = _currentItems.where((item) => item.isPending).toList();
-      final scheduledItems =
-          _currentItems.where((item) => item.isScheduled).toList();
       final pendingAmount = pendingItems.fold<double>(
-        0,
-        (sum, item) => sum + item.resolvedAmount(summary),
-      );
-      final scheduledAmount = scheduledItems.fold<double>(
         0,
         (sum, item) => sum + item.resolvedAmount(summary),
       );
@@ -913,19 +1053,6 @@ class _PaymentsDashboardState extends State<PaymentsDashboard> {
             gradient: const [
               Color(0xFF3F1D24),
               Color(0xFF7F1D1D),
-            ],
-          ),
-          _SummaryCard(
-            title: 'Scheduled',
-            subtitle: scheduledItems.isEmpty
-                ? 'No upcoming items'
-                : '${scheduledItems.length} item${scheduledItems.length == 1 ? '' : 's'} upcoming',
-            value: _formatCurrency(scheduledAmount),
-            icon: Icons.event_available_outlined,
-            valueColor: Colors.amber[800],
-            gradient: [
-              Colors.amber.withOpacity(0.25),
-              Colors.amber.withOpacity(0.12),
             ],
           ),
         ],
@@ -1013,7 +1140,7 @@ class _PaymentsDashboardState extends State<PaymentsDashboard> {
             ),
             SizedBox(height: 4),
             Text(
-              isSearching ? 'Try a different keyword or clear the search.' : 'Once payments are scheduled, they will appear here.',
+              isSearching ? 'Try a different keyword or clear the search.' : 'Payments will appear here when they are due.',
               textAlign: TextAlign.center,
               style: TextStyle(color: AppTheme.getTextSecondary(context)),
             ),
@@ -1300,6 +1427,13 @@ class _PaymentsDashboardState extends State<PaymentsDashboard> {
         foreground: Colors.green[800]!,
       );
     }
+    if (isPaymentStatusInReview(status)) {
+      return _StatusStyle(
+        label: 'In review',
+        background: const Color(0xFF312E81).withOpacity(0.45),
+        foreground: const Color(0xFFC7D2FE),
+      );
+    }
     if (isPaymentStatusScheduled(status)) {
       return _StatusStyle(
         label: 'Scheduled',
@@ -1435,11 +1569,15 @@ class _PaymentsDashboardState extends State<PaymentsDashboard> {
 
   bool get _isSearching => _searchQuery.trim().isNotEmpty;
 
+  List<PaymentItem> get _visibleItems {
+    return _currentItems.where((item) => !item.isScheduled).toList();
+  }
+
   List<PaymentItem> get _filteredItems {
-    if (!_isSearching) return _currentItems;
+    if (!_isSearching) return _visibleItems;
     final query = _searchQuery.trim().toLowerCase();
     final currentSummary = _currentSummary;
-    return _currentItems.where((item) {
+    return _visibleItems.where((item) {
       final note = item.note?.toLowerCase() ?? '';
       final status = item.status.toLowerCase();
       final statusLabel = _statusStyle(item.status).label.toLowerCase();

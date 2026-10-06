@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -8,6 +9,7 @@ import '../models/workflow_document.dart';
 import 'api_http.dart';
 import 'mobile_documents.dart';
 import 'session_manager.dart';
+import 'workflow_document_service.dart';
 
 /// Fetches `GET /API/mobile/documents?project_id=` once per project, caches
 /// in SharedPreferences, and exposes a stale-while-revalidate snapshot.
@@ -28,6 +30,8 @@ class MobileDocumentsService {
   ];
   static const Duration requestTimeout = Duration(seconds: 15);
   static const Duration minRefreshInterval = Duration(seconds: 20);
+  static String? _preferredBase;
+  static String? _preferredPrefix;
 
   final ValueNotifier<int> revision = ValueNotifier<int>(0);
   final MobileDocumentsInFlight inFlight = MobileDocumentsInFlight();
@@ -48,6 +52,40 @@ class MobileDocumentsService {
 
   bool isBackendConfigured({String? projectId}) {
     return snapshotFor(projectId: projectId)?.configured == true;
+  }
+
+  /// Show a saved catalog without waiting for the network.
+  Future<bool> showCachedLibrary({String? projectId}) async {
+    await _bindIdentity(projectId: projectId);
+    final resolved = (_projectId ?? '').trim();
+    if (resolved.isEmpty) return false;
+    final memory = snapshotFor(projectId: resolved);
+    if (memory != null && memory.configured) return true;
+    final hydrated = await _hydrateFromPrefs(resolved);
+    if (hydrated) _emit();
+    final snap = snapshotFor(projectId: resolved);
+    return snap != null && snap.configured;
+  }
+
+  /// Saved catalog when it exists, otherwise the network, otherwise the
+  /// older workflow feed.
+  Future<WorkflowDocumentLibrary> loadDocumentLibraryFast({
+    String? projectId,
+  }) async {
+    final showedCache = await showCachedLibrary(projectId: projectId);
+    if (showedCache) {
+      final snap = snapshotFor(projectId: projectId);
+      if (shouldUseMobileDocumentsSnapshot(snap)) {
+        unawaited(ensureLibrary(projectId: projectId));
+        return snap!.library;
+      }
+    }
+    await ensureLibrary(projectId: projectId);
+    final snap = snapshotFor(projectId: projectId);
+    if (shouldUseMobileDocumentsSnapshot(snap)) {
+      return snap!.library;
+    }
+    return WorkflowDocumentService().fetchLibrary(projectId: projectId);
   }
 
   /// Read cache (if needed) then refresh from the network without inventing
@@ -217,8 +255,18 @@ class MobileDocumentsService {
     };
 
     Object? lastError;
-    for (final base in baseUrls) {
-      for (final prefix in const ['API', 'api']) {
+    final bases = <String>[
+      if (_preferredBase != null) _preferredBase!,
+      for (final base in baseUrls)
+        if (base != _preferredBase) base,
+    ];
+    final prefixes = <String>[
+      if (_preferredPrefix != null) _preferredPrefix!,
+      for (final prefix in const ['API', 'api'])
+        if (prefix != _preferredPrefix) prefix,
+    ];
+    for (final base in bases) {
+      for (final prefix in prefixes) {
         final uri = Uri.parse('$base/$prefix/mobile/documents')
             .replace(queryParameters: query);
         try {
@@ -241,6 +289,8 @@ class MobileDocumentsService {
             lastError = 'unexpected payload';
             continue;
           }
+          _preferredBase = base;
+          _preferredPrefix = prefix;
           return MobileDocumentsSnapshot(
             configured: snapshot.configured,
             projectId: projectId,

@@ -19,6 +19,7 @@ import 'ProjectFocusScreen.dart';
 import 'ProjectSituationShell.dart';
 import 'checklist_categories.dart';
 import 'services/data_provider.dart';
+import 'services/project_completion_days.dart';
 import 'services/notification_service.dart';
 import 'services/rbac_service.dart';
 import 'services/session_manager.dart';
@@ -61,6 +62,7 @@ import 'services/client_generation_service.dart';
 import 'services/legacy_client_features.dart';
 import 'services/mobile_bottom_nav.dart';
 import 'services/mobile_bottom_nav_service.dart';
+import 'services/mobile_documents_service.dart';
 import 'services/mobile_quick_actions.dart';
 import 'services/mobile_quick_actions_service.dart';
 import 'services/profile_picture_service.dart';
@@ -308,6 +310,7 @@ class UserDashboardLayoutState extends State<UserDashboardLayout> {
     _loadDisplayName();
     _loadUnreadNotifications();
     unawaited(ClientGenerationService.instance.ensureLoaded());
+    unawaited(MobileDocumentsService.instance.ensureLibrary());
     // Force network so a prior failed fetch / stale configured:false cache
     // cannot leave Chat on the hardcoded fallback bar.
     unawaited(_ensureBottomNavSurface(force: true));
@@ -952,6 +955,7 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
     loadTasks();
     unawaited(_loadOutstandingPayments());
     unawaited(ClientGenerationService.instance.ensureLoaded());
+    unawaited(MobileDocumentsService.instance.ensureLibrary());
     unawaited(MobileQuickActionsService.instance
         .ensureSurface(MobileQuickActionSurface.projectHomeNew));
 
@@ -3279,26 +3283,14 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
       List<Map<String, dynamic>> items) {
     final snapshot = MobileQuickActionsService.instance
         .snapshot(MobileQuickActionSurface.projectHomeNew);
-    // Saved Mobile → Quick Actions config is the full grid for this role.
-    // Do not put Payments or filler tiles back after Super Admin removed
-    // them, and do not drop an action they turned on.
-    // Clients still always get Timeline, Tasks, Slots, and Upcoming visits,
-    // and never Schedule or Checklist.
+    // A saved Mobile → Quick Actions list is the grid. Do not put a tile
+    // back after it was removed, and do not drop one that was turned on.
     if (snapshot != null && snapshot.configured) {
-      final configured = resolveMobileQuickActions(
+      return resolveMobileQuickActions(
         surface: MobileQuickActionSurface.projectHomeNew,
         catalog: _configurableProjectQuickActions(items),
         fallback: const [],
         snapshot: snapshot,
-      );
-      return _shapeClientQuickActions(
-        withoutLegacyDocumentsQuickActions(
-          _ensureClientTimelineQuickAction(
-            _ensureForMeQuickAction(configured, items),
-            items,
-          ),
-        ),
-        items,
       );
     }
 
@@ -3725,7 +3717,7 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
     if (!mounted) return;
     final dataProvider = DataProvider();
     setState(() {
-      completed = dataProvider.clientProjectCompletion ?? completed;
+      completed = dataProvider.clientProjectCompletion;
       docDelayDays = dataProvider.clientDocDelayDays;
       totalDays = dataProvider.clientTotalDays;
       baseTotalDays = dataProvider.clientBaseTotalDays;
@@ -3768,15 +3760,10 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
     return _wholeNumber(value);
   }
 
-  /// Days still pending ≈ total_days − (total_days × percent / 100).
-  int? _remainingDays() {
-    final total = totalDays;
-    final percent = double.tryParse(_percentText() ?? '');
-    if (total == null || total < 0 || percent == null) return null;
-    final completedDays = (total * percent.clamp(0.0, 100.0) / 100).round();
-    final remaining = total - completedDays;
-    return remaining < 0 ? 0 : remaining;
-  }
+  int? _remainingDays() => remainingProjectDays(
+        totalDays: totalDays,
+        completion: completed,
+      );
 
   String _dayWord(num count) => count == 1 ? 'day' : 'days';
 
@@ -3816,7 +3803,7 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
   }
 
   Widget _buildCompletionBanner() {
-    final progress = ((double.tryParse(completed ?? '') ?? 0.0) / 100)
+    final progress = ((double.tryParse(_percentText() ?? '') ?? 0.0) / 100)
         .clamp(0.0, 1.0)
         .toDouble();
     final percentText = _percentText();
@@ -3870,6 +3857,13 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
             if (mapAction != null) mapAction,
           ],
         ),
+        if (!hasDuration) ...[
+          const SizedBox(height: 4),
+          const Text(
+            'Handover estimate unavailable',
+            style: TextStyle(color: _airbnbMuted, fontSize: 13),
+          ),
+        ],
         if (delayLabel != null) ...[
           const SizedBox(height: 4),
           Text(

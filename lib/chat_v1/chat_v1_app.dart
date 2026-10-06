@@ -8,6 +8,7 @@ import 'chat_v1_theme.dart';
 import 'chat_v1_utils.dart';
 import 'screens/chat_v1_conversation_screen.dart';
 import 'screens/chat_v1_doc_list_screen.dart';
+import 'screens/chat_v1_doc_thread_screen.dart';
 import 'screens/chat_v1_group_info_screen.dart';
 import 'screens/chat_v1_home_screen.dart';
 import 'screens/chat_v1_search_screen.dart';
@@ -206,16 +207,36 @@ class _ChatV1AppState extends State<ChatV1App> {
         ChatV1TaskListScreen(
           hubTitle: item.title,
           hubKind: item.hubKind ?? 'tasks',
-          onOpenTask: (task) => _openConversation(
-            context,
-            item,
-            task: task,
-          ),
+          onOpenTask: (task) {
+            if (task.contextType == kChatV1DocCreatedContext &&
+                (task.contextId ?? '').trim().isNotEmpty) {
+              _openDocChat(context, task.contextId!.trim());
+              return;
+            }
+            _openConversation(
+              context,
+              item,
+              task: task,
+            );
+          },
         ),
       );
       return;
     }
     await _openConversation(context, item);
+  }
+
+  Future<void> _openDocChat(BuildContext context, String docId) async {
+    final sop = widget.salesSopId ?? ChatV1Controller.instance.salesSopId;
+    if (sop == null || sop.isEmpty) return;
+    await ChatV1Controller.instance.markDocsSeen([docId]);
+    await _open(
+      context,
+      ChatV1DocThreadScreen(
+        salesSopId: sop,
+        docId: docId,
+      ),
+    );
   }
 
   Future<void> _openConversation(

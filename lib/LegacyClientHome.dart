@@ -524,36 +524,41 @@ class LegacyClientDashboardScreenState extends State<LegacyClientDashboardScreen
 
   Widget build(BuildContext context) {
     final catalogItems = getMenuItems();
+    final snapshot = MobileQuickActionsService.instance
+        .snapshot(MobileQuickActionSurface.projectHomeOld);
     final resolved = resolveMobileQuickActions(
       surface: MobileQuickActionSurface.projectHomeOld,
       catalog: catalogItems,
       fallback: catalogItems,
-      snapshot: MobileQuickActionsService.instance
-          .snapshot(MobileQuickActionSurface.projectHomeOld),
+      snapshot: snapshot,
     );
-    final menuItems = resolved.any((item) => item['title'] == 'For me')
+    final menuItems = snapshot?.configured == true
         ? List<Map<String, dynamic>>.from(resolved)
-        : <Map<String, dynamic>>[
-            catalogItems.firstWhere((item) => item['title'] == 'For me'),
-            ...resolved,
-          ];
-    if (!menuItems.any((item) => item['title'] == 'Project Timeline')) {
-      final timeline = catalogItems.firstWhere(
-        (item) => item['title'] == 'Project Timeline',
-      );
-      final portal = menuItems.indexWhere((item) => item['title'] == 'For me');
-      menuItems.insert(portal >= 0 ? portal + 1 : 0, timeline);
-    }
-    menuItems.removeWhere((item) {
-      final title = item['title']?.toString();
-      return title == 'Scheduler' || title == 'Checklist';
-    });
-    for (final title in ['My tasks', 'Slots', 'Site Visit Reports']) {
-      if (menuItems.any((item) => item['title'] == title)) continue;
-      for (final item in catalogItems) {
-        if (item['title'] == title) {
-          menuItems.add(item);
-          break;
+        : (resolved.any((item) => item['title'] == 'For me')
+            ? List<Map<String, dynamic>>.from(resolved)
+            : <Map<String, dynamic>>[
+                catalogItems.firstWhere((item) => item['title'] == 'For me'),
+                ...resolved,
+              ]);
+    if (snapshot?.configured != true) {
+      if (!menuItems.any((item) => item['title'] == 'Project Timeline')) {
+        final timeline = catalogItems.firstWhere(
+          (item) => item['title'] == 'Project Timeline',
+        );
+        final portal = menuItems.indexWhere((item) => item['title'] == 'For me');
+        menuItems.insert(portal >= 0 ? portal + 1 : 0, timeline);
+      }
+      menuItems.removeWhere((item) {
+        final title = item['title']?.toString();
+        return title == 'Scheduler' || title == 'Checklist';
+      });
+      for (final title in ['My tasks', 'Slots', 'Site Visit Reports']) {
+        if (menuItems.any((item) => item['title'] == title)) continue;
+        for (final item in catalogItems) {
+          if (item['title'] == title) {
+            menuItems.add(item);
+            break;
+          }
         }
       }
     }

@@ -999,6 +999,7 @@ class ClientPortalDocumentRow extends StatelessWidget {
   final bool showThumbnail;
   final VoidCallback onTap;
   final VoidCallback? onMenuTap;
+  final VoidCallback? onPressStart;
 
   const ClientPortalDocumentRow({
     super.key,
@@ -1007,6 +1008,7 @@ class ClientPortalDocumentRow extends StatelessWidget {
     this.showThumbnail = false,
     required this.onTap,
     this.onMenuTap,
+    this.onPressStart,
   });
 
   @override
@@ -1029,6 +1031,7 @@ class ClientPortalDocumentRow extends StatelessWidget {
       borderRadius: BorderRadius.circular(ClientPortalDocTheme.cardRadius),
       child: InkWell(
         onTap: onTap,
+        onTapDown: onPressStart == null ? null : (_) => onPressStart!(),
         borderRadius: BorderRadius.circular(ClientPortalDocTheme.cardRadius),
         child: Container(
           padding: const EdgeInsets.all(12),

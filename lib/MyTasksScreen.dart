@@ -646,22 +646,23 @@ bool canUpdateWorkflowTask(Map task) {
   return true;
 }
 
-/// True when linked indent reason blocks completing this workflow task.
-bool isIndentReasonBlockingComplete(Map task) {
-  if (MobileLiveTestWorkflow.skipProjectGates(task)) return false;
+/// Selecting an indent purpose no longer blocks the linked task.
+bool isIndentReasonBlockingComplete(Map task) => false;
+
+/// True when a complete action is locked only because an indent purpose
+/// was selected. That lock is ignored.
+bool isIndentPurposeCompleteLock(Map task, [Map? action]) {
+  if (MobileLiveTestWorkflow.isMandatoryUploadBlock(task)) return false;
   if (_truthyValue(task['indent_reason_blocks_complete'])) return true;
-  // Once linked indents reach Approved POs, API sets this true again.
-  if (task.containsKey('can_complete_workflow_task') &&
-      _falseyValue(task['can_complete_workflow_task'])) {
-    return true;
-  }
-  return false;
+  final msg = [
+    task['indent_reason_block_message']?.toString(),
+    action?['blocked_message']?.toString(),
+  ].whereType<String>().join(' ');
+  return _looksLikeIndentReasonBlockMessage(msg);
 }
 
 bool canCompleteWorkflowTask(Map task) {
-  if (MobileLiveTestWorkflow.skipProjectGates(task)) {
-    return !MobileLiveTestWorkflow.isMandatoryUploadBlock(task);
-  }
+  if (MobileLiveTestWorkflow.isMandatoryUploadBlock(task)) return false;
   return !isIndentReasonBlockingComplete(task);
 }
 
@@ -949,22 +950,18 @@ Future<Map<String, dynamic>> mergeWorkflowTaskDetail(
       }
     }
 
-    // Indent reason gate: mark complete actions blocked so UI + guards agree.
-    if (isIndentReasonBlockingComplete(merged)) {
-      final blockMsg = indentReasonBlockMessage(merged);
-      for (final key in const ['workflow_actions', 'workflow_task_actions']) {
-        final list = _mapListFlexible(merged[key]);
-        if (list.isEmpty) continue;
-        merged[key] = list.map((action) {
-          if (!isWorkflowCompleteAction(action)) return action;
-          final copy = Map<String, dynamic>.from(action);
-          copy['blocked'] = true;
-          if ((copy['blocked_message']?.toString().trim() ?? '').isEmpty) {
-            copy['blocked_message'] = blockMsg;
-          }
-          return copy;
-        }).toList();
-      }
+    // Indent purpose must not keep Complete locked.
+    for (final key in const ['workflow_actions', 'workflow_task_actions']) {
+      final list = _mapListFlexible(merged[key]);
+      if (list.isEmpty) continue;
+      merged[key] = list.map((action) {
+        if (!isWorkflowCompleteAction(action)) return action;
+        if (!isIndentPurposeCompleteLock(merged, action)) return action;
+        final copy = Map<String, dynamic>.from(action);
+        copy['blocked'] = false;
+        copy['blocked_message'] = '';
+        return copy;
+      }).toList();
     }
 
     if (payload['status'] != null) {
@@ -3242,7 +3239,9 @@ class _TaskCardState extends State<_TaskCard> {
   Future<bool> _handleSwipeComplete(Map<String, dynamic> action) async {
     if (_isSwipeCompleting) return false;
 
-    if (!canCompleteWorkflowTask(_task) || _truthyValue(action['blocked'])) {
+    if (!canCompleteWorkflowTask(_task) ||
+        (_truthyValue(action['blocked']) &&
+            !isIndentPurposeCompleteLock(_task, action))) {
       if (!mounted) return false;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -5683,10 +5682,12 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
 
     final taskBlocked =
         isWorkflowDelayGated(task) || !canUpdateWorkflowTask(task);
+    final indentPurposeLock = isIndentPurposeCompleteLock(task, action);
     final completeBlocked = isWorkflowCompleteAction(action) &&
         !canCompleteWorkflowTask(task);
-    final blocked =
-        _truthyValue(action['blocked']) || taskBlocked || completeBlocked;
+    final blocked = (_truthyValue(action['blocked']) && !indentPurposeLock) ||
+        taskBlocked ||
+        completeBlocked;
     final buttonData = _buttonData(type);
 
     if (buttonData == null) {
@@ -5733,9 +5734,10 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
 
   /// Hard stop before any action sheet / POST while delay-gated.
   bool _guardActionAllowed() {
+    final indentPurposeLock = isIndentPurposeCompleteLock(task, action);
     final locked = isWorkflowDelayGated(task) ||
         !canUpdateWorkflowTask(task) ||
-        _truthyValue(action['blocked']) ||
+        (_truthyValue(action['blocked']) && !indentPurposeLock) ||
         action['type']?.toString() == 'delay_timer';
     if (!locked) {
       if (isWorkflowCompleteAction(action) &&
@@ -6170,7 +6172,9 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
     bool refreshOnSuccess = true,
     bool showActionLoading = true,
   }) async {
-    if (!canCompleteWorkflowTask(task) || _truthyValue(action['blocked'])) {
+    if (!canCompleteWorkflowTask(task) ||
+        (_truthyValue(action['blocked']) &&
+            !isIndentPurposeCompleteLock(task, action))) {
       _showSnackBar(indentReasonBlockMessage(task), isError: true);
       await widget.onActionCompleted();
       return false;

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
@@ -77,6 +78,11 @@ class _ClientPortalScreenState extends State<ClientPortalScreen> {
       final prefs = await SharedPreferences.getInstance();
       _viewerRole = prefs.getString('role');
       _canSeeKyc = roleCanSeeClientPortalKyc(_viewerRole);
+      unawaited(
+        MobileDocumentsService.instance.ensureLibrary(
+          projectId: (prefs.getString('project_id') ?? '').trim(),
+        ),
+      );
       _tutorialDone = prefs.getBool('client_portal_tutorial_done') ?? false;
       if (widget.impersonatingClient) {
         _impersonatedClientName =
@@ -177,15 +183,14 @@ class _ClientPortalScreenState extends State<ClientPortalScreen> {
           payload['tutorial_completed'] == true;
       if (apiTutorial) _tutorialDone = true;
 
-      final library = await _loadDocLibrary(prefs);
-
       setState(() {
         _loading = false;
         _project = project.isEmpty
             ? <String, dynamic>{'client_name': 'Your project'}
             : project;
-        _docLibrary = library;
+        _docLibrary = _libraryFromMemory(prefs);
       });
+      unawaited(_refreshDocLibrary(prefs));
     } catch (e) {
       if (!mounted) return;
       if (widget.impersonatingClient) {
@@ -207,6 +212,21 @@ class _ClientPortalScreenState extends State<ClientPortalScreen> {
         _error = msg;
       });
     }
+  }
+
+  WorkflowDocumentLibrary? _libraryFromMemory(SharedPreferences prefs) {
+    final projectId = (prefs.getString('project_id') ?? '').trim();
+    final snapshot = MobileDocumentsService.instance.snapshotFor(
+      projectId: projectId.isEmpty ? null : projectId,
+    );
+    if (!shouldUseMobileDocumentsSnapshot(snapshot)) return null;
+    return snapshot!.library;
+  }
+
+  Future<void> _refreshDocLibrary(SharedPreferences prefs) async {
+    final library = await _loadDocLibrary(prefs);
+    if (!mounted || library == null) return;
+    setState(() => _docLibrary = library);
   }
 
   Future<WorkflowDocumentLibrary?> _loadDocLibrary(

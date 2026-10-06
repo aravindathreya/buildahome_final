@@ -1,8 +1,12 @@
+import 'dart:async';
+import 'dart:typed_data';
+
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'client_portal_service.dart';
+import 'document_byte_cache.dart';
 
 /// How a document URL should be fetched.
 enum DocumentUrlProfile {
@@ -47,6 +51,46 @@ class DocumentFetchResult {
       kind == DocumentPayloadKind.pdf || kind == DocumentPayloadKind.image;
 }
 
+/// URL plus headers for a viewer that can load the file itself.
+class PreparedDocumentRequest {
+  final Uri uri;
+  final Map<String, String> headers;
+  final String cacheKey;
+
+  const PreparedDocumentRequest({
+    required this.uri,
+    required this.headers,
+    required this.cacheKey,
+  });
+}
+
+/// A few bytes of a document, used to decide if the browser can stream it.
+class DocumentProbe {
+  final bool canStream;
+  final bool blockNative;
+  final bool downloadInstead;
+  final String message;
+
+  const DocumentProbe({
+    required this.canStream,
+    required this.blockNative,
+    required this.downloadInstead,
+    this.message = '',
+  });
+
+  const DocumentProbe.allow()
+      : canStream = true,
+        blockNative = false,
+        downloadInstead = false,
+        message = '';
+
+  const DocumentProbe.keepNative()
+      : canStream = false,
+        blockNative = false,
+        downloadInstead = false,
+        message = '';
+}
+
 /// Downloads workflow / portal documents with auth and validates bytes.
 class AuthenticatedDocumentFetcher {
   AuthenticatedDocumentFetcher._();
@@ -58,6 +102,122 @@ class AuthenticatedDocumentFetcher {
   static const int _maxBytes = 80 * 1024 * 1024; // 80 MB
 
   final http.Client _client = http.Client();
+  final Map<String, Future<DocumentFetchResult>> _inflight = {};
+  _AuthBundle? _authCache;
+  DateTime? _authCacheAt;
+  String? _authCacheKey;
+
+  /// Start a download so a later open can use the saved bytes.
+  Future<void> prefetch({
+    required String url,
+    String? documentId,
+    String? contentTypeHint,
+    bool? isPdfHint,
+    bool? isImageHint,
+  }) {
+    return fetch(
+      url: url,
+      documentId: documentId,
+      contentTypeHint: contentTypeHint,
+      isPdfHint: isPdfHint,
+      isImageHint: isImageHint,
+    );
+  }
+
+  Future<PreparedDocumentRequest> prepareRequest(String url) async {
+    final normalizedUrl = _normalizeUrl(url);
+    final profile = classifyUrl(normalizedUrl);
+    final auth = await _buildAuth(profile, normalizedUrl);
+    return PreparedDocumentRequest(
+      uri: _uriWithToken(Uri.parse(normalizedUrl), auth.apiToken),
+      headers: auth.headers,
+      cacheKey: documentCacheKey(normalizedUrl),
+    );
+  }
+
+  /// Reads only the start of the file, then stops.
+  Future<DocumentProbe> probe(
+    PreparedDocumentRequest prepared, {
+    required bool allowHeaders,
+  }) async {
+    if (DocumentByteCache.instance.isStreamable(prepared.cacheKey)) {
+      return const DocumentProbe.allow();
+    }
+    final client = http.Client();
+    try {
+      final request = http.Request('GET', prepared.uri);
+      request.headers['Accept'] = '*/*';
+      request.headers['Range'] = 'bytes=0-2047';
+      if (allowHeaders) {
+        request.headers.addAll(prepared.headers);
+      }
+      final streamed =
+          await client.send(request).timeout(const Duration(seconds: 6));
+      final buf = BytesBuilder(copy: false);
+      final done = Completer<void>();
+      late final StreamSubscription<List<int>> sub;
+      sub = streamed.stream.listen(
+        (chunk) {
+          if (buf.length < 4096) buf.add(chunk);
+          if (buf.length >= 16 && !done.isCompleted) done.complete();
+        },
+        onError: (Object _) {
+          if (!done.isCompleted) done.complete();
+        },
+        onDone: () {
+          if (!done.isCompleted) done.complete();
+        },
+        cancelOnError: true,
+      );
+      await done.future.timeout(
+        const Duration(seconds: 4),
+        onTimeout: () {},
+      );
+      await sub.cancel();
+      final bytes = buf.takeBytes();
+      final status = streamed.statusCode;
+      final contentType =
+          streamed.headers['content-type']?.split(';').first.trim() ?? '';
+      final disposition =
+          (streamed.headers['content-disposition'] ?? '').toLowerCase();
+      if (status == 401 || status == 403) {
+        return const DocumentProbe(
+          canStream: false,
+          blockNative: true,
+          downloadInstead: false,
+          message: 'Your session has expired. Please refresh and try again.',
+        );
+      }
+      if (_isLoginHtml(bytes) || _isHtml(bytes)) {
+        return DocumentProbe(
+          canStream: false,
+          blockNative: true,
+          downloadInstead: false,
+          message: _isLoginHtml(bytes)
+              ? 'Your session has expired. Please refresh and try again.'
+              : 'Unable to open this document right now.',
+        );
+      }
+      final isPdf = _isPdf(bytes, contentType) ||
+          contentType.toLowerCase().contains('pdf');
+      if (!isPdf || status < 200 || status >= 300) {
+        return const DocumentProbe.keepNative();
+      }
+      if (disposition.contains('attachment')) {
+        return const DocumentProbe(
+          canStream: false,
+          blockNative: false,
+          downloadInstead: true,
+        );
+      }
+      DocumentByteCache.instance.markStreamable(prepared.cacheKey);
+      return const DocumentProbe.allow();
+    } catch (_) {
+      return const DocumentProbe.keepNative();
+    } finally {
+      client.close();
+    }
+  }
 
   Future<DocumentFetchResult> fetch({
     required String url,
@@ -65,8 +225,62 @@ class AuthenticatedDocumentFetcher {
     String? contentTypeHint,
     bool? isPdfHint,
     bool? isImageHint,
+  }) {
+    final normalizedUrl = _normalizeUrl(url);
+    final cacheKey = documentCacheKey(normalizedUrl);
+    final pending = _inflight[cacheKey];
+    if (pending != null) return pending;
+    final future = _fetch(
+      url: url,
+      documentId: documentId,
+      contentTypeHint: contentTypeHint,
+      isPdfHint: isPdfHint,
+      isImageHint: isImageHint,
+    );
+    _inflight[cacheKey] = future;
+    future.whenComplete(() {
+      if (identical(_inflight[cacheKey], future)) {
+        _inflight.remove(cacheKey);
+      }
+    });
+    return future;
+  }
+
+  Future<DocumentFetchResult> _fetch({
+    required String url,
+    String? documentId,
+    String? contentTypeHint,
+    bool? isPdfHint,
+    bool? isImageHint,
   }) async {
     final normalizedUrl = _normalizeUrl(url);
+    final cacheKey = documentCacheKey(normalizedUrl);
+    final cachedBytes = await DocumentByteCache.instance.read(cacheKey);
+    if (cachedBytes != null && cachedBytes.isNotEmpty) {
+      final detected = _detectPayload(
+        bytes: cachedBytes,
+        contentType: contentTypeHint ?? '',
+        contentTypeHint: contentTypeHint,
+        isPdfHint: isPdfHint,
+        isImageHint: isImageHint,
+      );
+      if (detected == 'PDF' || detected.startsWith('IMAGE')) {
+        return DocumentFetchResult(
+          kind: detected == 'PDF'
+              ? DocumentPayloadKind.pdf
+              : DocumentPayloadKind.image,
+          bytes: cachedBytes,
+          userMessage: '',
+          statusCode: 200,
+          contentType: detected == 'PDF'
+              ? (contentTypeHint ?? 'application/pdf')
+              : (contentTypeHint ?? 'image/*'),
+          finalUrl: normalizedUrl,
+          authMethod: 'cache',
+        );
+      }
+    }
+
     final profile = classifyUrl(normalizedUrl);
     final auth = await _buildAuth(profile, normalizedUrl);
 
@@ -181,9 +395,10 @@ class AuthenticatedDocumentFetcher {
 
       if (detected == 'PDF') {
         _debugLog('Action: open native PDF viewer');
+        DocumentByteCache.instance.remember(cacheKey, bytes);
         return DocumentFetchResult(
           kind: DocumentPayloadKind.pdf,
-          bytes: Uint8List.fromList(bytes),
+          bytes: bytes,
           userMessage: '',
           statusCode: status,
           contentType: contentType.isEmpty ? 'application/pdf' : contentType,
@@ -196,9 +411,10 @@ class AuthenticatedDocumentFetcher {
 
       if (detected.startsWith('IMAGE')) {
         _debugLog('Action: open native image viewer');
+        DocumentByteCache.instance.remember(cacheKey, bytes);
         return DocumentFetchResult(
           kind: DocumentPayloadKind.image,
-          bytes: Uint8List.fromList(bytes),
+          bytes: bytes,
           userMessage: '',
           statusCode: status,
           contentType: contentType,
@@ -264,6 +480,25 @@ class AuthenticatedDocumentFetcher {
     DocumentUrlProfile profile,
     String url,
   ) async {
+    final cacheKey = profile.name;
+    final cachedAt = _authCacheAt;
+    if (_authCache != null &&
+        _authCacheKey == cacheKey &&
+        cachedAt != null &&
+        DateTime.now().difference(cachedAt) < const Duration(seconds: 45)) {
+      return _authCache!;
+    }
+    final auth = await _loadAuth(profile, url);
+    _authCache = auth;
+    _authCacheKey = cacheKey;
+    _authCacheAt = DateTime.now();
+    return auth;
+  }
+
+  Future<_AuthBundle> _loadAuth(
+    DocumentUrlProfile profile,
+    String url,
+  ) async {
     final prefs = await SharedPreferences.getInstance();
     final apiToken = prefs.getString('api_token')?.trim();
     final hasToken = apiToken != null &&
@@ -307,15 +542,7 @@ class AuthenticatedDocumentFetcher {
     required String? apiToken,
     required DocumentUrlProfile profile,
   }) async {
-    var uri = Uri.parse(url);
-    final isBuildahome = uri.host.toLowerCase().contains('buildahome.in');
-    if (isBuildahome &&
-        apiToken != null &&
-        !uri.queryParameters.containsKey('api_token')) {
-      uri = uri.replace(
-        queryParameters: {...uri.queryParameters, 'api_token': apiToken},
-      );
-    }
+    var uri = _uriWithToken(Uri.parse(url), apiToken);
 
     http.Response? lastResponse;
     for (var hop = 0; hop <= _maxRedirects; hop++) {
@@ -370,6 +597,19 @@ class AuthenticatedDocumentFetcher {
       return null;
     }
     return response.headers['location'];
+  }
+
+  Uri _uriWithToken(Uri uri, String? apiToken) {
+    final isBuildahome = uri.host.toLowerCase().contains('buildahome.in');
+    if (!isBuildahome ||
+        apiToken == null ||
+        apiToken.isEmpty ||
+        uri.queryParameters.containsKey('api_token')) {
+      return uri;
+    }
+    return uri.replace(
+      queryParameters: {...uri.queryParameters, 'api_token': apiToken},
+    );
   }
 
   bool _isBuildahomeHost(Uri uri) {

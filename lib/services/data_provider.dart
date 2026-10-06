@@ -7,6 +7,7 @@ import 'api_http.dart';
 import 'client_generation_service.dart';
 import 'mobile_documents_service.dart';
 import 'session_manager.dart';
+import 'project_completion_days.dart';
 
 class DataProvider {
   static final DataProvider _instance = DataProvider._internal();
@@ -30,24 +31,18 @@ class DataProvider {
   /// Planned duration before DOC delays.
   int? clientBaseTotalDays;
 
-  /// Completed days ≈ total_days × percent / 100.
+  /// Whole days completed; a partial pending day is not yet completed.
   int? get clientCompletedDays {
     final total = clientTotalDays;
-    final raw = clientProjectCompletion?.replaceAll('%', '').trim();
-    final percent = double.tryParse(raw ?? '');
-    if (total == null || total < 0 || percent == null) return null;
-    final clamped = percent.clamp(0.0, 100.0);
-    return (total * clamped / 100).round();
+    final remaining = clientRemainingDays;
+    return total == null || remaining == null ? null : total - remaining;
   }
 
-  /// Days still pending until completion.
-  int? get clientRemainingDays {
-    final total = clientTotalDays;
-    final completed = clientCompletedDays;
-    if (total == null || completed == null) return null;
-    final remaining = total - completed;
-    return remaining < 0 ? 0 : remaining;
-  }
+  /// Unknown duration stays unavailable; incomplete work retains a pending day.
+  int? get clientRemainingDays => remainingProjectDays(
+        totalDays: clientTotalDays,
+        completion: clientProjectCompletion,
+      );
   dynamic clientProjectUpdates;
   bool? clientProjectBlocked;
   String? clientProjectBlockReason;
@@ -1722,8 +1717,8 @@ class DataProvider {
   int? _dayCount(dynamic raw) {
     if (raw == null) return null;
     final value = num.tryParse(raw.toString());
-    if (value == null) return null;
-    return value.round();
+    if (value == null || !value.isFinite || value <= 0) return null;
+    return value.ceil();
   }
 
   void _clearProjectDuration() {
@@ -1738,13 +1733,22 @@ class DataProvider {
       clientProjectCompletion = prefs.getString('completed');
       clientDocDelayDays = prefs.getDouble('doc_delay_days') ?? 0;
       clientTotalDays =
-          prefs.containsKey('total_days') ? prefs.getInt('total_days') : null;
-      clientBaseTotalDays = prefs.containsKey('base_total_days')
-          ? prefs.getInt('base_total_days')
-          : null;
+          _dayCount(prefs.getInt('total_days'));
+      clientBaseTotalDays = _dayCount(prefs.getInt('base_total_days'));
       return;
     }
     _clearProjectDuration();
+  }
+
+  Future<void> _clearUnavailableProjectDuration(
+    SharedPreferences prefs,
+  ) async {
+    _clearProjectDuration();
+    if (currentRole != 'Client') return;
+    await prefs.remove('completed');
+    await prefs.remove('doc_delay_days');
+    await prefs.remove('total_days');
+    await prefs.remove('base_total_days');
   }
 
   void _persistProjectDuration(SharedPreferences prefs) {
@@ -1781,21 +1785,34 @@ class DataProvider {
   // Helper method to load project completion percentage.
   // detail=1 returns percent plus day totals; a plain percent string is still accepted.
   //
-  // Sales SOP projects keep Main Critical days on the project number
-  // (sales_sop_project_id), while the app session stores the ERP project_id.
-  // When the ERP id has no total_days, retry with that project number.
+  // Older APIs may keep Main Critical days on the display project number.
+  // A canonical response has already resolved the ERP mapping; retrying another
+  // numeric id can replace the correct percentage with an unrelated project's.
   Future<void> _loadProjectPercentage(
       String projectId, SharedPreferences prefs) async {
     try {
       var detail = await _fetchProjectPercentageDetail(projectId);
-      if (detail == null || detail.totalDays == null) {
+      if (detail?.available == false) {
+        await _clearUnavailableProjectDuration(prefs);
+        return;
+      }
+      if (detail == null ||
+          (!detail.projectMappingResolved && detail.totalDays == null)) {
         final alternateId = await _salesSopProjectNumberForDays(projectId, prefs);
         if (alternateId != null && alternateId != projectId) {
           final retry = await _fetchProjectPercentageDetail(alternateId);
-          if (retry != null && (detail == null || retry.totalDays != null)) {
+          if (retry != null &&
+              (detail == null ||
+                  retry.projectMappingResolved ||
+                  retry.available == false ||
+                  retry.totalDays != null)) {
             detail = retry;
           }
         }
+      }
+      if (detail?.available == false) {
+        await _clearUnavailableProjectDuration(prefs);
+        return;
       }
       if (detail != null &&
           detail.percentText != null &&
@@ -1845,6 +1862,8 @@ class DataProvider {
         docDays: double.tryParse(rawDays?.toString() ?? '') ?? 0,
         totalDays: _dayCount(map['total_days']),
         baseTotalDays: _dayCount(map['base_total_days']),
+        projectMappingResolved: map['project_mapping_resolved'] == true,
+        available: map['available'] is bool ? map['available'] as bool : null,
       );
     } catch (_) {
       return null;
@@ -2886,11 +2905,15 @@ class _ProjectPercentageDetail {
   final double docDays;
   final int? totalDays;
   final int? baseTotalDays;
+  final bool projectMappingResolved;
+  final bool? available;
 
   const _ProjectPercentageDetail({
     this.percentText,
     this.docDays = 0,
     this.totalDays,
     this.baseTotalDays,
+    this.projectMappingResolved = false,
+    this.available,
   });
 }

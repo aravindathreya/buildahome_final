@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../services/data_provider.dart';
 import 'chat_v1_api.dart';
+import 'chat_v1_doc_client_notice.dart';
 import 'chat_v1_mapper.dart';
 import 'chat_v1_models.dart';
 import 'chat_v1_socket.dart';
@@ -57,6 +58,9 @@ class ChatV1Controller extends ChangeNotifier {
   List<ChatV1ChatItem> customGroups = [];
   List<ChatV1ChatItem> dms = [];
   List<ChatV1TaskItem> taskConversations = [];
+  List<ChatV1TaskItem> docTasks = [];
+  Timer? _docTaskRefresh;
+  static const String _seenDocsKey = 'chat_v1_seen_created_docs_v1';
   List<ChatV1TaskItem> workflowConversations = [];
   List<ChatV1Member> members = [];
 
@@ -252,9 +256,13 @@ class ChatV1Controller extends ChangeNotifier {
     return out;
   }
 
-  /// ERP + workflow task chats in one list (web Project Tasks drawer).
+  /// ERP + workflow task chats, plus pending DOC tasks for the client.
   List<ChatV1TaskItem> get allProjectTasks {
-    final merged = [...taskConversations, ...workflowConversations];
+    final merged = [
+      ...taskConversations,
+      ...workflowConversations,
+      ...docTasks,
+    ];
     merged.sort(
       (a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()),
     );
@@ -557,6 +565,14 @@ class ChatV1Controller extends ChangeNotifier {
           }
           return const <Map<String, dynamic>>[];
         }(),
+        safeList(
+          'docs',
+          () async {
+            if (!await _viewerIsClient()) return const <Map<String, dynamic>>[];
+            return _api.listDocs(sopId);
+          },
+          optional: true,
+        ),
       ]);
 
       if (softErrors.isNotEmpty) {
@@ -569,6 +585,7 @@ class ChatV1Controller extends ChangeNotifier {
         memberRows: settled[2],
         directRows: settled[3],
       );
+      await _applyClientDocTasks(settled[5]);
       _applyLocalFlags();
 
       print(
@@ -593,6 +610,7 @@ class ChatV1Controller extends ChangeNotifier {
         dms = [];
         taskConversations = [];
         workflowConversations = [];
+        docTasks = [];
       }
     } finally {
       _applyLocalFlags();
@@ -708,6 +726,168 @@ class ChatV1Controller extends ChangeNotifier {
       ..sort((a, b) => b.lastActivity.compareTo(a.lastActivity));
   }
 
+  Future<bool> _viewerIsClient() async {
+    final cached = (DataProvider().currentRole ?? '').trim().toLowerCase();
+    if (cached.isNotEmpty) return cached == 'client';
+    final prefs = await SharedPreferences.getInstance();
+    return (prefs.getString('role') ?? '').trim().toLowerCase() == 'client';
+  }
+
+  Future<Set<String>> _readSeenDocIds() async {
+    final prefs = await SharedPreferences.getInstance();
+    return (prefs.getStringList(_seenDocsKey) ?? const <String>[]).toSet();
+  }
+
+  Future<void> _writeSeenDocIds(Set<String> ids) async {
+    final prefs = await SharedPreferences.getInstance();
+    final list = ids.toList()..sort();
+    final trimmed =
+        list.length > 400 ? list.sublist(list.length - 400) : list;
+    await prefs.setStringList(_seenDocsKey, trimmed);
+  }
+
+  bool _isDocChannel(ChatV1ChatItem item) {
+    return item.opensAs == ChatV1OpensAs.docList ||
+        ChatV1Utils.isUpdateAndDocChannel(item.title);
+  }
+
+  ChatV1ChatItem? _findLoadedDocChannel() {
+    for (final item in channels) {
+      if (_isDocChannel(item)) return item;
+    }
+    return null;
+  }
+
+  Future<void> _applyClientDocTasks(List<Map<String, dynamic>> rows) async {
+    if (!await _viewerIsClient()) {
+      docTasks = [];
+      return;
+    }
+    final docs = rows.map(ChatV1DocRequest.fromJson).toList();
+    final seen = await _readSeenDocIds();
+    docTasks = clientDocCreatedTasks(docs: docs, seenIds: seen);
+    _boostDocChannelUnread(
+      clientDocUnseenCount(docs: docs, seenIds: seen),
+    );
+  }
+
+  void _boostDocChannelUnread(int count) {
+    if (count <= 0) return;
+    channels = [
+      for (final item in channels)
+        if (_isDocChannel(item) && item.unread < count)
+          item.copyWith(unread: count)
+        else
+          item,
+    ];
+  }
+
+  /// Tags project clients in the DOC channel and gives them a green unread.
+  Future<void> announceCreatedDoc(ChatV1DocRequest doc) async {
+    final sopId = (salesSopId ?? doc.salesSopId ?? '').trim();
+    if (sopId.isEmpty) return;
+    try {
+      final rows = await _api.listMembers(sopId);
+      final notice = docCreatedNoticeFromMemberRows(
+        rows,
+        description: doc.description,
+      );
+      if (!notice.hasTags) {
+        print('[ChatV1] DOC created with no client to tag');
+        return;
+      }
+      final channelId = await _docChannelId(sopId);
+      if (channelId == null || channelId.isEmpty) {
+        print('[ChatV1] DOC created but Update and Doc channel was not found');
+        return;
+      }
+      await _api.sendMessage(
+        channelId,
+        body: notice.body,
+        mentionedUserIds: notice.userIds,
+      );
+      print('[ChatV1] Tagged clients on DOC create: ${notice.userIds}');
+    } catch (e) {
+      print('[ChatV1] Could not tag client about new DOC: $e');
+    }
+  }
+
+  Future<String?> _docChannelId(String sopId) async {
+    final loaded = _findLoadedDocChannel();
+    if (loaded != null && loaded.id.isNotEmpty) return loaded.id;
+    final rows = await _api.listConversations(
+      contextType: 'sales_sop',
+      contextId: sopId,
+    );
+    for (final row in rows) {
+      final title = (row['title'] ?? row['name'] ?? '').toString();
+      if (!ChatV1Utils.isUpdateAndDocChannel(title)) continue;
+      final id = (row['id'] ?? row['conversation_id'] ?? '').toString().trim();
+      if (id.isNotEmpty) return id;
+    }
+    return null;
+  }
+
+  /// Client opened a DOC chat. Clears that task's green count.
+  Future<void> markDocsSeen(Iterable<String> docIds) async {
+    if (!await _viewerIsClient()) return;
+    final seen = await _readSeenDocIds();
+    var added = false;
+    for (final id in docIds) {
+      final trimmed = id.trim();
+      if (trimmed.isEmpty) continue;
+      if (seen.add(trimmed)) added = true;
+    }
+    if (added) await _writeSeenDocIds(seen);
+    docTasks = [
+      for (final task in docTasks)
+        if (seen.contains(task.contextId) && task.unread > 0)
+          task.copyWith(unread: 0)
+        else
+          task,
+    ];
+    final unseen = docTasks.fold<int>(0, (sum, task) => sum + task.unread);
+    channels = [
+      for (final item in channels)
+        if (!_isDocChannel(item))
+          item
+        else if (unseen <= 0)
+          item.copyWith(unread: 0, mentionsSeen: true)
+        else
+          item.copyWith(unread: unseen),
+    ];
+    if (unseen <= 0) {
+      final channel = _findLoadedDocChannel();
+      if (channel != null && channel.id.isNotEmpty) {
+        // ignore: unawaited_futures
+        _api.markConversationRead(channel.id);
+      }
+    }
+    notifyListeners();
+  }
+
+  Future<void> _refreshClientDocTasks() async {
+    if (!await _viewerIsClient()) return;
+    final sopId = salesSopId;
+    if (sopId == null || sopId.isEmpty) return;
+    try {
+      final rows = await _api.listDocs(sopId);
+      await _applyClientDocTasks(rows);
+      notifyListeners();
+    } catch (e) {
+      print('[ChatV1] DOC task refresh failed: $e');
+    }
+  }
+
+  void _scheduleClientDocTaskRefresh(String conversationId) {
+    final channel = _findLoadedDocChannel();
+    if (channel == null || channel.id != conversationId) return;
+    _docTaskRefresh?.cancel();
+    _docTaskRefresh = Timer(const Duration(milliseconds: 400), () {
+      unawaited(_refreshClientDocTasks());
+    });
+  }
+
   void _ensureSocketBound() {
     if (_socketBound) return;
     _socketBound = true;
@@ -756,8 +936,11 @@ class ChatV1Controller extends ChangeNotifier {
     channels = [];
     customGroups = [];
     dms = [];
+    _docTaskRefresh?.cancel();
+    _docTaskRefresh = null;
     taskConversations = [];
     workflowConversations = [];
+    docTasks = [];
     members = [];
     salesSopId = null;
     currentUserId = null;
@@ -1056,6 +1239,7 @@ class ChatV1Controller extends ChangeNotifier {
     channels = patchChats(channels);
     customGroups = patchChats(customGroups);
     dms = patchChats(dms);
+    if (!fromMe) _scheduleClientDocTaskRefresh(conversationId);
 
     if (changed) notifyListeners();
   }

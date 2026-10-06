@@ -75,6 +75,39 @@ bool isPinnedClientPortalKey(String? id, [String? label]) {
   return false;
 }
 
+bool _labelIsOfficeDocuments(String? label) {
+  final name = (label ?? '').trim().toLowerCase();
+  return name == 'documents' || name == 'office documents';
+}
+
+bool _labelIsReceipts(String? label) {
+  final name = (label ?? '').trim().toLowerCase();
+  return name.contains('receipt') && name.contains('agreement');
+}
+
+WorkflowDocumentCategory? _categoryForJourneyOrLabel(
+  WorkflowDocumentLibrary library,
+  String journeyKey,
+  bool Function(String? label) labelMatch,
+) {
+  final byJourney = _categoryForJourney(library, journeyKey);
+  if (byJourney != null) return byJourney;
+  for (final category in library.libraryCategories) {
+    if (labelMatch(category.label)) return category;
+  }
+  return null;
+}
+
+int _badgeForPinnedCategory(
+  WorkflowDocumentLibrary library,
+  String journeyKey,
+  WorkflowDocumentCategory category,
+) {
+  final byJourney = workflowDocCountForJourney(library, journeyKey);
+  if (byJourney > 0) return byJourney;
+  return workflowDocCountForCategory(category);
+}
+
 bool _libraryHasJourney(WorkflowDocumentLibrary library, String journeyKey) {
   if (library.categoriesForJourney(journeyKey).isNotEmpty) return true;
   if (library.sectionsForJourney(journeyKey).isNotEmpty) return true;
@@ -164,6 +197,7 @@ bool roleCanSeeClientPortalKyc(String? role) => roleCanSeeForMeKyc(role);
 
 /// Client Portal hub rows: KYC / Office Documents / Receipts stay pinned.
 /// Most staff get the same rows as clients, without KYC.
+/// Site Engineers also omit project documents and contracts.
 /// Project Coordinator and APC use their own For me rows.
 List<ClientPortalHubItem> buildClientPortalHubItems(
   WorkflowDocumentLibrary? library, {
@@ -194,16 +228,29 @@ List<ClientPortalHubItem> buildClientPortalHubItems(
     );
   }
 
-  if (library != null &&
-      _libraryHasJourney(library, ClientJourneyKeys.officeDocuments) &&
+  final officeCategory = library == null
+      ? null
+      : _categoryForJourneyOrLabel(
+          library,
+          ClientJourneyKeys.officeDocuments,
+          _labelIsOfficeDocuments,
+        );
+  if (officeCategory != null &&
+      !siteEngineerHidesForMeDocument(
+        role: role,
+        categoryId: officeCategory.id,
+        categoryLabel: officeCategory.label,
+        journeyKey: officeCategory.clientJourneyKey ??
+            ClientJourneyKeys.officeDocuments,
+        libraryGroupKey: officeCategory.libraryGroupKey,
+      ) &&
       (visibilityRole == null ||
           visibilityRole.trim().isEmpty ||
           documentAccessForRole(
             role: visibilityRole,
             kind: ForMeDocKind.officeDocuments,
           ).view)) {
-    final category =
-        _categoryForJourney(library, ClientJourneyKeys.officeDocuments);
+    final category = officeCategory;
     final visual = category != null
         ? categoryVisualForCategory(category)
         : categoryVisualFor(
@@ -219,9 +266,10 @@ List<ClientPortalHubItem> buildClientPortalHubItems(
             : visual.subtitle,
         kind: ClientPortalHubKind.officeDocuments,
         visual: visual,
-        badgeCount: workflowDocCountForJourney(
-          library,
+        badgeCount: _badgeForPinnedCategory(
+          library!,
           ClientJourneyKeys.officeDocuments,
+          category,
         ),
         journeyKey: ClientJourneyKeys.officeDocuments,
         category: category,
@@ -229,16 +277,29 @@ List<ClientPortalHubItem> buildClientPortalHubItems(
     );
   }
 
-  if (library != null &&
-      _libraryHasJourney(library, ClientJourneyKeys.receiptsAndAgreements) &&
+  final receiptsCategory = library == null
+      ? null
+      : _categoryForJourneyOrLabel(
+          library,
+          ClientJourneyKeys.receiptsAndAgreements,
+          _labelIsReceipts,
+        );
+  if (receiptsCategory != null &&
+      !siteEngineerHidesForMeDocument(
+        role: role,
+        categoryId: receiptsCategory.id,
+        categoryLabel: receiptsCategory.label,
+        journeyKey: receiptsCategory.clientJourneyKey ??
+            ClientJourneyKeys.receiptsAndAgreements,
+        libraryGroupKey: receiptsCategory.libraryGroupKey,
+      ) &&
       (visibilityRole == null ||
           visibilityRole.trim().isEmpty ||
           documentAccessForRole(
             role: visibilityRole,
             kind: ForMeDocKind.contractsOther,
           ).view)) {
-    final category =
-        _categoryForJourney(library, ClientJourneyKeys.receiptsAndAgreements);
+    final category = receiptsCategory;
     final visual = category != null
         ? categoryVisualForCategory(category)
         : categoryVisualFor(
@@ -256,9 +317,10 @@ List<ClientPortalHubItem> buildClientPortalHubItems(
             : visual.subtitle,
         kind: ClientPortalHubKind.receipts,
         visual: visual,
-        badgeCount: workflowDocCountForJourney(
-          library,
+        badgeCount: _badgeForPinnedCategory(
+          library!,
           ClientJourneyKeys.receiptsAndAgreements,
+          category,
         ),
         journeyKey: ClientJourneyKeys.receiptsAndAgreements,
         category: category,
@@ -272,8 +334,18 @@ List<ClientPortalHubItem> buildClientPortalHubItems(
         forMeDocRoleBucket(role) == ForMeDocRoleBucket.client;
     final matchClientCatalog = usesClientDocumentCatalog(role);
     for (final category in library.libraryCategories) {
+      if (items.any((item) => item.category?.id == category.id)) continue;
       if (isPinnedClientPortalCategory(category)) continue;
       if (isUncategorizedDocumentCategory(category)) continue;
+      if (siteEngineerHidesForMeDocument(
+        role: role,
+        categoryId: category.id,
+        categoryLabel: category.label,
+        journeyKey: category.clientJourneyKey,
+        libraryGroupKey: category.libraryGroupKey,
+      )) {
+        continue;
+      }
       final siteDoc = isSiteDocumentCategory(category);
       final planning = isPlanningCommercialCategory(category);
       if (isClientPortalSitePrepCategory(category) && !siteDoc) continue;

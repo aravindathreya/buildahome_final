@@ -6,6 +6,7 @@ import '../app_theme.dart';
 import '../client_portal/client_portal_document_ui.dart';
 import '../models/workflow_document.dart';
 import '../services/client_portal_service.dart';
+import '../services/mobile_documents_service.dart';
 import '../services/workflow_document_service.dart';
 import '../widgets/skeleton_loader.dart';
 import 'documents_v1_home_screen.dart';
@@ -54,12 +55,18 @@ class _ClientFloorPlanElevationScreenState
       _error = null;
     });
     try {
-      final library = await WorkflowDocumentService().fetchLibrary();
-      Map<String, dynamic> portalData = const {};
-      try {
-        final result = await _portal.getFloorPlanElevation();
-        portalData = _portal.sectionOf(result);
-      } catch (_) {}
+      final portalFuture = () async {
+        try {
+          final result = await _portal.getFloorPlanElevation();
+          return _portal.sectionOf(result);
+        } catch (_) {
+          return <String, dynamic>{};
+        }
+      }();
+      final libraryFuture =
+          MobileDocumentsService.instance.loadDocumentLibraryFast();
+      final library = await libraryFuture;
+      final portalData = await portalFuture;
 
       final sections = _mergeFloorPlanSections(library, portalData);
       if (!mounted) return;
@@ -257,12 +264,18 @@ class _ClientDesignElementsScreenState
       _error = null;
     });
     try {
-      final library = await WorkflowDocumentService().fetchLibrary();
-      Map<String, dynamic> portalData = const {};
-      try {
-        final result = await _portal.getDesignElement();
-        portalData = _portal.sectionOf(result);
-      } catch (_) {}
+      final portalFuture = () async {
+        try {
+          final result = await _portal.getDesignElement();
+          return _portal.sectionOf(result);
+        } catch (_) {
+          return <String, dynamic>{};
+        }
+      }();
+      final libraryFuture =
+          MobileDocumentsService.instance.loadDocumentLibraryFast();
+      final library = await libraryFuture;
+      final portalData = await portalFuture;
 
       final sections = _mergeDesignSections(library, portalData);
       if (!mounted) return;

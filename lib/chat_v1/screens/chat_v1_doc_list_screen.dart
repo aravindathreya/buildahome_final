@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -86,6 +88,9 @@ class _ChatV1DocListScreenState extends State<ChatV1DocListScreen> {
         _docs = docs;
         _loading = false;
       });
+      unawaited(
+        ChatV1Controller.instance.markDocsSeen(docs.map((doc) => doc.id)),
+      );
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -125,7 +130,9 @@ class _ChatV1DocListScreenState extends State<ChatV1DocListScreen> {
       ),
       builder: (_) => ChatV1CreateDocSheet(salesSopId: sop),
     );
-    if (created == null || !mounted) return;
+    if (created == null) return;
+    unawaited(ChatV1Controller.instance.announceCreatedDoc(created));
+    if (!mounted) return;
     await _reload();
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(

@@ -1319,6 +1319,138 @@ void main() {
       expect(staff, isNot(contains('Site Document')));
     });
 
+    test('site engineer hub hides KYC, project documents, and contracts', () {
+      final snapshot = parseMobileDocumentsPayload({
+        'message': 'success',
+        'configured': true,
+        'project_id': '100',
+        'categories': [
+          {
+            'category_id': 'kyc',
+            'name': 'KYC',
+            'types': [
+              {
+                'type_id': 'aadhaar',
+                'name': 'Aadhaar',
+                'documents': [
+                  {
+                    'document_definition_id': 1,
+                    'name': 'Aadhaar',
+                    'status': 'uploaded',
+                    'url': '/a.pdf',
+                  },
+                ],
+              },
+            ],
+          },
+          {
+            'category_id': 'project_documents',
+            'name': 'Project Documents',
+            'types': [
+              {
+                'type_id': 'permit',
+                'name': 'Permit',
+                'documents': [
+                  {
+                    'document_definition_id': 2,
+                    'name': 'Permit',
+                    'status': 'uploaded',
+                    'url': '/p.pdf',
+                  },
+                ],
+              },
+            ],
+          },
+          {
+            'category_id': 'contracts',
+            'name': 'Contracts',
+            'types': [
+              {
+                'type_id': 'agreement',
+                'name': 'Agreement',
+                'documents': [
+                  {
+                    'document_definition_id': 3,
+                    'name': 'Agreement',
+                    'status': 'uploaded',
+                    'url': '/c.pdf',
+                  },
+                ],
+              },
+            ],
+          },
+          {
+            'category_id': 'office_documents',
+            'name': 'Documents',
+            'client_journey_key': 'office_documents',
+            'types': [
+              {
+                'type_id': 'lib',
+                'name': 'Library',
+                'documents': [
+                  {
+                    'document_definition_id': 4,
+                    'name': 'Note',
+                    'status': 'uploaded',
+                    'url': '/n.pdf',
+                  },
+                ],
+              },
+            ],
+          },
+          {
+            'category_id': 'receipts_and_agreements',
+            'name': 'Receipts and Agreements',
+            'client_journey_key': 'receipts_and_agreements',
+            'types': [
+              {
+                'type_id': 'agreements',
+                'name': 'Agreements',
+                'documents': [
+                  {
+                    'document_definition_id': 5,
+                    'name': 'Agreement',
+                    'status': 'available',
+                  },
+                ],
+              },
+            ],
+          },
+          {
+            'category_id': 'structural',
+            'name': 'Structural & Civil',
+            'types': [
+              {
+                'type_id': 'framing',
+                'name': 'Framing',
+                'documents': [
+                  {
+                    'document_definition_id': 6,
+                    'name': 'Framing',
+                    'status': 'uploaded',
+                    'url': '/f.pdf',
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      })!;
+
+      final titles = buildClientPortalHubItems(
+        snapshot.library,
+        role: 'Site Engineer',
+      ).map((item) => item.title);
+
+      expect(titles, contains('Structural & Civil'));
+      expect(titles, isNot(contains('KYC')));
+      expect(titles, isNot(contains('KYC & Documents')));
+      expect(titles, isNot(contains('Project Documents')));
+      expect(titles, isNot(contains('Contracts')));
+      expect(titles, isNot(contains('Documents')));
+      expect(titles, isNot(contains('Receipts and Agreements')));
+    });
+
     test('KYC hub visibility is Client and Super Admin only', () {
       expect(roleCanSeeClientPortalKyc('Client'), isTrue);
       expect(roleCanSeeClientPortalKyc('Super Admin'), isTrue);

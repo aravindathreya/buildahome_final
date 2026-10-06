@@ -28,6 +28,7 @@ import 'services/project_open_timing.dart';
 import 'services/rbac_service.dart';
 import 'services/api_http.dart';
 import 'services/mobile_bottom_nav.dart';
+import 'services/mobile_documents_service.dart';
 import 'services/mobile_bottom_nav_service.dart';
 import 'services/mobile_quick_actions.dart';
 import 'services/mobile_quick_actions_service.dart';
@@ -68,6 +69,7 @@ import 'SlotsScreen.dart';
 import 'ClientPortalScreen.dart';
 import 'UploadPaymentProofScreen.dart';
 import 'documents_v1/documents_v1_home_screen.dart';
+import 'TechnicalSpecsScreen.dart';
 import 'VirtualTour.dart';
 import 'Dpr.dart';
 
@@ -102,6 +104,7 @@ class _AdminDashboardState extends State<AdminDashboard>
       MobileBottomNavSurface.staff,
       force: true,
     ));
+    unawaited(MobileDocumentsService.instance.ensureLibrary());
     // Periodically check if AdminHomeState is ready and rebuild if needed
     Future.delayed(Duration(milliseconds: 100), () {
       if (mounted && _adminHomeKey.currentState != null) {
@@ -1328,6 +1331,17 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
         ),
       ),
       _quickActionTile(
+        title: 'Technical Specs',
+        icon: Icons.article_outlined,
+        route: () => _routeForCurrentProject(() async {
+          final prefs = await SharedPreferences.getInstance();
+          return TechnicalSpecsScreen(
+            fixedProjectId: prefs.getString('project_id'),
+            fixedSalesSopId: prefs.getString('sales_sop_id'),
+          );
+        }),
+      ),
+      _quickActionTile(
         title: 'Scheduler',
         icon: Icons.calendar_today,
         route: () => _routeForCurrentProject(() => const TaskWidget()),
@@ -1485,20 +1499,19 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
       snapshot: snapshot,
     );
     final usingBackend = snapshot?.configured == true;
-    final allQuickActions = _ensureStaffChatQuickAction(
-      _ensureDailyUpdateQuickAction(
-        usingBackend ? resolvedActions : fallbackItems,
-        catalogItems,
-      ),
-    );
-    final visibleActions = _ensureStaffChatQuickAction(
-      _ensureDailyUpdateQuickAction(
-        usingBackend
-            ? resolvedActions.take(8).toList()
-            : _visibleQuickActions(fallbackItems),
-        catalogItems,
-      ),
-    );
+    final allQuickActions = usingBackend
+        ? resolvedActions
+        : _ensureStaffChatQuickAction(
+            _ensureDailyUpdateQuickAction(fallbackItems, catalogItems),
+          );
+    final visibleActions = usingBackend
+        ? resolvedActions.take(8).toList()
+        : _ensureStaffChatQuickAction(
+            _ensureDailyUpdateQuickAction(
+              _visibleQuickActions(fallbackItems),
+              catalogItems,
+            ),
+          );
     final totalProjects = projects.length;
     final pendingCount = _tasks.where((task) {
       if (task is Map) {
@@ -2127,6 +2140,8 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
         return 'WOs';
       case 'Documents':
         return 'Docs';
+      case 'Technical Specs':
+        return 'Tech Specs';
       case 'Scheduler':
         return 'Schedule';
       default:
@@ -2180,6 +2195,8 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
         return Icons.engineering_rounded;
       case 'Documents':
         return Icons.folder_copy_rounded;
+      case 'Technical Specs':
+        return Icons.article_outlined;
       case 'Scheduler':
         return Icons.calendar_today_rounded;
       case 'Project Gallery':

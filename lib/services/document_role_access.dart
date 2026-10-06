@@ -203,11 +203,83 @@ String? catalogVisibilityRole(String? role) {
 }
 
 /// Staff other than PC / APC use the client document catalog. KYC is omitted
-/// separately.
+/// separately. Site Engineers also omit project documents and contracts.
 bool usesClientDocumentCatalog(String? role) {
   return role != null &&
       role.trim().isNotEmpty &&
       !_usesOwnForMeCatalog(role);
+}
+
+bool _siteEngineerRestrictedKind(ForMeDocKind kind) {
+  switch (kind) {
+    case ForMeDocKind.kyc:
+    case ForMeDocKind.officeDocuments:
+    case ForMeDocKind.contractsAgreement:
+    case ForMeDocKind.contractsReceipts:
+    case ForMeDocKind.contractsOther:
+      return true;
+    default:
+      return false;
+  }
+}
+
+bool _blobMentionsSiteEngineerHiddenDocs(String blob) {
+  return blob.contains('kyc') ||
+      blob.contains('project document') ||
+      blob.contains('contract');
+}
+
+/// Site Engineers keep the client drawing catalog, but KYC, project
+/// documents (office library), and contracts stay hidden.
+bool siteEngineerHidesForMeDocument({
+  required String? role,
+  String? categoryId,
+  String? categoryLabel,
+  String? sectionId,
+  String? sectionLabel,
+  String? documentKey,
+  String? documentName,
+  String? journeyKey,
+  String? libraryGroupKey,
+}) {
+  if (forMeDocRoleBucket(role) != ForMeDocRoleBucket.siteEngineer) {
+    return false;
+  }
+
+  final hasSection = (sectionId ?? '').trim().isNotEmpty ||
+      (sectionLabel ?? '').trim().isNotEmpty ||
+      (documentKey ?? '').trim().isNotEmpty ||
+      (documentName ?? '').trim().isNotEmpty;
+
+  if (!hasSection) {
+    final kind = classifyForMeDocument(
+      categoryId: categoryId,
+      categoryLabel: categoryLabel,
+      journeyKey: journeyKey,
+      libraryGroupKey: libraryGroupKey,
+    );
+    if (_siteEngineerRestrictedKind(kind)) return true;
+    return _blobMentionsSiteEngineerHiddenDocs(
+      _norm([categoryId, categoryLabel, journeyKey, libraryGroupKey]
+          .whereType<String>()
+          .join(' ')),
+    );
+  }
+
+  final kind = classifyForMeDocument(
+    sectionId: sectionId,
+    sectionLabel: sectionLabel,
+    documentKey: documentKey,
+    documentName: documentName,
+    journeyKey: journeyKey,
+    libraryGroupKey: libraryGroupKey,
+  );
+  if (_siteEngineerRestrictedKind(kind)) return true;
+  return _blobMentionsSiteEngineerHiddenDocs(
+    _norm([sectionId, sectionLabel, documentKey, documentName]
+        .whereType<String>()
+        .join(' ')),
+  );
 }
 
 ForMeDocKind classifyForMeDocument({
@@ -736,6 +808,15 @@ List<WorkflowDocumentCategory> filterDocumentCategoriesForRole(
   var next = categories.where((category) {
     if (isUncategorizedDocumentCategory(category)) return false;
     if (hideKyc && _isKycCategory(category)) return false;
+    if (siteEngineerHidesForMeDocument(
+      role: role,
+      categoryId: category.id,
+      categoryLabel: category.label,
+      journeyKey: category.clientJourneyKey,
+      libraryGroupKey: category.libraryGroupKey,
+    )) {
+      return false;
+    }
     return roleCanViewDocumentCategory(
       role: visibilityRole,
       categoryId: category.id,
@@ -753,6 +834,16 @@ List<WorkflowDocumentCategory> filterDocumentCategoriesForRole(
         ForMeDocKind.planningCommercial;
 
     final sections = category.sections
+        .where(
+          (section) => !siteEngineerHidesForMeDocument(
+            role: role,
+            sectionId: section.id,
+            sectionLabel: section.label,
+            journeyKey: section.clientJourneyKey ?? category.clientJourneyKey,
+            libraryGroupKey:
+                section.libraryGroupKey ?? category.libraryGroupKey,
+          ),
+        )
         .where(
           (section) => roleCanViewDocumentSection(
             role: visibilityRole,

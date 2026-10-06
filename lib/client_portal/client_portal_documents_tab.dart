@@ -48,27 +48,34 @@ class _ClientPortalDocumentsTabState extends State<ClientPortalDocumentsTab> {
     super.dispose();
   }
 
-  Future<void> _load() async {
+  Future<void> _load({bool force = false}) async {
+    final prefs = await SharedPreferences.getInstance();
+    _viewerRole = prefs.getString('role');
+    final projectId = (prefs.getString('project_id') ?? '').trim();
+    if (!force) {
+      final cached = await MobileDocumentsService.instance.showCachedLibrary(
+        projectId: projectId,
+      );
+      if (!mounted) return;
+      final snapshot = MobileDocumentsService.instance.snapshotFor(
+        projectId: projectId,
+      );
+      if (cached && shouldUseMobileDocumentsSnapshot(snapshot)) {
+        setState(() {
+          _loading = false;
+          _error = null;
+          _library = snapshot!.library;
+        });
+        unawaited(_refreshLibrary(projectId));
+        return;
+      }
+    }
     setState(() {
       _loading = true;
       _error = null;
     });
     try {
-      final prefs = await SharedPreferences.getInstance();
-      _viewerRole = prefs.getString('role');
-      await MobileDocumentsService.instance.ensureLibrary();
-      final snapshot = MobileDocumentsService.instance.snapshotFor();
-      WorkflowDocumentLibrary library;
-      if (shouldUseMobileDocumentsSnapshot(snapshot)) {
-        library = snapshot!.library;
-      } else {
-        library = await WorkflowDocumentService().fetchLibrary();
-      }
-      if (!mounted) return;
-      setState(() {
-        _loading = false;
-        _library = library;
-      });
+      await _refreshLibrary(projectId);
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -76,6 +83,25 @@ class _ClientPortalDocumentsTabState extends State<ClientPortalDocumentsTab> {
         _error = e.toString().replaceFirst('Exception: ', '');
       });
     }
+  }
+
+  Future<void> _refreshLibrary(String projectId) async {
+    await MobileDocumentsService.instance.ensureLibrary(projectId: projectId);
+    if (!mounted) return;
+    final snapshot = MobileDocumentsService.instance.snapshotFor(
+      projectId: projectId,
+    );
+    final library = shouldUseMobileDocumentsSnapshot(snapshot)
+        ? snapshot!.library
+        : await WorkflowDocumentService().fetchLibrary(
+            projectId: projectId,
+          );
+    if (!mounted) return;
+    setState(() {
+      _loading = false;
+      _error = null;
+      _library = library;
+    });
   }
 
   void _openCategory(WorkflowDocumentCategory category) {
@@ -105,7 +131,10 @@ class _ClientPortalDocumentsTabState extends State<ClientPortalDocumentsTab> {
             children: [
               Text(_error!, textAlign: TextAlign.center),
               const SizedBox(height: 12),
-              ElevatedButton(onPressed: _load, child: const Text('Retry')),
+              ElevatedButton(
+                onPressed: () => _load(force: true),
+                child: const Text('Retry'),
+              ),
             ],
           ),
         ),

@@ -1263,12 +1263,16 @@ class _TimelineGalleryState extends State<TimelineGallery> {
     if (details is! Map) return <Map<String, dynamic>>[];
 
     final workflowSections = details['workflow_dashboard_sections'];
-    if (workflowSections is! Map) return <Map<String, dynamic>>[];
+    final byCard = details['workflow_dashboard_sections_by_card'];
+    final gallerySections = workflowSections is Map
+        ? workflowSections['gallery']
+        : null;
+    final fallbackSections =
+        byCard is Map ? byCard['gallery'] : null;
+    final sections = gallerySections is List ? gallerySections : fallbackSections;
+    if (sections is! List) return <Map<String, dynamic>>[];
 
-    final gallerySections = workflowSections['gallery'];
-    if (gallerySections is! List) return <Map<String, dynamic>>[];
-
-    return gallerySections
+    return sections
         .whereType<Map>()
         .map((section) => Map<String, dynamic>.from(section))
         .toList();

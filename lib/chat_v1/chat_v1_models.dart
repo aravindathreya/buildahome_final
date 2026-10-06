@@ -353,6 +353,9 @@ class ChatV1LastMessagePreview {
   });
 }
 
+/// Task row that opens a Difference of Cost chat, not a task conversation.
+const String kChatV1DocCreatedContext = 'difference_of_cost';
+
 class ChatV1TaskItem {
   final String id;
   final String title;
@@ -394,7 +397,10 @@ class ChatV1TaskItem {
     this.isWorkflow = false,
   });
 
-  String get kindLabel => isWorkflow ? 'Workflow task' : 'Project task';
+  String get kindLabel {
+    if (contextType == kChatV1DocCreatedContext) return 'Difference of Cost';
+    return isWorkflow ? 'Workflow task' : 'Project task';
+  }
 
   /// "Role · Name" when both exist; otherwise whichever is available.
   String get assigneeLabel {

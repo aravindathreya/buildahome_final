@@ -215,6 +215,50 @@ void main() {
       );
     });
 
+    test('site engineer does not see KYC, project documents, or contracts', () {
+      WorkflowDocumentUpload doc(String id, String name) {
+        return WorkflowDocumentUpload(
+          id: id,
+          documentKey: id,
+          name: name,
+          isLatest: true,
+        );
+      }
+
+      WorkflowDocumentCategory category(String id, String label) {
+        return WorkflowDocumentCategory(
+          id: id,
+          label: label,
+          sections: [
+            WorkflowDocumentSection(
+              id: id,
+              label: label,
+              documents: [doc(id, label)],
+            ),
+          ],
+        );
+      }
+
+      final labels = filterDocumentCategoriesForRole(
+        [
+          category('kyc', 'KYC'),
+          category('project_documents', 'Project Documents'),
+          category('contracts', 'Contracts'),
+          category('office_documents', 'Documents'),
+          category('receipts_and_agreements', 'Receipts and Agreements'),
+          category('structural', 'Structural & Civil'),
+        ],
+        'Site Engineer',
+      ).map((category) => category.label).toList();
+
+      expect(labels, contains('Structural & Civil'));
+      expect(labels, isNot(contains('KYC')));
+      expect(labels, isNot(contains('Project Documents')));
+      expect(labels, isNot(contains('Contracts')));
+      expect(labels, isNot(contains('Documents')));
+      expect(labels, isNot(contains('Receipts and Agreements')));
+    });
+
     test('project coordinator uses the For me matrix, not the client catalog', () {
       WorkflowDocumentUpload doc(String id, String name) {
         return WorkflowDocumentUpload(

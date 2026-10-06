@@ -45,6 +45,14 @@ class _DocumentsV1HomeScreenState extends State<DocumentsV1HomeScreen>
   @override
   void initState() {
     super.initState();
+    final snap = _docs.snapshotFor();
+    if (shouldUseMobileDocumentsSnapshot(snap)) {
+      _library = snap!.library;
+      _appliedProjectId = snap.projectId;
+      _usingBackend = true;
+      _loading = false;
+      _viewerRole = snap.role;
+    }
     _searchCtrl.addListener(_onDebouncedSearch);
     _docs.revision.addListener(_onDocumentsRevision);
     _load();
@@ -119,11 +127,26 @@ class _DocumentsV1HomeScreenState extends State<DocumentsV1HomeScreen>
     final showingCurrentProject =
         _library != null &&
         (projectId.isEmpty || _appliedProjectId == projectId);
-    if (!showingCurrentProject && mounted) {
+    final memoryReady = !force &&
+        shouldUseMobileDocumentsSnapshot(
+          _docs.snapshotFor(
+            projectId: projectId.isEmpty ? null : projectId,
+          ),
+        );
+    if (!showingCurrentProject && mounted && !memoryReady) {
       setState(() {
         _loading = true;
         _error = null;
       });
+    }
+
+    if (!force) {
+      final cached = await _docs.showCachedLibrary(projectId: projectId);
+      if (!mounted || seq != _loadSeq) return;
+      if (cached && _applyBackendSnapshotIfCurrent(projectId: projectId)) {
+        unawaited(_docs.ensureLibrary(projectId: projectId));
+        return;
+      }
     }
 
     await _docs.ensureLibrary(projectId: projectId, force: force);
@@ -546,8 +569,21 @@ class _DocumentsV1ListScreenState extends State<DocumentsV1ListScreen>
       SharedPreferences.getInstance().then((prefs) {
         if (!mounted) return;
         setState(() => _viewerRole = prefs.getString('role'));
+        _prefetchTop();
       });
+    } else {
+      _prefetchTop();
     }
+  }
+
+  void _prefetchTop() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final docs = _filtered().where((doc) => doc.hasUrl).take(2);
+      for (final doc in docs) {
+        warmWorkflowDocument(doc);
+      }
+    });
   }
 
   @override
@@ -598,6 +634,15 @@ class _DocumentsV1ListScreenState extends State<DocumentsV1ListScreen>
   }
 
   void _openDocument(WorkflowDocumentUpload doc) {
+    openWorkflowDocument(
+      context,
+      doc,
+      clientMode: widget.clientMode,
+    );
+  }
+
+  void _openDetails(WorkflowDocumentUpload doc) {
+    warmWorkflowDocument(doc);
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -660,7 +705,10 @@ class _DocumentsV1ListScreenState extends State<DocumentsV1ListScreen>
                 padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
                 child: ClientPortalFilterTabs(
                   selectedIndex: _filterIndex,
-                  onChanged: (index) => setState(() => _filterIndex = index),
+                  onChanged: (index) {
+                    setState(() => _filterIndex = index);
+                    _prefetchTop();
+                  },
                 ),
               ),
             Padding(
@@ -698,6 +746,7 @@ class _DocumentsV1ListScreenState extends State<DocumentsV1ListScreen>
                           document: doc,
                           showVerifiedBadge: _isQualityCategory,
                           showThumbnail: _showThumbnails,
+                          onPressStart: () => warmWorkflowDocument(doc),
                           onTap: () => _openDocument(doc),
                           onMenuTap: () => _showDocumentMenu(doc),
                         );
@@ -737,7 +786,7 @@ class _DocumentsV1ListScreenState extends State<DocumentsV1ListScreen>
                 title: const Text('Document details'),
                 onTap: () {
                   Navigator.pop(context);
-                  _openDocument(doc);
+                  _openDetails(doc);
                 },
               ),
             if (rights.edit)
