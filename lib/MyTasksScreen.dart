@@ -154,6 +154,117 @@ bool isClientUploadStagePaymentProofTask(Map task) {
   return false;
 }
 
+/// Synthetic dashboard task when tender + non-tender outstanding > 0.
+const String kClearOutstandingPaymentTaskId = 'clear_outstanding_payment';
+const String kClearOutstandingPaymentCategory =
+    'client_clear_outstanding_payment';
+
+bool isClearOutstandingPaymentTask(Map task) {
+  final id = task['id']?.toString().trim() ?? '';
+  if (id == kClearOutstandingPaymentTaskId) return true;
+  return _taskCategoryMatches(task, (normalized) {
+    return normalized == kClearOutstandingPaymentCategory;
+  });
+}
+
+/// Client task to approve a raised NT bill.
+bool isClientApproveNtBillTask(Map task) {
+  return _taskCategoryMatches(task, (normalized) {
+    return normalized == 'client_approve_nt_bill' ||
+        normalized.contains('client_approve_nt_bill') ||
+        normalized == 'approve_nt_bill' ||
+        normalized.contains('approve_nt_bill');
+  });
+}
+
+bool _taskCategoryMatches(Map task, bool Function(String normalized) test) {
+  for (final key in const [
+    'task_category',
+    'category',
+    'erp_category',
+    'source_erp_category',
+  ]) {
+    final raw = task[key]?.toString().trim().toLowerCase() ?? '';
+    if (raw.isEmpty) continue;
+    final normalized = raw.replaceAll(RegExp(r'[\s-]+'), '_');
+    if (test(normalized)) return true;
+  }
+  return false;
+}
+
+/// `Stage: Completion of Footing` inside an ERP task note.
+String? stageNameFromClientProofTaskNote(String? note) {
+  if (note == null || note.trim().isEmpty) return null;
+  for (final line in note.split(RegExp(r'\r?\n'))) {
+    final match = RegExp(r'^stage\s*:\s*(.+)$', caseSensitive: false)
+        .firstMatch(line.trim());
+    final name = match?.group(1)?.trim() ?? '';
+    if (name.isNotEmpty) return name;
+  }
+  return null;
+}
+
+String _firstNoteLine(Map task) {
+  final note = task['note']?.toString() ?? '';
+  for (final line in note.split(RegExp(r'\r?\n'))) {
+    final trimmed = line.trim();
+    if (trimmed.isNotEmpty) return trimmed;
+  }
+  return '';
+}
+
+String clientUploadStagePaymentProofCardTitle(Map task) {
+  final stage = stageNameFromClientProofTaskNote(task['note']?.toString());
+  if (stage != null) return stage;
+  final first = _firstNoteLine(task);
+  if (first.isNotEmpty) return first;
+  return workflowTaskDisplayTitle(task);
+}
+
+String clientApproveNtBillCardTitle(Map task) {
+  final stage = stageNameFromClientProofTaskNote(task['note']?.toString());
+  if (stage != null) return stage;
+  final first = _firstNoteLine(task);
+  if (first.isNotEmpty) return first;
+  return workflowTaskDisplayTitle(task);
+}
+
+/// Billing task id from a note line such as `Billing Task ID: 42`.
+int billingTaskIdFromClientApproveNtNote(String note) {
+  final match = RegExp(
+    r'billing(?:\s+task)?\s+id\s*:\s*(\d+)',
+    caseSensitive: false,
+  ).firstMatch(note);
+  return int.tryParse(match?.group(1) ?? '') ?? 0;
+}
+
+/// ERP `created_at` with no zone is UTC. Show it in IST (+5:30).
+String formatErpCreatedAtIst(String raw) {
+  final text = raw.trim();
+  if (text.isEmpty) return '';
+  DateTime parsed;
+  try {
+    parsed = DateTime.parse(text);
+  } catch (_) {
+    return text;
+  }
+  final hasZone = text.endsWith('Z') ||
+      RegExp(r'[+-]\d{2}:?\d{2}$').hasMatch(text);
+  final utc = hasZone
+      ? parsed.toUtc()
+      : DateTime.utc(
+          parsed.year,
+          parsed.month,
+          parsed.day,
+          parsed.hour,
+          parsed.minute,
+          parsed.second,
+          parsed.millisecond,
+        );
+  final ist = utc.add(const Duration(hours: 5, minutes: 30));
+  return DateFormat('dd MMM yyyy, hh:mm a').format(ist);
+}
+
 bool shouldShowWorkflowApprovalButtons(Map task) {
   if (task['can_approve_workflow_task'] != true) return false;
   final status = normalizeTaskStatusValue(task);
