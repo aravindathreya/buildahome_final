@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../app_theme.dart';
 import '../documents_v1/documents_v1_home_screen.dart';
@@ -26,6 +27,7 @@ class _ClientPortalDocumentsTabState extends State<ClientPortalDocumentsTab> {
   bool _loading = true;
   String? _error;
   WorkflowDocumentLibrary? _library;
+  String? _viewerRole;
 
   @override
   void initState() {
@@ -52,6 +54,8 @@ class _ClientPortalDocumentsTabState extends State<ClientPortalDocumentsTab> {
       _error = null;
     });
     try {
+      final prefs = await SharedPreferences.getInstance();
+      _viewerRole = prefs.getString('role');
       await MobileDocumentsService.instance.ensureLibrary();
       final snapshot = MobileDocumentsService.instance.snapshotFor();
       WorkflowDocumentLibrary library;
@@ -81,6 +85,7 @@ class _ClientPortalDocumentsTabState extends State<ClientPortalDocumentsTab> {
         builder: (_) => DocumentsV1CategoryScreen(
           category: category,
           clientMode: true,
+          viewerRole: _viewerRole,
         ),
       ),
     );
@@ -115,6 +120,7 @@ class _ClientPortalDocumentsTabState extends State<ClientPortalDocumentsTab> {
             library: library,
             searchQuery: _searchCtrl.text,
             onCategoryTap: _openCategory,
+            role: _viewerRole,
           );
 
     return RefreshIndicator(

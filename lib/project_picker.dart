@@ -2,6 +2,8 @@ import 'package:buildAhome/UserHome.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'app_theme.dart';
+import 'chat_v1/chat_v1_api.dart';
+import 'chat_v1/chat_v1_app.dart';
 import 'services/data_provider.dart';
 import 'services/project_open_timing.dart';
 import 'widgets/opening_project_splash.dart';
@@ -29,6 +31,7 @@ class ProjectPickerScreen {
   static Future<bool> show(
     BuildContext context, {
     bool openHomeOnSelect = true,
+    bool forChat = false,
   }) async {
     // Prevent opening picker if already showing
     if (_isShowing) return false;
@@ -52,6 +55,7 @@ class ProjectPickerScreen {
       // Open immediately with whatever is already cached from app startup.
       List<dynamic> projects = List<dynamic>.from(provider.projects);
       bool loading = projects.isEmpty;
+      Map<String, ChatProjectUnread> unreadByKey = const {};
 
       // Kick off / refresh project load without blocking the sheet open.
       void Function(void Function())? sheetSetState;
@@ -77,6 +81,20 @@ class ProjectPickerScreen {
           loading = false;
         });
       });
+
+      if (forChat) {
+        ChatV1Api.instance.unreadHintsByProjectKey().then((loaded) {
+          if (isClosing) return;
+          final apply = sheetSetState;
+          if (apply == null) {
+            unreadByKey = loaded;
+            return;
+          }
+          apply(() => unreadByKey = loaded);
+        }, onError: (e) {
+          print('[ProjectPicker] Unread chats failed: $e');
+        });
+      }
 
       await showModalBottomSheet(
         context: parentContext,
@@ -105,19 +123,32 @@ class ProjectPickerScreen {
               sheetSetState = setModalState;
 
               final query = searchController.text.toLowerCase().trim();
-              final filtered = query.isEmpty
-                  ? projects
-                  : projects.where((project) {
-                      final name =
-                          project['name']?.toString().toLowerCase() ?? '';
-                      final id = project['id']?.toString() ?? '';
-                      final client =
-                          project['client_name']?.toString().toLowerCase() ??
+              final filtered = (query.isEmpty
+                      ? projects
+                      : projects.where((project) {
+                          final name =
+                              project['name']?.toString().toLowerCase() ?? '';
+                          final id = project['id']?.toString() ?? '';
+                          final client = project['client_name']
+                                  ?.toString()
+                                  .toLowerCase() ??
                               '';
-                      return name.contains(query) ||
-                          id.contains(query) ||
-                          client.contains(query);
-                    }).toList();
+                          return name.contains(query) ||
+                              id.contains(query) ||
+                              client.contains(query);
+                        }))
+                  .toList();
+              if (forChat && unreadByKey.isNotEmpty) {
+                filtered.sort((a, b) {
+                  final unread = _projectUnread(b, unreadByKey)
+                      .unread
+                      .compareTo(_projectUnread(a, unreadByKey).unread);
+                  if (unread != 0) return unread;
+                  final an = a['name']?.toString().toLowerCase() ?? '';
+                  final bn = b['name']?.toString().toLowerCase() ?? '';
+                  return an.compareTo(bn);
+                });
+              }
 
               return Column(
                 children: [
@@ -163,7 +194,9 @@ class ProjectPickerScreen {
                               Text(
                                 loading
                                     ? 'Loading projects...'
-                                    : '${filtered.length} project${filtered.length == 1 ? '' : 's'}',
+                                    : forChat
+                                        ? '${filtered.length} project${filtered.length == 1 ? '' : 's'} · unread in green'
+                                        : '${filtered.length} project${filtered.length == 1 ? '' : 's'}',
                                 style: const TextStyle(
                                   color: _muted,
                                   fontSize: 12.5,
@@ -287,6 +320,13 @@ class ProjectPickerScreen {
                                       ];
                                       final accent =
                                           accents[index % accents.length];
+                                      final unreadHint = forChat
+                                          ? _projectUnread(project, unreadByKey)
+                                          : null;
+                                      final unread = unreadHint?.unread ?? 0;
+                                      final rowAccent = unread > 0
+                                          ? const Color(0xFF22C55E)
+                                          : accent;
 
                                       return Container(
                                         margin:
@@ -295,8 +335,11 @@ class ProjectPickerScreen {
                                           color: AppTheme.darkBackgroundPrimaryLight,
                                           borderRadius:
                                               BorderRadius.circular(16),
-                                          border:
-                                              Border.all(color: _border),
+                                          border: Border.all(
+                                            color: unread > 0
+                                                ? const Color(0xFF22C55E)
+                                                : _border,
+                                          ),
                                           boxShadow: const [
                                             BoxShadow(
                                               color: _softShadow,
@@ -367,8 +410,34 @@ class ProjectPickerScreen {
                                                 }
                                               }
 
-                                              if (!openHomeOnSelect) {
+                                              if (!openHomeOnSelect && !forChat) {
                                                 await persistProject();
+                                                return;
+                                              }
+
+                                              if (forChat) {
+                                                await persistProject();
+                                                if (!parentContext.mounted) {
+                                                  return;
+                                                }
+                                                await Navigator.of(
+                                                        parentContext)
+                                                    .push(
+                                                  MaterialPageRoute(
+                                                    builder: (_) =>
+                                                        ChatV1App.openQuick(
+                                                      erpProjectId: projectId,
+                                                      project:
+                                                          Map<String, dynamic>
+                                                              .from(project),
+                                                      openConversation: unread >
+                                                              0
+                                                          ? unreadHint
+                                                              ?.conversation
+                                                          : null,
+                                                    ),
+                                                  ),
+                                                );
                                                 return;
                                               }
 
@@ -396,7 +465,7 @@ class ProjectPickerScreen {
                                                   children: [
                                                     Container(
                                                       width: 4,
-                                                      color: accent,
+                                                      color: rowAccent,
                                                     ),
                                                     Expanded(
                                                       child: Padding(
@@ -477,21 +546,39 @@ class ProjectPickerScreen {
                                                                               .ellipsis,
                                                                     ),
                                                                   ],
-                                                                  if (projectId !=
-                                                                      null) ...[
+                                                                  if (unread >
+                                                                      0) ...[
                                                                     const SizedBox(
                                                                         height:
-                                                                            3),
-                                                                    Text(
-                                                                      'ID: $projectId',
-                                                                      style:
-                                                                          const TextStyle(
-                                                                        color:
-                                                                            _muted,
-                                                                        fontSize:
-                                                                            11,
-                                                                        fontWeight:
-                                                                            FontWeight.w600,
+                                                                            6),
+                                                                    Container(
+                                                                      padding: const EdgeInsets
+                                                                          .symmetric(
+                                                                        horizontal:
+                                                                            8,
+                                                                        vertical:
+                                                                            3,
+                                                                      ),
+                                                                      decoration:
+                                                                          BoxDecoration(
+                                                                        color: const Color(
+                                                                                0xFF22C55E)
+                                                                            .withValues(
+                                                                                alpha: 0.16),
+                                                                        borderRadius:
+                                                                            BorderRadius.circular(99),
+                                                                      ),
+                                                                      child:
+                                                                          Text(
+                                                                        '$unread',
+                                                                        style: const TextStyle(
+                                                                          color:
+                                                                              Color(0xFF22C55E),
+                                                                          fontSize:
+                                                                              11,
+                                                                          fontWeight:
+                                                                              FontWeight.w800,
+                                                                        ),
                                                                       ),
                                                                     ),
                                                                   ],
@@ -587,4 +674,33 @@ class _EmptyState extends StatelessWidget {
       ),
     );
   }
+}
+
+ChatProjectUnread _projectUnread(
+  dynamic project,
+  Map<String, ChatProjectUnread> unreadByKey,
+) {
+  const none = ChatProjectUnread(unread: 0, conversation: {});
+  if (project is! Map || unreadByKey.isEmpty) return none;
+  ChatProjectUnread? best;
+  final keys = <String>[
+    for (final key in const [
+      'id',
+      'project_id',
+      'sales_sop_id',
+      'salesSopId',
+      'sop_id',
+      'sales_sop_project_id',
+    ])
+      project[key]?.toString().trim() ?? '',
+  ];
+  final cached = DataProvider().cachedSalesSopId(project['id']?.toString());
+  if (cached != null) keys.add(cached);
+  for (final id in keys) {
+    if (id.isEmpty) continue;
+    final hint = unreadByKey[id];
+    if (hint == null) continue;
+    if (best == null || hint.unread > best.unread) best = hint;
+  }
+  return best ?? none;
 }

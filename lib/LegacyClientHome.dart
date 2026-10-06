@@ -10,12 +10,14 @@ import 'package:shimmer/shimmer.dart';
 import 'AnimationHelper.dart';
 import 'AdminDashboard.dart';
 import 'Gallery.dart' hide AnimatedWidgetSlide, SlideDirection;
-import 'NotesAndComments.dart';
 import 'Payments.dart' hide AnimatedWidgetSlide, SlideDirection;
+import 'MyTasksScreen.dart';
 import 'RequestDrawing.dart';
-import 'Scheduler.dart' hide AnimatedWidgetSlide, SlideDirection;
+import 'SiteVisitReports.dart';
+import 'SlotsScreen.dart';
 import 'app_theme.dart';
-import 'checklist_categories.dart';
+import 'ClientPortalScreen.dart';
+import 'ProjectSituationShell.dart';
 import 'services/app_logout.dart';
 import 'services/data_provider.dart';
 import 'services/mobile_quick_actions.dart';
@@ -434,8 +436,31 @@ class LegacyClientDashboardScreenState extends State<LegacyClientDashboardScreen
 
   bool get _isAnySectionLoading => _isLoadingSummary || _isLoadingUpdates;
 
+  String _quickActionLabel(String title) {
+    switch (title) {
+      case 'My tasks':
+        return 'Tasks';
+      case 'Site Visit Reports':
+        return 'Upcoming visits';
+      default:
+        return title;
+    }
+  }
+
   List<Map<String, dynamic>> getMenuItems() {
     List<Map<String, dynamic>> menuItems = [];
+
+    menuItems.add({
+      'title': 'For me',
+      'icon': Icons.dashboard_customize_rounded,
+      'route': () => const ClientPortalScreen(),
+    });
+
+    menuItems.add({
+      'title': 'Project Timeline',
+      'icon': Icons.view_timeline_rounded,
+      'route': () => ProjectSituationShell.timeline(),
+    });
 
     menuItems.add({
       'title': 'Payments',
@@ -452,27 +477,40 @@ class LegacyClientDashboardScreenState extends State<LegacyClientDashboardScreen
     });
 
     menuItems.add({
-      'title': 'Scheduler',
-      'icon': Icons.calendar_today,
-      'route': () => const TaskWidget(),
+      'title': 'My tasks',
+      'icon': Icons.pending_actions_rounded,
+      'route': () async {
+        final tasks = await fetchTasksForCurrentUser();
+        return MyTasksScreen(
+          tasks: tasks,
+          onRefresh: fetchTasksForCurrentUser,
+        );
+      },
     });
 
     menuItems.add({
-      'title': 'Gallery',
+      'title': 'Slots',
+      'icon': Icons.event_available_rounded,
+      'route': () => const SlotsScreen(),
+    });
+
+    menuItems.add({
+      'title': 'Site Visit Reports',
+      'icon': Icons.event_available_outlined,
+      'route': () async {
+        final prefs = await SharedPreferences.getInstance();
+        final projectId = prefs.getString('project_id');
+        return SiteVisitReportsScreen(
+          fixedProjectId: projectId,
+          projectFixed: projectId != null && projectId.isNotEmpty,
+        );
+      },
+    });
+
+    menuItems.add({
+      'title': 'Project Gallery',
       'icon': Icons.photo_library,
-      'route': () => Gallery(),
-    });
-
-    menuItems.add({
-      'title': 'Notes & Comments',
-      'icon': Icons.note_add,
-      'route': () => NotesAndComments(),
-    });
-
-    menuItems.add({
-      'title': 'Checklist',
-      'icon': Icons.checklist,
-      'route': () => ChecklistCategoriesLayout(),
+      'route': () => TimelineGallery(),
     });
 
     menuItems.add({
@@ -486,13 +524,39 @@ class LegacyClientDashboardScreenState extends State<LegacyClientDashboardScreen
 
   Widget build(BuildContext context) {
     final catalogItems = getMenuItems();
-    final menuItems = resolveMobileQuickActions(
+    final resolved = resolveMobileQuickActions(
       surface: MobileQuickActionSurface.projectHomeOld,
       catalog: catalogItems,
       fallback: catalogItems,
       snapshot: MobileQuickActionsService.instance
           .snapshot(MobileQuickActionSurface.projectHomeOld),
     );
+    final menuItems = resolved.any((item) => item['title'] == 'For me')
+        ? List<Map<String, dynamic>>.from(resolved)
+        : <Map<String, dynamic>>[
+            catalogItems.firstWhere((item) => item['title'] == 'For me'),
+            ...resolved,
+          ];
+    if (!menuItems.any((item) => item['title'] == 'Project Timeline')) {
+      final timeline = catalogItems.firstWhere(
+        (item) => item['title'] == 'Project Timeline',
+      );
+      final portal = menuItems.indexWhere((item) => item['title'] == 'For me');
+      menuItems.insert(portal >= 0 ? portal + 1 : 0, timeline);
+    }
+    menuItems.removeWhere((item) {
+      final title = item['title']?.toString();
+      return title == 'Scheduler' || title == 'Checklist';
+    });
+    for (final title in ['My tasks', 'Slots', 'Site Visit Reports']) {
+      if (menuItems.any((item) => item['title'] == title)) continue;
+      for (final item in catalogItems) {
+        if (item['title'] == title) {
+          menuItems.add(item);
+          break;
+        }
+      }
+    }
     final quickSearchSection = Padding(
       padding: EdgeInsets.symmetric(horizontal: 0, vertical: 8),
       child: _buildQuickSearchSection(menuItems),
@@ -648,7 +712,9 @@ class LegacyClientDashboardScreenState extends State<LegacyClientDashboardScreen
                                               Padding(
                                                 padding: EdgeInsets.symmetric(horizontal: 4),
                                                 child: Text(
-                                                  item['title'],
+                                                  _quickActionLabel(
+                                                    item['title']?.toString() ?? '',
+                                                  ),
                                                   textAlign: TextAlign.center,
                                                   style: TextStyle(
                                                     color: AppTheme.textPrimary,

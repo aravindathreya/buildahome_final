@@ -46,11 +46,13 @@ class ChatV1MentionDraft {
     for (final tag in _picked) {
       if (tag.end <= prefix) {
         shifted.add(tag);
-      } else if (tag.start >= oldEnd) {
+      } else if (tag.end > oldEnd) {
+        // Deleting an earlier tag can leave a shared @ prefix straddling
+        // this intact suffix token. Exact span validation below is required.
         shifted.add(_PickedMention(
             tag.userId, tag.token, tag.start + delta, tag.end + delta));
       }
-      // An edit overlapping a token removes that association.
+      // Keep only complete unchanged tokens at their resulting positions.
     }
     final matches = _tokens.allMatches(next).toList();
     _picked = shifted

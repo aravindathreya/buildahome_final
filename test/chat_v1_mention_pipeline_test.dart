@@ -88,6 +88,14 @@ void main() {
     expect(draft.mentionedUserIds, [9]);
   });
 
+  test('deleting a preceding distinct tag retains the complete suffix tag', () {
+    final draft = ChatV1MentionDraft();
+    final first = pick(draft, '@', alex);
+    pick(draft, '${first}@', priya);
+    draft.updateText('@Priya ');
+    expect(draft.mentionedUserIds, [8]);
+  });
+
   test('multiple people are retained and repeated selections are deduplicated',
       () {
     final draft = ChatV1MentionDraft();

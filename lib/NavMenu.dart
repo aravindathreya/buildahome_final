@@ -6,9 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'AddDailyUpdate.dart';
 import 'Dpr.dart';
-import 'Drawings.dart';
 import 'Gallery.dart';
-import 'documents_v1/documents_v1_home_screen.dart';
 import 'InspectionRequest.dart';
 import 'MyTasksScreen.dart';
 import 'chat_v1/chat_v1_app.dart';
@@ -46,6 +44,18 @@ import 'AttendanceScreen.dart';
 import 'widgets/profile_picture_dialog.dart';
 
 typedef NavRouteBuilder = FutureOr<Widget?> Function();
+
+/// True when this role has any access to [feature]. View-only checks miss
+/// roles that can create or complete the feature without a view flag.
+bool _roleUsesFeature(RBACService rbac, String? role, String feature) {
+  if (feature == RBACService.tasksAndNotes && rbac.canCompleteTaskSync(role)) {
+    return true;
+  }
+  return rbac.canViewSync(role, feature) ||
+      rbac.canUploadSync(role, feature) ||
+      rbac.canEditSync(role, feature) ||
+      rbac.canDeleteSync(role, feature);
+}
 
 PageRouteBuilder<T> _navFadeRoute<T>(Widget page) {
   return PageRouteBuilder<T>(
@@ -445,7 +455,7 @@ class NavMenuWidgetState extends State<NavMenuWidget> {
     final isClient = currentRole == 'Client';
     final sections = <_NavSection>[];
 
-    // Home / workspace
+    // Home / workspace. Order is fixed so a missing row cannot shift the rest.
     final homeEntries = <_NavEntry>[
       _NavEntry(
         actionKey: 'home',
@@ -466,7 +476,33 @@ class NavMenuWidgetState extends State<NavMenuWidget> {
           }
         },
       ),
-      _NavEntry(
+    ];
+
+    if (!isClient) {
+      homeEntries.add(_NavEntry(
+        actionKey: 'projects',
+        title: 'Projects',
+        icon: Icons.folder_special_rounded,
+        action: (context) => ProjectPickerScreen.show(context),
+      ));
+    } else {
+      homeEntries.add(_NavEntry(
+        actionKey: 'client_portal',
+        title: 'Client Portal',
+        icon: Icons.dashboard_customize_outlined,
+        route: () => const ClientPortalScreen(),
+      ));
+      homeEntries.add(_NavEntry(
+        actionKey: 'project_timeline',
+        title: 'Project Timeline',
+        icon: Icons.timeline_rounded,
+        route: () => ProjectSituationShell.timeline(),
+      ));
+    }
+
+    if (isClient ||
+        _roleUsesFeature(rbac, currentRole, RBACService.tasksAndNotes)) {
+      homeEntries.add(_NavEntry(
         actionKey: 'my_tasks',
         title: 'My Tasks',
         icon: Icons.pending_actions_rounded,
@@ -477,54 +513,24 @@ class NavMenuWidgetState extends State<NavMenuWidget> {
             onRefresh: fetchTasksForCurrentUser,
           );
         },
-      ),
-      _NavEntry(
-        actionKey: 'notifications',
-        title: 'Notifications',
-        icon: Icons.notifications_rounded,
-        route: () => const Notifications(),
-      ),
-    ];
+      ));
+    }
 
     if (!isClient) {
-      homeEntries.insert(
-        1,
-        _NavEntry(
-          actionKey: 'projects',
-          title: 'Projects',
-          icon: Icons.folder_special_rounded,
-          action: (context) => ProjectPickerScreen.show(context),
-        ),
-      );
-      homeEntries.insert(
-        3,
-        _NavEntry(
-          actionKey: 'attendance',
-          title: 'Attendance',
-          icon: Icons.fingerprint_rounded,
-          route: () => const AttendanceScreen(),
-        ),
-      );
-    } else {
-      homeEntries.insert(
-        1,
-        _NavEntry(
-          actionKey: 'client_portal',
-          title: 'Client Portal',
-          icon: Icons.dashboard_customize_outlined,
-          route: () => const ClientPortalScreen(),
-        ),
-      );
-      homeEntries.insert(
-        2,
-        _NavEntry(
-          actionKey: 'project_timeline',
-          title: 'Project Timeline',
-          icon: Icons.timeline_rounded,
-          route: () => ProjectSituationShell.timeline(),
-        ),
-      );
+      homeEntries.add(_NavEntry(
+        actionKey: 'attendance',
+        title: 'Attendance',
+        icon: Icons.fingerprint_rounded,
+        route: () => const AttendanceScreen(),
+      ));
     }
+
+    homeEntries.add(_NavEntry(
+      actionKey: 'notifications',
+      title: 'Notifications',
+      icon: Icons.notifications_rounded,
+      route: () => const Notifications(),
+    ));
 
     sections.add(_NavSection('Workspace', homeEntries));
 
@@ -564,39 +570,21 @@ class NavMenuWidgetState extends State<NavMenuWidget> {
       ));
     }
 
-    if (rbac.canViewSync(currentRole, RBACService.documents)) {
-      if (!isClient) {
-        projectEntries.add(_NavEntry(
-          actionKey: 'documents',
-          title: 'Documents',
-          icon: Icons.description_rounded,
-          action: _openAfterProjectPick(() => Documents()),
-        ));
-        projectEntries.add(_NavEntry(
-          actionKey: 'documents_v1',
-          title: 'Documents V1',
-          icon: Icons.folder_copy_outlined,
-          action: _openAfterProjectPick(() => const DocumentsV1HomeScreen()),
-        ));
-      }
-    }
+    // Documents and Documents V1 stay off the side menu. Docs on the home
+    // is the document entry, and it already follows this role and user.
 
     if (rbac.canViewSync(currentRole, RBACService.gallery)) {
-      if (!isClient) {
-        projectEntries.add(_NavEntry(
-          actionKey: 'gallery',
-          title: 'Gallery',
-          icon: Icons.photo_library_rounded,
-          action: _openAfterProjectPick(() => Gallery()),
-        ));
-      }
+      // One row: timeline gallery, named Project Gallery. Clients keep the
+      // timeline_gallery more-menu key; staff keep the gallery key, which is
+      // who previously had the project gallery option.
       projectEntries.add(_NavEntry(
-        actionKey: 'timeline_gallery',
-        title: 'Timeline Gallery',
-        icon: Icons.auto_awesome_motion_rounded,
+        actionKey: isClient ? 'timeline_gallery' : 'gallery',
+        title: 'Project Gallery',
+        icon: Icons.photo_library_rounded,
         route: isClient ? () => TimelineGallery() : null,
-        action:
-            isClient ? null : _openAfterProjectPick(() => TimelineGallery()),
+        action: isClient
+            ? null
+            : _openAfterProjectPick(() => const TimelineGallery()),
       ));
     }
 
@@ -618,16 +606,16 @@ class NavMenuWidgetState extends State<NavMenuWidget> {
       action: isClient ? null : _openAfterProjectPick(() => const SlotsScreen()),
     ));
 
-    // Payments is on the shared project home for clients and staff.
-    projectEntries.add(_NavEntry(
-      actionKey: 'payments',
-      title: 'Payments',
-      icon: Icons.payment_rounded,
-      route: isClient ? () => PaymentTaskWidget() : null,
-      action:
-          isClient ? null : _openAfterProjectPick(() => PaymentTaskWidget()),
-    ));
     if (isClient || rbac.canViewSync(currentRole, RBACService.payments)) {
+      projectEntries.add(_NavEntry(
+        actionKey: 'payments',
+        title: 'Payments',
+        icon: Icons.payment_rounded,
+        route: isClient ? () => PaymentTaskWidget() : null,
+        action: isClient
+            ? null
+            : _openAfterProjectPick(() => PaymentTaskWidget()),
+      ));
       projectEntries.add(_NavEntry(
         actionKey: 'nt_payments',
         title: 'Upgrades and Additions Cost',
@@ -700,7 +688,8 @@ class NavMenuWidgetState extends State<NavMenuWidget> {
       ));
     }
 
-    if (!isClient) {
+    if (!isClient &&
+        _roleUsesFeature(rbac, currentRole, RBACService.inspectionRequest)) {
       opsEntries.add(_NavEntry(
         actionKey: 'inspection_requests',
         title: 'Inspection Requests',

@@ -5,24 +5,46 @@ import '../services/data_provider.dart';
 
 enum ProjectSituationTab { focus, status, timeline, schedule }
 
+bool isClientSituationRole(String? role) {
+  return (role ?? '').trim().toLowerCase() == 'client';
+}
+
+/// Clients see Focus + Timeline. Staff also get Status.
+/// Schedule is not shown for non-clients.
+List<ProjectSituationTab> projectSituationTabsForRole(String? role) {
+  final client = isClientSituationRole(role);
+  return [
+    ProjectSituationTab.focus,
+    if (!client) ProjectSituationTab.status,
+    ProjectSituationTab.timeline,
+  ];
+}
+
 /// Compact Focus / Status / Timeline / Schedule switcher shared by situation screens.
 class ProjectSituationSwitcher extends StatelessWidget
     implements PreferredSizeWidget {
   final ProjectSituationTab selected;
   final ValueChanged<ProjectSituationTab> onChanged;
+  final bool? showStatus;
   final bool? showSchedule;
 
   const ProjectSituationSwitcher({
     super.key,
     required this.selected,
     required this.onChanged,
+    this.showStatus,
     this.showSchedule,
   });
 
-  bool get _showSchedule {
-    if (showSchedule != null) return showSchedule!;
-    final role = (DataProvider().currentRole ?? '').trim().toLowerCase();
-    return role.isNotEmpty && role != 'client';
+  List<ProjectSituationTab> get _tabs {
+    final role = DataProvider().currentRole;
+    return [
+      ProjectSituationTab.focus,
+      if (showStatus ?? !isClientSituationRole(role))
+        ProjectSituationTab.status,
+      ProjectSituationTab.timeline,
+      if (showSchedule == true) ProjectSituationTab.schedule,
+    ];
   }
 
   @override
@@ -30,12 +52,14 @@ class ProjectSituationSwitcher extends StatelessWidget
 
   @override
   Widget build(BuildContext context) {
-    final tabs = <MapEntry<ProjectSituationTab, String>>[
-      const MapEntry(ProjectSituationTab.focus, 'Focus'),
-      const MapEntry(ProjectSituationTab.status, 'Status'),
-      const MapEntry(ProjectSituationTab.timeline, 'Timeline'),
-      if (_showSchedule)
-        const MapEntry(ProjectSituationTab.schedule, 'Schedule'),
+    const labels = {
+      ProjectSituationTab.focus: 'Focus',
+      ProjectSituationTab.status: 'Status',
+      ProjectSituationTab.timeline: 'Timeline',
+      ProjectSituationTab.schedule: 'Schedule',
+    };
+    final tabs = [
+      for (final tab in _tabs) MapEntry(tab, labels[tab]!),
     ];
 
     return Padding(
@@ -113,6 +137,34 @@ bool isOngoingTimelineTask(Map<String, dynamic> task) {
       !timelineTaskTruthy(task['is_cancelled']) &&
       !timelineTaskTruthy(task['is_upcoming']) &&
       !timelineTaskTruthy(task['is_not_started']);
+}
+
+bool isMainCriticalTimelineTask(Map<String, dynamic> task) {
+  if (timelineTaskTruthy(task['is_main_critical'])) return true;
+  for (final nestKey in const [
+    'main_critical',
+    'meta',
+    'context',
+    'context_json',
+  ]) {
+    final nest = task[nestKey];
+    if (nest is Map && timelineTaskTruthy(nest['is_main_critical'])) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/// Timeline shows only Main Critical tasks for every role.
+List<Map<String, dynamic>> visibleTimelineTasksForRole({
+  required String? role,
+  required List<Map<String, dynamic>> tasks,
+  required bool criticalOnly,
+}) {
+  if (criticalOnly) {
+    return tasks.where(isMainCriticalTimelineTask).toList();
+  }
+  return List<Map<String, dynamic>>.from(tasks);
 }
 
 int? indexOfOngoingTimelineTask(List<Map<String, dynamic>> tasks) {

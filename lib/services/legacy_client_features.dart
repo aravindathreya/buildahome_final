@@ -9,6 +9,8 @@ class LegacyClientFeatures {
 
   /// Working tiles for a legacy client, in the original dashboard order.
   static const List<String> allowedTitles = [
+    'Client Portal',
+    'For me',
     'Payments',
     'Upgrades and Additions Cost',
     'NT Payments',
@@ -17,23 +19,22 @@ class LegacyClientFeatures {
     'Profile',
     'Upload proof',
     'Gallery',
+    'Project Gallery',
     'Updates',
-    'Scheduler',
-    'Notes & Comments',
-    'ChatBox',
-    'Checklist',
     'Request Drawings',
+    'Project Timeline',
+    'My tasks',
+    'My Tasks',
+    'Tasks',
+    'Slots',
+    'Site Visit Reports',
+    'Upcoming visits',
   ];
 
   /// Newer client-facing tiles that stay visible but are not opened.
   static const List<String> comingSoonTitles = [
-    'Client Portal',
-    'My tasks',
-    'My Tasks',
-    'Project Timeline',
     'Client Information',
     'Upload payment proofs',
-    'Timeline Gallery',
     '3D House Tour',
     'Chat V1',
     'Project Status',

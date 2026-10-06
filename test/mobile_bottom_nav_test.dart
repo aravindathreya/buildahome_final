@@ -276,7 +276,11 @@ void main() {
         'payments',
         'more',
       ]);
-      expect(labelForMobileBottomNav('client_portal'), 'For me');
+      expect(labelForMobileBottomNav('client_portal'), 'Docs');
+      expect(
+        labelForMobileBottomNav('client_portal', isClient: true),
+        'For me',
+      );
     });
 
     test('project home keeps For me when fitting Payments under the cap', () {

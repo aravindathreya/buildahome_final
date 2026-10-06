@@ -17,6 +17,7 @@ import 'models/workflow_document.dart';
 import 'SalesSopCardsScreen.dart';
 import 'services/client_portal_service.dart';
 import 'services/data_provider.dart';
+import 'services/document_role_access.dart';
 import 'services/mobile_documents.dart';
 import 'services/mobile_documents_service.dart';
 import 'services/workflow_document_service.dart';
@@ -48,6 +49,7 @@ class _ClientPortalScreenState extends State<ClientPortalScreen> {
   String _impersonatedClientName = '';
   /// KYC hub row: Client + Super Admin only (not other staff roles).
   bool _canSeeKyc = false;
+  String? _viewerRole;
 
   @override
   void initState() {
@@ -73,7 +75,8 @@ class _ClientPortalScreenState extends State<ClientPortalScreen> {
     });
     try {
       final prefs = await SharedPreferences.getInstance();
-      _canSeeKyc = roleCanSeeClientPortalKyc(prefs.getString('role'));
+      _viewerRole = prefs.getString('role');
+      _canSeeKyc = roleCanSeeClientPortalKyc(_viewerRole);
       _tutorialDone = prefs.getBool('client_portal_tutorial_done') ?? false;
       if (widget.impersonatingClient) {
         _impersonatedClientName =
@@ -233,6 +236,7 @@ class _ClientPortalScreenState extends State<ClientPortalScreen> {
     Object? portalError,
   }) async {
     _canSeeKyc = roleCanSeeClientPortalKyc(prefs.getString('role'));
+    _viewerRole = prefs.getString('role');
     final projectId = (prefs.getString('project_id') ?? '').trim();
     final clientName = (prefs.getString('client_name') ??
             prefs.getString('project_name') ??
@@ -290,7 +294,11 @@ class _ClientPortalScreenState extends State<ClientPortalScreen> {
         backgroundColor: AppTheme.getBackgroundSecondary(context),
         foregroundColor: AppTheme.darkTextPrimary,
         elevation: 0,
-        title: const Text('Documents'),
+        title: Text(
+          forMeDocRoleBucket(_viewerRole) == ForMeDocRoleBucket.client
+              ? 'Documents'
+              : 'Docs',
+        ),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh_rounded),
@@ -525,6 +533,7 @@ class _ClientPortalScreenState extends State<ClientPortalScreen> {
     return buildClientPortalHubItems(
       _docLibrary,
       includeKyc: _canSeeKyc,
+      role: _viewerRole,
     );
   }
 }

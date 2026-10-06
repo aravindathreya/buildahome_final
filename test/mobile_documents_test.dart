@@ -1256,6 +1256,69 @@ void main() {
       expect(items.where((i) => i.isProjectStep), isEmpty);
     });
 
+    test('staff Docs matches the client hub without KYC', () {
+      final snapshot = parseMobileDocumentsPayload({
+        'message': 'success',
+        'configured': true,
+        'project_id': '100',
+        'categories': [
+          {
+            'category_id': 'structural',
+            'name': 'Structural & Civil',
+            'types': [
+              {
+                'type_id': 'framing',
+                'name': 'Framing',
+                'documents': [
+                  {
+                    'document_definition_id': 1,
+                    'name': 'Framing',
+                    'status': 'uploaded',
+                    'url': '/f.pdf',
+                  },
+                ],
+              },
+            ],
+          },
+          {
+            'category_id': 'site_document',
+            'name': 'Site Document',
+            'client_journey_key': 'site_document',
+            'types': [
+              {
+                'type_id': 'report',
+                'name': 'Site Inspection Report',
+                'documents': [
+                  {
+                    'document_definition_id': 2,
+                    'name': 'Report',
+                    'status': 'uploaded',
+                    'url': '/r.pdf',
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      })!;
+
+      final client = buildClientPortalHubItems(
+        snapshot.library,
+        role: 'Client',
+      ).map((item) => item.title);
+      final staff = buildClientPortalHubItems(
+        snapshot.library,
+        role: 'Site Engineer',
+      ).map((item) => item.title);
+
+      expect(client, contains('KYC & Documents'));
+      expect(client, contains('Structural & Civil'));
+      expect(client, isNot(contains('Site Document')));
+      expect(staff, isNot(contains('KYC & Documents')));
+      expect(staff, contains('Structural & Civil'));
+      expect(staff, isNot(contains('Site Document')));
+    });
+
     test('KYC hub visibility is Client and Super Admin only', () {
       expect(roleCanSeeClientPortalKyc('Client'), isTrue);
       expect(roleCanSeeClientPortalKyc('Super Admin'), isTrue);

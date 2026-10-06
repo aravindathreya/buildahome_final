@@ -259,7 +259,7 @@ const Map<MobileBottomNavSurface, Map<String, String>>
     'updates': 'Daily Update',
     'chatbox': 'Chat V1',
     'documents': 'Documents',
-    'gallery': 'Gallery',
+    'gallery': 'Project Gallery',
     'scheduler': 'Scheduler',
     'payments': 'Payments',
     'nt_payments': 'Upgrades and Additions Cost',
@@ -288,7 +288,7 @@ const Map<MobileBottomNavSurface, Map<String, String>>
     'chatbox': 'ChatBox',
     'documents': 'Documents',
     'documents_v1': 'Documents',
-    'gallery': 'Gallery',
+    'gallery': 'Project Gallery',
     'scheduler': 'Scheduler',
     'payments': 'Payments',
     'nt_payments': 'Upgrades and Additions Cost',
@@ -318,7 +318,7 @@ const Map<MobileBottomNavSurface, Map<String, String>>
     'updates': 'Updates',
     'chatbox': 'ChatBox',
     'documents': 'Documents',
-    'gallery': 'Gallery',
+    'gallery': 'Project Gallery',
     'scheduler': 'Scheduler',
     'payments': 'Payments',
     'nt_payments': 'Upgrades and Additions Cost',
@@ -469,7 +469,13 @@ bool isPinnedBottomNavKey(String canonicalKey) {
   return kMobileBottomNavPinnedKeys.contains(canonicalKey);
 }
 
-String? labelForMobileBottomNav(String canonicalKey) {
+String? labelForMobileBottomNav(
+  String canonicalKey, {
+  bool isClient = false,
+}) {
+  if (canonicalKey == 'client_portal') {
+    return isClient ? 'For me' : 'Docs';
+  }
   return kMobileBottomNavLabels[canonicalKey];
 }
 

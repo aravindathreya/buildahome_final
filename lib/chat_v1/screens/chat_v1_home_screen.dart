@@ -4,11 +4,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../chat_v1_controller.dart';
+import '../chat_v1_mapper.dart';
 import '../chat_v1_models.dart';
 import '../chat_v1_theme.dart';
 import '../widgets/chat_v1_chat_tile.dart';
 import '../widgets/chat_v1_common.dart';
-import 'chat_v1_create_group_sheet.dart';
 
 class ChatV1HomeScreen extends StatefulWidget {
   final ValueChanged<ChatV1ChatItem> onOpenChat;
@@ -16,12 +16,16 @@ class ChatV1HomeScreen extends StatefulWidget {
   final VoidCallback? onBack;
   final String? salesSopId;
 
+  /// Conversation row to open once this project's chat list has loaded.
+  final Map<String, dynamic>? openConversation;
+
   const ChatV1HomeScreen({
     super.key,
     required this.onOpenChat,
     required this.onOpenSearch,
     this.onBack,
     this.salesSopId,
+    this.openConversation,
   });
 
   @override
@@ -35,6 +39,7 @@ class _ChatV1HomeScreenState extends State<ChatV1HomeScreen> {
   Timer? _searchDebounce;
   ChatV1Filter _filter = ChatV1Filter.all;
   final Set<String> _selected = {};
+  bool _openedTarget = false;
 
   @override
   void initState() {
@@ -54,6 +59,22 @@ class _ChatV1HomeScreenState extends State<ChatV1HomeScreen> {
   void _onCtrl() {
     if (!mounted) return;
     setState(() {});
+    _openTargetChat();
+  }
+
+  /// Lands inside the unread conversation after the project chat shell loads.
+  void _openTargetChat() {
+    final raw = widget.openConversation;
+    if (raw == null || _openedTarget || _ctrl.loading) return;
+    final id = (raw['id'] ?? raw['conversation_id'] ?? '').toString().trim();
+    if (id.isEmpty) return;
+    _openedTarget = true;
+    final item = _ctrl.findChatById(id) ??
+        ChatV1Mapper.conversationToChatItem(raw);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      widget.onOpenChat(item);
+    });
   }
 
   Future<void> _reload() =>
@@ -86,21 +107,6 @@ class _ChatV1HomeScreenState extends State<ChatV1HomeScreen> {
           _ctrl.customGroups.map((e) => e.id == id ? fn(e) : e).toList();
       _ctrl.dms = _ctrl.dms.map((e) => e.id == id ? fn(e) : e).toList();
     });
-  }
-
-  Future<void> _openCreateGroup() async {
-    final created = await showModalBottomSheet<ChatV1ChatItem>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: ChatV1Theme.secondary(context),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
-      ),
-      builder: (_) => ChatV1CreateGroupSheet(members: _ctrl.members),
-    );
-    if (created != null && mounted) {
-      widget.onOpenChat(created);
-    }
   }
 
   @override
@@ -202,10 +208,6 @@ class _ChatV1HomeScreenState extends State<ChatV1HomeScreen> {
               ),
             ],
           ),
-        ),
-        floatingActionButton: FloatingActionButton(
-          onPressed: _openCreateGroup,
-          child: const Icon(Icons.group_add_rounded),
         ),
       ),
     );
@@ -358,17 +360,6 @@ class _ChatV1HomeScreenState extends State<ChatV1HomeScreen> {
           IconButton(
             onPressed: widget.onOpenSearch,
             icon: Icon(Icons.search_rounded, color: ChatV1Theme.text(context)),
-          ),
-          PopupMenuButton<String>(
-            icon: Icon(Icons.more_vert_rounded,
-                color: ChatV1Theme.text(context)),
-            color: ChatV1Theme.card(context),
-            onSelected: (v) {
-              if (v == 'new') _openCreateGroup();
-            },
-            itemBuilder: (_) => const [
-              PopupMenuItem(value: 'new', child: Text('New group')),
-            ],
           ),
         ],
       ),

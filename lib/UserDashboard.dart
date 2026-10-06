@@ -31,6 +31,7 @@ import 'indents_screen.dart';
 import 'indent_proof.dart';
 import 'approved_pos_screen.dart';
 // import 'work_orders_screen.dart';
+import 'TechnicalSpecsScreen.dart';
 import 'mobile_live_test_screen.dart';
 import 'main.dart';
 import 'MyTasksScreen.dart';
@@ -371,15 +372,16 @@ class UserDashboardLayoutState extends State<UserDashboardLayout> {
     // A saved Mobile → Bottom Nav config is the bar itself.
     if (snapshot?.configured != true) {
       keys = ensureProjectHomePaymentsTab(keys);
-      // Docs is not on the project home bottom bar (use quick actions / More).
-      // Clients also drop "More" — the side drawer is removed.
+      // Docs is not on the project home bottom bar (use quick actions).
       keys = withoutProjectHomeDocsTabs(keys);
-      if (_layoutIsClientUser) {
-        keys = keys.where((key) => key != kMobileBottomNavMoreKey).toList();
-      }
     }
     // "For me" stays on project home for every role (clients + staff).
     keys = ensureProjectHomeForMeTab(keys);
+    // Clients have no side drawer, so the More tab is not shown even when a
+    // saved bottom-nav config includes it.
+    if (_layoutIsClientUser) {
+      keys = keys.where((key) => key != kMobileBottomNavMoreKey).toList();
+    }
     final previous = _lastLoggedBottomNavKeys;
     if (previous == null ||
         previous.length != keys.length ||
@@ -400,9 +402,6 @@ class UserDashboardLayoutState extends State<UserDashboardLayout> {
     }
     return true;
   }
-
-  bool get _restrictLegacyClientFeatures =>
-      ClientGenerationService.instance.restrictsClientFeatures(_userRole);
 
   Future<void> _tryStartFirstRun() async {
     if (!mounted || _tourActive || _tourStartInFlight) return;
@@ -533,14 +532,6 @@ class UserDashboardLayoutState extends State<UserDashboardLayout> {
       // Clients no longer use the side drawer; everything lives in quick actions.
       if (_layoutIsClientUser) return;
       _scaffoldKey.currentState?.openDrawer();
-      return;
-    }
-
-    if (_restrictLegacyClientFeatures && key == 'my_tasks') {
-      await showFeatureComingSoon(
-        context,
-        featureName: 'My tasks',
-      );
       return;
     }
 
@@ -736,12 +727,12 @@ class UserDashboardLayoutState extends State<UserDashboardLayout> {
                 activeIconForMobileBottomNav(keys[index]) ?? Icons.circle_rounded,
             icon: outlinedIconForMobileBottomNav(keys[index]) ??
                 Icons.circle_rounded,
-            label: (_restrictLegacyClientFeatures && keys[index] == 'my_tasks')
-                ? 'Soon'
-                : (labelForMobileBottomNav(keys[index]) ?? keys[index]),
+            label: labelForMobileBottomNav(
+                  keys[index],
+                  isClient: _layoutIsClientUser,
+                ) ??
+                keys[index],
             selected: _bottomNavIndex == index,
-            disabled:
-                _restrictLegacyClientFeatures && keys[index] == 'my_tasks',
             onTap: () => _onBottomNavTap(index),
           ),
       ],
@@ -825,7 +816,7 @@ class UserDashboardLayoutState extends State<UserDashboardLayout> {
                   ClientTourStep(
                     title: 'Quick actions',
                     body:
-                        'For me, Slots, Payments, Upgrades, Project Gallery, Daily updates, Timeline, and Profile.',
+                        'For me, Tasks, Slots, Upcoming visits, Payments, Upgrades, Project Gallery, Daily updates, Timeline, and Profile.',
                     targetKey: _tourActionsKey,
                     holeRadius: 16,
                     holePadding: const EdgeInsets.fromLTRB(6, 4, 6, 8),
@@ -3110,8 +3101,9 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
       });
     }
 
-    // Scheduler - check RBAC
-    if (rbac.canViewSync(_currentRole, RBACService.scheduler)) {
+    // Scheduler — staff only. Clients use Tasks and Slots instead.
+    if (!_isClientUser &&
+        rbac.canViewSync(_currentRole, RBACService.scheduler)) {
       menuItems.add({
         'title': 'Scheduler',
         'icon': Icons.calendar_today_rounded,
@@ -3119,18 +3111,12 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
       });
     }
 
-    // Gallery - check RBAC. Clients get Timeline Gallery only.
+    // Project photos open in Timeline Gallery, labeled Project Gallery.
+    // Shown for the same roles that previously had the Gallery option.
     if (rbac.canViewSync(_currentRole, RBACService.gallery)) {
-      if (!_isClientUser) {
-        menuItems.add({
-          'title': 'Gallery',
-          'icon': Icons.photo_library_rounded,
-          'route': () => Gallery(),
-        });
-      }
       menuItems.add({
-        'title': 'Timeline Gallery',
-        'icon': Icons.auto_awesome_motion_rounded,
+        'title': 'Project Gallery',
+        'icon': Icons.photo_library_rounded,
         'route': () => TimelineGallery(),
       });
     }
@@ -3141,8 +3127,9 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
       'route': () => const VirtualTourScreen(),
     });
 
-    // ChatBox - check RBAC
-    if (rbac.canViewSync(_currentRole, RBACService.tasksAndNotes)) {
+    // Old ChatBox is staff-only. Clients use Chat V1.
+    if (!_isClientUser &&
+        rbac.canViewSync(_currentRole, RBACService.tasksAndNotes)) {
       menuItems.add({
         'title': 'ChatBox',
         'icon': Icons.note_add,
@@ -3169,8 +3156,9 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
       });
     }
 
-    // Checklist - check RBAC
-    if (rbac.canViewSync(_currentRole, RBACService.checklist)) {
+    // Checklist — staff only.
+    if (!_isClientUser &&
+        rbac.canViewSync(_currentRole, RBACService.checklist)) {
       menuItems.add({
         'title': 'Checklist',
         'icon': Icons.checklist,
@@ -3205,21 +3193,19 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
       });
     }
 
-    // Site Visit Reports — staff only (hidden for clients)
-    if (!_isClientUser) {
-      menuItems.add({
-        'title': 'Site Visit Reports',
-        'icon': Icons.assignment,
-        'route': () async {
-          SharedPreferences prefs = await SharedPreferences.getInstance();
-          final projectId = prefs.getString('project_id');
-          return SiteVisitReportsScreen(
-            fixedProjectId: projectId,
-            projectFixed: true,
-          );
-        },
-      });
-    }
+    // Old client "Upcoming visits" tile, and staff site-visit reports.
+    menuItems.add({
+      'title': 'Site Visit Reports',
+      'icon': Icons.assignment,
+      'route': () async {
+        SharedPreferences prefs = await SharedPreferences.getInstance();
+        final projectId = prefs.getString('project_id');
+        return SiteVisitReportsScreen(
+          fixedProjectId: projectId,
+          projectFixed: true,
+        );
+      },
+    });
 
     if (MobileLiveTestAccess.canEnable(_currentRole)) {
       menuItems.add({
@@ -3244,31 +3230,31 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
 
   static const List<String> _clientPinnedQuickActionTitles = [
     'Client Portal',
+    'My tasks',
     'Project Timeline',
     'Slots',
+    'Site Visit Reports',
     'Payments',
     'Upgrades and Additions Cost',
-    'Timeline Gallery',
+    'Project Gallery',
     'Updates',
     'Profile',
   ];
 
   /// Working tiles from commit 440e62a, then newer tiles marked coming soon.
   static const List<String> _legacyClientPinnedQuickActionTitles = [
-    'Payments',
-    'Upgrades and Additions Cost',
-    'Gallery',
-    'Updates',
-    'Scheduler',
-    'ChatBox',
-    'Checklist',
-    'Request Drawings',
     'Client Portal',
     'My tasks',
+    'Payments',
+    'Upgrades and Additions Cost',
+    'Project Gallery',
+    'Updates',
+    'Slots',
+    'Site Visit Reports',
+    'Request Drawings',
     'Project Timeline',
     'Client Information',
     'Upload payment proofs',
-    'Timeline Gallery',
     'Chat V1',
     'Project Status',
   ];
@@ -3294,8 +3280,10 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
     final snapshot = MobileQuickActionsService.instance
         .snapshot(MobileQuickActionSurface.projectHomeNew);
     // Saved Mobile → Quick Actions config is the full grid for this role.
-    // Do not put Payments, Slots, or filler tiles back after Super Admin
-    // removed them, and do not drop an action they turned on.
+    // Do not put Payments or filler tiles back after Super Admin removed
+    // them, and do not drop an action they turned on.
+    // Clients still always get Timeline, Tasks, Slots, and Upcoming visits,
+    // and never Schedule or Checklist.
     if (snapshot != null && snapshot.configured) {
       final configured = resolveMobileQuickActions(
         surface: MobileQuickActionSurface.projectHomeNew,
@@ -3303,12 +3291,26 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
         fallback: const [],
         snapshot: snapshot,
       );
-      return _ensureForMeQuickAction(configured, items);
+      return _shapeClientQuickActions(
+        withoutLegacyDocumentsQuickActions(
+          _ensureClientTimelineQuickAction(
+            _ensureForMeQuickAction(configured, items),
+            items,
+          ),
+        ),
+        items,
+      );
     }
 
     // No saved config yet: keep the previous hardcoded project-home grid.
     if (_isClientUser) {
-      return _hardcodedPinnedQuickActions(items);
+      return _shapeClientQuickActions(
+        _ensureClientTimelineQuickAction(
+          _hardcodedPinnedQuickActions(items),
+          items,
+        ),
+        items,
+      );
     }
 
     final actions = resolveMobileQuickActions(
@@ -3340,9 +3342,11 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
         }
       }
     }
-    return _normalizeQuickActionSlots(
-      _ensureForMeQuickAction(visible, items),
-      items,
+    return withoutLegacyDocumentsQuickActions(
+      _normalizeQuickActionSlots(
+        _ensureForMeQuickAction(visible, items),
+        items,
+      ),
     );
   }
 
@@ -3367,6 +3371,73 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
     if (forMe == null) return actions;
 
     return [forMe, ...actions];
+  }
+
+  static const Set<String> _clientHiddenQuickActionTitles = {
+    'Scheduler',
+    'Checklist',
+  };
+
+  /// Clients always get Tasks, Slots, and the old site-visit tile, and never
+  /// Schedule or Checklist — including when a saved Quick Actions config
+  /// says otherwise.
+  List<Map<String, dynamic>> _shapeClientQuickActions(
+    List<Map<String, dynamic>> actions,
+    List<Map<String, dynamic>> catalog,
+  ) {
+    if (!_isClientUser) return actions;
+
+    final next = actions
+        .where((item) => !_clientHiddenQuickActionTitles
+            .contains(item['title']?.toString()))
+        .toList();
+    final byTitle = _quickActionCatalogByTitle(catalog);
+
+    void ensureAfter(String title, List<String> anchors) {
+      if (next.any((item) => item['title']?.toString() == title)) return;
+      final item = byTitle[title];
+      if (item == null) return;
+      var index = next.length;
+      for (final anchor in anchors) {
+        final at =
+            next.indexWhere((entry) => entry['title']?.toString() == anchor);
+        if (at >= 0) {
+          index = at + 1;
+          break;
+        }
+      }
+      next.insert(index, item);
+    }
+
+    ensureAfter('My tasks', const ['Client Portal']);
+    ensureAfter('Slots', const ['Project Timeline', 'My tasks', 'Client Portal']);
+    ensureAfter(
+      'Site Visit Reports',
+      const ['Slots', 'Project Timeline', 'My tasks'],
+    );
+    return next;
+  }
+
+  /// Clients always get Timeline on the project-home grid, even when a saved
+  /// Mobile → Quick Actions config omits it.
+  List<Map<String, dynamic>> _ensureClientTimelineQuickAction(
+    List<Map<String, dynamic>> actions,
+    List<Map<String, dynamic>> catalog,
+  ) {
+    if (!_isClientUser) return actions;
+    if (actions.any((item) => item['title']?.toString() == 'Project Timeline')) {
+      return actions;
+    }
+
+    final timeline = _quickActionCatalogByTitle(catalog)['Project Timeline'];
+    if (timeline == null) return actions;
+
+    final next = List<Map<String, dynamic>>.from(actions);
+    final portal = next.indexWhere(
+      (item) => item['title']?.toString() == 'Client Portal',
+    );
+    next.insert(portal >= 0 ? portal + 1 : 0, timeline);
+    return next;
   }
 
   List<Map<String, dynamic>> _normalizeQuickActionSlots(
@@ -3456,6 +3527,17 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
         'route': () => const SizedBox.shrink(),
       },
       {
+        'title': 'Technical Specs',
+        'icon': Icons.article_outlined,
+        'route': () async {
+          final prefs = await SharedPreferences.getInstance();
+          return TechnicalSpecsScreen(
+            fixedProjectId: prefs.getString('project_id'),
+            fixedSalesSopId: prefs.getString('sales_sop_id'),
+          );
+        },
+      },
+      {
         'title': 'Work orders',
         'icon': Icons.engineering_outlined,
         'route': () async {
@@ -3500,9 +3582,9 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
       },
     );
     byTitle.putIfAbsent(
-      'Timeline Gallery',
+      'Project Gallery',
       () => {
-        'title': 'Timeline Gallery',
+        'title': 'Project Gallery',
         'icon': Icons.photo_library_rounded,
         'route': () => TimelineGallery(),
       },
@@ -3628,11 +3710,6 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
 
   Future<void> _openProjectTimeline() async {
     if (_openingMenu) return;
-    if (_restrictLegacyClientFeatures &&
-        !_isLegacyFeatureAllowed('Project Timeline')) {
-      await showFeatureComingSoon(context, featureName: 'Project Timeline');
-      return;
-    }
     _openingMenu = true;
     try {
       await _navigateToWidget(ProjectSituationShell.timeline());
@@ -4061,7 +4138,9 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
                 ]
               : title == 'Work orders'
                   ? [title, 'WO', 'work order', 'contractor']
-                  : title == 'Timeline Gallery' || title == 'Gallery'
+                  : title == 'Project Gallery' ||
+                      title == 'Timeline Gallery' ||
+                      title == 'Gallery'
                       ? [
                           title,
                           'project gallery',
@@ -4186,8 +4265,8 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
       );
       return;
     }
-    // Clients have no menu row titled "Gallery" (only Timeline Gallery), so a
-    // title lookup no-ops. Timeline Gallery is also where project photos live.
+    // Project Gallery is the timeline gallery. The bottom-nav key stays
+    // `gallery`, which is who previously had the project gallery option.
     if (canonical == 'gallery') {
       await _navigateToWidget(
         const TimelineGallery(),
@@ -4196,7 +4275,19 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
       );
       return;
     }
-    // Docs is not on the project home bottom bar.
+    if (canonical == 'technical_specs') {
+      final prefs = await SharedPreferences.getInstance();
+      await _navigateToWidget(
+        TechnicalSpecsScreen(
+          fixedProjectId: prefs.getString('project_id'),
+          fixedSalesSopId: prefs.getString('sales_sop_id'),
+        ),
+        chromeStyle: chromeStyle,
+        appBarColor: appBarColor,
+      );
+      return;
+    }
+    // Docs is not on the project home bottom bar. The Docs tab is staff-only.
     if (canonical == 'documents' || canonical == 'documents_v1') {
       return;
     }
@@ -4368,7 +4459,7 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
   String _quickActionLabel(String title) {
     switch (title) {
       case 'My tasks':
-        return 'My tasks';
+        return _isClientUser ? 'Tasks' : 'My tasks';
       case 'Project Timeline':
         return 'Timeline';
       case 'Indents':
@@ -4377,6 +4468,8 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
         return 'POs';
       case 'Work orders':
         return 'Work orders';
+      case 'Technical Specs':
+        return 'Tech Specs';
       case 'Documents':
         return 'Docs';
       case 'Documents V1':
@@ -4393,13 +4486,14 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
         return 'Status';
       case 'Site Visit Reports':
         return 'Upcoming visits';
+      case 'Project Gallery':
       case 'Timeline Gallery':
       case 'Gallery':
         return 'Project Gallery';
       case '3D House Tour':
         return '3D House Tour';
       case 'Client Portal':
-        return 'For me';
+        return _isClientUser ? 'For me' : 'Docs';
       case 'Upgrades and Additions Cost':
       case 'NT Payments':
       case 'Non Tender Payments':
@@ -4422,6 +4516,7 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
         return Icons.dashboard_customize_rounded;
       case 'Site Visit Reports':
         return Icons.event_available_rounded;
+      case 'Project Gallery':
       case 'Gallery':
         return Icons.photo_library_rounded;
       case 'Project Timeline':
@@ -4429,13 +4524,15 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
       case 'My tasks':
         return Icons.assignment_rounded;
       case 'Timeline Gallery':
-        return Icons.auto_awesome_motion_rounded;
+        return Icons.photo_library_rounded;
       case 'Indents':
         return Icons.request_quote_rounded;
       case 'Approved POs':
         return Icons.receipt_long_rounded;
       case 'Work orders':
         return Icons.engineering_rounded;
+      case 'Technical Specs':
+        return Icons.article_outlined;
       case 'Documents':
       case 'Documents V1':
         return Icons.folder_copy_rounded;

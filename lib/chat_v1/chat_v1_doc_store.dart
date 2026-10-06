@@ -93,11 +93,13 @@ class ChatV1DocStore {
     String docId, {
     required String body,
     List<Map<String, dynamic>>? attachments,
+    List<int>? mentionedUserIds,
   }) async {
     final raw = await _api.sendDocMessage(
       docId,
       body: body,
       attachments: attachments,
+      mentionedUserIds: mentionedUserIds,
     );
     return ChatV1DocMessage.fromJson(raw);
   }

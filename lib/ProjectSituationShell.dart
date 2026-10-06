@@ -70,14 +70,7 @@ class _ProjectSituationShellState extends State<ProjectSituationShell> {
   }
 
   List<ProjectSituationTab> _buildTabs() {
-    final role = (DataProvider().currentRole ?? '').trim().toLowerCase();
-    final showSchedule = role.isNotEmpty && role != 'client';
-    return [
-      ProjectSituationTab.focus,
-      ProjectSituationTab.status,
-      ProjectSituationTab.timeline,
-      if (showSchedule) ProjectSituationTab.schedule,
-    ];
+    return projectSituationTabsForRole(DataProvider().currentRole);
   }
 
   ProjectSituationTab get _currentTab => _tabs[_index];
@@ -168,6 +161,7 @@ class _ProjectSituationShellState extends State<ProjectSituationShell> {
           bottom: ProjectSituationSwitcher(
             selected: _currentTab,
             onChanged: _onTabSelected,
+            showStatus: _tabs.contains(ProjectSituationTab.status),
             showSchedule: _tabs.contains(ProjectSituationTab.schedule),
           ),
           actions: [

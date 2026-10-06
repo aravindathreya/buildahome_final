@@ -321,11 +321,13 @@ class ChatV1Api {
   Future<List<Map<String, dynamic>>> _listConversationPages(
     Map<String, String> query, {
     int pageSize = 100,
+    int? maxPages,
   }) async {
     final merged = <Map<String, dynamic>>[];
     final seen = <String>{};
     String? cursor;
-    for (var page = 1; page <= _maxConversationPages; page++) {
+    final pageLimit = maxPages ?? _maxConversationPages;
+    for (var page = 1; page <= pageLimit; page++) {
       final data = await get(
         '$chatPrefix/conversations',
         query: {
@@ -414,6 +416,46 @@ class ChatV1Api {
     }
     return rowCount >= pageSize;
   }
+
+  /// Unread chat totals keyed by sales SOP id and project id.
+  /// One pass over the member conversation list, for the staff project picker.
+  Future<Map<String, int>> unreadCountsByProjectKey() async {
+    final hints = await unreadHintsByProjectKey();
+    return {
+      for (final entry in hints.entries) entry.key: entry.value.unread,
+    };
+  }
+
+  /// Unread totals plus the conversation to open, keyed by every project id
+  /// and sales SOP id the conversation row carries.
+  ///
+  /// Prefers `GET /conversations?has_unread=1` when the server supports it,
+  /// then falls back to a short scan of the member list. The existing
+  /// conversation payload already includes `unread_count`, `context_id`,
+  /// `sales_sop_id`, and `project_id` — no extra office endpoint is required.
+  Future<Map<String, ChatProjectUnread>> unreadHintsByProjectKey() async {
+    try {
+      final filtered = await _listConversationPages(
+        const {'has_unread': '1'},
+        pageSize: 100,
+        maxPages: 5,
+      );
+      final hints = ChatProjectUnread.fromConversationRows(filtered);
+      if (hints.isNotEmpty) return hints;
+    } catch (e) {
+      print(
+        '[ChatV1Api] unread filter unavailable ($e) — scanning recent chats',
+      );
+    }
+    final recent = await _listConversationPages(
+      const {},
+      pageSize: 100,
+      maxPages: 5,
+    );
+    return ChatProjectUnread.fromConversationRows(recent);
+  }
+
+  int _rowUnread(Map<String, dynamic> row) => ChatProjectUnread.rowUnread(row);
 
   Future<List<Map<String, dynamic>>> listDirectConversations({
     int pageSize = 100,
@@ -855,6 +897,7 @@ class ChatV1Api {
     String docId, {
     required String body,
     List<Map<String, dynamic>>? attachments,
+    List<int>? mentionedUserIds,
   }) async {
     final data = await post(
       '$chatPrefix/docs/$docId/messages',
@@ -862,6 +905,8 @@ class ChatV1Api {
         'body': body,
         if (attachments != null && attachments.isNotEmpty)
           'attachments': attachments,
+        if (mentionedUserIds != null && mentionedUserIds.isNotEmpty)
+          'mentioned_user_ids': mentionedUserIds,
       },
     );
     if (data is Map) {
@@ -905,6 +950,134 @@ class ChatV1Api {
       }
     }
     return const [];
+  }
+}
+
+/// Unread chats for one project or sales SOP, plus the conversation to open.
+class ChatProjectUnread {
+  final int unread;
+  final Map<String, dynamic> conversation;
+
+  const ChatProjectUnread({
+    required this.unread,
+    required this.conversation,
+  });
+
+  String get conversationId =>
+      (conversation['id'] ?? conversation['conversation_id'] ?? '')
+          .toString()
+          .trim();
+
+  String get conversationTitle {
+    final title =
+        (conversation['title'] ?? conversation['name'] ?? '').toString().trim();
+    if (title.isEmpty || title.toLowerCase() == 'null') return '';
+    return title;
+  }
+
+  /// Groups unread conversation rows by every project / sales SOP id they carry.
+  /// The kept conversation is the most recently active unread chat for that id.
+  static Map<String, ChatProjectUnread> fromConversationRows(
+    List<Map<String, dynamic>> rows,
+  ) {
+    final totals = <String, int>{};
+    final open = <String, Map<String, dynamic>>{};
+    final activity = <String, DateTime>{};
+    for (final row in rows) {
+      final unread = rowUnread(row);
+      if (unread <= 0) continue;
+      final when = _activityAt(row);
+      for (final key in projectKeys(row)) {
+        totals[key] = (totals[key] ?? 0) + unread;
+        final previous = activity[key];
+        if (previous == null || !when.isBefore(previous)) {
+          activity[key] = when;
+          open[key] = row;
+        }
+      }
+    }
+    return {
+      for (final entry in totals.entries)
+        if (open[entry.key] != null)
+          entry.key: ChatProjectUnread(
+            unread: entry.value,
+            conversation: open[entry.key]!,
+          ),
+    };
+  }
+
+  static int rowUnread(Map<String, dynamic> row) {
+    int read(dynamic raw) => int.tryParse(raw?.toString() ?? '') ?? 0;
+    final sources = <Map<String, dynamic>>[row];
+    for (final key in const ['membership', 'member', 'my_membership']) {
+      final nested = row[key];
+      if (nested is Map) sources.add(Map<String, dynamic>.from(nested));
+    }
+    for (final source in sources) {
+      final unread = read(source['unread_count'] ?? source['unread']);
+      if (unread > 0) return unread;
+      final mentions = read(
+        source['unread_mention_count'] ?? source['mention_count'],
+      );
+      if (mentions > 0) return mentions;
+    }
+    return 0;
+  }
+
+  /// Ids that can match a project-picker row: ERP project id and sales SOP id.
+  static Set<String> projectKeys(Map<String, dynamic> row) {
+    final keys = <String>{};
+    void add(dynamic raw) {
+      final id = raw?.toString().trim() ?? '';
+      if (id.isEmpty || id.toLowerCase() == 'null') return;
+      keys.add(id);
+    }
+
+    final contextType =
+        (row['context_type'] ?? '').toString().trim().toLowerCase();
+    if (contextType == 'sales_sop' ||
+        contextType == 'project' ||
+        contextType == 'erp_project') {
+      add(row['context_id']);
+    }
+    for (final key in const [
+      'sales_sop_id',
+      'salesSopId',
+      'sop_id',
+      'sales_sop_project_id',
+      'project_id',
+      'erp_project_id',
+      'erpProjectId',
+    ]) {
+      add(row[key]);
+    }
+    for (final nestedKey in const ['project', 'sales_sop']) {
+      final nested = row[nestedKey];
+      if (nested is! Map) continue;
+      final map = Map<String, dynamic>.from(nested);
+      for (final key in const [
+        'id',
+        'project_id',
+        'erp_project_id',
+        'sales_sop_id',
+        'salesSopId',
+        'sop_id',
+        'sales_sop_project_id',
+      ]) {
+        add(map[key]);
+      }
+    }
+    return keys;
+  }
+
+  static DateTime _activityAt(Map<String, dynamic> row) {
+    final raw = row['last_message_at'] ??
+        (row['last_message'] is Map
+            ? (row['last_message'] as Map)['created_at']
+            : null) ??
+        row['updated_at'];
+    return DateTime.tryParse(raw?.toString() ?? '') ??
+        DateTime.fromMillisecondsSinceEpoch(0);
   }
 }
 

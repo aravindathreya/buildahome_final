@@ -13,6 +13,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'FullScreenImage.dart';
 import 'app_theme.dart';
 import 'services/data_provider.dart';
+import 'task_display_title.dart';
 
 const String _galleryApiBaseUrl = 'https://office.buildahome.in';
 
@@ -45,6 +46,214 @@ String? _galleryStringValue(dynamic value) {
   final text = value?.toString().trim();
   if (text == null || text.isEmpty || text == 'null') return null;
   return text;
+}
+
+const List<String> _galleryTaskLabelKeys = [
+  'task_name',
+  'workflow_item_name',
+  'workflow_task_name',
+  'item_name',
+  'subject',
+  's_note',
+  'source_task_name',
+];
+
+const List<String> _galleryLooseLabelKeys = [
+  'title',
+  'name',
+  'caption',
+  'note',
+  'document_name',
+  'task_title',
+  'update_title',
+];
+
+const List<String> _galleryFileNameKeys = [
+  'filename',
+  'file_name',
+  'image',
+  'original_filename',
+  'original_name',
+];
+
+const List<String> _galleryIdentityKeys = [
+  'dashboard_card',
+  'dashboard_section',
+  'dashboard_section_label',
+  'section_id',
+  'section_label',
+  ..._galleryTaskLabelKeys,
+  'task_id',
+  ..._galleryLooseLabelKeys,
+  'status',
+  'task_status',
+  'user_name',
+  'assigned_to_name',
+  ..._galleryUploaderFieldKeys,
+  ..._galleryDateFieldKeys,
+];
+
+bool galleryValueLooksLikeFile(String value) {
+  final lower = value.toLowerCase().split('?').first.split('/').last.trim();
+  return RegExp(
+    r'\.(jpe?g|png|webp|heic|gif|mp4|mov|avi|webm|mkv|m4v|3gp|pdf)$',
+  ).hasMatch(lower);
+}
+
+bool _galleryLabelMatchesFile(Map map, String value) {
+  if (galleryValueLooksLikeFile(value)) return true;
+  final normalized = value.trim().toLowerCase();
+  for (final key in _galleryFileNameKeys) {
+    final raw = _galleryStringValue(map[key])?.toLowerCase();
+    if (raw == null) continue;
+    final base = raw.split('/').last.split('?').first;
+    if (base == normalized) return true;
+    final stem = base.replaceFirst(RegExp(r'\.[a-z0-9]{2,5}$'), '');
+    if (stem.isNotEmpty && stem == normalized) return true;
+  }
+  return false;
+}
+
+/// Exact workflow task name for a gallery photo. Matches My Tasks titles
+/// and ignores comments, captions, and file names.
+String? galleryImageTaskLabel(Map map, {int depth = 0}) {
+  if (depth > 2) return null;
+
+  if (map['task'] is Map) {
+    final nested = galleryImageTaskLabel(
+      Map<String, dynamic>.from(map['task'] as Map),
+      depth: depth + 1,
+    );
+    if (nested != null) return nested;
+  }
+
+  for (final key in _galleryTaskLabelKeys) {
+    final text = _galleryStringValue(map[key]);
+    if (text == null || _galleryLabelMatchesFile(map, text)) continue;
+    return workflowTaskDisplayTitle({key: text}, emptyFallback: text);
+  }
+
+  final title = workflowTaskDisplayTitle(map, emptyFallback: '');
+  if (title.isEmpty) return null;
+  if (RegExp(r'^Task #\S+$').hasMatch(title)) return null;
+  if (_galleryLabelMatchesFile(map, title)) return null;
+  return title;
+}
+
+/// Keeps a parent task name when the photo payload sends that field as null
+/// or as the file name.
+Map<String, dynamic> mergeGalleryImageContext(
+  Map<String, dynamic> inherited,
+  Map<String, dynamic> child,
+) {
+  final merged = Map<String, dynamic>.from(child);
+  for (final entry in inherited.entries) {
+    final incoming = _galleryStringValue(entry.value);
+    if (incoming == null) continue;
+    final existing = _galleryStringValue(merged[entry.key]);
+    final existingIsFile =
+        existing != null && _galleryLabelMatchesFile(merged, existing);
+    if (existing != null && !existingIsFile) continue;
+    final incomingIsFile = _galleryLabelMatchesFile(merged, incoming);
+    if (existing == null || !incomingIsFile) {
+      merged[entry.key] = entry.value;
+    }
+  }
+
+  final parentLabel = galleryImageTaskLabel(inherited);
+  if (parentLabel != null) {
+    merged['task_name'] = parentLabel;
+    return merged;
+  }
+
+  final label = galleryImageTaskLabel(merged);
+  if (label != null) {
+    final current = _galleryStringValue(merged['task_name']);
+    if (current == null || _galleryLabelMatchesFile(merged, current)) {
+      merged['task_name'] = label;
+    }
+  }
+  return merged;
+}
+
+Map<String, dynamic> _galleryIdentityOf(Map<String, dynamic> map) {
+  final identity = <String, dynamic>{};
+  for (final key in _galleryIdentityKeys) {
+    final value = _galleryStringValue(map[key]);
+    if (value != null) identity[key] = map[key];
+  }
+  final label = galleryImageTaskLabel(map);
+  if (label != null) identity['task_name'] = label;
+  return identity;
+}
+
+String _galleryUrlKey(String url) => url.trim().split('?').first.toLowerCase();
+
+String galleryImageCaption({String? taskName, String? title}) {
+  final task = _galleryStringValue(taskName);
+  if (task != null && !galleryValueLooksLikeFile(task)) return task;
+  final loose = _galleryStringValue(title);
+  if (loose != null && !galleryValueLooksLikeFile(loose)) return loose;
+  return 'Workflow upload';
+}
+
+bool galleryValueHasClockTime(String value) {
+  final trimmed = value.trim();
+  if (RegExp(r'^\d{10,13}$').hasMatch(trimmed)) return true;
+  if (RegExp(r'\b(?:am|pm)\b', caseSensitive: false).hasMatch(trimmed)) {
+    return true;
+  }
+  return RegExp(r'(?:T|\s)\d{1,2}:\d{2}').hasMatch(trimmed);
+}
+
+/// Date, plus clock time when the source actually has one.
+String galleryFormatUploadedAt(String value) {
+  final trimmed = value.trim();
+  if (RegExp(r'^\d{10,13}$').hasMatch(trimmed)) {
+    final n = int.parse(trimmed);
+    final parsed = DateTime.fromMillisecondsSinceEpoch(
+      trimmed.length >= 13 ? n : n * 1000,
+      isUtc: true,
+    ).toLocal();
+    return DateFormat('dd MMM yyyy, hh:mm a').format(parsed);
+  }
+
+  final hasTime = galleryValueHasClockTime(trimmed);
+  if (!hasTime &&
+      RegExp(r'[A-Za-z]{3}').hasMatch(trimmed) &&
+      !trimmed.contains(':')) {
+    return trimmed;
+  }
+
+  final normalized = trimmed.contains(' ') && !trimmed.contains('T')
+      ? trimmed.replaceFirst(' ', 'T')
+      : trimmed;
+  final parsed = DateTime.tryParse(normalized);
+  if (parsed == null) return trimmed;
+  final local = parsed.toLocal();
+  if (!hasTime) return DateFormat('dd MMM yyyy').format(local);
+  return DateFormat('dd MMM yyyy, hh:mm a').format(local);
+}
+
+/// Prefers a timestamp that includes a clock time over a date-only field.
+String? galleryUploadedAtLabel(Map map, {int depth = 0}) {
+  if (depth > 2) return null;
+  String? dateOnly;
+  for (final key in _galleryDateFieldKeys) {
+    final value = _galleryStringValue(map[key]);
+    if (value == null) continue;
+    final formatted = galleryFormatUploadedAt(value);
+    if (galleryValueHasClockTime(value)) return formatted;
+    dateOnly ??= formatted;
+  }
+
+  final response = map['response'];
+  if (response is Map) {
+    final nested = galleryUploadedAtLabel(response, depth: depth + 1);
+    if (nested != null && galleryValueHasClockTime(nested)) return nested;
+    dateOnly ??= nested;
+  }
+  return dateOnly;
 }
 
 bool _isImageGalleryEntry(Map<String, dynamic> map, String candidate) {
@@ -850,6 +1059,53 @@ class _TimelineGalleryState extends State<TimelineGallery> {
   }) {
     final sectionMap = <String, _MutableGallerySection>{};
     final seenUrls = <String>{};
+    final labelsByUrl = <String, String>{};
+    final namesByTaskId = <String, String>{};
+
+    void indexTask(Map<String, dynamic> map) {
+      final label = galleryImageTaskLabel(map);
+      if (label == null) return;
+      for (final key in const [
+        'task_id',
+        'workflow_item_run_id',
+        'workflow_task_id',
+        'id',
+      ]) {
+        final id = _galleryStringValue(map[key]);
+        if (id == null) continue;
+        namesByTaskId.putIfAbsent(id, () => label);
+      }
+      final url = _resolveImageUrl(map);
+      if (url != null) labelsByUrl.putIfAbsent(_galleryUrlKey(url), () => label);
+    }
+
+    void rememberLabel(Map<String, dynamic> map) {
+      indexTask(map);
+    }
+
+    _GalleryImage stampTaskName(_GalleryImage item) {
+      final fromTask = item.taskId == null ? null : namesByTaskId[item.taskId];
+      final known = fromTask ?? labelsByUrl[_galleryUrlKey(item.imageUrl)];
+      final current = _galleryStringValue(item.taskName);
+      final resolved = fromTask ??
+          (current != null && !galleryValueLooksLikeFile(current)
+              ? current
+              : known);
+      if (resolved == null || resolved == current) return item;
+      return _GalleryImage(
+        imageUrl: item.imageUrl,
+        thumbnailUrl: item.thumbnailUrl,
+        isVideo: item.isVideo,
+        sectionId: item.sectionId,
+        sectionLabel: item.sectionLabel,
+        title: resolved,
+        uploadedAt: item.uploadedAt,
+        taskName: resolved,
+        taskId: item.taskId,
+        uploadedBy: item.uploadedBy,
+        taskStatus: item.taskStatus,
+      );
+    }
 
     _MutableGallerySection sectionFor(String id, String label) {
       final normalizedId = id.trim().isEmpty ? _generalSectionId : id.trim();
@@ -864,10 +1120,75 @@ class _TimelineGalleryState extends State<TimelineGallery> {
     }
 
     void addItem(_GalleryImage item) {
-      if (!seenUrls.add(item.imageUrl)) return;
-      final section = sectionFor(item.sectionId, item.sectionLabel);
-      section.items.add(item);
-      if (item.taskName != null) section.taskNames.add(item.taskName!);
+      final named = stampTaskName(item);
+      if (!seenUrls.add(_galleryUrlKey(named.imageUrl))) return;
+      final section = sectionFor(named.sectionId, named.sectionLabel);
+      section.items.add(named);
+      final taskName = _galleryStringValue(named.taskName);
+      if (taskName != null && !galleryValueLooksLikeFile(taskName)) {
+        section.taskNames.add(taskName);
+      }
+    }
+
+    void addSectionNode(
+      Map<String, dynamic> node,
+      Map<String, dynamic> inherited,
+      String sectionId,
+      String sectionLabel,
+      int depth,
+    ) {
+      if (depth > 4) return;
+      final merged = mergeGalleryImageContext(inherited, node);
+      rememberLabel(merged);
+      final image = _galleryImageFromMap(
+        merged,
+        defaultSectionId: sectionId,
+        defaultSectionLabel: sectionLabel,
+      );
+      if (image != null) addItem(image);
+
+      final childInherited = _galleryIdentityOf(merged);
+      for (final key in const [
+        'files',
+        'attachments',
+        'uploaded_files',
+        'uploads',
+        'images',
+        'photos',
+      ]) {
+        final children = node[key];
+        if (children is! List) continue;
+        for (final child in children) {
+          if (child is! Map) continue;
+          addSectionNode(
+            Map<String, dynamic>.from(child),
+            childInherited,
+            sectionId,
+            sectionLabel,
+            depth + 1,
+          );
+        }
+      }
+    }
+
+    final taskMaps = _extractTaskGalleryMaps(taskData);
+    void indexTaskTree(dynamic item) {
+      if (item is List) {
+        for (final child in item) {
+          indexTaskTree(child);
+        }
+        return;
+      }
+      if (item is! Map) return;
+      indexTask(Map<String, dynamic>.from(item));
+      for (final child in item.values) {
+        if (child is Map || child is List) indexTaskTree(child);
+      }
+    }
+
+    indexTaskTree(taskData);
+    for (final map in taskMaps) {
+      rememberLabel(map);
     }
 
     for (final section in _extractWorkflowGallerySections(salesSopDetails)) {
@@ -886,18 +1207,19 @@ class _TimelineGalleryState extends State<TimelineGallery> {
       if (rawItems is List) {
         for (final item in rawItems) {
           if (item is Map) {
-            final image = _galleryImageFromMap(
+            addSectionNode(
               Map<String, dynamic>.from(item),
-              defaultSectionId: target.id,
-              defaultSectionLabel: target.label,
+              _galleryIdentityOf(section),
+              target.id,
+              target.label,
+              0,
             );
-            if (image != null) addItem(image);
           }
         }
       }
     }
 
-    for (final map in _extractTaskGalleryMaps(taskData)) {
+    for (final map in taskMaps) {
       final image = _galleryImageFromMap(
         map,
         defaultSectionId: _generalSectionId,
@@ -1005,29 +1327,21 @@ class _TimelineGalleryState extends State<TimelineGallery> {
 
       final map = Map<String, dynamic>.from(item);
       final nextInherited = Map<String, dynamic>.from(inherited);
-      for (final key in [
-        'dashboard_card',
-        'dashboard_section',
-        'dashboard_section_label',
-        'task_name',
-        'task_id',
-        'note',
-        'status',
-        'user_name',
-        'assigned_to_name',
-        ..._galleryUploaderFieldKeys,
-        ..._galleryDateFieldKeys,
-      ]) {
-        if (map[key] != null) nextInherited[key] = map[key];
+      for (final key in _galleryIdentityKeys) {
+        if (_galleryStringValue(map[key]) != null) nextInherited[key] = map[key];
+      }
+      final label = galleryImageTaskLabel(map);
+      if (label != null) {
+        final current = _galleryStringValue(nextInherited['task_name']);
+        if (current == null || galleryValueLooksLikeFile(current)) {
+          nextInherited['task_name'] = label;
+        }
       }
 
       final card = _stringValue(nextInherited['dashboard_card'])?.toLowerCase();
       final mapCard = _stringValue(map['dashboard_card'])?.toLowerCase();
       if (card == 'gallery') {
-        for (final entry in nextInherited.entries) {
-          map.putIfAbsent(entry.key, () => entry.value);
-        }
-        maps.add(map);
+        maps.add(mergeGalleryImageContext(nextInherited, map));
       }
 
       if (card == 'gallery' || mapCard == 'gallery') {
@@ -1129,8 +1443,10 @@ class _TimelineGalleryState extends State<TimelineGallery> {
       if (children is! List) continue;
       for (final child in children) {
         if (child is! Map) continue;
-        final merged = Map<String, dynamic>.from(inherited)
-          ..addAll(Map<String, dynamic>.from(child));
+        final merged = mergeGalleryImageContext(
+          inherited,
+          Map<String, dynamic>.from(child),
+        );
         final url = _resolveImageUrl(merged);
         if (url == null) continue;
         final filename = _stringValue(merged['filename']) ??
@@ -1171,17 +1487,12 @@ class _TimelineGalleryState extends State<TimelineGallery> {
       sectionLabel: _stringValue(map['dashboard_section_label']) ??
           _stringValue(map['section_label']) ??
           defaultSectionLabel,
-      title: _stringValue(map['document_name']) ??
-          _stringValue(map['task_name']) ??
-          filename,
+      title: galleryImageTaskLabel(map),
       uploadedAt: _extractUploadedAt(map),
-      taskName: _stringValue(map['task_name']) ??
-          _stringValue(map['task']) ??
-          _stringValue(map['note']) ??
-          _stringValue(map['document_name']),
+      taskName: galleryImageTaskLabel(map),
       taskId: _stringValue(map['task_id']) ??
-          _stringValue(map['id']) ??
-          _stringValue(map['action_id']),
+          _stringValue(map['workflow_item_run_id']) ??
+          _stringValue(map['workflow_task_id']),
       uploadedBy: _firstStringValue(map, _galleryUploaderFieldKeys),
       taskStatus: _stringValue(map['status']) ?? _stringValue(map['task_status']),
     );
@@ -1199,31 +1510,7 @@ class _TimelineGalleryState extends State<TimelineGallery> {
   }
 
   String? _extractUploadedAt(Map<String, dynamic> map) {
-    for (final key in _galleryDateFieldKeys) {
-      final value = _stringValue(map[key]);
-      if (value != null) return _formatGalleryDateTime(value);
-    }
-
-    final response = map['response'];
-    if (response is Map) {
-      final fromResponse =
-          _extractUploadedAt(Map<String, dynamic>.from(response));
-      if (fromResponse != null) return fromResponse;
-    }
-
-    return null;
-  }
-
-  String _formatGalleryDateTime(String value) {
-    final trimmed = value.trim();
-    if (RegExp(r'[A-Za-z]{3}').hasMatch(trimmed) &&
-        (trimmed.contains(',') || trimmed.contains(' AM') || trimmed.contains(' PM'))) {
-      return trimmed;
-    }
-
-    final parsed = DateTime.tryParse(trimmed) ?? _parseLooseDate(trimmed);
-    if (parsed == null) return trimmed;
-    return DateFormat('dd MMM yyyy, hh:mm a').format(parsed.toLocal());
+    return galleryUploadedAtLabel(map);
   }
 
   String? _resolveThumbnailUrl(Map<String, dynamic> map) {
@@ -1737,45 +2024,80 @@ class _TimelineGalleryState extends State<TimelineGallery> {
         crossAxisCount: 2,
         mainAxisSpacing: 10,
         crossAxisSpacing: 10,
-        childAspectRatio: 1.34,
+        childAspectRatio: 0.72,
       ),
       itemBuilder: (context, index) {
         final item = items[index];
         final extraCount = totalCount - 4;
         final showMore = index == 3 && extraCount > 0;
-        return ClipRRect(
-          borderRadius: BorderRadius.circular(18),
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              _buildGalleryMediaPreview(item),
-              if (item.isVideo)
-                Container(
-                  color: Colors.black.withOpacity(0.22),
-                  child: const Center(
-                    child: Icon(
-                      Icons.play_circle_fill_rounded,
-                      color: Colors.white,
-                      size: 42,
-                    ),
-                  ),
-                ),
-              if (showMore)
-                Container(
-                  color: Colors.black.withOpacity(0.48),
-                  child: Center(
-                    child: Text(
-                      '+$extraCount',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 24,
-                        fontWeight: FontWeight.w900,
+        final caption = galleryImageCaption(
+          taskName: item.taskName,
+          title: item.title,
+        );
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(18),
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    _buildGalleryMediaPreview(item),
+                    if (item.isVideo)
+                      Container(
+                        color: Colors.black.withOpacity(0.22),
+                        child: const Center(
+                          child: Icon(
+                            Icons.play_circle_fill_rounded,
+                            color: Colors.white,
+                            size: 42,
+                          ),
+                        ),
                       ),
-                    ),
-                  ),
+                    if (showMore)
+                      Container(
+                        color: Colors.black.withOpacity(0.48),
+                        child: Center(
+                          child: Text(
+                            '+$extraCount',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 24,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              caption == 'Workflow upload' ? '' : caption,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: AppTheme.darkTextPrimary,
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            if (item.uploadedAt != null) ...[
+              const SizedBox(height: 2),
+              Text(
+                item.uploadedAt!,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: Color(0xFF6B7280),
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
             ],
-          ),
+          ],
         );
       },
     );
@@ -2132,9 +2454,9 @@ class _GalleryImage {
       thumbnailUrl: json['thumbnailUrl']?.toString(),
       sectionId: json['sectionId']?.toString() ?? _generalSectionId,
       sectionLabel: json['sectionLabel']?.toString() ?? 'General',
-      title: json['title']?.toString(),
-      uploadedAt: json['uploadedAt']?.toString(),
-      taskName: json['taskName']?.toString(),
+      title: _galleryStringValue(json['title']),
+      uploadedAt: _galleryStringValue(json['uploadedAt']),
+      taskName: _galleryStringValue(json['taskName']),
       taskId: json['taskId']?.toString(),
       uploadedBy: json['uploadedBy']?.toString(),
       taskStatus: json['taskStatus']?.toString(),
@@ -2580,7 +2902,10 @@ class _GallerySectionDetailScreenState
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    item.taskName ?? item.title ?? 'Workflow upload',
+                    galleryImageCaption(
+                      taskName: item.taskName,
+                      title: item.title,
+                    ),
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(

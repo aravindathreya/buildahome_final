@@ -12,6 +12,7 @@ import '../chat_v1_importance.dart';
 import '../chat_v1_mapper.dart';
 import '../chat_v1_mentions.dart';
 import '../chat_v1_mention_draft.dart';
+import '../chat_v1_personal_mention_events.dart';
 import '../widgets/chat_v1_mention_banner.dart';
 import '../chat_v1_models.dart';
 import '../chat_v1_socket.dart';
@@ -28,17 +29,31 @@ import 'chat_v1_task_details_sheet.dart';
 ChatV1Message mergeConversationScreenMessage(
   ChatV1Message existing,
   ChatV1Message incoming,
-) => ChatV1Controller.preferRicherMessage(existing, incoming);
+) =>
+    ChatV1Controller.preferRicherMessage(existing, incoming);
 
 class ChatV1ConversationScreen extends StatefulWidget {
   final ChatV1ConvMeta meta;
   final VoidCallback onOpenInfo;
+  final ChatV1Api? _apiOverride;
+  final ChatV1Socket? _socketOverride;
 
   const ChatV1ConversationScreen({
     super.key,
     required this.meta,
     required this.onOpenInfo,
-  });
+  })  : _apiOverride = null,
+        _socketOverride = null;
+
+  /// Runs the real screen with offline transports in integration tests.
+  const ChatV1ConversationScreen.forTesting({
+    super.key,
+    required this.meta,
+    required this.onOpenInfo,
+    required ChatV1Api api,
+    required ChatV1Socket socket,
+  })  : _apiOverride = api,
+        _socketOverride = socket;
 
   @override
   State<ChatV1ConversationScreen> createState() =>
@@ -48,10 +63,11 @@ class ChatV1ConversationScreen extends StatefulWidget {
 class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
   final _composer = TextEditingController();
   final _mentionDraft = ChatV1MentionDraft();
+  final _personalMentionEvents = ChatV1PersonalMentionEvents();
   final _scroll = ScrollController();
   final _stickKey = GlobalKey<Cv1StickToBottomState>();
-  final _api = ChatV1Api.instance;
-  final _socket = ChatV1Socket.instance;
+  late final _api = widget._apiOverride ?? ChatV1Api.instance;
+  late final _socket = widget._socketOverride ?? ChatV1Socket.instance;
 
   List<ChatV1Message> _messages = [];
   bool _loading = true;
@@ -88,13 +104,16 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
     final focus = widget.meta.focusMessageId;
     if (focus != null && focus.isNotEmpty) {
       final target = _messages.where((m) => m.id == focus);
-      if (target.any((m) => !m.isDeleted && !m.isMine &&
+      if (target.any((m) =>
+          !m.isDeleted &&
+          !m.isMine &&
           m.mentions.any((mention) => mention.userId == _userId))) {
         return focus;
       }
     }
     for (final message in _messages.reversed) {
-      if (!message.isDeleted && !message.isMine &&
+      if (!message.isDeleted &&
+          !message.isMine &&
           message.mentions.any((mention) => mention.userId == _userId)) {
         return message.id;
       }
@@ -158,6 +177,9 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
   Future<void> _load() async {
     final ctrl = ChatV1Controller.instance;
     final hadCache = _messages.isNotEmpty && !_loading;
+    final messagesAtStart = {
+      for (final message in _messages) message.id: message
+    };
 
     if (hadCache) {
       // Jump once to latest; background refresh must not flash top→bottom again.
@@ -206,7 +228,20 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
           focusId.isNotEmpty && merged.any((m) => m.id == focusId);
       await _takeConversationPin(detailFuture);
       if (!mounted) return;
-      merged = _applyPinnedFlags(merged);
+      // Socket events can update the visible list while history or pin loads.
+      // Reconcile only those changed messages so stale cached rows cannot
+      // overwrite freshly fetched history, and late REST cannot erase a tag.
+      final arrivedWhileLoading = _messages
+          .where(
+            (message) => !identical(messagesAtStart[message.id], message),
+          )
+          .toList();
+      merged = _enrichReplyPreviews(
+        ctrl.mergeConversationMessages(merged, arrivedWhileLoading),
+      );
+      merged = _applyPinnedFlags(
+        merged.map(_applyPersonalMentionEvent).toList(),
+      );
       final listChanged = !_messageListsVisuallySame(_messages, merged);
 
       if (!hadCache) {
@@ -354,7 +389,6 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
     ChatV1Controller.instance.putCachedMessages(_conversationId, _messages);
   }
 
-
   Future<List<ChatV1Message>> _messagesAround(String messageId) async {
     try {
       final before = await _api.listMessages(
@@ -380,7 +414,8 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
       ];
       final byId = <String, ChatV1Message>{};
       for (final row in rows) {
-        final message = ChatV1Mapper.messageFromJson(row, currentUserId: _userId);
+        final message =
+            ChatV1Mapper.messageFromJson(row, currentUserId: _userId);
         if (message.id.isEmpty) continue;
         var next = message;
         if (message.id == messageId &&
@@ -485,6 +520,7 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
 
   Future<void> _bindSocket() async {
     _socket.on('message_created', _onMessageCreated);
+    _socket.on('mention_received', _onMentionReceived);
     _socket.on('attachment_uploaded', _onAttachmentUploaded);
     _socket.on('typing_started', _onTypingStart);
     _socket.on('typing_stopped', _onTypingStop);
@@ -553,6 +589,36 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
         (map['conversation_id'] ?? map['conversationId'] ?? '').toString();
     if (id.isEmpty) return true;
     return id == _conversationId.toString();
+  }
+
+  ChatV1Message _applyPersonalMentionEvent(ChatV1Message message) =>
+      _personalMentionEvents.apply(
+        message,
+        currentUserId: _userId,
+        currentUserName: ChatV1Controller.instance.currentUserName,
+      );
+
+  void _onMentionReceived(dynamic data) {
+    if (!mounted) return;
+    final messageId = _personalMentionEvents.record(
+      ChatV1Socket.asMap(data),
+      conversationId: _conversationId,
+      currentUserId: _userId,
+    );
+    if (messageId == null) return;
+    final index = _messages.indexWhere((message) => message.id == messageId);
+    // Keep a bounded pending event if message_created or history arrives later.
+    if (index < 0) return;
+    final existing = _messages[index];
+    final tagged = _applyPersonalMentionEvent(existing);
+    if (identical(existing, tagged)) return;
+    setState(() {
+      _messages = [
+        for (var i = 0; i < _messages.length; i++)
+          if (i == index) tagged else _messages[i],
+      ];
+    });
+    _persistMessagesCache();
   }
 
   void _onMessageCreated(dynamic data) async {
@@ -889,6 +955,7 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
     _typingDebounce?.cancel();
     _typingIdle?.cancel();
     _socket.off('message_created', _onMessageCreated);
+    _socket.off('mention_received', _onMentionReceived);
     _socket.off('attachment_uploaded', _onAttachmentUploaded);
     _socket.off('typing_started', _onTypingStart);
     _socket.off('typing_stopped', _onTypingStop);
@@ -945,10 +1012,12 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
         _replyAuthor = null;
       }
       if (idx < 0) {
-        _messages = [..._messages, message];
+        _messages = [..._messages, _applyPersonalMentionEvent(message)];
       } else {
         final existing = _messages[idx];
-        final merged = mergeConversationScreenMessage(existing, message);
+        final merged = _applyPersonalMentionEvent(
+          mergeConversationScreenMessage(existing, message),
+        );
         _messages = [
           for (var i = 0; i < _messages.length; i++)
             if (i == idx) merged else _messages[i],
@@ -1653,9 +1722,12 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
   }
 
   String _previewFromPinnedMap(Map<String, dynamic> pinned) {
-    final body = (pinned['body'] ?? pinned['body_placeholder'] ?? '').toString();
-    final visible =
-        ChatV1Importance.parse(body).body.replaceAll(RegExp(r'\s+'), ' ').trim();
+    final body =
+        (pinned['body'] ?? pinned['body_placeholder'] ?? '').toString();
+    final visible = ChatV1Importance.parse(body)
+        .body
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
     if (visible.isNotEmpty) return visible;
     final name = (pinned['file_name'] ?? '').toString();
     return name.isEmpty ? 'Pinned message' : name;
@@ -1707,9 +1779,8 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
       } else {
         final data = await _api.pinMessage(msg.id);
         final pinned = data['pinned_message'] ?? data['message'];
-        final id = pinned is Map
-            ? (pinned['id']?.toString() ?? msg.id)
-            : msg.id;
+        final id =
+            pinned is Map ? (pinned['id']?.toString() ?? msg.id) : msg.id;
         if (!mounted) return;
         setState(() {
           _pinnedMessageId = id;
@@ -1736,7 +1807,9 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
         break;
       }
     }
-    final preview = message == null ? (_pinnedPreview ?? 'Pinned message') : _previewForMessage(message);
+    final preview = message == null
+        ? (_pinnedPreview ?? 'Pinned message')
+        : _previewForMessage(message);
     return Material(
       color: ChatV1Theme.card(context),
       child: InkWell(
@@ -1745,7 +1818,8 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
           padding: const EdgeInsets.fromLTRB(12, 8, 4, 8),
           child: Row(
             children: [
-              const Icon(Icons.push_pin_rounded, size: 16, color: ChatV1Theme.accent),
+              const Icon(Icons.push_pin_rounded,
+                  size: 16, color: ChatV1Theme.accent),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
@@ -1761,7 +1835,8 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
               ),
               IconButton(
                 tooltip: 'Unpin',
-                icon: Icon(Icons.close, size: 18, color: ChatV1Theme.textMuted(context)),
+                icon: Icon(Icons.close,
+                    size: 18, color: ChatV1Theme.textMuted(context)),
                 onPressed: () {
                   final pinned = message;
                   if (pinned != null) {
@@ -1970,98 +2045,99 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
       builder: (sheetContext) => SafeArea(
         child: SingleChildScrollView(
           child: Padding(
-          padding: const EdgeInsets.fromLTRB(8, 10, 8, 12),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 36,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: ChatV1Theme.border(context),
-                  borderRadius: BorderRadius.circular(99),
+            padding: const EdgeInsets.fromLTRB(8, 10, 8, 12),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 36,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: ChatV1Theme.border(context),
+                    borderRadius: BorderRadius.circular(99),
+                  ),
                 ),
-              ),
-              const SizedBox(height: 12),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceAround,
-                children: ['👍', '❤️', '😂', '😮', '😢', '🔥']
-                    .map(
-                      (e) => InkWell(
-                        onTap: () {
-                          Navigator.pop(sheetContext);
-                          _reactToMessage(msg, e);
-                        },
-                        borderRadius: BorderRadius.circular(999),
-                        child: Padding(
-                          padding: const EdgeInsets.all(8),
-                          child: Text(e, style: const TextStyle(fontSize: 28)),
+                const SizedBox(height: 12),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  children: ['👍', '❤️', '😂', '😮', '😢', '🔥']
+                      .map(
+                        (e) => InkWell(
+                          onTap: () {
+                            Navigator.pop(sheetContext);
+                            _reactToMessage(msg, e);
+                          },
+                          borderRadius: BorderRadius.circular(999),
+                          child: Padding(
+                            padding: const EdgeInsets.all(8),
+                            child:
+                                Text(e, style: const TextStyle(fontSize: 28)),
+                          ),
                         ),
-                      ),
-                    )
-                    .toList(),
-              ),
-              const Divider(height: 16),
-              ListTile(
-                leading: const Icon(Icons.reply_rounded),
-                title: const Text('Reply'),
-                onTap: () {
-                  Navigator.pop(sheetContext);
-                  _startReply(msg);
-                },
-              ),
-              if (canShareGeneral)
+                      )
+                      .toList(),
+                ),
+                const Divider(height: 16),
                 ListTile(
-                  leading: const Icon(Icons.campaign_outlined),
-                  title: const Text('Mark as important'),
+                  leading: const Icon(Icons.reply_rounded),
+                  title: const Text('Reply'),
                   onTap: () {
                     Navigator.pop(sheetContext);
-                    _shareToGeneral(msg);
+                    _startReply(msg);
                   },
                 ),
-              ListTile(
-                leading: const Icon(Icons.copy_rounded),
-                title: const Text('Copy'),
-                onTap: () {
-                  Navigator.pop(sheetContext);
-                  _copyMessage(msg);
-                },
-              ),
-              ListTile(
-                leading: Icon(
-                  msg.isPinned
-                      ? Icons.push_pin_rounded
-                      : Icons.push_pin_outlined,
-                ),
-                title: Text(msg.isPinned ? 'Unpin' : 'Pin'),
-                onTap: () {
-                  Navigator.pop(sheetContext);
-                  _pinMessage(msg);
-                },
-              ),
-              if (msg.isMine) ...[
+                if (canShareGeneral)
+                  ListTile(
+                    leading: const Icon(Icons.campaign_outlined),
+                    title: const Text('Mark as important'),
+                    onTap: () {
+                      Navigator.pop(sheetContext);
+                      _shareToGeneral(msg);
+                    },
+                  ),
                 ListTile(
-                  leading: const Icon(Icons.edit_rounded),
-                  title: const Text('Edit'),
+                  leading: const Icon(Icons.copy_rounded),
+                  title: const Text('Copy'),
                   onTap: () {
                     Navigator.pop(sheetContext);
-                    _editMessage(msg);
+                    _copyMessage(msg);
                   },
                 ),
                 ListTile(
-                  leading: const Icon(Icons.delete_outline_rounded,
-                      color: ChatV1Theme.rejected),
-                  title: const Text('Delete',
-                      style: TextStyle(color: ChatV1Theme.rejected)),
+                  leading: Icon(
+                    msg.isPinned
+                        ? Icons.push_pin_rounded
+                        : Icons.push_pin_outlined,
+                  ),
+                  title: Text(msg.isPinned ? 'Unpin' : 'Pin'),
                   onTap: () {
                     Navigator.pop(sheetContext);
-                    _deleteMessage(msg);
+                    _pinMessage(msg);
                   },
                 ),
+                if (msg.isMine) ...[
+                  ListTile(
+                    leading: const Icon(Icons.edit_rounded),
+                    title: const Text('Edit'),
+                    onTap: () {
+                      Navigator.pop(sheetContext);
+                      _editMessage(msg);
+                    },
+                  ),
+                  ListTile(
+                    leading: const Icon(Icons.delete_outline_rounded,
+                        color: ChatV1Theme.rejected),
+                    title: const Text('Delete',
+                        style: TextStyle(color: ChatV1Theme.rejected)),
+                    onTap: () {
+                      Navigator.pop(sheetContext);
+                      _deleteMessage(msg);
+                    },
+                  ),
+                ],
               ],
-            ],
+            ),
           ),
-        ),
         ),
       ),
     );

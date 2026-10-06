@@ -88,6 +88,15 @@ class DataProvider {
   /// ERP project_id → sales_sop_id learned from get_tasks / project payloads.
   final Map<String, String> _projectSalesSopByErpId = {};
 
+  /// Sales SOP id already learned for this ERP project, if any.
+  String? cachedSalesSopId(String? erpProjectId) {
+    final id = erpProjectId?.trim() ?? '';
+    if (id.isEmpty) return null;
+    final mapped = _projectSalesSopByErpId[id];
+    if (mapped == null || mapped.isEmpty) return null;
+    return mapped;
+  }
+
   /// Latest task rows kept briefly for chat SOP resolution fallbacks.
   List<dynamic> _taskSalesSopHints = [];
 
@@ -1316,6 +1325,7 @@ class DataProvider {
     'main_critical_duration',
     'main_critical_duration_unit',
     'assigned_days',
+    'duration_days',
     'assigned_duration_label',
   ];
 
@@ -1367,7 +1377,8 @@ class DataProvider {
 
     // Build a label if API only sent numeric duration fields.
     if (_nonEmptyString(target['assigned_duration_label']) == null) {
-      final labelFromDays = _nonEmptyString(target['assigned_days']);
+      final labelFromDays = _nonEmptyString(target['assigned_days']) ??
+          _nonEmptyString(target['duration_days']);
       final amount = _nonEmptyString(target['main_critical_duration']);
       final unit = _nonEmptyString(target['main_critical_duration_unit']);
       if (amount != null && unit != null) {
@@ -1378,7 +1389,7 @@ class DataProvider {
           target['assigned_duration_label'] =
               days == days.roundToDouble() ? '${days.toInt()} days' : '$days days';
         } else {
-          target['assigned_duration_label'] = '$labelFromDays days';
+          target['assigned_duration_label'] = labelFromDays;
         }
       }
     }
@@ -1769,56 +1780,103 @@ class DataProvider {
 
   // Helper method to load project completion percentage.
   // detail=1 returns percent plus day totals; a plain percent string is still accepted.
+  //
+  // Sales SOP projects keep Main Critical days on the project number
+  // (sales_sop_project_id), while the app session stores the ERP project_id.
+  // When the ERP id has no total_days, retry with that project number.
   Future<void> _loadProjectPercentage(
       String projectId, SharedPreferences prefs) async {
     try {
-      var percUrl =
-          'https://office.buildahome.in/API/get_project_percentage?id=${projectId}&detail=1';
-      var percResponse = await ApiHttp.get(Uri.parse(percUrl));
-      print('percentage response: ${percResponse.body}');
-      if (percResponse.statusCode == 200) {
-        final body = percResponse.body.trim();
-        String? percentText;
-        double docDays = 0;
-        int? totalDays;
-        int? baseTotalDays;
-        if (body.startsWith('{')) {
-          try {
-            final decoded = jsonDecode(body);
-            if (decoded is Map) {
-              final map = Map<String, dynamic>.from(decoded);
-              final pct = map['percent'] ?? map['completed'] ?? map['value'];
-              if (pct != null) {
-                percentText = pct.toString().replaceAll('%', '').trim();
-              }
-              final rawDays = map['doc_delay_days_total'] ??
-                  map['doc_delay_days'] ??
-                  map['extra_days'];
-              docDays = double.tryParse(rawDays?.toString() ?? '') ?? 0;
-              totalDays = _dayCount(map['total_days']);
-              baseTotalDays = _dayCount(map['base_total_days']);
-            }
-          } catch (_) {
-            percentText = null;
+      var detail = await _fetchProjectPercentageDetail(projectId);
+      if (detail == null || detail.totalDays == null) {
+        final alternateId = await _salesSopProjectNumberForDays(projectId, prefs);
+        if (alternateId != null && alternateId != projectId) {
+          final retry = await _fetchProjectPercentageDetail(alternateId);
+          if (retry != null && (detail == null || retry.totalDays != null)) {
+            detail = retry;
           }
-        } else {
-          percentText = body.replaceAll('%', '').trim();
         }
-        if (percentText != null && percentText.isNotEmpty) {
-          clientProjectCompletion = percentText;
-          clientDocDelayDays = docDays;
-          clientTotalDays = totalDays;
-          clientBaseTotalDays = baseTotalDays;
-          _persistProjectDuration(prefs);
-        } else {
-          _restoreProjectDuration(prefs);
-        }
+      }
+      if (detail != null &&
+          detail.percentText != null &&
+          detail.percentText!.isNotEmpty) {
+        clientProjectCompletion = detail.percentText;
+        clientDocDelayDays = detail.docDays;
+        clientTotalDays = detail.totalDays;
+        clientBaseTotalDays = detail.baseTotalDays;
+        _persistProjectDuration(prefs);
       } else {
         _restoreProjectDuration(prefs);
       }
     } catch (e) {
       print('Error loading project percentage: $e');
       _restoreProjectDuration(prefs);
+    }
+  }
+
+  Future<_ProjectPercentageDetail?> _fetchProjectPercentageDetail(
+    String projectId,
+  ) async {
+    final id = projectId.trim();
+    if (id.isEmpty) return null;
+    final percUrl =
+        'https://office.buildahome.in/API/get_project_percentage?id=$id&detail=1';
+    final percResponse = await ApiHttp.get(Uri.parse(percUrl));
+    print('percentage response ($id): ${percResponse.body}');
+    if (percResponse.statusCode != 200) return null;
+    final body = percResponse.body.trim();
+    if (body.isEmpty) return null;
+    if (!body.startsWith('{')) {
+      final percentText = body.replaceAll('%', '').trim();
+      if (percentText.isEmpty) return null;
+      return _ProjectPercentageDetail(percentText: percentText);
+    }
+    try {
+      final decoded = jsonDecode(body);
+      if (decoded is! Map) return null;
+      final map = Map<String, dynamic>.from(decoded);
+      final pct = map['percent'] ?? map['completed'] ?? map['value'];
+      final percentText = pct?.toString().replaceAll('%', '').trim();
+      final rawDays = map['doc_delay_days_total'] ??
+          map['doc_delay_days'] ??
+          map['extra_days'];
+      return _ProjectPercentageDetail(
+        percentText: percentText,
+        docDays: double.tryParse(rawDays?.toString() ?? '') ?? 0,
+        totalDays: _dayCount(map['total_days']),
+        baseTotalDays: _dayCount(map['base_total_days']),
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Project number that carries Main Critical `total_days` for this ERP id.
+  Future<String?> _salesSopProjectNumberForDays(
+    String projectId,
+    SharedPreferences prefs,
+  ) async {
+    final cached = _stringValue(prefs.getString('project_number')) ??
+        _stringValue(prefs.getString('project_code'));
+    if (cached != null && cached != projectId) return cached;
+
+    try {
+      final uri = Uri.parse(
+        'https://office.buildahome.in/API/project_created_from_sales_sop/${Uri.encodeComponent(projectId)}',
+      );
+      final response = await ApiHttp.get(uri);
+      if (response.statusCode != 200) return cached;
+      final decoded = jsonDecode(response.body);
+      if (decoded is! Map) return cached;
+      final number = _stringValue(decoded['sales_sop_project_id']) ??
+          _stringValue(decoded['project_number']) ??
+          _stringValue(decoded['project_code']);
+      if (number == null) return cached;
+      await persistProjectNumber(number);
+      return number;
+    } catch (e) {
+      print('[DataProvider] project number lookup for days skipped: $e');
+      return cached;
     }
   }
 
@@ -2821,4 +2879,18 @@ class DataProvider {
     print('[DataProvider] All data cleared');
     ClientGenerationService.instance.clearMemory();
   }
+}
+
+class _ProjectPercentageDetail {
+  final String? percentText;
+  final double docDays;
+  final int? totalDays;
+  final int? baseTotalDays;
+
+  const _ProjectPercentageDetail({
+    this.percentText,
+    this.docDays = 0,
+    this.totalDays,
+    this.baseTotalDays,
+  });
 }

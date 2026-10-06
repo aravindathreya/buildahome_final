@@ -719,13 +719,85 @@ class WorkflowDocumentService {
           ...Map<String, dynamic>.from(report),
           'section_id': 'dsec_site_inspection_report',
           'section_label': 'Site Inspection Report',
-          'category_id': 'site_inspection',
-          'category_label': 'Site Inspection',
-          'client_journey_key': ClientJourneyKeys.inspection,
-          'library_group_key': 'site_inspection',
+          'category_id': ClientJourneyKeys.siteDocument,
+          'category_label': 'Site Document',
+          'client_journey_key': ClientJourneyKeys.siteDocument,
+          'library_group_key': ClientJourneyKeys.siteDocument,
           'is_latest': true,
           'status': 'latest',
         });
+      } else if (report != null) {
+        final url = report.toString().trim();
+        if (url.isNotEmpty && url.toLowerCase() != 'null') {
+          maps.add({
+            'url': url,
+            'document_name': 'Site Inspection Report',
+            'filename': 'Site Inspection Report',
+            'section_id': 'dsec_site_inspection_report',
+            'section_label': 'Site Inspection Report',
+            'category_id': ClientJourneyKeys.siteDocument,
+            'category_label': 'Site Document',
+            'client_journey_key': ClientJourneyKeys.siteDocument,
+            'library_group_key': ClientJourneyKeys.siteDocument,
+            'is_latest': true,
+            'status': 'latest',
+          });
+        }
+      }
+    }
+
+    final planning = cards['planning_commercial_documents'];
+    if (planning is Map) {
+      final planningMap = Map<String, dynamic>.from(planning);
+      const fieldMeta = <String, List<String>>{
+        'final_cost_sheet': [
+          'Final Cost Sheet',
+          'dsec_final_cost_sheet',
+        ],
+        'cost_sheet': [
+          'Final Cost Sheet',
+          'dsec_final_cost_sheet',
+        ],
+      };
+      final seen = <String>{};
+      for (final entry in fieldMeta.entries) {
+        final value = planningMap[entry.key];
+        if (value == null) continue;
+        final sectionLabel = entry.value[0];
+        final sectionId = entry.value[1];
+        if (!seen.add(sectionId)) continue;
+        if (value is Map) {
+          maps.add({
+            ...Map<String, dynamic>.from(value),
+            'document_name': _stringValue(value['document_name']) ??
+                _stringValue(value['name']) ??
+                sectionLabel,
+            'section_id': sectionId,
+            'section_label': sectionLabel,
+            'category_id': ClientJourneyKeys.planningCommercial,
+            'category_label': 'Planning & Commercial Documents',
+            'client_journey_key': ClientJourneyKeys.planningCommercial,
+            'library_group_key': ClientJourneyKeys.planningCommercial,
+            'is_latest': true,
+            'status': 'latest',
+          });
+        } else {
+          final url = value.toString().trim();
+          if (url.isEmpty || url.toLowerCase() == 'null') continue;
+          maps.add({
+            'url': url,
+            'document_name': sectionLabel,
+            'filename': sectionLabel,
+            'section_id': sectionId,
+            'section_label': sectionLabel,
+            'category_id': ClientJourneyKeys.planningCommercial,
+            'category_label': 'Planning & Commercial Documents',
+            'client_journey_key': ClientJourneyKeys.planningCommercial,
+            'library_group_key': ClientJourneyKeys.planningCommercial,
+            'is_latest': true,
+            'status': 'latest',
+          });
+        }
       }
     }
 
@@ -1266,6 +1338,8 @@ class ClientJourneyKeys {
   static const sitePrep = 'site_preparation';
   static const demolition = 'demolition_details';
   static const inspection = 'site_inspection';
+  static const siteDocument = 'site_document';
+  static const planningCommercial = 'planning_commercial_documents';
   static const preConversion = 'pre_conversion_documents';
   static const officeDocuments = 'office_documents';
   static const receiptsAndAgreements = 'receipts_and_agreements';

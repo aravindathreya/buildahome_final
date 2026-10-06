@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../app_theme.dart';
 import '../models/workflow_document.dart';
+import '../services/document_role_access.dart';
 
 /// Reference design tokens for the client portal documents flow.
 class ClientPortalDocTheme {
@@ -85,6 +86,26 @@ ClientPortalCategoryVisual categoryVisualFor({
         subtitle: 'Receipts, agreements & tax invoices',
         iconBg: Color(0xFF143028),
         iconFg: Color(0xFF34D399),
+      );
+    }
+    if (blob.contains('site_document') ||
+        blob.contains('site document') ||
+        blob.contains('site_inspection')) {
+      return const ClientPortalCategoryVisual(
+        icon: Icons.fact_check_outlined,
+        subtitle: 'Site inspection report',
+        iconBg: Color(0xFF1F2937),
+        iconFg: Color(0xFFFBBF24),
+      );
+    }
+    if (blob.contains('planning_commercial') ||
+        (blob.contains('planning') && blob.contains('commercial')) ||
+        blob.contains('cost sheet')) {
+      return const ClientPortalCategoryVisual(
+        icon: Icons.folder_special_outlined,
+        subtitle: 'Final Cost Sheet',
+        iconBg: Color(0xFF1E3A5F),
+        iconFg: Color(0xFF93C5FD),
       );
     }
     if (blob.contains('kyc') || blob.contains('pre_conversion')) {
@@ -1452,10 +1473,14 @@ List<Widget> buildDocumentCategoryCards({
   required WorkflowDocumentLibrary library,
   required void Function(WorkflowDocumentCategory category) onCategoryTap,
   String? searchQuery,
+  String? role,
 }) {
   final q = searchQuery?.trim().toLowerCase() ?? '';
-  final categories = withoutAreaStatementCategories(library.documentsTabCategories)
-      .where((category) {
+  final categories = filterDocumentCategoriesForRole(
+    withoutAreaStatementCategories(library.documentsTabCategories),
+    role,
+    clientMode: true,
+  ).where((category) {
     if (q.isEmpty) return true;
     return category.label.toLowerCase().contains(q) ||
         (category.clientJourneyKey ?? '').toLowerCase().contains(q);

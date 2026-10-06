@@ -114,6 +114,7 @@ const Set<String> kMobileQuickActionCanonicalKeys = {
   'notifications',
   'mobile_live_test',
   'work_orders',
+  'technical_specs',
 };
 
 /// Backend catalog aliases → canonical key.
@@ -122,6 +123,7 @@ const Map<String, String> kMobileQuickActionBackendAliases = {
   'chat_v1': 'chatbox',
   'daily_update': 'updates',
   'timeline_gallery': 'project_timeline',
+  'agreement_annexure': 'technical_specs',
 };
 
 /// Extra incoming strings that must resolve to a canonical key.
@@ -148,7 +150,7 @@ const Map<MobileQuickActionSurface, Map<String, String>>
     'approved_pos': 'Approved POs',
     'documents': 'Documents',
     'scheduler': 'Scheduler',
-    'gallery': 'Gallery',
+    'gallery': 'Project Gallery',
     'checklist': 'Checklist',
     'request_drawings': 'Request Drawings',
     'client_portal': 'Client Portal',
@@ -166,15 +168,22 @@ const Map<MobileQuickActionSurface, Map<String, String>>
     'notifications': 'My Notifications',
     'mobile_live_test': 'Mobile Live Test',
     'work_orders': 'Work orders',
+    'technical_specs': 'Technical Specs',
   },
   MobileQuickActionSurface.projectHomeOld: {
+    'client_portal': 'For me',
+    'my_tasks': 'My tasks',
+    'project_timeline': 'Project Timeline',
+    'slots': 'Slots',
+    'site_visit_reports': 'Site Visit Reports',
     'payments': 'Payments',
     'nt_payments': 'Upgrades and Additions Cost',
     'scheduler': 'Scheduler',
-    'gallery': 'Gallery',
+    'gallery': 'Project Gallery',
     'chatbox': 'Notes & Comments',
     'checklist': 'Checklist',
     'request_drawings': 'Request Drawings',
+    'technical_specs': 'Technical Specs',
   },
   MobileQuickActionSurface.projectHomeNew: {
     'client_portal': 'Client Portal',
@@ -190,7 +199,7 @@ const Map<MobileQuickActionSurface, Map<String, String>>
     'upload_payment_proof': 'Upload proof',
     'documents': 'Documents',
     'scheduler': 'Scheduler',
-    'gallery': 'Gallery',
+    'gallery': 'Project Gallery',
     'virtual_tour': '3D House Tour',
     'chatbox': 'ChatBox',
     'project_status': 'Project Status',
@@ -205,6 +214,7 @@ const Map<MobileQuickActionSurface, Map<String, String>>
     'test_reports': 'Test Reports',
     'notifications': 'My Notifications',
     'projects': 'Projects',
+    'technical_specs': 'Technical Specs',
   },
 };
 
@@ -351,6 +361,21 @@ List<Map<String, dynamic>> resolveMobileQuickActions({
     resolved.add(item);
   }
   return resolved;
+}
+
+/// For me already opens Docs. Hide the older Documents tiles so the grid
+/// does not show two actions with the same label.
+List<Map<String, dynamic>> withoutLegacyDocumentsQuickActions(
+  List<Map<String, dynamic>> actions,
+) {
+  final hasForMe = actions.any(
+    (item) => item['title']?.toString() == 'Client Portal',
+  );
+  if (!hasForMe) return actions;
+  return actions.where((item) {
+    final title = item['title']?.toString();
+    return title != 'Documents' && title != 'Documents V1';
+  }).toList();
 }
 
 String mobileQuickActionsCacheKey({

@@ -1,4 +1,5 @@
 import '../models/workflow_document.dart';
+import '../services/document_role_access.dart';
 import '../services/workflow_document_service.dart';
 import 'client_portal_document_ui.dart';
 
@@ -99,14 +100,19 @@ WorkflowDocumentCategory? _categoryForJourney(
   return null;
 }
 
-/// Site Prep / Demolition / Site Inspection are not shown in the client app —
+/// Site Prep / Demolition are not shown in the client app —
 /// clients only get login after the 10% payment (post site-prep stage).
+/// Legacy `site_inspection` steps stay hidden for Client; staff see
+/// "Site Document" separately via [isSiteDocumentCategory].
 bool isClientPortalSitePrepCategory(WorkflowDocumentCategory category) {
   final journey = (category.clientJourneyKey ?? '').trim().toLowerCase();
   if (journey == ClientJourneyKeys.sitePrep ||
-      journey == ClientJourneyKeys.demolition ||
-      journey == ClientJourneyKeys.inspection) {
+      journey == ClientJourneyKeys.demolition) {
     return true;
+  }
+  if (journey == ClientJourneyKeys.siteDocument ||
+      journey == ClientJourneyKeys.planningCommercial) {
+    return false;
   }
   final blob =
       '${category.id} ${category.label} ${category.libraryGroupKey ?? ''}'
@@ -115,31 +121,62 @@ bool isClientPortalSitePrepCategory(WorkflowDocumentCategory category) {
     return true;
   }
   if (blob.contains('demolition')) return true;
-  if (blob.contains('site_inspection') || blob.contains('site inspection')) {
+  // Old inspection journey (not the renamed Site Document category).
+  if (journey == ClientJourneyKeys.inspection ||
+      blob.contains('site_inspection') ||
+      blob.contains('site inspection')) {
     return true;
   }
   return false;
 }
 
-/// KYC on For me / Client Portal is Client + Super Admin only.
-/// Super Admin is often stored as `Admin` in prefs.
-bool roleCanSeeClientPortalKyc(String? role) {
-  final normalized =
-      (role ?? '').trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
-  return normalized == 'client' ||
-      normalized == 'super admin' ||
-      normalized == 'admin';
+bool isSiteDocumentCategory(WorkflowDocumentCategory category) {
+  return classifyForMeDocument(
+        categoryId: category.id,
+        categoryLabel: category.label,
+        journeyKey: category.clientJourneyKey,
+        libraryGroupKey: category.libraryGroupKey,
+      ) ==
+      ForMeDocKind.siteDocument;
 }
 
+bool isPlanningCommercialCategory(WorkflowDocumentCategory category) {
+  return classifyForMeDocument(
+        categoryId: category.id,
+        categoryLabel: category.label,
+        journeyKey: category.clientJourneyKey,
+        libraryGroupKey: category.libraryGroupKey,
+      ) ==
+      ForMeDocKind.planningCommercial;
+}
+
+String displayTitleForDocumentCategory(WorkflowDocumentCategory category) {
+  if (isSiteDocumentCategory(category)) return 'Site Document';
+  if (isPlanningCommercialCategory(category)) {
+    return 'Planning & Commercial Documents';
+  }
+  return category.label;
+}
+
+/// KYC on For me is Client only. Non-client Docs omits it.
+/// Super Admin is often stored as `Admin` in prefs.
+bool roleCanSeeClientPortalKyc(String? role) => roleCanSeeForMeKyc(role);
+
 /// Client Portal hub rows: KYC / Office Documents / Receipts stay pinned.
-/// Remaining rows come from the live catalog (same tree as staff Documents).
+/// Most staff get the same rows as clients, without KYC.
+/// Project Coordinator and APC use their own For me rows.
 List<ClientPortalHubItem> buildClientPortalHubItems(
   WorkflowDocumentLibrary? library, {
   bool includeKyc = true,
+  String? role,
 }) {
   final items = <ClientPortalHubItem>[];
+  final visibilityRole = catalogVisibilityRole(role);
+  final showKyc = includeKyc &&
+      !usesClientDocumentCatalog(role) &&
+      (role == null || role.trim().isEmpty || roleCanSeeForMeKyc(role));
 
-  if (includeKyc) {
+  if (showKyc) {
     items.add(
       ClientPortalHubItem(
         id: 'documents',
@@ -158,7 +195,13 @@ List<ClientPortalHubItem> buildClientPortalHubItems(
   }
 
   if (library != null &&
-      _libraryHasJourney(library, ClientJourneyKeys.officeDocuments)) {
+      _libraryHasJourney(library, ClientJourneyKeys.officeDocuments) &&
+      (visibilityRole == null ||
+          visibilityRole.trim().isEmpty ||
+          documentAccessForRole(
+            role: visibilityRole,
+            kind: ForMeDocKind.officeDocuments,
+          ).view)) {
     final category =
         _categoryForJourney(library, ClientJourneyKeys.officeDocuments);
     final visual = category != null
@@ -187,7 +230,13 @@ List<ClientPortalHubItem> buildClientPortalHubItems(
   }
 
   if (library != null &&
-      _libraryHasJourney(library, ClientJourneyKeys.receiptsAndAgreements)) {
+      _libraryHasJourney(library, ClientJourneyKeys.receiptsAndAgreements) &&
+      (visibilityRole == null ||
+          visibilityRole.trim().isEmpty ||
+          documentAccessForRole(
+            role: visibilityRole,
+            kind: ForMeDocKind.contractsOther,
+          ).view)) {
     final category =
         _categoryForJourney(library, ClientJourneyKeys.receiptsAndAgreements);
     final visual = category != null
@@ -219,16 +268,44 @@ List<ClientPortalHubItem> buildClientPortalHubItems(
 
   if (library != null) {
     final seen = <String>{};
+    final isClientRole =
+        forMeDocRoleBucket(role) == ForMeDocRoleBucket.client;
+    final matchClientCatalog = usesClientDocumentCatalog(role);
     for (final category in library.libraryCategories) {
       if (isPinnedClientPortalCategory(category)) continue;
       if (isUncategorizedDocumentCategory(category)) continue;
-      if (isClientPortalSitePrepCategory(category)) continue;
+      final siteDoc = isSiteDocumentCategory(category);
+      final planning = isPlanningCommercialCategory(category);
+      if (isClientPortalSitePrepCategory(category) && !siteDoc) continue;
+      // Clients never see Site Document or Planning & Commercial.
+      // Staff on the client catalog use that same list.
+      // Project Coordinator and APC keep those rows when their matrix allows.
+      if ((siteDoc || planning) &&
+          (role == null ? false : isClientRole || matchClientCatalog)) {
+        continue;
+      }
+      if (visibilityRole != null &&
+          visibilityRole.trim().isNotEmpty &&
+          !roleCanViewDocumentCategory(
+            role: visibilityRole,
+            categoryId: category.id,
+            categoryLabel: category.label,
+            journeyKey: category.clientJourneyKey,
+            libraryGroupKey: category.libraryGroupKey,
+          )) {
+        continue;
+      }
       if (!seen.add(category.id)) continue;
+      final title = displayTitleForDocumentCategory(category);
       items.add(
         ClientPortalHubItem(
           id: category.id,
-          title: category.label,
-          subtitle: catalogCategorySubtitle(category),
+          title: title,
+          subtitle: siteDoc
+              ? 'Site inspection report'
+              : planning
+                  ? 'Final Cost Sheet'
+                  : catalogCategorySubtitle(category),
           kind: ClientPortalHubKind.catalog,
           visual: categoryVisualForCategory(category),
           badgeCount: workflowDocCountForCategory(category),

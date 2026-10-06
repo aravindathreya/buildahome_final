@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/workflow_document.dart';
@@ -291,6 +292,146 @@ class MobileDocumentsService {
 
   void _emit() {
     revision.value++;
+  }
+
+  /// Upload / replace / delete a catalog document (mobile + web).
+  ///
+  /// Tries `POST /API/mobile/documents/{upload|replace|delete}` on known hosts.
+  Future<void> mutateDocument({
+    required String action,
+    String? projectId,
+    WorkflowDocumentUpload? document,
+    WorkflowDocumentSection? section,
+    String? categoryLabel,
+    String? filePath,
+    Uint8List? fileBytes,
+    String? fileName,
+  }) async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = (prefs.getString('api_token') ?? '').trim();
+    if (token.isEmpty || token.toLowerCase() == 'null') {
+      throw Exception('Please sign in again to manage documents.');
+    }
+    final resolvedProject = (projectId ??
+            prefs.getString('project_id') ??
+            _projectId ??
+            '')
+        .trim();
+    if (resolvedProject.isEmpty) {
+      throw Exception('Select a project before managing documents.');
+    }
+
+    final normalized = action.trim().toLowerCase();
+    final pathAction = normalized == 'edit' ? 'replace' : normalized;
+    if (pathAction != 'upload' &&
+        pathAction != 'replace' &&
+        pathAction != 'delete') {
+      throw Exception('Unsupported document action.');
+    }
+
+    Object? lastError;
+    for (final base in baseUrls) {
+      for (final prefix in const ['API', 'api']) {
+        final uri = Uri.parse('$base/$prefix/mobile/documents/$pathAction');
+        try {
+          final request = http.MultipartRequest('POST', uri);
+          request.headers.addAll({
+            'Accept': 'application/json',
+            'X-Api-Token': token,
+            'Authorization': 'Bearer $token',
+          });
+          request.fields['project_id'] = resolvedProject;
+          request.fields['api_token'] = token;
+          request.fields['action'] = pathAction;
+          if (section != null) {
+            request.fields['section_id'] = section.id;
+            request.fields['section_label'] = section.label;
+            request.fields['category_id'] = section.categoryId;
+            if ((section.clientJourneyKey ?? '').isNotEmpty) {
+              request.fields['client_journey_key'] = section.clientJourneyKey!;
+            }
+          }
+          if ((categoryLabel ?? '').trim().isNotEmpty) {
+            request.fields['category_label'] = categoryLabel!.trim();
+          }
+          if (document != null) {
+            request.fields['document_id'] = document.id;
+            request.fields['document_key'] = document.documentKey;
+            if ((document.url ?? '').isNotEmpty) {
+              request.fields['url'] = document.url!;
+            }
+          }
+
+          if (pathAction != 'delete') {
+            final name = (fileName ?? 'document').trim();
+            if (fileBytes != null && fileBytes.isNotEmpty) {
+              request.files.add(
+                http.MultipartFile.fromBytes(
+                  'file',
+                  fileBytes,
+                  filename: name.isEmpty ? 'document' : name,
+                ),
+              );
+            } else if (filePath != null && filePath.trim().isNotEmpty) {
+              request.files.add(
+                await http.MultipartFile.fromPath('file', filePath.trim()),
+              );
+            } else {
+              throw Exception('Select a file to upload.');
+            }
+          }
+
+          final streamed = await request.send().timeout(
+            const Duration(minutes: 2),
+          );
+          final response = await http.Response.fromStream(streamed);
+          if (response.statusCode == 401 || response.statusCode == 403) {
+            lastError = 'HTTP ${response.statusCode}';
+            continue;
+          }
+          if (response.statusCode < 200 || response.statusCode >= 300) {
+            lastError = _mutateErrorMessage(response);
+            continue;
+          }
+          try {
+            final decoded = jsonDecode(response.body);
+            if (decoded is Map &&
+                (decoded['success'] == false ||
+                    decoded['success'] == 0 ||
+                    decoded['success'] == '0')) {
+              lastError = (decoded['message'] ?? decoded['error'] ?? 'Failed')
+                  .toString();
+              continue;
+            }
+          } catch (_) {
+            // Non-JSON success body is fine.
+          }
+          await ensureLibrary(projectId: resolvedProject, force: true);
+          return;
+        } on SessionInvalidatedException {
+          rethrow;
+        } catch (e) {
+          lastError = e;
+        }
+      }
+    }
+    throw Exception(
+      lastError?.toString().replaceFirst('Exception: ', '') ??
+          'Could not $pathAction document.',
+    );
+  }
+
+  String _mutateErrorMessage(http.Response response) {
+    try {
+      final decoded = jsonDecode(response.body);
+      if (decoded is Map) {
+        final message = (decoded['message'] ?? decoded['error'] ?? '')
+            .toString()
+            .trim();
+        if (message.isNotEmpty) return message;
+      }
+    } catch (_) {}
+    return 'HTTP ${response.statusCode}';
   }
 }
 

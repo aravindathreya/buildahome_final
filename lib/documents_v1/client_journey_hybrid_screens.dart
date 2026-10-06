@@ -201,15 +201,11 @@ class _ClientFloorPlanElevationScreenState
                               ? 'Drawings in progress. New documents will appear here.'
                               : null,
                       statusSuccess: status == 'finalized',
-                      onSectionTap: (section) => Navigator.push(
+                      onSectionTap: (section) => openDocumentsV1Section(
                         context,
-                        MaterialPageRoute(
-                          builder: (_) => DocumentsV1ListScreen(
-                            categoryLabel: 'Floor Plan & Elevation',
-                            section: section,
-                            clientMode: true,
-                          ),
-                        ),
+                        categoryLabel: 'Floor Plan & Elevation',
+                        section: section,
+                        clientMode: true,
                       ),
                     ),
                   ),
@@ -444,15 +440,11 @@ class _ClientDesignElementsScreenState
                       searchHint: 'Search design documents…',
                       categoryLabel: 'Design Elements',
                       emptyMessage: 'No design documents yet.',
-                      onSectionTap: (section) => Navigator.push(
+                      onSectionTap: (section) => openDocumentsV1Section(
                         context,
-                        MaterialPageRoute(
-                          builder: (_) => DocumentsV1ListScreen(
-                            categoryLabel: 'Design Elements',
-                            section: section,
-                            clientMode: true,
-                          ),
-                        ),
+                        categoryLabel: 'Design Elements',
+                        section: section,
+                        clientMode: true,
                       ),
                     ),
                   ),

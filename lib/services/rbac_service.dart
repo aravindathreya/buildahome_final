@@ -168,7 +168,7 @@ class RBACService {
       dailyUpdate: [view],
       indent: [],
       payments: [],
-      documents: [],
+      documents: [upload, edit, view], // For Me matrix: V + senior E/U/D
       scheduler: [],
       gallery: [view],
       tasksAndNotes: [upload, edit, view], // Complete task: N
@@ -181,7 +181,7 @@ class RBACService {
       dailyUpdate: [view],
       indent: [],
       payments: [],
-      documents: [],
+      documents: [upload, edit, view], // For Me matrix: V + QC reports E/U
       scheduler: [],
       gallery: [view],
       tasksAndNotes: [upload, edit, view], // Complete task: N
@@ -194,7 +194,7 @@ class RBACService {
       dailyUpdate: [view],
       indent: [],
       payments: [],
-      documents: [],
+      documents: [upload, edit, view], // For Me matrix: V (+ designers E/U)
       scheduler: [],
       gallery: [view],
       tasksAndNotes: [upload, edit, view], // Complete task: N
@@ -258,7 +258,7 @@ class RBACService {
       dailyUpdate: [],
       indent: [], // Hidden for billing role
       payments: [view], // Billing role should have access to payments
-      documents: [],
+      documents: [upload, edit, view], // For Me matrix: contracts / office docs
       scheduler: [],
       gallery: [],
       tasksAndNotes: [], // Hidden for billing role

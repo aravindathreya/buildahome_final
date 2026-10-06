@@ -3,6 +3,7 @@ import 'package:flutter/rendering.dart';
 
 import 'app_theme.dart';
 import 'services/data_provider.dart';
+import 'widgets/project_situation_switcher.dart';
 import 'widgets/skeleton_loader.dart';
 import 'widgets/tentative_handover_card.dart';
 
@@ -46,8 +47,10 @@ String? _timelineDurationLabel(Map<String, dynamic> task) {
   final unit = clean(_timelineField(task, 'main_critical_duration_unit'));
   if (amount != null && unit != null) return '$amount $unit';
 
-  final days = clean(_timelineField(task, 'assigned_days'));
+  final days = clean(_timelineField(task, 'assigned_days')) ??
+      clean(_timelineField(task, 'duration_days'));
   if (days != null) {
+    if (RegExp(r'[A-Za-z]').hasMatch(days)) return days;
     final parsed = double.tryParse(days);
     if (parsed == null) return '$days days';
     if (parsed == parsed.roundToDouble()) return '${parsed.toInt()} days';
@@ -139,6 +142,8 @@ class ProjectTimelineScreenState extends State<ProjectTimelineScreen>
 
   bool get _criticalOnly => widget.criticalOnly;
 
+  bool get _mainCriticalOnly => _criticalOnly;
+
   @override
   bool get wantKeepAlive => true;
 
@@ -175,9 +180,19 @@ class ProjectTimelineScreenState extends State<ProjectTimelineScreen>
   }
 
   void _applyProviderData(DataProvider provider) {
-    final tasks = _criticalOnly
+    var raw = _criticalOnly
         ? List<Map<String, dynamic>>.from(provider.clientCriticalTimelineTasks)
         : List<Map<String, dynamic>>.from(provider.clientTimelineTasks);
+    // Critical endpoint can fail for staff. The full schedule still carries
+    // Main Critical flags, so Timeline can use that list.
+    if (_criticalOnly && raw.isEmpty) {
+      raw = List<Map<String, dynamic>>.from(provider.clientTimelineTasks);
+    }
+    final tasks = visibleTimelineTasksForRole(
+      role: provider.currentRole,
+      tasks: raw,
+      criticalOnly: _criticalOnly,
+    );
     _tasks = tasks;
     _pendingCount = tasks.where((t) => t['is_pending'] == true).length;
     _completedCount = tasks.where((t) => t['is_completed'] == true).length;
@@ -196,13 +211,22 @@ class ProjectTimelineScreenState extends State<ProjectTimelineScreen>
     }
 
     try {
-      await Future.wait([
-        if (_criticalOnly)
-          DataProvider().loadCriticalTimeline(force: true)
-        else
-          DataProvider().loadProjectTimeline(force: true),
-        DataProvider().refreshProjectPercentage(),
-      ]);
+      if (_criticalOnly) {
+        try {
+          await DataProvider().loadCriticalTimeline(force: true);
+        } catch (criticalError) {
+          try {
+            await DataProvider().loadProjectTimeline(force: true);
+          } catch (_) {
+            throw criticalError;
+          }
+        }
+      } else {
+        await DataProvider().loadProjectTimeline(force: true);
+      }
+      try {
+        await DataProvider().refreshProjectPercentage();
+      } catch (_) {}
       if (!mounted) return;
       setState(() {
         _applyProviderData(DataProvider());
@@ -508,9 +532,11 @@ class ProjectTimelineScreenState extends State<ProjectTimelineScreen>
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      _criticalOnly
-                          ? 'Critical path'
-                          : 'Full project schedule',
+                      _mainCriticalOnly
+                          ? 'Main critical tasks'
+                          : (_criticalOnly
+                              ? 'Critical path'
+                              : 'Full project schedule'),
                       style: TextStyle(
                         color: _ink,
                         fontSize: 14,
@@ -554,9 +580,11 @@ class ProjectTimelineScreenState extends State<ProjectTimelineScreen>
                 size: 56, color: AppTheme.getTextSecondary(context)),
             const SizedBox(height: 20),
             Text(
-              _criticalOnly
-                  ? 'No critical tasks from server'
-                  : 'No schedule tasks yet',
+              _mainCriticalOnly
+                  ? 'No main critical tasks'
+                  : (_criticalOnly
+                      ? 'No critical tasks from server'
+                      : 'No schedule tasks yet'),
               style: TextStyle(
                 color: _ink,
                 fontSize: 22,
@@ -565,9 +593,11 @@ class ProjectTimelineScreenState extends State<ProjectTimelineScreen>
             ),
             const SizedBox(height: 8),
             Text(
-              _criticalOnly
-                  ? 'The critical timeline API returned 0 tasks. Full schedule may still have work — Main Critical flags are missing on the server for this project.'
-                  : 'Project schedule tasks will appear here once they are created.',
+              _mainCriticalOnly
+                  ? 'Only Main Critical tasks are shown here. None are flagged for this project yet.'
+                  : (_criticalOnly
+                      ? 'The critical timeline API returned 0 tasks. Full schedule may still have work — Main Critical flags are missing on the server for this project.'
+                      : 'Project schedule tasks will appear here once they are created.'),
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: _muted,
@@ -672,14 +702,8 @@ class _TimelineTaskCard extends StatelessWidget {
     final completedAt = _value('completed_at_display');
     final isWorkflow = _timelineTruthy(task['is_workflow_task']);
     final triggerLabel = _value('workflow_trigger_label');
-    final isMainCritical =
-        _timelineTruthy(_timelineField(task, 'is_main_critical'));
     final durationLabel = _timelineDurationLabel(task);
-    final showDuration = durationLabel != null &&
-        (isMainCritical ||
-            _timelineField(task, 'assigned_days') != null ||
-            _timelineField(task, 'main_critical_duration') != null ||
-            _timelineField(task, 'assigned_duration_label') != null);
+    final showDuration = durationLabel != null;
     final isCompleted = task['is_completed'] == true;
     final isCancelled = task['is_cancelled'] == true;
     final isRedoPending = task['is_redo_pending'] == true;
@@ -975,11 +999,7 @@ class _TimelineTaskDetailSheet extends StatelessWidget {
     final completedAt = _value('completed_at_display');
     final isWorkflow = _timelineTruthy(task['is_workflow_task']);
     final durationLabel = _timelineDurationLabel(task);
-    final showDuration = durationLabel != null &&
-        (_timelineTruthy(_timelineField(task, 'is_main_critical')) ||
-            _timelineField(task, 'assigned_days') != null ||
-            _timelineField(task, 'main_critical_duration') != null ||
-            _timelineField(task, 'assigned_duration_label') != null);
+    final showDuration = durationLabel != null;
 
     return DraggableScrollableSheet(
       initialChildSize: 0.55,

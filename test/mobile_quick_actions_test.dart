@@ -63,7 +63,7 @@ void main() {
           MobileQuickActionSurface.staffHome,
           'gallery',
         ),
-        'Gallery',
+        'Project Gallery',
       );
       expect(
         flutterTitleForMobileQuickAction(
@@ -85,6 +85,32 @@ void main() {
           'documents',
         ),
         'Documents',
+      );
+      expect(
+        flutterTitleForMobileQuickAction(
+          MobileQuickActionSurface.staffHome,
+          'technical_specs',
+        ),
+        'Technical Specs',
+      );
+      expect(
+        flutterTitleForMobileQuickAction(
+          MobileQuickActionSurface.projectHomeNew,
+          'technical_specs',
+        ),
+        'Technical Specs',
+      );
+      expect(canonicalizeMobileQuickActionKey('technical_specs'), 'technical_specs');
+      expect(canonicalizeMobileQuickActionKey('agreement_annexure'), 'technical_specs');
+    });
+
+    test('old project home includes the client timeline action', () {
+      expect(
+        flutterTitleForMobileQuickAction(
+          MobileQuickActionSurface.projectHomeOld,
+          'project_timeline',
+        ),
+        'Project Timeline',
       );
     });
 
@@ -243,7 +269,7 @@ void main() {
   group('resolveMobileQuickActions', () {
     final newHomeCatalog = [
       _item('Client Portal'),
-      _item('Gallery'),
+      _item('Project Gallery'),
       _item('Payments'),
       _item('Documents'),
       _item('Upload proof'),
@@ -318,6 +344,21 @@ void main() {
       expect(result.map((e) => e['title']), ['Slots', 'Stock Report']);
     });
 
+    test('For me hides the extra Documents quick action', () {
+      final result = withoutLegacyDocumentsQuickActions([
+        _item('Client Portal'),
+        _item('Indents'),
+        _item('Payments'),
+        _item('Documents'),
+        _item('Documents V1'),
+        _item('Scheduler'),
+      ]);
+      expect(
+        result.map((e) => e['title']),
+        ['Client Portal', 'Indents', 'Payments', 'Scheduler'],
+      );
+    });
+
     test('honors backend order and skips unknown keys', () {
       final result = resolveMobileQuickActions(
         surface: MobileQuickActionSurface.projectHomeNew,
@@ -336,7 +377,7 @@ void main() {
       );
       expect(
         result.map((e) => e['title']),
-        ['Gallery', 'Payments', 'Documents'],
+        ['Project Gallery', 'Payments', 'Documents'],
       );
     });
 
@@ -372,7 +413,7 @@ void main() {
       final staffCatalog = [
         _item('Projects'),
         _item('Attendance'),
-        _item('Gallery'),
+        _item('Project Gallery'),
         _item('Payments'),
       ];
       final hardcoded = [_item('Projects'), _item('Attendance')];
@@ -386,7 +427,7 @@ void main() {
           actionKeys: ['gallery', 'attendance', 'future_action'],
         ),
       );
-      expect(result.map((e) => e['title']), ['Gallery', 'Attendance']);
+      expect(result.map((e) => e['title']), ['Project Gallery', 'Attendance']);
     });
 
     test('staff home and project home mappings stay isolated', () {
@@ -401,7 +442,7 @@ void main() {
           actionKeys: ['attendance', 'projects', 'gallery'],
         ),
       );
-      expect(projectResult.map((e) => e['title']), ['Gallery']);
+      expect(projectResult.map((e) => e['title']), ['Project Gallery']);
 
       final staffResult = resolveMobileQuickActions(
         surface: MobileQuickActionSurface.staffHome,

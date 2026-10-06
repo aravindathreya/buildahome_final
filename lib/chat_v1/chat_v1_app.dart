@@ -18,7 +18,10 @@ import 'widgets/chat_v1_opening_splash.dart';
 class ChatV1App extends StatefulWidget {
   final String? salesSopId;
 
-  const ChatV1App({super.key, this.salesSopId});
+  /// When set, the project chat list opens this conversation immediately.
+  final Map<String, dynamic>? openConversation;
+
+  const ChatV1App({super.key, this.salesSopId, this.openConversation});
 
   /// Sync open — no network await before the route pushes.
   /// Prefer this from menus so Chat appears immediately (with open splash).
@@ -27,12 +30,12 @@ class ChatV1App extends StatefulWidget {
     Map<String, dynamic>? project,
     Iterable<dynamic>? tasksHint,
     bool withSplash = true,
+    Map<String, dynamic>? openConversation,
   }) {
     final dp = DataProvider();
-    // Prefer last successful chat session, then DataProvider memory.
-    String? sopId = ChatV1Controller.instance.salesSopId ?? dp.clientSalesSopId;
-
-    if ((sopId == null || sopId.isEmpty) && project != null) {
+    // A project passed in (staff picker) wins over the last chat session.
+    String? sopId;
+    if (project != null) {
       for (final key in const [
         'sales_sop_id',
         'salesSopId',
@@ -40,19 +43,6 @@ class ChatV1App extends StatefulWidget {
         'sopId',
       ]) {
         final v = project[key]?.toString().trim();
-        if (v != null && v.isNotEmpty && v.toLowerCase() != 'null') {
-          sopId = v;
-          break;
-        }
-      }
-    }
-
-    if ((sopId == null || sopId.isEmpty) && tasksHint != null) {
-      for (final task in tasksHint) {
-        if (task is! Map) continue;
-        final v = (task['sales_sop_id'] ?? task['salesSopId'])
-            ?.toString()
-            .trim();
         if (v != null && v.isNotEmpty && v.toLowerCase() != 'null') {
           sopId = v;
           break;
@@ -74,8 +64,26 @@ class ChatV1App extends StatefulWidget {
       }
     }
 
+    sopId ??= ChatV1Controller.instance.salesSopId ?? dp.clientSalesSopId;
+
+    if ((sopId == null || sopId.isEmpty) && tasksHint != null) {
+      for (final task in tasksHint) {
+        if (task is! Map) continue;
+        final v = (task['sales_sop_id'] ?? task['salesSopId'])
+            ?.toString()
+            .trim();
+        if (v != null && v.isNotEmpty && v.toLowerCase() != 'null') {
+          sopId = v;
+          break;
+        }
+      }
+    }
+
     print('[ChatV1App] openQuick sales_sop_id=$sopId (sync, no await)');
-    final app = ChatV1App(salesSopId: sopId);
+    final app = ChatV1App(
+      salesSopId: sopId,
+      openConversation: openConversation,
+    );
     if (!withSplash) return app;
     return ChatV1OpenSplash(child: app);
   }
@@ -172,6 +180,7 @@ class _ChatV1AppState extends State<ChatV1App> {
       child: Builder(
         builder: (context) => ChatV1HomeScreen(
           salesSopId: widget.salesSopId,
+          openConversation: widget.openConversation,
           onOpenChat: (item) => _openChat(context, item),
           onOpenSearch: () => _open(context, const ChatV1SearchScreen()),
         ),

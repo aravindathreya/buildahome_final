@@ -24,6 +24,7 @@ import 'indents_screen.dart';
 import 'indent_proof.dart';
 import 'models/approved_po.dart';
 import 'services/api_base.dart';
+import 'services/client_portal_service.dart';
 import 'services/api_http.dart';
 import 'services/approved_po_service.dart';
 import 'services/data_provider.dart';
@@ -149,28 +150,6 @@ bool isClientUploadStagePaymentProofTask(Map task) {
         normalized.contains('client_upload_stage_payment_proof')) {
       return true;
     }
-  }
-  return false;
-}
-
-/// Synthetic dashboard task when tender + non-tender outstanding > 0.
-const String kClearOutstandingPaymentTaskId = 'clear_outstanding_payment';
-const String kClearOutstandingPaymentCategory =
-    'client_clear_outstanding_payment';
-
-bool isClearOutstandingPaymentTask(Map task) {
-  final id = task['id']?.toString().trim() ?? '';
-  if (id == kClearOutstandingPaymentTaskId) return true;
-  for (final key in const [
-    'task_category',
-    'category',
-    'erp_category',
-    'source_erp_category',
-  ]) {
-    final raw = task[key]?.toString().trim().toLowerCase() ?? '';
-    if (raw.isEmpty) continue;
-    final normalized = raw.replaceAll(RegExp(r'[\s-]+'), '_');
-    if (normalized == kClearOutstandingPaymentCategory) return true;
   }
   return false;
 }
@@ -374,16 +353,25 @@ String? mainCriticalDurationLabel(Map task) {
 
   final isMainCritical = truthy(task['is_main_critical']);
   final label = clean(task['assigned_duration_label']);
-  if (label != null && (isMainCritical || task['assigned_days'] != null)) {
+  if (label != null &&
+      (isMainCritical ||
+          task['assigned_days'] != null ||
+          task['duration_days'] != null)) {
     return label;
   }
-  if (!isMainCritical && label == null) return null;
+  if (!isMainCritical &&
+      label == null &&
+      clean(task['assigned_days']) == null &&
+      clean(task['duration_days']) == null &&
+      clean(task['main_critical_duration']) == null) {
+    return null;
+  }
 
   final amount = clean(task['main_critical_duration']);
   final unit = clean(task['main_critical_duration_unit']);
   if (amount != null && unit != null) return '$amount $unit';
 
-  final days = clean(task['assigned_days']);
+  final days = clean(task['assigned_days']) ?? clean(task['duration_days']);
   if (days != null) {
     final parsed = double.tryParse(days);
     if (parsed == null) return '$days days';
@@ -2613,6 +2601,7 @@ class _TaskCardState extends State<_TaskCard> {
   bool _isUpdatingStatus = false;
   bool _isDeleting = false;
   bool _isSwipeCompleting = false;
+  bool _isApprovingNtBill = false;
   String? _currentUserId;
   String? _currentUserRole;
 
@@ -2639,14 +2628,41 @@ class _TaskCardState extends State<_TaskCard> {
   bool get _showPaymentProofMenu =>
       _isClientUser && isClientUploadStagePaymentProofTask(_task);
 
+
+  Future<void> _approveNtBill() async {
+    if (_isApprovingNtBill) return;
+    final note = _task['note']?.toString() ?? '';
+    final billingId = billingTaskIdFromClientApproveNtNote(note);
+    final erpId = _task['id']?.toString() ?? '';
+    setState(() => _isApprovingNtBill = true);
+    try {
+      await ClientPortalService().approveNtBill(
+        billingTaskId: billingId,
+        erpTaskId: erpId,
+      );
+      if (!mounted) return;
+      setState(() {
+        _task = Map<String, dynamic>.from(_task)..['status'] = 'completed';
+      });
+      await widget.onWorkflowTaskFinished?.call(erpId);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e.toString()),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _isApprovingNtBill = false);
+    }
+  }
+
   Future<void> _openPaymentProofScreen() async {
     if (!mounted) return;
     await Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => const UploadPaymentProofScreen(
-          showPendingPayments: true,
-          allowUpload: true,
-        ),
+        builder: (_) => const UploadPaymentProofScreen(),
       ),
     );
   }
@@ -2821,7 +2837,13 @@ class _TaskCardState extends State<_TaskCard> {
     final statusLabel = workflowStatusDisplayLabel(task);
     final workflowActions =
         filterVisibleWorkflowActions(task, _workflowActions);
-    final title = workflowTaskDisplayTitle(task);
+    final paymentProofTask = isClientUploadStagePaymentProofTask(task);
+    final approveNtBillTask = isClientApproveNtBillTask(task);
+    final title = paymentProofTask
+        ? clientUploadStagePaymentProofCardTitle(task)
+        : approveNtBillTask
+            ? clientApproveNtBillCardTitle(task)
+            : workflowTaskDisplayTitle(task);
     final uploadedPhotos = _uploadedPhotos;
     final showApprovalButtons = shouldShowWorkflowApprovalButtons(task);
     final completeAction = _findSwipeCompleteAction(workflowActions);
@@ -2923,6 +2945,23 @@ class _TaskCardState extends State<_TaskCard> {
           ),
         ],
       ],
+      if (_isClientUser &&
+          approveNtBillTask &&
+          !kCompletedTaskStatuses.contains(status)) ...[
+        const SizedBox(height: 10),
+        Text(
+          'NT bill raised. Please check and approve.',
+          style: TextStyle(color: kTaskMuted, fontSize: 13),
+        ),
+        const SizedBox(height: 8),
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton(
+            onPressed: _isApprovingNtBill ? null : _approveNtBill,
+            child: Text(_isApprovingNtBill ? 'Approving...' : 'Approve'),
+          ),
+        ),
+      ],
     ];
 
     final materialLabel = indentTaskMaterialLabel(task);
@@ -2932,7 +2971,11 @@ class _TaskCardState extends State<_TaskCard> {
       projectName: projectName,
       materialLabel: materialLabel,
       assigneeName: assignedToName,
-      dateLabel: createdAt.isNotEmpty ? _formatDate(createdAt) : null,
+      dateLabel: createdAt.isNotEmpty
+          ? (paymentProofTask || approveNtBillTask
+              ? formatErpCreatedAtIst(createdAt)
+              : _formatDate(createdAt))
+          : null,
       durationLabel: mainCriticalDurationLabel(task),
       // Delayed → pending/scheduled chip styling, never Ready.
       status: delayGated ? 'pending' : status,

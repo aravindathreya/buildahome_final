@@ -57,7 +57,6 @@ import 'widgets/buildahome_brand_row.dart';
 import 'AttendanceScreen.dart';
 import 'Payments.dart';
 import 'Scheduler.dart';
-import 'Gallery.dart' hide TimelineGallery;
 import 'TimelineGallery.dart';
 import 'chat_v1/chat_v1_app.dart';
 import 'RequestDrawing.dart';
@@ -692,10 +691,8 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
         await openSiteVisits();
         return;
       case 'gallery':
-        // Project photos live in Timeline Gallery. The catalog "Gallery" row
-        // still opens the older migrated-files screen from quick actions.
         await _handleMenuTap(context, {
-          'title': 'Gallery',
+          'title': 'Project Gallery',
           'icon': Icons.photo_library,
           'route': () => _routeForCurrentProject(() => const TimelineGallery()),
         });
@@ -1143,6 +1140,14 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
       'route': () => Notifications(),
     });
 
+    if (currentUserRole != 'Client') {
+      menuItems.add({
+        'title': 'Chat',
+        'icon': Icons.forum_rounded,
+        'route': () => _openStaffChatPicker(),
+      });
+    }
+
     if (MobileLiveTestAccess.canEnable(currentUserRole)) {
       menuItems.add({
         'title': MobileLiveTestAccess.menuTitle,
@@ -1328,9 +1333,9 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
         route: () => _routeForCurrentProject(() => const TaskWidget()),
       ),
       _quickActionTile(
-        title: 'Gallery',
+        title: 'Project Gallery',
         icon: Icons.photo_library,
-        route: () => _routeForCurrentProject(() => Gallery()),
+        route: () => _routeForCurrentProject(() => const TimelineGallery()),
       ),
       _quickActionTile(
         title: 'Request Drawings',
@@ -1424,6 +1429,31 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
     return next;
   }
 
+  /// Staff home always gets Chat beside Alerts, even when the backend list omits it.
+  List<Map<String, dynamic>> _ensureStaffChatQuickAction(
+    List<Map<String, dynamic>> items,
+  ) {
+    if (currentUserRole == 'Client') return items;
+    if (items.any((item) => item['title'] == 'Chat')) return items;
+    final tile = <String, dynamic>{
+      'title': 'Chat',
+      'icon': Icons.forum_rounded,
+      'route': () => _openStaffChatPicker(),
+    };
+    final next = List<Map<String, dynamic>>.from(items);
+    final alerts = next.indexWhere((item) => item['title'] == 'My Notifications');
+    if (alerts >= 0) {
+      next.insert(alerts + 1, tile);
+    } else {
+      next.add(tile);
+    }
+    return next;
+  }
+
+  Future<void> _openStaffChatPicker() {
+    return ProjectPickerScreen.show(context, forChat: true);
+  }
+
   List<Map<String, dynamic>> _visibleQuickActions(
       List<Map<String, dynamic>> items,
       {int max = 8}) {
@@ -1455,15 +1485,19 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
       snapshot: snapshot,
     );
     final usingBackend = snapshot?.configured == true;
-    final allQuickActions = _ensureDailyUpdateQuickAction(
-      usingBackend ? resolvedActions : fallbackItems,
-      catalogItems,
+    final allQuickActions = _ensureStaffChatQuickAction(
+      _ensureDailyUpdateQuickAction(
+        usingBackend ? resolvedActions : fallbackItems,
+        catalogItems,
+      ),
     );
-    final visibleActions = _ensureDailyUpdateQuickAction(
-      usingBackend
-          ? resolvedActions.take(8).toList()
-          : _visibleQuickActions(fallbackItems),
-      catalogItems,
+    final visibleActions = _ensureStaffChatQuickAction(
+      _ensureDailyUpdateQuickAction(
+        usingBackend
+            ? resolvedActions.take(8).toList()
+            : _visibleQuickActions(fallbackItems),
+        catalogItems,
+      ),
     );
     final totalProjects = projects.length;
     final pendingCount = _tasks.where((task) {
@@ -2071,7 +2105,7 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
       case 'Mobile Live Test':
         return 'Live Test';
       case 'Client Portal':
-        return 'Portal';
+        return 'Docs';
       case 'Project Timeline':
         return 'Timeline';
       case 'Request Drawings':
@@ -2125,6 +2159,7 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
       case 'ChatBox':
         return Icons.chat_bubble_rounded;
       case 'Chat V1':
+      case 'Chat':
         return Icons.forum_rounded;
       case 'Project Status':
         return Icons.flag_rounded;
@@ -2147,6 +2182,7 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
         return Icons.folder_copy_rounded;
       case 'Scheduler':
         return Icons.calendar_today_rounded;
+      case 'Project Gallery':
       case 'Gallery':
         return Icons.photo_library_rounded;
       case 'Request Drawings':

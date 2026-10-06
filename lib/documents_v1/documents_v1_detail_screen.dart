@@ -5,154 +5,18 @@ import '../client_portal/client_portal_document_ui.dart';
 import '../models/workflow_document.dart';
 import '../widgets/workflow_document_viewer.dart';
 
-class DocumentsV1DetailScreen extends StatefulWidget {
+class DocumentsV1DetailScreen extends StatelessWidget {
   final WorkflowDocumentUpload document;
-  final List<WorkflowDocumentUpload> allRevisions;
   final bool clientMode;
   final String? categoryLabel;
+  final String? viewerRole;
 
   const DocumentsV1DetailScreen({
     super.key,
     required this.document,
-    required this.allRevisions,
     this.clientMode = false,
     this.categoryLabel,
-  });
-
-  @override
-  State<DocumentsV1DetailScreen> createState() =>
-      _DocumentsV1DetailScreenState();
-}
-
-class _DocumentsV1DetailScreenState extends State<DocumentsV1DetailScreen>
-    with SingleTickerProviderStateMixin {
-  late final TabController _tabController;
-
-  @override
-  void initState() {
-    super.initState();
-    _tabController = TabController(length: 3, vsync: this);
-  }
-
-  @override
-  void dispose() {
-    _tabController.dispose();
-    super.dispose();
-  }
-
-  List<WorkflowDocumentUpload> get _revisions {
-    final sorted = [...widget.allRevisions];
-    sorted.sort((a, b) {
-      final ar = a.revision ?? 0;
-      final br = b.revision ?? 0;
-      if (ar != br) return br.compareTo(ar);
-      return (b.uploadedAt ?? '').compareTo(a.uploadedAt ?? '');
-    });
-    return sorted;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppTheme.getBackgroundPrimary(context),
-      appBar: AppBar(
-        backgroundColor: AppTheme.getBackgroundSecondary(context),
-        foregroundColor: AppTheme.darkTextPrimary,
-        elevation: 0,
-        title: Text(
-          widget.document.displayTitle,
-          style: TextStyle(
-            color: AppTheme.darkTextPrimary,
-            fontSize: 16,
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(66),
-          child: Container(
-            color: AppTheme.getBackgroundSecondary(context),
-            padding: const EdgeInsets.fromLTRB(18, 0, 18, 14),
-            child: Container(
-              height: 48,
-              padding: const EdgeInsets.all(4),
-              decoration: BoxDecoration(
-                color: const Color(0xFF2A2A2D),
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: TabBar(
-                controller: _tabController,
-                indicatorSize: TabBarIndicatorSize.tab,
-                dividerColor: Colors.transparent,
-                splashFactory: NoSplash.splashFactory,
-                overlayColor: WidgetStateProperty.all(Colors.transparent),
-                labelPadding: EdgeInsets.zero,
-                indicator: BoxDecoration(
-                  color: AppTheme.navy,
-                  borderRadius: BorderRadius.circular(11),
-                ),
-                labelColor: Colors.white,
-                unselectedLabelColor: AppTheme.mutedGrey,
-                labelStyle: const TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                ),
-                unselectedLabelStyle: const TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                ),
-                tabs: [
-                  const SizedBox(
-                    height: 40,
-                    child: Center(child: Text('Details')),
-                  ),
-                  SizedBox(
-                    height: 40,
-                    child: Center(
-                      child: Text(
-                        _revisions.length > 1
-                            ? 'Revisions (${_revisions.length})'
-                            : 'Revisions',
-                      ),
-                    ),
-                  ),
-                  const SizedBox(
-                    height: 40,
-                    child: Center(child: Text('Activity')),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-      body: TabBarView(
-        controller: _tabController,
-        children: [
-          _DetailsTab(
-            document: widget.document,
-            clientMode: widget.clientMode,
-            categoryLabel: widget.categoryLabel,
-          ),
-          _RevisionsTab(
-            revisions: _revisions,
-            clientMode: widget.clientMode,
-          ),
-          _ActivityTab(document: widget.document),
-        ],
-      ),
-    );
-  }
-}
-
-class _DetailsTab extends StatelessWidget {
-  final WorkflowDocumentUpload document;
-  final bool clientMode;
-  final String? categoryLabel;
-
-  const _DetailsTab({
-    required this.document,
-    required this.clientMode,
-    this.categoryLabel,
+    this.viewerRole,
   });
 
   @override
@@ -170,86 +34,92 @@ class _DetailsTab extends StatelessWidget {
       isLatest: document.isLatest,
     );
 
-    return ListView(
-      padding: const EdgeInsets.all(20),
-      children: [
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: ClientPortalDocTheme.cardDecoration(),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _DocIcon(document: document, size: 48),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      document.displayTitle,
-                      style: TextStyle(
-                        fontWeight: FontWeight.w800,
-                        color: AppTheme.darkTextPrimary,
-                        fontSize: 15,
-                        height: 1.25,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      categoryLabel ??
-                          document.categoryLabel.ifEmpty(document.sectionLabel),
-                      style: TextStyle(
-                        color: AppTheme.getTextSecondary(context),
-                        fontSize: 12.5,
-                      ),
-                    ),
-                    if (document.displayRevision.isNotEmpty) ...[
-                      const SizedBox(height: 2),
+    return Scaffold(
+      backgroundColor: AppTheme.getBackgroundPrimary(context),
+      appBar: AppBar(
+        backgroundColor: AppTheme.getBackgroundSecondary(context),
+        foregroundColor: AppTheme.darkTextPrimary,
+        elevation: 0,
+        title: Text(
+          document.displayTitle,
+          style: TextStyle(
+            color: AppTheme.darkTextPrimary,
+            fontSize: 16,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(20),
+        children: [
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: ClientPortalDocTheme.cardDecoration(),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _DocIcon(document: document, size: 48),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
                       Text(
-                        document.displayRevision,
+                        document.displayTitle,
+                        style: TextStyle(
+                          fontWeight: FontWeight.w800,
+                          color: AppTheme.darkTextPrimary,
+                          fontSize: 15,
+                          height: 1.25,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        categoryLabel ??
+                            document.categoryLabel.ifEmpty(document.sectionLabel),
                         style: TextStyle(
                           color: AppTheme.getTextSecondary(context),
-                          fontSize: 12,
+                          fontSize: 12.5,
                         ),
                       ),
                     ],
-                  ],
+                  ),
                 ),
-              ),
-              if (document.isLatest ||
-                  document.isVerifiedStatus ||
-                  (document.status?.isNotEmpty == true))
-                ClientPortalStatusBadge(kind: badgeKind),
-            ],
+                if (document.isLatest ||
+                    document.isVerifiedStatus ||
+                    (document.status?.isNotEmpty == true))
+                  ClientPortalStatusBadge(kind: badgeKind),
+              ],
+            ),
           ),
-        ),
-        const SizedBox(height: 16),
-        _InfoTable(document: document, docType: docType),
-        const SizedBox(height: 16),
-        SizedBox(
-          width: double.infinity,
-          child: ElevatedButton.icon(
-            onPressed: document.hasUrl
-                ? () => openWorkflowDocument(
-                      context,
-                      document,
-                      clientMode: clientMode,
-                      relatedDocuments: [document],
-                    )
-                : null,
-            icon: const Icon(Icons.visibility_outlined),
-            label: const Text('View document'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: ClientPortalDocTheme.accentBlue,
-              foregroundColor: Colors.white,
-              minimumSize: const Size.fromHeight(48),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
+          const SizedBox(height: 16),
+          _InfoTable(document: document, docType: docType),
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: document.hasUrl
+                  ? () => openWorkflowDocument(
+                        context,
+                        document,
+                        clientMode: clientMode,
+                        relatedDocuments: [document],
+                      )
+                  : null,
+              icon: const Icon(Icons.visibility_outlined),
+              label: const Text('View document'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: ClientPortalDocTheme.accentBlue,
+                foregroundColor: Colors.white,
+                minimumSize: const Size.fromHeight(48),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
               ),
             ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
@@ -312,8 +182,6 @@ class _InfoTable extends StatelessWidget {
       _InfoRow(Icons.description_outlined, 'Document type', docType),
       if (document.sectionLabel.trim().isNotEmpty)
         _InfoRow(Icons.folder_outlined, 'Section', document.sectionLabel),
-      if (document.displayRevision.isNotEmpty)
-        _InfoRow(Icons.history_rounded, 'Revision', document.displayRevision),
       _InfoRow(
         Icons.flag_outlined,
         'Status',
@@ -322,7 +190,11 @@ class _InfoTable extends StatelessWidget {
       if (document.uploadedBy != null)
         _InfoRow(Icons.person_outline, 'Uploaded by', document.uploadedBy!),
       if (document.uploadedAt != null)
-        _InfoRow(Icons.calendar_today_outlined, 'Uploaded on', document.uploadedAt!),
+        _InfoRow(
+          Icons.calendar_today_outlined,
+          'Uploaded on',
+          document.uploadedAt!,
+        ),
       if (document.fileSize != null)
         _InfoRow(Icons.storage_outlined, 'File size', document.fileSize!),
     ];
@@ -383,177 +255,4 @@ class _InfoRow {
   final String value;
 
   const _InfoRow(this.icon, this.label, this.value);
-}
-
-class _RevisionsTab extends StatelessWidget {
-  final List<WorkflowDocumentUpload> revisions;
-  final bool clientMode;
-
-  const _RevisionsTab({
-    required this.revisions,
-    required this.clientMode,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    if (revisions.isEmpty) {
-      return Center(
-        child: Text(
-          'No revision history yet.',
-          style: TextStyle(color: AppTheme.getTextSecondary(context)),
-        ),
-      );
-    }
-
-    return ListView(
-      padding: const EdgeInsets.all(20),
-      children: [
-        const ClientPortalInfoBanner(
-          message:
-              'Only the latest revision is used for construction. Older revisions are shown for reference.',
-        ),
-        const SizedBox(height: 12),
-        ...revisions.map((revision) {
-          final badgeKind = ClientPortalStatusBadge.fromStatus(
-            revision.status,
-            isLatest: revision.isLatest,
-          );
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: Material(
-              color: ClientPortalDocTheme.cardBackground,
-              borderRadius: BorderRadius.circular(ClientPortalDocTheme.cardRadius),
-              child: InkWell(
-                onTap: revision.hasUrl
-                    ? () => openWorkflowDocument(
-                          context,
-                          revision,
-                          clientMode: clientMode,
-                          relatedDocuments: revisions,
-                        )
-                    : null,
-                borderRadius:
-                    BorderRadius.circular(ClientPortalDocTheme.cardRadius),
-                child: Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: ClientPortalDocTheme.cardDecoration(),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              revision.displayRevision.isNotEmpty
-                                  ? revision.displayRevision
-                                  : revision.displayTitle,
-                              style: TextStyle(
-                                fontWeight: FontWeight.w800,
-                                color: AppTheme.darkTextPrimary,
-                                fontSize: 14,
-                              ),
-                            ),
-                            if (revision.uploadedAt != null) ...[
-                              const SizedBox(height: 2),
-                              Text(
-                                revision.uploadedAt!,
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: AppTheme.getTextSecondary(context),
-                                ),
-                              ),
-                            ],
-                            if (revision.uploadedBy != null) ...[
-                              const SizedBox(height: 2),
-                              Text(
-                                revision.uploadedBy!,
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: AppTheme.getTextSecondary(context),
-                                ),
-                              ),
-                            ],
-                            if (revision.fileSize != null) ...[
-                              const SizedBox(height: 2),
-                              Text(
-                                revision.fileSize!,
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: AppTheme.getTextSecondary(context),
-                                ),
-                              ),
-                            ],
-                          ],
-                        ),
-                      ),
-                      ClientPortalStatusBadge(kind: badgeKind),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          );
-        }),
-      ],
-    );
-  }
-}
-
-class _ActivityTab extends StatelessWidget {
-  final WorkflowDocumentUpload document;
-
-  const _ActivityTab({required this.document});
-
-  @override
-  Widget build(BuildContext context) {
-    final activity = document.activity;
-    if (activity.isEmpty) {
-      return Center(
-        child: Text(
-          'No activity recorded yet.',
-          style: TextStyle(color: AppTheme.getTextSecondary(context)),
-        ),
-      );
-    }
-
-    return ListView.separated(
-      padding: const EdgeInsets.all(20),
-      itemCount: activity.length,
-      separatorBuilder: (_, __) => const SizedBox(height: 8),
-      itemBuilder: (context, index) {
-        final item = activity[index];
-        final title = item['title']?.toString() ??
-            item['action']?.toString() ??
-            item['message']?.toString() ??
-            'Activity';
-        final subtitle = item['timestamp']?.toString() ??
-            item['created_at']?.toString() ??
-            item['user_name']?.toString();
-        return Container(
-          padding: const EdgeInsets.all(12),
-          decoration: ClientPortalDocTheme.cardDecoration(),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                title,
-                style: TextStyle(
-                  fontWeight: FontWeight.w700,
-                  color: AppTheme.darkTextPrimary,
-                ),
-              ),
-              if (subtitle != null)
-                Text(
-                  subtitle,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: AppTheme.getTextSecondary(context),
-                  ),
-                ),
-            ],
-          ),
-        );
-      },
-    );
-  }
 }

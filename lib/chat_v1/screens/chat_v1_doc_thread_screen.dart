@@ -1,8 +1,12 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../services/data_provider.dart';
 import '../chat_v1_api.dart';
+import '../chat_v1_controller.dart';
+import '../chat_v1_doc_clarification.dart';
 import '../chat_v1_doc_store.dart';
 import '../chat_v1_models.dart';
 import '../chat_v1_theme.dart';
@@ -33,12 +37,29 @@ class _ChatV1DocThreadScreenState extends State<ChatV1DocThreadScreen> {
   ChatV1DocRequest? _doc;
   bool _loading = true;
   bool _sending = false;
+  bool _asking = false;
+  bool _isClient =
+      (DataProvider().currentRole ?? '').trim().toLowerCase() == 'client';
   String? _error;
 
   @override
   void initState() {
     super.initState();
+    _resolveRole();
     _load();
+  }
+
+  Future<void> _resolveRole() async {
+    final cached = (DataProvider().currentRole ?? '').trim();
+    if (cached.isNotEmpty) {
+      if (!mounted) return;
+      setState(() => _isClient = cached.toLowerCase() == 'client');
+      return;
+    }
+    final prefs = await SharedPreferences.getInstance();
+    final role = (prefs.getString('role') ?? '').trim().toLowerCase();
+    if (!mounted) return;
+    setState(() => _isClient = role == 'client');
   }
 
   @override
@@ -115,6 +136,88 @@ class _ChatV1DocThreadScreenState extends State<ChatV1DocThreadScreen> {
       );
     } catch (e) {
       if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+      );
+    }
+  }
+
+  Future<void> _askClarification() async {
+    final doc = _doc;
+    if (doc == null || !_isClient || _asking) return;
+    if (doc.status != ChatV1DocStatus.pending) return;
+    setState(() => _asking = true);
+    try {
+      final sop = (doc.salesSopId ?? widget.salesSopId).trim();
+      final ctrl = ChatV1Controller.instance;
+      var people = <DocClarificationPerson>[];
+      if (sop.isNotEmpty &&
+          ctrl.salesSopId == sop &&
+          ctrl.members.isNotEmpty) {
+        people = [
+          for (final member in ctrl.members)
+            DocClarificationPerson(
+              userId: member.id,
+              name: member.name,
+              role: member.role,
+            ),
+        ];
+      }
+      if (buildDocClarificationDraft(people: people, description: doc.description)
+              .userIds
+              .isEmpty &&
+          sop.isNotEmpty) {
+        final rows = await _api.listMembers(sop);
+        people = docClarificationPeopleFromRows(rows);
+      }
+      final draft = buildDocClarificationDraft(
+        people: people,
+        description: doc.description,
+      );
+      if (!draft.hasTags) {
+        throw ChatV1ApiException(
+          'Could not find the Project Coordinator or Assistant Project Coordinator for this project.',
+        );
+      }
+      final msg = await _store.sendMessage(
+        doc.id,
+        body: draft.body,
+        mentionedUserIds: draft.userIds,
+      );
+      if (!mounted) return;
+      setState(() {
+        final msgs = [...doc.messages, msg];
+        _doc = doc.copyWith(
+          messages: msgs,
+          messageCount: msgs.length,
+          updatedAt: DateTime.now(),
+        );
+        _asking = false;
+      });
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final pin = _stickKey.currentState;
+        if (pin != null) {
+          pin.jumpToEnd(animate: true);
+          return;
+        }
+        if (_scroll.hasClients) {
+          _scroll.animateTo(
+            _scroll.position.maxScrollExtent,
+            duration: const Duration(milliseconds: 220),
+            curve: Curves.easeOut,
+          );
+        }
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Asked the Project Coordinator and Assistant Project Coordinator for clarification',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _asking = false);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
       );
@@ -414,6 +517,24 @@ class _ChatV1DocThreadScreenState extends State<ChatV1DocThreadScreen> {
                 child: const Text('Approved'),
               ),
             ),
+          if (_isClient && doc.status == ChatV1DocStatus.pending) ...[
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton(
+                onPressed: _asking ? null : _askClarification,
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: const Color(0xFF0EA5E9),
+                  side: const BorderSide(color: Color(0xFF0EA5E9)),
+                  minimumSize: const Size.fromHeight(44),
+                ),
+                child: Text(
+                  _asking ? 'Sending…' : 'Ask for clarification',
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -454,6 +575,33 @@ class _ChatV1DocThreadScreenState extends State<ChatV1DocThreadScreen> {
     );
   }
 
+  Widget _messageBody(BuildContext context, String body) {
+    final base = TextStyle(
+      color: ChatV1Theme.text(context),
+      fontSize: 14.5,
+      height: 1.35,
+    );
+    final mention = RegExp(r'@([^\s@.,!?;:]+)');
+    if (!mention.hasMatch(body)) return Text(body, style: base);
+    final mentionStyle = base.copyWith(
+      color: const Color(0xFF0B5CAB),
+      fontWeight: FontWeight.w700,
+    );
+    final spans = <InlineSpan>[];
+    var index = 0;
+    for (final match in mention.allMatches(body)) {
+      if (match.start > index) {
+        spans.add(TextSpan(text: body.substring(index, match.start)));
+      }
+      spans.add(TextSpan(text: match.group(0), style: mentionStyle));
+      index = match.end;
+    }
+    if (index < body.length) {
+      spans.add(TextSpan(text: body.substring(index)));
+    }
+    return Text.rich(TextSpan(style: base, children: spans));
+  }
+
   Widget _bubble(ChatV1DocMessage msg) {
     final mine = msg.own;
     return Align(
@@ -492,14 +640,7 @@ class _ChatV1DocThreadScreenState extends State<ChatV1DocThreadScreen> {
                   ),
                 ),
               ),
-            Text(
-              msg.body,
-              style: TextStyle(
-                color: ChatV1Theme.text(context),
-                fontSize: 14.5,
-                height: 1.35,
-              ),
-            ),
+            _messageBody(context, msg.body),
             if (msg.attachments.isNotEmpty) ...[
               const SizedBox(height: 6),
               ...msg.attachments.map((att) {

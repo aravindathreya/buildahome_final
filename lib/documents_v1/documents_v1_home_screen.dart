@@ -1,11 +1,14 @@
 import 'dart:async';
 
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../app_theme.dart';
 import '../client_portal/client_portal_document_ui.dart';
 import '../models/workflow_document.dart';
+import '../services/document_role_access.dart';
 import '../services/mobile_documents.dart';
 import '../services/mobile_documents_service.dart';
 import '../services/workflow_document_service.dart';
@@ -34,6 +37,7 @@ class _DocumentsV1HomeScreenState extends State<DocumentsV1HomeScreen>
   String? _appliedProjectId;
   bool _usingBackend = false;
   int _loadSeq = 0;
+  String? _viewerRole;
   final _searchCtrl = TextEditingController();
 
   MobileDocumentsService get _docs => MobileDocumentsService.instance;
@@ -61,6 +65,7 @@ class _DocumentsV1HomeScreenState extends State<DocumentsV1HomeScreen>
 
   Future<String> _currentProjectId() async {
     final prefs = await SharedPreferences.getInstance();
+    _viewerRole = prefs.getString('role');
     return (prefs.getString('project_id') ?? '').trim();
   }
 
@@ -149,12 +154,11 @@ class _DocumentsV1HomeScreenState extends State<DocumentsV1HomeScreen>
   }
 
   List<WorkflowDocumentCategory> get _visibleCategories {
-    final source = (_library?.libraryCategories ?? const [])
-        .where((category) => !isUncategorizedDocumentCategory(category))
-        .toList();
-    final filtered = widget.clientMode
-        ? withoutAreaStatementCategories(source)
-        : source;
+    final filtered = filterDocumentCategoriesForRole(
+      _library?.libraryCategories ?? const [],
+      _viewerRole,
+      clientMode: widget.clientMode,
+    );
     return filterWorkflowCategoriesBySearch(filtered, _searchCtrl.text);
   }
 
@@ -245,6 +249,7 @@ class _DocumentsV1HomeScreenState extends State<DocumentsV1HomeScreen>
                                             DocumentsV1CategoryScreen(
                                           category: category,
                                           clientMode: widget.clientMode,
+                                          viewerRole: _viewerRole,
                                         ),
                                       ),
                                     ),
@@ -260,14 +265,83 @@ class _DocumentsV1HomeScreenState extends State<DocumentsV1HomeScreen>
   }
 }
 
+/// Opens a section's file page. One document (or several revisions of the
+/// same file) skips the extra list and goes straight to the file screen.
+void openDocumentsV1Section(
+  BuildContext context, {
+  required String categoryLabel,
+  required WorkflowDocumentSection section,
+  bool clientMode = false,
+  String? viewerRole,
+}) {
+  final hideArea =
+      forMeDocRoleBucket(viewerRole) == ForMeDocRoleBucket.client ||
+          usesClientDocumentCatalog(viewerRole) ||
+          (clientMode && forMeDocRoleBucket(viewerRole) == ForMeDocRoleBucket.other);
+  var docs = section.documents;
+  if (hideArea) {
+    docs = docs.where((doc) => !doc.isAreaStatement).toList();
+  }
+  docs = docs
+      .where(
+        (doc) => documentAccessForUpload(
+          catalogVisibilityRole(viewerRole),
+          doc,
+        ).view,
+      )
+      .toList();
+
+  final uniqueKeys = docs
+      .map((doc) => doc.documentKey.trim().isEmpty ? doc.id : doc.documentKey)
+      .toSet();
+
+  if (docs.isEmpty || uniqueKeys.length > 1) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => DocumentsV1ListScreen(
+          categoryLabel: categoryLabel,
+          section: section.copyWithDocuments(docs),
+          clientMode: clientMode,
+          viewerRole: viewerRole,
+        ),
+      ),
+    );
+    return;
+  }
+
+  final keyed = List<WorkflowDocumentUpload>.from(docs);
+  keyed.sort((a, b) {
+    if (a.isLatest != b.isLatest) return a.isLatest ? -1 : 1;
+    final ar = a.revision ?? 0;
+    final br = b.revision ?? 0;
+    return br.compareTo(ar);
+  });
+  final doc = keyed.first;
+
+  Navigator.push(
+    context,
+    MaterialPageRoute(
+      builder: (_) => DocumentsV1DetailScreen(
+        document: doc,
+        clientMode: clientMode,
+        categoryLabel: categoryLabel,
+        viewerRole: viewerRole,
+      ),
+    ),
+  );
+}
+
 class DocumentsV1CategoryScreen extends StatefulWidget {
   final WorkflowDocumentCategory category;
   final bool clientMode;
+  final String? viewerRole;
 
   const DocumentsV1CategoryScreen({
     super.key,
     required this.category,
     this.clientMode = false,
+    this.viewerRole,
   });
 
   @override
@@ -278,11 +352,19 @@ class DocumentsV1CategoryScreen extends StatefulWidget {
 class _DocumentsV1CategoryScreenState extends State<DocumentsV1CategoryScreen>
     with _DebouncedSearchRebuild {
   final _searchCtrl = TextEditingController();
+  String? _viewerRole;
 
   @override
   void initState() {
     super.initState();
+    _viewerRole = widget.viewerRole;
     _searchCtrl.addListener(_onDebouncedSearch);
+    if (_viewerRole == null) {
+      SharedPreferences.getInstance().then((prefs) {
+        if (!mounted) return;
+        setState(() => _viewerRole = prefs.getString('role'));
+      });
+    }
   }
 
   @override
@@ -292,18 +374,21 @@ class _DocumentsV1CategoryScreenState extends State<DocumentsV1CategoryScreen>
     super.dispose();
   }
 
-  WorkflowDocumentCategory get _category => widget.clientMode
-      ? withoutAreaStatementDocuments(
-          widget.category,
-          dropEmptySections: false,
-        )
-      : widget.category;
+  WorkflowDocumentCategory get _category {
+    final filtered = filterDocumentCategoriesForRole(
+      [widget.category],
+      _viewerRole,
+      clientMode: widget.clientMode,
+    );
+    return filtered.isEmpty ? widget.category.copyWithSections(const []) : filtered.first;
+  }
 
-  bool get _clientArchitecturalGrouped =>
-      widget.clientMode && isArchitecturalDocumentCategory(_category);
+  /// Same Final / Revisions layout for Client and internal roles.
+  bool get _architecturalGrouped =>
+      isArchitecturalDocumentCategory(_category);
 
   List<WorkflowDocumentSection> get _filteredSections {
-    if (_clientArchitecturalGrouped) {
+    if (_architecturalGrouped) {
       return clientPortalArchitecturalSections(
         _category,
         _searchCtrl.text,
@@ -358,7 +443,7 @@ class _DocumentsV1CategoryScreenState extends State<DocumentsV1CategoryScreen>
                   ),
                   const SizedBox(height: 16),
                   if (sections.isEmpty ||
-                      (_clientArchitecturalGrouped &&
+                      (_architecturalGrouped &&
                           sections.every((s) => s.documents.isEmpty) &&
                           _searchCtrl.text.trim().isNotEmpty))
                     Padding(
@@ -377,15 +462,12 @@ class _DocumentsV1CategoryScreenState extends State<DocumentsV1CategoryScreen>
                         padding: const EdgeInsets.only(bottom: 10),
                         child: ClientPortalSectionCard(
                           section: section,
-                          onTap: () => Navigator.push(
+                          onTap: () => openDocumentsV1Section(
                             context,
-                            MaterialPageRoute(
-                              builder: (_) => DocumentsV1ListScreen(
-                                categoryLabel: category.label,
-                                section: section,
-                                clientMode: widget.clientMode,
-                              ),
-                            ),
+                            categoryLabel: category.label,
+                            section: section,
+                            clientMode: widget.clientMode,
+                            viewerRole: _viewerRole,
                           ),
                         ),
                       ),
@@ -401,12 +483,14 @@ class DocumentsV1ListScreen extends StatefulWidget {
   final String categoryLabel;
   final WorkflowDocumentSection section;
   final bool clientMode;
+  final String? viewerRole;
 
   const DocumentsV1ListScreen({
     super.key,
     required this.categoryLabel,
     required this.section,
     this.clientMode = false,
+    this.viewerRole,
   });
 
   @override
@@ -418,6 +502,8 @@ class _DocumentsV1ListScreenState extends State<DocumentsV1ListScreen>
   final _searchCtrl = TextEditingController();
   int _filterIndex = 1;
   ClientPortalDocumentSort _sort = ClientPortalDocumentSort.newest;
+  String? _viewerRole;
+  bool _mutating = false;
 
   bool get _isQualityCategory =>
       widget.categoryLabel.toLowerCase().contains('quality');
@@ -428,9 +514,8 @@ class _DocumentsV1ListScreenState extends State<DocumentsV1ListScreen>
       widget.section.clientJourneyKey?.contains('design') == true ||
       widget.section.clientJourneyKey?.contains('floor_plan') == true;
 
-  /// For me Architectural Final/Revisions — no All/Latest/Others.
-  bool get _clientArchitecturalGroupedList {
-    if (!widget.clientMode) return false;
+  /// Final / Revisions layout for Client and internal roles.
+  bool get _architecturalGroupedList {
     if (isClientPortalArchitecturalGroupedSection(widget.section)) {
       return true;
     }
@@ -439,17 +524,30 @@ class _DocumentsV1ListScreenState extends State<DocumentsV1ListScreen>
         category.contains('architecture');
   }
 
-  bool get _clientArchitecturalRevisionsList {
+  bool get _architecturalRevisionsList {
     final id = widget.section.id.trim().toLowerCase();
     final label = widget.section.label.trim().toLowerCase();
-    return _clientArchitecturalGroupedList &&
+    return _architecturalGroupedList &&
         (id == 'revisions' || label == 'revisions');
   }
+
+  bool get _hideAreaStatement =>
+      forMeDocRoleBucket(_viewerRole) == ForMeDocRoleBucket.client ||
+      usesClientDocumentCatalog(_viewerRole) ||
+      (widget.clientMode &&
+          forMeDocRoleBucket(_viewerRole) == ForMeDocRoleBucket.other);
 
   @override
   void initState() {
     super.initState();
+    _viewerRole = widget.viewerRole;
     _searchCtrl.addListener(_onDebouncedSearch);
+    if (_viewerRole == null) {
+      SharedPreferences.getInstance().then((prefs) {
+        if (!mounted) return;
+        setState(() => _viewerRole = prefs.getString('role'));
+      });
+    }
   }
 
   @override
@@ -461,12 +559,21 @@ class _DocumentsV1ListScreenState extends State<DocumentsV1ListScreen>
 
   List<WorkflowDocumentUpload> _filtered() {
     var docs = widget.section.documents;
-    if (widget.clientMode) {
+    if (_hideAreaStatement) {
       docs = docs.where((doc) => !doc.isAreaStatement).toList();
     }
+    docs = docs
+        .where(
+          (doc) => documentAccessForUpload(
+            catalogVisibilityRole(_viewerRole),
+            doc,
+          ).view,
+        )
+        .toList();
+
     List<WorkflowDocumentUpload> base;
-    if (_clientArchitecturalGroupedList) {
-      base = _clientArchitecturalRevisionsList
+    if (_architecturalGroupedList) {
+      base = _architecturalRevisionsList
           ? docs.where((doc) => !isClientPortalFinalDocument(doc)).toList()
           : docs.where(isClientPortalFinalDocument).toList();
     } else {
@@ -496,11 +603,9 @@ class _DocumentsV1ListScreenState extends State<DocumentsV1ListScreen>
       MaterialPageRoute(
         builder: (_) => DocumentsV1DetailScreen(
           document: doc,
-          allRevisions: widget.section.documents
-              .where((item) => item.documentKey == doc.documentKey)
-              .toList(),
           clientMode: widget.clientMode,
           categoryLabel: widget.categoryLabel,
+          viewerRole: _viewerRole,
         ),
       ),
     );
@@ -524,18 +629,33 @@ class _DocumentsV1ListScreenState extends State<DocumentsV1ListScreen>
             fontWeight: FontWeight.w800,
           ),
         ),
-        actions: const [
-          IconButton(
-            icon: Icon(Icons.search_rounded),
-            onPressed: null,
-          ),
+        actions: [
+          if (documentAccessForRef(
+            role: _viewerRole,
+            categoryId: widget.section.categoryId,
+            categoryLabel: widget.categoryLabel,
+            sectionId: widget.section.id,
+            sectionLabel: widget.section.label,
+            journeyKey: widget.section.clientJourneyKey,
+            libraryGroupKey: widget.section.libraryGroupKey,
+          ).upload)
+            IconButton(
+              icon: const Icon(Icons.upload_file_outlined),
+              tooltip: 'Upload',
+              onPressed: _mutating
+                  ? null
+                  : () => _mutateDocument(
+                        action: 'upload',
+                        existing: null,
+                      ),
+            ),
         ],
       ),
       body: SafeArea(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (!_clientArchitecturalGroupedList)
+            if (!_architecturalGroupedList)
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
                 child: ClientPortalFilterTabs(
@@ -591,6 +711,7 @@ class _DocumentsV1ListScreenState extends State<DocumentsV1ListScreen>
   }
 
   void _showDocumentMenu(WorkflowDocumentUpload doc) {
+    final rights = documentAccessForUpload(_viewerRole, doc);
     showModalBottomSheet<void>(
       context: context,
       backgroundColor: AppTheme.darkBackgroundSecondary,
@@ -601,22 +722,51 @@ class _DocumentsV1ListScreenState extends State<DocumentsV1ListScreen>
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            ListTile(
-              leading: const Icon(Icons.visibility_outlined),
-              title: const Text('View document'),
-              onTap: () {
-                Navigator.pop(context);
-                _openDocument(doc);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.info_outline),
-              title: const Text('Document details'),
-              onTap: () {
-                Navigator.pop(context);
-                _openDocument(doc);
-              },
-            ),
+            if (rights.view)
+              ListTile(
+                leading: const Icon(Icons.visibility_outlined),
+                title: const Text('View document'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _openDocument(doc);
+                },
+              ),
+            if (rights.view)
+              ListTile(
+                leading: const Icon(Icons.info_outline),
+                title: const Text('Document details'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _openDocument(doc);
+                },
+              ),
+            if (rights.edit)
+              ListTile(
+                leading: const Icon(Icons.edit_outlined),
+                title: const Text('Edit / Replace'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _mutateDocument(action: 'edit', existing: doc);
+                },
+              ),
+            if (rights.upload)
+              ListTile(
+                leading: const Icon(Icons.upload_file_outlined),
+                title: const Text('Upload'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _mutateDocument(action: 'upload', existing: doc);
+                },
+              ),
+            if (rights.delete)
+              ListTile(
+                leading: Icon(Icons.delete_outline, color: Colors.red[400]),
+                title: Text('Delete', style: TextStyle(color: Colors.red[400])),
+                onTap: () {
+                  Navigator.pop(context);
+                  _mutateDocument(action: 'delete', existing: doc);
+                },
+              ),
             if (!widget.clientMode && doc.hasUrl)
               ListTile(
                 leading: const Icon(Icons.open_in_new_rounded),
@@ -634,6 +784,93 @@ class _DocumentsV1ListScreenState extends State<DocumentsV1ListScreen>
         ),
       ),
     );
+  }
+
+  Future<void> _mutateDocument({
+    required String action,
+    WorkflowDocumentUpload? existing,
+  }) async {
+    if (_mutating) return;
+    final messenger = ScaffoldMessenger.of(context);
+
+    if (action == 'delete') {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Delete document?'),
+          content: Text(
+            existing == null
+                ? 'Remove this document?'
+                : 'Remove "${existing.displayTitle}"?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Delete'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true) return;
+    }
+
+    PlatformFile? picked;
+    if (action == 'edit' || action == 'upload') {
+      final result = await FilePicker.platform.pickFiles(
+        withData: kIsWeb,
+        type: FileType.any,
+      );
+      if (result == null || result.files.isEmpty) return;
+      picked = result.files.first;
+      if (!kIsWeb && (picked.path == null || picked.path!.isEmpty)) {
+        messenger.showSnackBar(
+          const SnackBar(content: Text('Could not read the selected file.')),
+        );
+        return;
+      }
+    }
+
+    setState(() => _mutating = true);
+    try {
+      await MobileDocumentsService.instance.mutateDocument(
+        action: action,
+        projectId: (await SharedPreferences.getInstance()).getString('project_id'),
+        document: existing,
+        section: widget.section,
+        categoryLabel: widget.categoryLabel,
+        filePath: kIsWeb ? null : picked?.path,
+        fileBytes: picked?.bytes,
+        fileName: picked?.name,
+      );
+      if (!mounted) return;
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            action == 'delete'
+                ? 'Document deleted'
+                : action == 'edit'
+                    ? 'Document updated'
+                    : 'Document uploaded',
+          ),
+        ),
+      );
+      await MobileDocumentsService.instance.ensureLibrary(force: true);
+    } catch (e) {
+      if (!mounted) return;
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            e.toString().replaceFirst('Exception: ', ''),
+          ),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _mutating = false);
+    }
   }
 }
 
@@ -775,15 +1012,11 @@ class _ClientJourneyDocumentsScreenState
                       ),
                   ],
                 ],
-                onSectionTap: (section) => Navigator.push(
+                onSectionTap: (section) => openDocumentsV1Section(
                   context,
-                  MaterialPageRoute(
-                    builder: (_) => DocumentsV1ListScreen(
-                      categoryLabel: widget.title,
-                      section: section,
-                      clientMode: widget.clientMode,
-                    ),
-                  ),
+                  categoryLabel: widget.title,
+                  section: section,
+                  clientMode: widget.clientMode,
                 ),
               )
             : ListView(
@@ -840,15 +1073,11 @@ class _ClientJourneyDocumentsScreenState
                         padding: const EdgeInsets.only(bottom: 10),
                         child: ClientPortalSectionCard(
                           section: section,
-                          onTap: () => Navigator.push(
+                          onTap: () => openDocumentsV1Section(
                             context,
-                            MaterialPageRoute(
-                              builder: (_) => DocumentsV1ListScreen(
-                                categoryLabel: widget.title,
-                                section: section,
-                                clientMode: widget.clientMode,
-                              ),
-                            ),
+                            categoryLabel: widget.title,
+                            section: section,
+                            clientMode: widget.clientMode,
                           ),
                         ),
                       ),
