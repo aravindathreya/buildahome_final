@@ -116,119 +116,103 @@ class _BackgroundLocationBannerState extends State<BackgroundLocationBanner>
     );
   }
 
+  static const Color _warning = Color(0xFFD97706);
+  static const Color _success = Color(0xFF059669);
+
   Widget _enableBanner() {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Material(
-        color: const Color(0xFFFFFBEB),
-        borderRadius: BorderRadius.circular(14),
-        child: InkWell(
-          onTap: _openSettings,
-          borderRadius: BorderRadius.circular(14),
-          child: Container(
-            padding: const EdgeInsets.fromLTRB(12, 12, 10, 12),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: const Color(0xFFFDE68A)),
+    return _tile(
+      accent: _warning,
+      icon: Icons.location_searching_rounded,
+      title: 'Background location is off',
+      subtitle:
+          'Allow location all the time so attendance can update after you check in.',
+      onTap: _openSettings,
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: const [
+          Text(
+            'Settings',
+            style: TextStyle(
+              color: _warning,
+              fontSize: 13,
+              fontWeight: FontWeight.w800,
             ),
-            child: Row(
-              children: [
-                const Icon(
-                  Icons.location_searching_rounded,
-                  color: Color(0xFFB45309),
-                  size: 20,
-                ),
-                const SizedBox(width: 10),
-                const Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Background location is off',
-                        style: TextStyle(
-                          color: Color(0xFF92400E),
-                          fontSize: 13,
-                          fontWeight: FontWeight.w800,
-                          height: 1.2,
-                        ),
-                      ),
-                      SizedBox(height: 2),
-                      Text(
-                        'Allow location all the time so attendance can update after you check in.',
-                        style: TextStyle(
-                          color: Color(0xFFB45309),
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          height: 1.3,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 8),
-                const Text(
-                  'Settings',
-                  style: TextStyle(
-                    color: Color(0xFF92400E),
-                    fontSize: 13,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const Icon(
-                  Icons.chevron_right_rounded,
-                  color: Color(0xFFB45309),
-                  size: 18,
-                ),
-              ],
-            ),
+          ),
+          Icon(Icons.chevron_right_rounded, color: _warning, size: 18),
+        ],
+      ),
+    );
+  }
+
+  Widget _allowedBanner({required bool backgroundOn}) {
+    return _tile(
+      accent: _success,
+      icon: Icons.my_location_rounded,
+      title: backgroundOn ? 'Background location is on' : 'Location permission',
+      subtitle: 'Change this to not allow in settings.',
+      onTap: _confirmTurnOff,
+      trailing: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: _warning.withValues(alpha: 0.14),
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: _warning.withValues(alpha: 0.4)),
+        ),
+        child: const Text(
+          'Turn off',
+          style: TextStyle(
+            color: _warning,
+            fontSize: 12.5,
+            fontWeight: FontWeight.w800,
           ),
         ),
       ),
     );
   }
 
-  Widget _allowedBanner({required bool backgroundOn}) {
+  Widget _tile({
+    required Color accent,
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
+    required Widget trailing,
+  }) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Material(
-        color: const Color(0xFFFFFBEB),
+        color: accent.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(14),
         child: InkWell(
-          onTap: _confirmTurnOff,
+          onTap: onTap,
           borderRadius: BorderRadius.circular(14),
           child: Container(
-            padding: const EdgeInsets.fromLTRB(12, 12, 10, 12),
+            padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: const Color(0xFFF59E0B)),
+              border: Border.all(color: accent.withValues(alpha: 0.22)),
             ),
             child: Row(
               children: [
-                const Icon(
-                  Icons.my_location_rounded,
-                  color: Color(0xFF059669),
-                  size: 20,
-                ),
-                const SizedBox(width: 10),
+                Icon(icon, color: accent, size: 20),
+                const SizedBox(width: 12),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        backgroundOn
-                            ? 'Background location is on'
-                            : 'Location permission',
+                        title,
                         style: TextStyle(
                           color: AppTheme.darkTextPrimary,
-                          fontSize: 13,
+                          fontSize: 14,
                           fontWeight: FontWeight.w800,
                           height: 1.2,
                         ),
                       ),
-                      SizedBox(height: 2),
+                      const SizedBox(height: 2),
                       Text(
-                        'Change this to not allow in settings.',
-                        style: TextStyle(
+                        subtitle,
+                        style: const TextStyle(
                           color: AppTheme.mutedGrey,
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
@@ -239,24 +223,7 @@ class _BackgroundLocationBannerState extends State<BackgroundLocationBanner>
                   ),
                 ),
                 const SizedBox(width: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 6,
-                  ),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFB45309),
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                  child: const Text(
-                    'Turn off',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 12.5,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ),
+                trailing,
               ],
             ),
           ),

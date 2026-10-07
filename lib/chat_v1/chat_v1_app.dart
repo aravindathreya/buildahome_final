@@ -22,7 +22,15 @@ class ChatV1App extends StatefulWidget {
   /// When set, the project chat list opens this conversation immediately.
   final Map<String, dynamic>? openConversation;
 
-  const ChatV1App({super.key, this.salesSopId, this.openConversation});
+  /// Header for the chat list, e.g. the project name. Defaults to "Chats".
+  final String? title;
+
+  const ChatV1App({
+    super.key,
+    this.salesSopId,
+    this.openConversation,
+    this.title,
+  });
 
   /// Sync open — no network await before the route pushes.
   /// Prefer this from menus so Chat appears immediately (with open splash).
@@ -32,6 +40,7 @@ class ChatV1App extends StatefulWidget {
     Iterable<dynamic>? tasksHint,
     bool withSplash = true,
     Map<String, dynamic>? openConversation,
+    String? title,
   }) {
     final dp = DataProvider();
     // A project passed in (staff picker) wins over the last chat session.
@@ -84,6 +93,7 @@ class ChatV1App extends StatefulWidget {
     final app = ChatV1App(
       salesSopId: sopId,
       openConversation: openConversation,
+      title: title,
     );
     if (!withSplash) return app;
     return ChatV1OpenSplash(child: app);
@@ -182,6 +192,7 @@ class _ChatV1AppState extends State<ChatV1App> {
         builder: (context) => ChatV1HomeScreen(
           salesSopId: widget.salesSopId,
           openConversation: widget.openConversation,
+          title: widget.title,
           onOpenChat: (item) => _openChat(context, item),
           onOpenSearch: () => _open(context, const ChatV1SearchScreen()),
         ),

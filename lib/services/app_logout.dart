@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../Skin2/loginPage.dart';
 import '../app_navigator.dart';
 import '../chat_v1/chat_v1_api.dart';
+import '../chat_v1/chat_v1_project_summaries.dart';
 import '../chat_v1/chat_v1_socket.dart';
 import 'app_deep_link_service.dart';
 import 'client_generation_service.dart';
@@ -34,6 +35,7 @@ class AppLogout {
       ChatV1Socket.instance.disconnect();
     } catch (_) {}
     DataProvider().clearData();
+    ChatProjectSummaryStore.instance.clear();
     MobileQuickActionsService.instance.clearMemory();
     MobileMoreMenuService.instance.clearMemory();
     MobileBottomNavService.instance.clearMemory();

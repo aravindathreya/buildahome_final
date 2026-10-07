@@ -58,6 +58,7 @@ post_install do |installer|
         PERMISSION_LOCATION=1
         PERMISSION_LOCATION_WHENINUSE=1
         PERMISSION_LOCATION_ALWAYS=1
+        PERMISSION_NOTIFICATIONS=1
       ].each do |flag|
         defs << flag unless defs.include?(flag)
       end

@@ -76,6 +76,25 @@ subprojects {
 //
 // Use plugin callbacks (safe at configuration-time) instead of `afterEvaluate`
 // to avoid: "Cannot run Project.afterEvaluate(...) when the project is already evaluated."
+// Some plugins leave Kotlin on the Gradle JDK (21) while Java is 11 or 17.
+// Match each Kotlin compile task to its Java counterpart.
+subprojects { proj ->
+    def alignJvm = {
+        proj.tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach { kotlinTask ->
+            def javaTaskName = kotlinTask.name.replaceFirst("Kotlin", "JavaWithJavac")
+            def javaTask = proj.tasks.findByName(javaTaskName)
+            if (javaTask != null && javaTask.targetCompatibility != null) {
+                kotlinTask.kotlinOptions.jvmTarget = javaTask.targetCompatibility.toString()
+            }
+        }
+    }
+    if (proj.state.executed) {
+        alignJvm()
+    } else {
+        proj.afterEvaluate { alignJvm() }
+    }
+}
+
 subprojects { proj ->
     proj.plugins.withId('com.android.application') {
         proj.android.buildFeatures.buildConfig = true

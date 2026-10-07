@@ -39,7 +39,7 @@ import Flutter
     if #available(iOS 16.0, *) {
       urlString = UIApplication.openNotificationSettingsURLString
     } else {
-      urlString = UIApplication.openSettingsURLString
+      urlString = UIApplicationOpenSettingsURLString
     }
     guard let url = URL(string: urlString) else {
       result(false)

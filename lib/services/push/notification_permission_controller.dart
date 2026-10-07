@@ -143,10 +143,13 @@ class NotificationPermissionController {
   }
 
   Future<bool> _notificationsEnabled() async {
-    final runtimeOn = await _runtimePermissionGranted();
     // Android 13+ can report the app switch as on before POST_NOTIFICATIONS
     // is granted. The runtime permission is what shows the system dialog.
-    if (runtimeOn == false) return false;
+    // On iOS the native authorization status is the source of truth.
+    if (Platform.isAndroid) {
+      final runtimeOn = await _runtimePermissionGranted();
+      if (runtimeOn == false) return false;
+    }
     try {
       final native = await _channel.invokeMethod<bool>('enabled');
       if (native != null) return native;

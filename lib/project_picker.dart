@@ -21,6 +21,31 @@ class ProjectPickerScreen {
   static const Color _border = Color(0xFF334155);
   static const Color _softShadow = Color(0x14000000);
 
+  /// Makes [project] the current project, as if it was picked from the sheet.
+  static Future<void> selectProject(Map<String, dynamic> project) async {
+    final projectId = project['id']?.toString();
+    if (projectId == null || projectId.isEmpty) return;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString("project_id", projectId);
+    await prefs.setString(
+      "client_name",
+      project['name']?.toString() ?? 'Unnamed Project',
+    );
+
+    await DataProvider().onProjectSelected(
+      erpProjectId: projectId,
+      project: project,
+    );
+
+    final role = prefs.getString('role');
+    if (role != null && role != 'Client') {
+      DataProvider().resetProjectData();
+      DataProvider().loadProjectDataForNonClient(projectId).catchError((e) {
+        print('[ProjectPicker] Error preloading project data: $e');
+      });
+    }
+  }
+
   /// Pick a project and persist it, without opening the project Home screen.
   /// Returns `true` if a project was selected.
   static Future<bool> pick(BuildContext context) {
@@ -378,38 +403,11 @@ class ProjectPickerScreen {
                                               Future<void> persistProject(
                                                   [ProjectOpenTiming?
                                                       timing]) async {
-                                                Future<void> run() async {
-                                                  final prefs =
-                                                      await SharedPreferences
-                                                          .getInstance();
-                                                  await prefs.setString(
-                                                      "project_id", projectId);
-                                                  await prefs.setString(
-                                                      "client_name",
-                                                      projectName);
-
-                                                  await DataProvider()
-                                                      .onProjectSelected(
-                                                    erpProjectId: projectId,
-                                                    project: Map<String,
-                                                        dynamic>.from(project),
-                                                  );
-
-                                                  final role =
-                                                      prefs.getString('role');
-                                                  if (role != null &&
-                                                      role != 'Client') {
-                                                    DataProvider()
-                                                        .resetProjectData();
-                                                    DataProvider()
-                                                        .loadProjectDataForNonClient(
-                                                            projectId)
-                                                        .catchError((e) {
-                                                      print(
-                                                          '[ProjectPicker] Error preloading project data: $e');
-                                                    });
-                                                  }
-                                                }
+                                                Future<void> run() =>
+                                                    selectProject(
+                                                      Map<String, dynamic>.from(
+                                                          project),
+                                                    );
 
                                                 if (timing != null) {
                                                   await timing.measure(
@@ -439,6 +437,7 @@ class ProjectPickerScreen {
                                                       project:
                                                           Map<String, dynamic>
                                                               .from(project),
+                                                      title: projectName,
                                                       openConversation: unread >
                                                               0
                                                           ? unreadHint

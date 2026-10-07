@@ -62,6 +62,9 @@ import 'Payments.dart';
 import 'Scheduler.dart';
 import 'TimelineGallery.dart';
 import 'chat_v1/chat_v1_app.dart';
+import 'chat_v1/chat_v1_project_summaries.dart';
+import 'chat_v1/screens/chat_v1_projects_screen.dart';
+import 'chat_v1/widgets/chat_v1_unread_count_badge.dart';
 import 'RequestDrawing.dart';
 import 'InspectionRequest.dart';
 import 'approved_pos_screen.dart';
@@ -604,6 +607,9 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
         refreshTasks: true,
         silentTasks: true,
       );
+      if (currentUserRole != 'Client') {
+        unawaited(ChatProjectSummaryStore.instance.refresh());
+      }
     }
   }
 
@@ -612,6 +618,9 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
   }
 
   Future<void> _loadUnreadNotifications({bool force = false}) async {
+    if (currentUserRole != 'Client') {
+      unawaited(ChatProjectSummaryStore.instance.refresh(force: force));
+    }
     final service = NotificationService.instance;
     await service.ensureHydrated();
     await service.sync(force: force);
@@ -1473,9 +1482,7 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
     return next;
   }
 
-  Future<void> _openStaffChatPicker() {
-    return ProjectPickerScreen.show(context, forChat: true);
-  }
+  Widget _openStaffChatPicker() => ChatV1ProjectsScreen.openQuick();
 
   List<Map<String, dynamic>> _visibleQuickActions(
       List<Map<String, dynamic>> items,
@@ -2077,10 +2084,24 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
                 ),
               ],
             ),
-            child: Icon(
-              _quickActionIcon(title, item['icon'] as IconData),
-              size: 36,
-              color: AppTheme.darkTextPrimary,
+            child: Stack(
+              clipBehavior: Clip.none,
+              alignment: Alignment.center,
+              children: [
+                Icon(
+                  _quickActionIcon(title, item['icon'] as IconData),
+                  size: 36,
+                  color: AppTheme.darkTextPrimary,
+                ),
+                if (title == 'Chat')
+                  Positioned(
+                    top: -4,
+                    right: -4,
+                    child: ChatV1UnreadCountBadge(
+                      ringColor: AppTheme.darkBackgroundSecondary,
+                    ),
+                  ),
+              ],
             ),
           ),
           const SizedBox(height: 8),

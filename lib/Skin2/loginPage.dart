@@ -2,6 +2,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_spinkit/flutter_spinkit.dart';
@@ -394,7 +395,7 @@ class LoginScreenNewState extends State<LoginScreenNew>
     try {
       final Map<String, dynamic> payload = {
         'phone_number': normalized,
-        'debugger': true,
+        'debugger': kDebugMode,
       };
 
       final response = await http

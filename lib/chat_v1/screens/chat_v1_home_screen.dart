@@ -19,6 +19,9 @@ class ChatV1HomeScreen extends StatefulWidget {
   /// Conversation row to open once this project's chat list has loaded.
   final Map<String, dynamic>? openConversation;
 
+  /// Header text. Defaults to "Chats".
+  final String? title;
+
   const ChatV1HomeScreen({
     super.key,
     required this.onOpenChat,
@@ -26,6 +29,7 @@ class ChatV1HomeScreen extends StatefulWidget {
     this.onBack,
     this.salesSopId,
     this.openConversation,
+    this.title,
   });
 
   @override
@@ -354,7 +358,13 @@ class _ChatV1HomeScreenState extends State<ChatV1HomeScreen> {
           ),
           Expanded(
             child: Text(
-              selecting ? '${_selected.length} selected' : 'Chats',
+              selecting
+                  ? '${_selected.length} selected'
+                  : (widget.title?.trim().isNotEmpty == true
+                      ? widget.title!.trim()
+                      : 'Chats'),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: TextStyle(
                 color: ChatV1Theme.text(context),
                 fontSize: 22,

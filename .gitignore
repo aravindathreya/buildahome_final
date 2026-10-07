@@ -32,6 +32,8 @@ Thumbs.db
 /build/
 **/build/
 .dart_tool/
+/build
+/.dart_tool
 
 # Dev tooling (local only)
 devtools_options.yaml

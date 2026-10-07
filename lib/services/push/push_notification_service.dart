@@ -11,6 +11,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../app_navigator.dart';
+import '../../chat_v1/chat_v1_project_summaries.dart';
 import '../../chat_v1/chat_v1_socket.dart';
 import '../notification_navigator.dart';
 import '../notification_service.dart';
@@ -202,6 +203,9 @@ class PushNotificationService {
         type.contains('chat_message') ||
         (data['conversation_id'] ?? '').isNotEmpty && type.contains('chat');
     if (isChat) {
+      if (!backgroundIsolate) {
+        ChatProjectSummaryStore.instance.scheduleRefresh();
+      }
       if (backgroundIsolate && notification != null) {
         // A visible notification payload is already shown by the OS.
         // Grouping requires a data-only message so this handler owns the tray.
@@ -216,6 +220,7 @@ class PushNotificationService {
   }
 
   Future<void> _onSocketChat(ChatPushIncoming incoming) async {
+    ChatProjectSummaryStore.instance.scheduleRefresh();
     await _ensureLocalNotifications();
     final threads = await _loadThreads();
     final notice = ChatPushGrouper.record(threads: threads, incoming: incoming);
