@@ -501,6 +501,14 @@ class WorkflowDocumentService {
         )) {
           return;
         }
+        if (isContractsDocumentCategoryRef(
+          id: category.id,
+          label: category.label,
+          libraryGroupKey: category.libraryGroupKey,
+          clientJourneyKey: category.clientJourneyKey,
+        )) {
+          return;
+        }
         final dedupedSections = <String, WorkflowDocumentSection>{};
         for (final section in category.sections) {
           dedupedSections[section.id] = section;

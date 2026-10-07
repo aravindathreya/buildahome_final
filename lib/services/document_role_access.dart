@@ -807,6 +807,7 @@ List<WorkflowDocumentCategory> filterDocumentCategoriesForRole(
 
   var next = categories.where((category) {
     if (isUncategorizedDocumentCategory(category)) return false;
+    if (isContractsDocumentCategory(category)) return false;
     if (hideKyc && _isKycCategory(category)) return false;
     if (siteEngineerHidesForMeDocument(
       role: role,

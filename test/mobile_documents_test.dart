@@ -191,7 +191,7 @@ void main() {
       expect(g1Docs, isNot(g2Docs));
     });
 
-    test('role-hidden documents are not rendered', () {
+    test('Contracts folder is omitted from the catalog', () {
       final staff = parseMobileDocumentsPayload(
         _architecturalPayload(
           projectId: '100',
@@ -207,7 +207,8 @@ void main() {
         ),
       )!;
 
-      expect(_categoryLabels(staff.library), contains('Contracts'));
+      expect(_categoryLabels(staff.library), contains('Architectural'));
+      expect(_categoryLabels(staff.library), isNot(contains('Contracts')));
       expect(_categoryLabels(client.library), isNot(contains('Contracts')));
     });
 
@@ -1040,6 +1041,88 @@ void main() {
     });
   });
 
+  group('Contracts category', () {
+    test('is dropped from Docs catalog and For me hub', () {
+      final snapshot = parseMobileDocumentsPayload({
+        'message': 'success',
+        'configured': true,
+        'project_id': '100',
+        'categories': [
+          {
+            'id': 'architectural',
+            'name': 'Architectural',
+            'types': [
+              {
+                'id': 'floor_plans',
+                'name': 'Floor Plans',
+                'documents': [
+                  {
+                    'id': '1',
+                    'name': 'Ground Floor Plan',
+                    'status': 'uploaded',
+                    'url': '/g.pdf',
+                  },
+                ],
+              },
+            ],
+          },
+          {
+            'id': 'contracts',
+            'name': 'Contracts',
+            'types': [
+              {
+                'id': 'agreements',
+                'name': 'Agreements',
+                'documents': [
+                  {
+                    'id': '9',
+                    'name': 'Construction Agreement',
+                    'status': 'uploaded',
+                    'url': '/c.pdf',
+                  },
+                ],
+              },
+            ],
+          },
+          {
+            'category_id': 'receipts_and_agreements',
+            'name': 'Receipts and Agreements',
+            'client_journey_key': 'receipts_and_agreements',
+            'types': [
+              {
+                'type_id': 'receipts',
+                'name': 'Receipts',
+                'documents': [
+                  {
+                    'document_definition_id': 4,
+                    'name': 'Payment Receipt',
+                    'status': 'uploaded',
+                    'url': '/r.pdf',
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      })!;
+
+      expect(
+        snapshot.library.libraryCategories.map((c) => c.label),
+        containsAll(['Architectural', 'Receipts and Agreements']),
+      );
+      expect(
+        snapshot.library.libraryCategories.map((c) => c.label),
+        isNot(contains('Contracts')),
+      );
+      final hubTitles = buildClientPortalHubItems(
+        snapshot.library,
+        role: 'Client',
+      ).map((item) => item.title);
+      expect(hubTitles, isNot(contains('Contracts')));
+      expect(hubTitles, contains('Receipts and Agreements'));
+    });
+  });
+
   group('Uncategorized category', () {
     test('is dropped from mobile catalog parse and hub', () {
       final snapshot = parseMobileDocumentsPayload({
@@ -1512,16 +1595,7 @@ void main() {
       )!;
       expect(snapshot.canDownload, isTrue);
       expect(firstDoc(snapshot).canDownload, isTrue);
-      expect(
-        snapshot.library.libraryCategories
-            .firstWhere((c) => c.label == 'Contracts')
-            .sections
-            .first
-            .documents
-            .first
-            .canDownload,
-        isTrue,
-      );
+      expect(_categoryLabels(snapshot.library), isNot(contains('Contracts')));
     });
 
     test('download_roles decides who sees download', () {

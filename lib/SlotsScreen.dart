@@ -26,7 +26,7 @@ class SlotsScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     if (embedded) return const SlotsView();
     return const ThemedScaffold(
-      title: 'Site visits',
+      title: 'Slots',
       body: SlotsView(showInlineTitle: false),
     );
   }
@@ -754,7 +754,7 @@ class SlotsViewState extends State<SlotsView> {
       return Column(children: [
         Align(alignment: Alignment.centerLeft, child: TextButton.icon(
           onPressed: () => setState(() => _showVisitDetails = false),
-          icon: const Icon(Icons.arrow_back), label: const Text('Site visits'))),
+          icon: const Icon(Icons.arrow_back), label: const Text('Slots'))),
         Expanded(child: _buildVisitDetails(context)),
       ]);
     }

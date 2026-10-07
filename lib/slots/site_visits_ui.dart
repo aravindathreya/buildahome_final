@@ -84,7 +84,7 @@ class _OverviewState extends State<SiteVisitsOverview> {
                       Row(children: [
                         Expanded(
                             child: Text(
-                                widget.showInlineTitle ? 'Site visits' : '',
+                                widget.showInlineTitle ? 'Slots' : '',
                                 style: const TextStyle(
                                     color: Colors.white,
                                     fontSize: 25,

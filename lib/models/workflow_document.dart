@@ -215,6 +215,35 @@ bool isUncategorizedDocumentCategory(WorkflowDocumentCategory category) {
   );
 }
 
+/// The Contracts catalog folder is hidden in Docs and For me.
+bool isContractsDocumentCategoryRef({
+  String? id,
+  String? label,
+  String? libraryGroupKey,
+  String? clientJourneyKey,
+}) {
+  bool hit(String? raw) {
+    final value = (raw ?? '').trim().toLowerCase();
+    if (value.isEmpty) return false;
+    final normalized = value.replaceAll(RegExp(r'[\s_-]+'), ' ');
+    return normalized == 'contract' || normalized == 'contracts';
+  }
+
+  return hit(id) ||
+      hit(label) ||
+      hit(libraryGroupKey) ||
+      hit(clientJourneyKey);
+}
+
+bool isContractsDocumentCategory(WorkflowDocumentCategory category) {
+  return isContractsDocumentCategoryRef(
+    id: category.id,
+    label: category.label,
+    libraryGroupKey: category.libraryGroupKey,
+    clientJourneyKey: category.clientJourneyKey,
+  );
+}
+
 /// Matches Area Statement by common labels, keys, and serve URLs.
 bool isAreaStatementDocumentRef({
   String? name,
@@ -442,6 +471,7 @@ class WorkflowDocumentLibrary {
     };
     bool keep(WorkflowDocumentCategory category) {
       if (isUncategorizedDocumentCategory(category)) return false;
+      if (isContractsDocumentCategory(category)) return false;
       final key = (category.clientJourneyKey ??
               category.libraryGroupKey ??
               category.id)

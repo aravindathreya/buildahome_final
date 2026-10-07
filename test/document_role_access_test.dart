@@ -215,6 +215,49 @@ void main() {
       );
     });
 
+    test('Contracts folder is hidden for every role', () {
+      WorkflowDocumentUpload doc(String id, String name) {
+        return WorkflowDocumentUpload(
+          id: id,
+          documentKey: id,
+          name: name,
+          isLatest: true,
+        );
+      }
+
+      WorkflowDocumentCategory category(String id, String label) {
+        return WorkflowDocumentCategory(
+          id: id,
+          label: label,
+          sections: [
+            WorkflowDocumentSection(
+              id: id,
+              label: label,
+              documents: [doc(id, label)],
+            ),
+          ],
+        );
+      }
+
+      final categories = [
+        category('contracts', 'Contracts'),
+        category('architectural', 'Architectural'),
+        category('receipts_and_agreements', 'Receipts and Agreements'),
+      ];
+
+      for (final role in ['Client', 'Admin', 'Project Manager', 'Site Engineer']) {
+        final labels = filterDocumentCategoriesForRole(categories, role)
+            .map((category) => category.label);
+        expect(labels, contains('Architectural'));
+        expect(labels, isNot(contains('Contracts')));
+      }
+      expect(
+        filterDocumentCategoriesForRole(categories, 'Client')
+            .map((category) => category.label),
+        contains('Receipts and Agreements'),
+      );
+    });
+
     test('site engineer does not see KYC, project documents, or contracts', () {
       WorkflowDocumentUpload doc(String id, String name) {
         return WorkflowDocumentUpload(

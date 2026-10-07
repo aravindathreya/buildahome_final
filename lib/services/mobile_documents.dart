@@ -248,6 +248,23 @@ bool isGalleryCatalogNode(Map<String, dynamic> map) {
   return false;
 }
 
+/// Drop the Contracts folder from Docs and For me catalog payloads.
+bool isContractsCatalogNode(Map<String, dynamic> map) {
+  return isContractsDocumentCategoryRef(
+    id: (map['id'] ?? map['category_id'] ?? map['category_key'] ?? map['slug'])
+        ?.toString(),
+    label: (map['name'] ??
+            map['label'] ??
+            map['title'] ??
+            map['category_name'] ??
+            map['category_label'])
+        ?.toString(),
+    libraryGroupKey: map['library_group_key']?.toString(),
+    clientJourneyKey:
+        (map['client_journey_key'] ?? map['journey_key'])?.toString(),
+  );
+}
+
 /// Drop the unused Uncategorized bucket from mobile catalog payloads.
 bool isUncategorizedCatalogNode(Map<String, dynamic> map) {
   return isUncategorizedDocumentCategoryRef(
@@ -442,6 +459,7 @@ WorkflowDocumentCategory? _categoryFromMap(
 }) {
   if (isGalleryCatalogNode(map)) return null;
   if (isUncategorizedCatalogNode(map)) return null;
+  if (isContractsCatalogNode(map)) return null;
 
   final id = catalogIdFromMap(
         map,
@@ -457,6 +475,9 @@ WorkflowDocumentCategory? _categoryFromMap(
   final resolvedId = id.isEmpty ? _slug(label) : id;
   if (resolvedId.isEmpty) return null;
   if (isUncategorizedDocumentCategoryRef(id: resolvedId, label: label)) {
+    return null;
+  }
+  if (isContractsDocumentCategoryRef(id: resolvedId, label: label)) {
     return null;
   }
 

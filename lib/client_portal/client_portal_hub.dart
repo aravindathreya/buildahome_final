@@ -285,6 +285,7 @@ List<ClientPortalHubItem> buildClientPortalHubItems(
           _labelIsReceipts,
         );
   if (receiptsCategory != null &&
+      !isContractsDocumentCategory(receiptsCategory) &&
       !siteEngineerHidesForMeDocument(
         role: role,
         categoryId: receiptsCategory.id,
@@ -337,6 +338,7 @@ List<ClientPortalHubItem> buildClientPortalHubItems(
       if (items.any((item) => item.category?.id == category.id)) continue;
       if (isPinnedClientPortalCategory(category)) continue;
       if (isUncategorizedDocumentCategory(category)) continue;
+      if (isContractsDocumentCategory(category)) continue;
       if (siteEngineerHidesForMeDocument(
         role: role,
         categoryId: category.id,
