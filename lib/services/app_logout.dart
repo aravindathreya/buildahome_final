@@ -17,6 +17,7 @@ import 'mobile_more_menu_service.dart';
 import 'mobile_quick_actions_service.dart';
 import 'notification_service.dart';
 import 'push/push_notification_service.dart';
+import 'screen_capture_policy.dart';
 import 'profile_picture_service.dart';
 import 'staff_location_tracker.dart';
 import '../widgets/client_home_tour.dart';
@@ -28,6 +29,7 @@ class AppLogout {
 
   /// Instant in-memory wipe so the old UI cannot keep rendering user data.
   static void _clearInMemoryNow() {
+    ScreenCapturePolicy.protect();
     try {
       StaffLocationTracker.instance.stop();
     } catch (_) {}

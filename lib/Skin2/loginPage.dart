@@ -18,6 +18,7 @@ import '../services/app_deep_link_service.dart';
 import '../services/client_generation_service.dart';
 import '../services/push/notification_permission_controller.dart';
 import '../services/push/push_notification_service.dart';
+import '../services/screen_capture_policy.dart';
 import '../services/data_provider.dart';
 import '../services/profile_picture_service.dart';
 
@@ -343,6 +344,7 @@ class LoginScreenNewState extends State<LoginScreenNew>
       await ProfilePictureService.clearStored();
     }
     ProfilePictureService.onLoggedIn();
+    await ScreenCapturePolicy.apply();
     unawaited(PushNotificationService.instance.syncTokenForCurrentUser());
   }
 
