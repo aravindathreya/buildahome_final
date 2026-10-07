@@ -516,6 +516,7 @@ class _ProjectStatusScreenState extends State<ProjectStatusScreen>
       context,
       MaterialPageRoute(builder: (_) => const Notifications()),
     );
+    await NotificationService.instance.markAllAsRead();
   }
 
   void _openTaskDetails(_WorkTask task) {

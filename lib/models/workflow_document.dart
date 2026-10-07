@@ -58,6 +58,18 @@ class WorkflowDocumentUpload {
 
   bool get hasUrl => url != null && url!.trim().isNotEmpty;
 
+  /// Download is available unless the office web turns it off for this user.
+  bool get canDownload {
+    final value = raw['can_download'] ??
+        raw['allow_download'] ??
+        raw['download_allowed'];
+    if (value == null) return true;
+    if (value == false || value == 0) return false;
+    final text = value.toString().trim().toLowerCase();
+    if (text == 'false' || text == 'no' || text == '0') return false;
+    return true;
+  }
+
   /// Office library lists from `/documents` and `/View_receipt_and_agreement`.
   /// Distinct from `project_documents` / workflow `dsec_agreements`.
   bool get isOfficeLibraryDocument {

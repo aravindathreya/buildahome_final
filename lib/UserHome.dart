@@ -7,6 +7,7 @@ import 'LegacyClientHome.dart';
 import 'UserDashboard.dart';
 import 'app_theme.dart';
 import 'services/app_deep_link_service.dart';
+import 'services/push/push_notification_service.dart';
 import 'services/client_generation_service.dart';
 import 'services/data_provider.dart';
 
@@ -85,6 +86,7 @@ class _HomeState extends State<Home> {
       widget.onReady?.call();
     });
     unawaited(AppDeepLinkService.instance.onAppReady());
+    unawaited(PushNotificationService.instance.markAppReady());
   }
 
   @override

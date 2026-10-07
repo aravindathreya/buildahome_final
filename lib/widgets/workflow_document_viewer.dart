@@ -10,6 +10,7 @@ import '../app_theme.dart';
 import '../client_portal/client_portal_document_ui.dart';
 import '../models/workflow_document.dart';
 import '../services/authenticated_document_fetcher.dart';
+import '../services/document_file_download.dart';
 import '../services/document_byte_cache.dart';
 import 'native_pdf_view.dart';
 
@@ -326,6 +327,13 @@ class _WorkflowDocumentViewerScreenState
                 ),
               ),
               actions: [
+                if (widget.document.canDownload && widget.document.hasUrl)
+                  IconButton(
+                    icon: const Icon(Icons.download_rounded),
+                    onPressed: () =>
+                        downloadWorkflowDocument(context, widget.document),
+                    tooltip: 'Download',
+                  ),
                 if (!_loading && _pdfController != null)
                   IconButton(
                     icon: const Icon(Icons.fullscreen_rounded),

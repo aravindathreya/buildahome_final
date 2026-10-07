@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../app_theme.dart';
 import '../client_portal/client_portal_document_ui.dart';
 import '../models/workflow_document.dart';
+import '../services/document_file_download.dart';
 import '../services/document_role_access.dart';
 import '../services/mobile_documents.dart';
 import '../services/mobile_documents_service.dart';
@@ -762,6 +763,7 @@ class _DocumentsV1ListScreenState extends State<DocumentsV1ListScreen>
   }
 
   void _showDocumentMenu(WorkflowDocumentUpload doc) {
+    final hostContext = context;
     final rights = documentAccessForUpload(_viewerRole, doc);
     showModalBottomSheet<void>(
       context: context,
@@ -789,6 +791,15 @@ class _DocumentsV1ListScreenState extends State<DocumentsV1ListScreen>
                 onTap: () {
                   Navigator.pop(context);
                   _openDetails(doc);
+                },
+              ),
+            if (doc.hasUrl && doc.canDownload)
+              ListTile(
+                leading: const Icon(Icons.download_rounded),
+                title: const Text('Download'),
+                onTap: () {
+                  Navigator.pop(context);
+                  downloadWorkflowDocument(hostContext, doc);
                 },
               ),
             if (rights.edit)

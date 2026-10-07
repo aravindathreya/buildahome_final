@@ -12,6 +12,7 @@ class MobileDocumentsSnapshot {
     required this.configured,
     required this.projectId,
     required this.library,
+    this.canDownload = false,
     this.role,
     this.userId,
     this.cachedAt,
@@ -23,6 +24,9 @@ class MobileDocumentsSnapshot {
   final bool configured;
   final String projectId;
   final WorkflowDocumentLibrary library;
+
+  /// Office web allowed this signed-in user to download project documents.
+  final bool canDownload;
   final String? role;
   final String? userId;
   final DateTime? cachedAt;
@@ -48,6 +52,7 @@ class MobileDocumentsSnapshot {
     Map<String, dynamic>? json, {
     String? expectedProjectId,
     String? expectedUserId,
+    String? viewerRole,
   }) {
     if (json == null) return null;
     final projectId = _stringValue(json['project_id'] ?? json['projectId']);
@@ -74,6 +79,7 @@ class MobileDocumentsSnapshot {
     return parseMobileDocumentsPayload(
       wrapped,
       expectedProjectId: expectedProjectId ?? projectId,
+      viewerRole: viewerRole ?? _stringValue(json['role'] ?? wrapped['role']),
     );
   }
 }
@@ -157,6 +163,7 @@ bool isSuccessfulMobileDocumentsPayload(Map<String, dynamic> json) {
 MobileDocumentsSnapshot? parseMobileDocumentsPayload(
   dynamic decoded, {
   String? expectedProjectId,
+  String? viewerRole,
 }) {
   if (decoded is! Map) return null;
   var json = Map<String, dynamic>.from(decoded);
@@ -189,18 +196,26 @@ MobileDocumentsSnapshot? parseMobileDocumentsPayload(
           json.containsKey('categories') ||
           json.containsKey('catalog');
 
-  final library = buildWorkflowDocumentLibraryFromCatalog(categories);
+  final role = viewerRole ?? _stringValue(json['role']);
+  final downloadPermission = readCatalogDownloadPermission(json, role);
+  final library = buildWorkflowDocumentLibraryFromCatalog(
+    categories,
+    catalogCanDownload: downloadPermission,
+    viewerRole: role,
+  );
   final payload = <String, dynamic>{
     'configured': configured,
     'project_id': projectId,
     'categories': categories,
   };
+  _copyDownloadPolicy(json, payload);
 
   return MobileDocumentsSnapshot(
     configured: configured,
     projectId: projectId,
     library: library,
-    role: _stringValue(json['role']),
+    canDownload: downloadPermission != false,
+    role: _stringValue(json['role']) ?? role,
     userId: _stringValue(json['user_id'] ?? json['userId']),
     payload: payload,
   );
@@ -387,15 +402,21 @@ bool _isDashboardInventedRow(Map<String, dynamic> map) {
 }
 
 WorkflowDocumentLibrary buildWorkflowDocumentLibraryFromCatalog(
-  List<Map<String, dynamic>> categoryMaps,
-) {
+  List<Map<String, dynamic>> categoryMaps, {
+  bool? catalogCanDownload,
+  String? viewerRole,
+}) {
   final libraryCategories = <WorkflowDocumentCategory>[];
   final clientJourneyCategories = <WorkflowDocumentCategory>[];
   final seenLibrary = <String>{};
   final seenJourney = <String>{};
 
   for (final categoryMap in categoryMaps) {
-    final category = _categoryFromMap(categoryMap);
+    final category = _categoryFromMap(
+      categoryMap,
+      catalogCanDownload: catalogCanDownload,
+      viewerRole: viewerRole,
+    );
     if (category == null) continue;
     if (seenLibrary.add(category.id)) {
       libraryCategories.add(category);
@@ -414,7 +435,11 @@ WorkflowDocumentLibrary buildWorkflowDocumentLibraryFromCatalog(
   );
 }
 
-WorkflowDocumentCategory? _categoryFromMap(Map<String, dynamic> map) {
+WorkflowDocumentCategory? _categoryFromMap(
+  Map<String, dynamic> map, {
+  bool? catalogCanDownload,
+  String? viewerRole,
+}) {
   if (isGalleryCatalogNode(map)) return null;
   if (isUncategorizedCatalogNode(map)) return null;
 
@@ -448,6 +473,8 @@ WorkflowDocumentCategory? _categoryFromMap(Map<String, dynamic> map) {
         map['client_journey_key'] ?? map['journey_key'],
       ),
       libraryGroupKey: resolvedId,
+      catalogCanDownload: catalogCanDownload,
+      viewerRole: viewerRole,
     );
     if (section == null) continue;
     if (!seenTypes.add(section.id)) continue;
@@ -493,6 +520,8 @@ WorkflowDocumentSection? _sectionFromMap(
   required String categoryLabel,
   String? clientJourneyKey,
   String? libraryGroupKey,
+  bool? catalogCanDownload,
+  String? viewerRole,
 }) {
   if (isGalleryCatalogNode(map)) return null;
 
@@ -529,6 +558,8 @@ WorkflowDocumentSection? _sectionFromMap(
         sectionLabel: label.isEmpty ? _titleFromKey(resolvedId) : label,
         clientJourneyKey: clientJourneyKey,
         libraryGroupKey: libraryGroupKey,
+        catalogCanDownload: catalogCanDownload,
+        viewerRole: viewerRole,
       );
       if (upload == null) continue;
       final dedupeKey = [
@@ -565,6 +596,8 @@ WorkflowDocumentUpload? documentFromMobileMap(
   String sectionLabel = '',
   String? clientJourneyKey,
   String? libraryGroupKey,
+  bool? catalogCanDownload,
+  String? viewerRole,
 }) {
   final name = catalogNameFromMap(
         map,
@@ -593,6 +626,12 @@ WorkflowDocumentUpload? documentFromMobileMap(
       (documentKey.isEmpty ? '' : documentKey);
   if (id.isEmpty && documentKey.isEmpty && name.isEmpty) return null;
   if (isGalleryCatalogNode(map)) return null;
+
+  final canDownload = documentDownloadAllowed(
+    map,
+    catalogCanDownload: catalogCanDownload,
+    viewerRole: viewerRole,
+  );
 
   final url = _resolveUrl(map);
   final status = _stringValue(map['status']);
@@ -653,7 +692,10 @@ WorkflowDocumentUpload? documentFromMobileMap(
         clientJourneyKey,
     libraryGroupKey: _stringValue(map['library_group_key']) ?? libraryGroupKey,
     activity: activity,
-    raw: map,
+    raw: {
+      ...map,
+      'can_download': canDownload,
+    },
   );
 }
 
@@ -775,6 +817,167 @@ String? _formatFileSize(dynamic raw) {
     return '${(bytes / 1024).toStringAsFixed(1)} KB';
   }
   return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+}
+
+/// Office web decides who may download documents.
+///
+/// `GET /API/mobile/documents` can send any one of:
+/// * `can_download` — true/false already decided for this signed-in user
+/// * `download_roles` — role names that should see Download
+/// * `download_access.roles` — same list, nested
+///
+/// `can_download` wins when it is present. With no policy, Download is shown.
+/// An empty role list hides it for every role. A file can override the
+/// catalog with its own `can_download`.
+bool? readCatalogDownloadPermission(
+  Map<String, dynamic> json,
+  String? viewerRole,
+) {
+  if (json.containsKey('can_download') ||
+      json.containsKey('allow_download') ||
+      json.containsKey('download_enabled')) {
+    final direct = _optionalBool(
+      json['can_download'] ??
+          json['allow_download'] ??
+          json['download_enabled'],
+    );
+    if (direct != null) return direct;
+  }
+  final roles = _downloadRoleList(json);
+  if (roles != null) {
+    return roleIsAllowedToDownloadDocuments(viewerRole, roles);
+  }
+  final access = json['download_access'];
+  if (access is Map &&
+      !json.containsKey('download_roles') &&
+      !json.containsKey('download_allowed_roles')) {
+    final direct = _optionalBool(
+      access['can_download'] ?? access['enabled'] ?? access['allowed'],
+    );
+    if (direct != null) return direct;
+  }
+  return null;
+}
+
+/// Per-file flag wins. Otherwise the catalog decision applies.
+bool documentDownloadAllowed(
+  Map<String, dynamic> document, {
+  bool? catalogCanDownload,
+  String? viewerRole,
+}) {
+  if (document.containsKey('download_roles') ||
+      document.containsKey('download_allowed_roles')) {
+    final roles = _stringList(
+          document['download_roles'] ?? document['download_allowed_roles'],
+        ) ??
+        const <String>[];
+    return roleIsAllowedToDownloadDocuments(viewerRole, roles);
+  }
+  final own = _optionalBool(
+    document['can_download'] ??
+        document['allow_download'] ??
+        document['download_allowed'],
+  );
+  if (own != null) return own;
+  return catalogCanDownload != false;
+}
+
+bool roleIsAllowedToDownloadDocuments(String? role, Iterable<String> allowed) {
+  final mine = _normRole(role);
+  if (mine.isEmpty) return false;
+  for (final entry in allowed) {
+    final normalized = _normRole(entry);
+    if (normalized == 'all' || normalized == '*') return true;
+    if (normalized == mine) return true;
+    if (_coordinatorAlias(normalized) == _coordinatorAlias(mine) &&
+        _coordinatorAlias(mine).isNotEmpty) {
+      return true;
+    }
+  }
+  return false;
+}
+
+String _coordinatorAlias(String normalized) {
+  if (normalized == 'project co ordinator' ||
+      normalized == 'project coordinator') {
+    return 'project coordinator';
+  }
+  if (normalized == 'assistant project coordinator' ||
+      normalized == 'assistant project co ordinator' ||
+      normalized == 'apcc' ||
+      normalized == 'apc') {
+    return 'assistant project coordinator';
+  }
+  return '';
+}
+
+String _normRole(String? raw) {
+  return (raw ?? '')
+      .trim()
+      .toLowerCase()
+      .replaceAll(RegExp(r'[\s_/-]+'), ' ')
+      .replaceAll(RegExp(r'\s+'), ' ');
+}
+
+List<String>? _downloadRoleList(Map<String, dynamic> json) {
+  if (json.containsKey('download_roles')) {
+    return _stringList(json['download_roles']) ?? const [];
+  }
+  if (json.containsKey('download_allowed_roles')) {
+    return _stringList(json['download_allowed_roles']) ?? const [];
+  }
+  final access = json['download_access'];
+  if (access is Map) {
+    final map = Map<String, dynamic>.from(access);
+    if (map.containsKey('roles') || map.containsKey('allowed_roles')) {
+      return _stringList(map['roles'] ?? map['allowed_roles']) ?? const [];
+    }
+  }
+  return null;
+}
+
+List<String>? _stringList(dynamic raw) {
+  if (raw == null) return null;
+  if (raw is String) {
+    return raw
+        .split(',')
+        .map((part) => part.trim())
+        .where((part) => part.isNotEmpty)
+        .toList();
+  }
+  if (raw is List) {
+    return [
+      for (final item in raw)
+        if (item != null && item.toString().trim().isNotEmpty)
+          item.toString().trim(),
+    ];
+  }
+  return null;
+}
+
+bool? _optionalBool(dynamic raw) {
+  if (raw == null) return null;
+  if (raw is bool) return raw;
+  if (raw is num) return raw != 0;
+  final text = raw.toString().trim().toLowerCase();
+  if (text.isEmpty || text == 'null') return null;
+  if (text == 'true' || text == 'yes' || text == '1') return true;
+  if (text == 'false' || text == 'no' || text == '0') return false;
+  return null;
+}
+
+void _copyDownloadPolicy(Map<String, dynamic> from, Map<String, dynamic> to) {
+  for (final key in const [
+    'can_download',
+    'allow_download',
+    'download_enabled',
+    'download_roles',
+    'download_allowed_roles',
+    'download_access',
+    'role',
+  ]) {
+    if (from.containsKey(key)) to[key] = from[key];
+  }
 }
 
 bool? _parseConfiguredFlag(dynamic raw) {

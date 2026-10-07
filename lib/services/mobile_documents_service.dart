@@ -54,6 +54,9 @@ class MobileDocumentsService {
     return snapshotFor(projectId: projectId)?.configured == true;
   }
 
+  /// True when the office web allows the signed-in user to download documents.
+  bool get currentUserCanDownloadDocuments => _memory?.canDownload == true;
+
   /// Show a saved catalog without waiting for the network.
   Future<bool> showCachedLibrary({String? projectId}) async {
     await _bindIdentity(projectId: projectId);
@@ -193,6 +196,7 @@ class MobileDocumentsService {
         Map<String, dynamic>.from(decoded),
         expectedProjectId: projectId,
         expectedUserId: userId,
+        viewerRole: _role,
       );
       if (snapshot == null) return false;
       if (snapshot.projectId != projectId) return false;
@@ -284,6 +288,7 @@ class MobileDocumentsService {
           final snapshot = parseMobileDocumentsPayload(
             decoded,
             expectedProjectId: projectId,
+            viewerRole: _role,
           );
           if (snapshot == null) {
             lastError = 'unexpected payload';
@@ -295,6 +300,7 @@ class MobileDocumentsService {
             configured: snapshot.configured,
             projectId: projectId,
             library: snapshot.library,
+            canDownload: snapshot.canDownload,
             role: snapshot.role ?? _role,
             userId: userId,
             cachedAt: DateTime.now(),
@@ -318,6 +324,7 @@ class MobileDocumentsService {
     if (previous == null) return true;
     if (previous.projectId != snapshot.projectId) return true;
     if (previous.configured != snapshot.configured) return true;
+    if (previous.canDownload != snapshot.canDownload) return true;
     return !_librariesEqual(previous.library, snapshot.library);
   }
 

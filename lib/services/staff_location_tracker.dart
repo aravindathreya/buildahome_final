@@ -3,7 +3,6 @@ import 'dart:io';
 
 import 'package:flutter/widgets.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'attendance_service.dart';
@@ -77,12 +76,6 @@ class StaffLocationTracker with WidgetsBindingObserver {
       );
     }
 
-    if (Platform.isAndroid) {
-      final notifications = await Permission.notification.status;
-      if (!notifications.isGranted) {
-        await Permission.notification.request();
-      }
-    }
     if (generation != _generation || !_started) return;
 
     await _ping(ignoreThrottle: true);

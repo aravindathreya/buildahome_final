@@ -65,35 +65,26 @@ class _BuildAhomeBrandRowState extends State<BuildAhomeBrandRow>
           ),
         ),
         const SizedBox(width: 10),
-        Text.rich(
-          TextSpan(
-            children: [
-              TextSpan(
-                text: 'buildAhome',
-                style: TextStyle(
-                  color: color,
-                  fontSize: widget.fontSize,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: -0.4,
-                  height: 1.0,
-                ),
-              ),
-              WidgetSpan(
-                alignment: PlaceholderAlignment.top,
-                child: Transform.translate(
-                  offset: Offset(1, -widget.fontSize * 0.28),
-                  child: Text(
-                    'TM',
-                    style: TextStyle(
-                      color: color.withValues(alpha: 0.78),
-                      fontSize: widget.fontSize * 0.42,
-                      fontWeight: FontWeight.w700,
-                      height: 1.0,
-                    ),
-                  ),
-                ),
-              ),
-            ],
+        Text(
+          'buildAhome',
+          style: TextStyle(
+            color: color,
+            fontSize: widget.fontSize,
+            fontWeight: FontWeight.w800,
+            letterSpacing: -0.4,
+            height: 1.0,
+          ),
+        ),
+        Transform.translate(
+          offset: Offset(1, -widget.fontSize * 0.28),
+          child: Text(
+            'TM',
+            style: TextStyle(
+              color: color.withValues(alpha: 0.78),
+              fontSize: widget.fontSize * 0.42,
+              fontWeight: FontWeight.w700,
+              height: 1.0,
+            ),
           ),
         ),
       ],

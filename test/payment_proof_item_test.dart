@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:buildAhome/Payments.dart';
 import 'package:buildAhome/models/payment_proof_item.dart';
 
 void main() {
@@ -496,6 +497,7 @@ void main() {
       expect(item.billStages, hasLength(2));
       expect(item.billStages.first.isNt, isTrue);
       expect(item.billStages.last.partial, isTrue);
+      expect(item.appliedStageLabels, ['Extra civil', 'Foundation']);
     });
 
     test('groups proofs by NT stages first then non-NT then awaiting', () {
@@ -579,6 +581,66 @@ void main() {
       expect(sections[2].items.single.url, unassigned.url);
     });
 
+    test('walks a receipt across stages when the proof has no stage name', () {
+      final proof = PaymentProofItem.fromJson({
+        'url': 'https://office.buildahome.in/p/a.jpg',
+        'is_bill': true,
+        'receipt_total': 1300000,
+        'index': 1,
+      });
+      final stages = previousPaymentStagesByUrl(
+        proofs: [proof],
+        bills: const [
+          PaymentBillRef(
+            taskId: '1',
+            name: 'Completion of Footing',
+            description: '',
+            isTender: true,
+            status: 'paid',
+            amount: 700000,
+          ),
+          PaymentBillRef(
+            taskId: '2',
+            name: 'Completion of Concrete',
+            description: '',
+            isTender: true,
+            status: 'pending',
+            amount: 700000,
+          ),
+        ],
+      );
+      expect(stages[proof.url], [
+        'Completion of Footing',
+        'Completion of Concrete',
+      ]);
+    });
+
+    test('NT accordion uses the creation description and non-NT uses the stage', () {
+      final item = PaymentProofItem.fromJson({
+        'url': 'https://office.buildahome.in/p/a.jpg',
+        'is_bill': true,
+        'amount': 1000,
+        'nt_bills': [
+          {
+            'stage_name': 'Extra',
+            'description': 'Granite for kitchen counter',
+            'kind': 'nt',
+          },
+        ],
+        'non_nt_bills': [
+          {
+            'stage_name': 'Completion of Footing',
+            'kind': 'non_nt',
+            'description': 'ignored for staged bills',
+          },
+        ],
+      });
+      expect(item.appliedStageLabels, [
+        'Granite for kitchen counter',
+        'Completion of Footing',
+      ]);
+    });
+
     test('hides the line when the proof has no linked bill', () {
       final item = PaymentProofItem.fromJson({
         'filename': 'upi.jpg',
@@ -589,6 +651,96 @@ void main() {
         'note': '',
       });
       expect(item.clearedBillsText, isEmpty);
+    });
+  });
+
+  group('allocateFinanceApprovedPayments', () {
+    PendingPaymentRow row(String name, double amount, {bool tender = true}) {
+      return PendingPaymentRow(
+        name: name,
+        amount: amount,
+        isTender: tender,
+        status: 'due',
+      );
+    }
+
+    test('leaves pending amounts until finance approves the proof', () {
+      final pending = PaymentProofItem.fromJson({
+        'url': 'https://office.buildahome.in/p/a.jpg',
+        'is_bill': true,
+        'receipt_total': 1300000,
+        'status': 'pending',
+      });
+      final result = allocateFinanceApprovedPayments(
+        rows: [
+          row('Completion of Footing', 700000),
+          row('Completion of Concrete', 700000),
+        ],
+        proofs: [pending],
+      );
+      expect(result.rows, hasLength(2));
+      expect(result.rows[0].amount, 700000);
+      expect(result.rows[1].amount, 700000);
+      expect(result.total, 1400000);
+      expect(pending.isFinanceSettled, isFalse);
+    });
+
+    test('clears the first stage and leaves the remainder on the next', () {
+      final approved = PaymentProofItem.fromJson({
+        'url': 'https://office.buildahome.in/p/a.jpg',
+        'is_bill': true,
+        'receipt_total': 1300000,
+        'status': 'pending',
+        'finance_status': 'approved',
+      });
+      final result = allocateFinanceApprovedPayments(
+        rows: [
+          row('Completion of Footing', 700000),
+          row('Completion of Concrete', 700000),
+          row('Extra work', 50000, tender: false),
+        ],
+        proofs: [approved],
+      );
+      expect(approved.isFinanceSettled, isTrue);
+      expect(result.rows.map((e) => e.name), [
+        'Completion of Concrete',
+        'Extra work',
+      ]);
+      expect(result.rows[0].amount, 100000);
+      expect(result.rows[1].amount, 50000);
+      expect(result.total, 150000);
+      expect(
+        paymentStageNameIsCleared(
+          'Completion of Footing',
+          result.clearedNameKeys,
+        ),
+        isTrue,
+      );
+      expect(
+        paymentStageNameIsCleared('Completion of Concrete', result.clearedNameKeys),
+        isFalse,
+      );
+    });
+
+    test('continues the same balance across non-tender rows', () {
+      final approved = PaymentProofItem.fromJson({
+        'url': 'https://office.buildahome.in/p/a.jpg',
+        'is_bill': true,
+        'receipt_total': 800,
+        'status': 'approved',
+      });
+      final result = allocateFinanceApprovedPayments(
+        rows: [
+          row('Completion of Footing', 500),
+          row('768', 500, tender: false),
+        ],
+        proofs: [approved],
+      );
+      expect(result.rows, hasLength(1));
+      expect(result.rows.single.name, '768');
+      expect(result.rows.single.isTender, isFalse);
+      expect(result.rows.single.amount, 200);
+      expect(result.total, 200);
     });
   });
 }

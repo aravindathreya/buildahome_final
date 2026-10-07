@@ -18,11 +18,13 @@ import 'widgets/workflow_document_viewer.dart';
 class ApprovedPosScreenLayout extends StatelessWidget {
   final String? initialProjectId;
   final String? initialProjectName;
+  final String? initialSearch;
 
   const ApprovedPosScreenLayout({
     super.key,
     this.initialProjectId,
     this.initialProjectName,
+    this.initialSearch,
   });
 
   @override
@@ -33,6 +35,7 @@ class ApprovedPosScreenLayout extends StatelessWidget {
         child: ApprovedPosScreen(
           initialProjectId: initialProjectId,
           initialProjectName: initialProjectName,
+          initialSearch: initialSearch,
         ),
       ),
     );
@@ -42,16 +45,20 @@ class ApprovedPosScreenLayout extends StatelessWidget {
 class ApprovedPosScreen extends StatefulWidget {
   final String? initialProjectId;
   final String? initialProjectName;
+  final String? initialSearch;
 
   const ApprovedPosScreen({
     super.key,
     this.initialProjectId,
     this.initialProjectName,
+    this.initialSearch,
   });
 
   @override
   State<ApprovedPosScreen> createState() => _ApprovedPosScreenState();
 }
+
+enum _PoDeliveryFilter { delivered, notDelivered }
 
 class _ApprovedPosScreenState extends State<ApprovedPosScreen> {
   static const int _pageSize = 50;
@@ -66,10 +73,16 @@ class _ApprovedPosScreenState extends State<ApprovedPosScreen> {
   String? _error;
   int _offset = 0;
   String _search = '';
+  _PoDeliveryFilter _filter = _PoDeliveryFilter.notDelivered;
 
   @override
   void initState() {
     super.initState();
+    final seed = widget.initialSearch?.trim() ?? '';
+    if (seed.isNotEmpty) {
+      _searchController.text = seed;
+      _search = seed;
+    }
     _scrollController.addListener(_onScroll);
     _loadInitial();
   }
@@ -106,6 +119,7 @@ class _ApprovedPosScreenState extends State<ApprovedPosScreen> {
         _offset = result.items.length;
         _loading = false;
       });
+      await _fillActiveTabIfEmpty();
     } on SessionInvalidatedException {
       return;
     } catch (e) {
@@ -155,6 +169,37 @@ class _ApprovedPosScreenState extends State<ApprovedPosScreen> {
     _loadInitial();
   }
 
+  List<ApprovedPo> _itemsFor(_PoDeliveryFilter filter) {
+    if (filter == _PoDeliveryFilter.delivered) {
+      return _items.where((item) => item.isDeliveredReceipt).toList();
+    }
+    return _items.where((item) => !item.isDeliveredReceipt).toList();
+  }
+
+  List<ApprovedPo> get _visibleItems => _itemsFor(_filter);
+
+  /// Keep paging when the open tab is empty but later pages may still match.
+  Future<void> _fillActiveTabIfEmpty() async {
+    var hops = 0;
+    while (mounted &&
+        !_loading &&
+        _itemsFor(_filter).isEmpty &&
+        _hasMore &&
+        hops < 8) {
+      hops++;
+      await _loadMore();
+    }
+  }
+
+  void _onFilterSelected(_PoDeliveryFilter next) {
+    if (_filter == next) return;
+    setState(() => _filter = next);
+    if (_scrollController.hasClients) {
+      _scrollController.jumpTo(0);
+    }
+    _fillActiveTabIfEmpty();
+  }
+
   Future<void> _openDetail(ApprovedPo item) async {
     await Navigator.of(context).push(
       MaterialPageRoute(
@@ -164,6 +209,8 @@ class _ApprovedPosScreenState extends State<ApprovedPosScreen> {
         ),
       ),
     );
+    if (!mounted) return;
+    await _loadInitial();
   }
 
   @override
@@ -224,17 +271,27 @@ class _ApprovedPosScreenState extends State<ApprovedPosScreen> {
                     _onSearchSubmitted('');
                   },
                 ),
-                if (!_loading && _items.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                _DeliveryFilterBar(
+                  selected: _filter,
+                  deliveredCount: _itemsFor(_PoDeliveryFilter.delivered).length,
+                  notDeliveredCount:
+                      _itemsFor(_PoDeliveryFilter.notDelivered).length,
+                  onChanged: _onFilterSelected,
+                ),
+                if (!_loading && _visibleItems.isNotEmpty) ...[
                   const SizedBox(height: 14),
                   Row(
                     children: [
-                      const Expanded(
+                      Expanded(
                         child: ClientPortalSectionHeading(
-                          label: 'Approved purchase orders',
+                          label: _filter == _PoDeliveryFilter.delivered
+                              ? 'Delivered'
+                              : 'Not delivered',
                         ),
                       ),
                       Text(
-                        '${_items.length}${_hasMore ? '+' : ''}',
+                        '${_visibleItems.length}${_hasMore ? '+' : ''}',
                         style: TextStyle(
                           color: AppTheme.getTextSecondary(context),
                           fontSize: 12,
@@ -272,7 +329,20 @@ class _ApprovedPosScreenState extends State<ApprovedPosScreen> {
       );
     }
 
-    if (_items.isEmpty) {
+    final visible = _visibleItems;
+    final deliveredTab = _filter == _PoDeliveryFilter.delivered;
+
+    if (_items.isEmpty || (visible.isEmpty && !_loadingMore)) {
+      final title = _items.isEmpty
+          ? 'No approved POs'
+          : (deliveredTab ? 'No delivered POs' : 'Nothing left to deliver');
+      final message = _items.isEmpty
+          ? (_projectId != null
+              ? 'No approved POs for this project'
+              : 'No approved POs found')
+          : (deliveredTab
+              ? 'POs show here after site proof is uploaded and fully approved.'
+              : 'Approved POs still waiting on delivery show here, including partially delivered ones.');
       return RefreshIndicator(
         color: AppTheme.accentBlue,
         onRefresh: _loadInitial,
@@ -283,15 +353,23 @@ class _ApprovedPosScreenState extends State<ApprovedPosScreen> {
               height: MediaQuery.of(context).size.height * 0.45,
               child: _InlineMessage(
                 icon: Icons.receipt_long_outlined,
-                title: 'No approved POs',
-                message: _projectId != null
-                    ? 'No approved POs for this project'
-                    : 'No approved POs found',
+                title: title,
+                message: message,
                 actionLabel: 'Refresh',
                 onAction: _loadInitial,
               ),
             ),
           ],
+        ),
+      );
+    }
+
+    if (visible.isEmpty && _loadingMore) {
+      return const Center(
+        child: SizedBox(
+          width: 24,
+          height: 24,
+          child: CircularProgressIndicator(strokeWidth: 2),
         ),
       );
     }
@@ -303,9 +381,9 @@ class _ApprovedPosScreenState extends State<ApprovedPosScreen> {
         controller: _scrollController,
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.fromLTRB(20, 4, 20, 28),
-        itemCount: _items.length + (_loadingMore ? 1 : 0),
+        itemCount: visible.length + (_loadingMore ? 1 : 0),
         itemBuilder: (context, index) {
-          if (index >= _items.length) {
+          if (index >= visible.length) {
             return const Padding(
               padding: EdgeInsets.symmetric(vertical: 16),
               child: Center(
@@ -317,12 +395,98 @@ class _ApprovedPosScreenState extends State<ApprovedPosScreen> {
               ),
             );
           }
-          final item = _items[index];
+          final item = visible[index];
           return _ApprovedPoListCard(
             item: item,
             onTap: () => _openDetail(item),
           );
         },
+      ),
+    );
+  }
+}
+
+class _DeliveryFilterBar extends StatelessWidget {
+  final _PoDeliveryFilter selected;
+  final int deliveredCount;
+  final int notDeliveredCount;
+  final ValueChanged<_PoDeliveryFilter> onChanged;
+
+  const _DeliveryFilterBar({
+    required this.selected,
+    required this.deliveredCount,
+    required this.notDeliveredCount,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 44,
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: AppTheme.darkBackgroundSecondary,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppTheme.border),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: _DeliveryFilterChip(
+              label: 'Not delivered',
+              count: notDeliveredCount,
+              selected: selected == _PoDeliveryFilter.notDelivered,
+              onTap: () => onChanged(_PoDeliveryFilter.notDelivered),
+            ),
+          ),
+          Expanded(
+            child: _DeliveryFilterChip(
+              label: 'Delivered',
+              count: deliveredCount,
+              selected: selected == _PoDeliveryFilter.delivered,
+              onTap: () => onChanged(_PoDeliveryFilter.delivered),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DeliveryFilterChip extends StatelessWidget {
+  final String label;
+  final int count;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _DeliveryFilterChip({
+    required this.label,
+    required this.count,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final fg = selected ? Colors.white : AppTheme.mutedGrey;
+    return Material(
+      color: selected ? AppTheme.accentBlue : Colors.transparent,
+      borderRadius: BorderRadius.circular(9),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(9),
+        child: Center(
+          child: Text(
+            count > 0 ? '$label ($count)' : label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: fg,
+              fontSize: 13,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ),
       ),
     );
   }

@@ -131,24 +131,41 @@ class SessionManager {
   /// endpoint with the stored token. Individual endpoints can answer 401 for
   /// reasons unrelated to the session (missing resource, probe URLs, endpoints
   /// that expect different params), so a single failure is not enough.
+  ///
+  /// A bare 401 from that probe is also not enough. Only an explicit
+  /// invalid-token payload confirms the session was replaced.
   Future<bool> _storedTokenIsRejected() {
     return _confirmInFlight ??= () async {
       try {
         final response = await _probeSession();
         if (response == null) return false;
-        return isSessionInvalid(
-          statusCode: response.statusCode,
-          body: response.body,
-        );
+        return probeRequiresLogout(response.statusCode, response.body);
       } finally {
         _confirmInFlight = null;
       }
     }();
   }
 
+  /// Whether an app-open / resume probe should send the user to login.
+  ///
+  /// A successful task list and a bare 401 must not. [get_tasks] answers 401
+  /// for reasons other than a replaced token, and treating that as logout
+  /// throws the user out of the app on its own. Only the explicit
+  /// invalid-token payload means this account signed in on another device.
+  bool probeRequiresLogout(int statusCode, String? body) {
+    if (statusCode <= 0) return false;
+    if (body == null || body.trim().isEmpty) return false;
+    return _isExplicitInvalidTokenBody(body);
+  }
+
   /// Raw (non-intercepted) call to a stable authenticated endpoint.
   /// Returns null when credentials are missing locally or the network failed.
+  ///
+  /// Only the first few KB are read. A valid token returns the full task list,
+  /// and decoding that on the UI isolate stalls startup until Android kills
+  /// the process.
   Future<http.Response?> _probeSession() async {
+    http.Client? client;
     try {
       final prefs = await SharedPreferences.getInstance();
       final userId =
@@ -163,13 +180,44 @@ class SessionManager {
         'api_token': apiToken,
       });
 
-      return await http
-          .get(uri, headers: {'X-Api-Token': apiToken})
+      client = http.Client();
+      final request = http.Request('GET', uri);
+      request.headers['X-Api-Token'] = apiToken;
+      final streamed = await client
+          .send(request)
           .timeout(const Duration(seconds: 15));
+      final peeked = await _readCappedBody(streamed.stream, 8192);
+      final keepBody = probeRequiresLogout(streamed.statusCode, peeked);
+      return http.Response(
+        keepBody ? peeked : '',
+        streamed.statusCode,
+        request: request,
+        headers: streamed.headers,
+        reasonPhrase: streamed.reasonPhrase,
+      );
     } catch (e) {
       print('[SessionManager] Session probe failed: $e');
       return null;
+    } finally {
+      try {
+        client?.close();
+      } catch (_) {}
     }
+  }
+
+  Future<String> _readCappedBody(Stream<List<int>> stream, int maxBytes) async {
+    final bytes = <int>[];
+    await for (final chunk in stream.timeout(const Duration(seconds: 15))) {
+      final room = maxBytes - bytes.length;
+      if (room <= 0) break;
+      if (chunk.length <= room) {
+        bytes.addAll(chunk);
+      } else {
+        bytes.addAll(chunk.sublist(0, room));
+        break;
+      }
+    }
+    return utf8.decode(bytes, allowMalformed: true);
   }
 
   Future<void> forceLogoutDueToInvalidSession() async {
@@ -238,15 +286,14 @@ class SessionManager {
     _lastValidateAt = now;
 
     // Raw http to avoid recursive interceptor while logging out.
+    // Do not treat a bare 401 or a successful task payload as logout.
+    // That used to replace the whole app with the login screen, or stall
+    // the UI thread long enough for Android to close the process.
     final response = await _probeSession();
     if (response == null) return;
+    if (!probeRequiresLogout(response.statusCode, response.body)) return;
 
-    // The probe is already the authoritative check, so no second call.
-    await handleResponse(
-      response,
-      requestUrl: response.request?.url,
-      confirmBeforeLogout: false,
-    );
+    await forceLogoutDueToInvalidSession();
   }
 
   bool _isLoginRequest(Uri? url) {

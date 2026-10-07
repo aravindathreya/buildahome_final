@@ -21,6 +21,8 @@ import 'checklist_categories.dart';
 import 'services/data_provider.dart';
 import 'services/project_completion_days.dart';
 import 'services/notification_service.dart';
+import 'widgets/notification_permission_banner.dart';
+import 'services/push/notification_permission_controller.dart';
 import 'services/rbac_service.dart';
 import 'services/session_manager.dart';
 import 'services/mobile_live_test_access.dart';
@@ -275,6 +277,7 @@ class UserDashboardLayoutState extends State<UserDashboardLayout> {
   final GlobalKey _tourActionsKey = GlobalKey();
   final GlobalKey _tourBottomNavKey = GlobalKey();
   String displayName = 'there';
+  String _projectName = '';
   String? _userRole;
   int _bottomNavIndex = 0;
   bool _tourActive = false;
@@ -309,6 +312,9 @@ class UserDashboardLayoutState extends State<UserDashboardLayout> {
         .addListener(_onBottomNavConfigChanged);
     _loadDisplayName();
     _loadUnreadNotifications();
+    unawaited(
+      NotificationPermissionController.instance.promptOnClientHome(),
+    );
     unawaited(ClientGenerationService.instance.ensureLoaded());
     unawaited(MobileDocumentsService.instance.ensureLibrary());
     // Force network so a prior failed fetch / stale configured:false cache
@@ -362,6 +368,14 @@ class UserDashboardLayoutState extends State<UserDashboardLayout> {
 
   bool get _layoutIsClientUser =>
       (_userRole ?? '').trim().toLowerCase() == 'client';
+
+  /// Clients, and staff on the main dashboard, keep "Good afternoon, {name}".
+  /// Inside a project, staff see the project name only.
+  bool get _showClientGreeting =>
+      _layoutIsClientUser || !widget.fromAdminDashboard;
+
+  bool get _showProjectIdentity =>
+      widget.fromAdminDashboard && !_layoutIsClientUser;
 
   List<String> _resolvedBottomNavKeys() {
     final surface = _bottomNavSurface;
@@ -452,18 +466,23 @@ class UserDashboardLayoutState extends State<UserDashboardLayout> {
   _loadDisplayName() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     await ProfilePictureService.getStoredPath();
+    final role = prefs.getString('role');
+    final isClient = (role ?? '').trim().toLowerCase() == 'client';
     String loadedUsername = ' ';
-    if (prefs.containsKey("client_name")) {
+    if (isClient && prefs.containsKey("client_name")) {
       loadedUsername = prefs.getString('client_name') ?? ' ';
     } else {
       loadedUsername = prefs.getString('username') ?? ' ';
     }
 
     String name = _getDisplayName(loadedUsername);
-    final role = prefs.getString('role');
+    final projectName = (!isClient && widget.fromAdminDashboard)
+        ? (prefs.getString('client_name') ?? '').trim()
+        : '';
     if (mounted) {
       setState(() {
         displayName = name;
+        _projectName = projectName;
         _userRole = role;
       });
       _tryStartFirstRun();
@@ -519,6 +538,7 @@ class UserDashboardLayoutState extends State<UserDashboardLayout> {
         ),
       ),
     );
+    await NotificationService.instance.markAllAsRead();
     _loadUnreadNotifications(force: true);
   }
 
@@ -558,6 +578,22 @@ class UserDashboardLayoutState extends State<UserDashboardLayout> {
     if (mounted) setState(() => _bottomNavIndex = 0);
   }
 
+  Widget _buildProjectIdentityTitle() {
+    final name = _projectName.trim().isNotEmpty ? _projectName.trim() : 'Project';
+    return Text(
+      name,
+      style: TextStyle(
+        color: AppTheme.darkTextPrimary,
+        fontSize: 26,
+        fontWeight: FontWeight.w600,
+        height: 1.1,
+        letterSpacing: -0.6,
+      ),
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+    );
+  }
+
   Widget _buildUserHeader() {
     final topPad = MediaQuery.of(context).padding.top;
     return Container(
@@ -587,35 +623,40 @@ class UserDashboardLayoutState extends State<UserDashboardLayout> {
                 ),
                 const SizedBox(width: 4),
               ],
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      _greetingForNow(),
-                      style: const TextStyle(
-                        color: _mutedGrey,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w400,
-                        height: 1.2,
+              if (_showProjectIdentity)
+                Expanded(child: _buildProjectIdentityTitle())
+              else if (_showClientGreeting)
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _greetingForNow(),
+                        style: const TextStyle(
+                          color: _mutedGrey,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w400,
+                          height: 1.2,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      displayName.isNotEmpty ? displayName : 'there',
-                      style: TextStyle(
-                        color: AppTheme.darkTextPrimary,
-                        fontSize: 26,
-                        fontWeight: FontWeight.w600,
-                        height: 1.1,
-                        letterSpacing: -0.6,
+                      const SizedBox(height: 2),
+                      Text(
+                        displayName.isNotEmpty ? displayName : 'there',
+                        style: TextStyle(
+                          color: AppTheme.darkTextPrimary,
+                          fontSize: 26,
+                          fontWeight: FontWeight.w600,
+                          height: 1.1,
+                          letterSpacing: -0.6,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
-                ),
-              ),
+                    ],
+                  ),
+                )
+              else
+                const Spacer(),
           KeyedSubtree(
             key: _tourHeaderKey,
             child: Row(
@@ -766,6 +807,7 @@ class UserDashboardLayoutState extends State<UserDashboardLayout> {
             body: Column(
               children: [
                 _buildUserHeader(),
+                const NotificationPermissionBanner(),
                 Expanded(
                   child: UserDashboardScreen(
                     key: _userDashboardKey,
@@ -4209,8 +4251,20 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
       await showFeatureComingSoon(context, featureName: 'Chat');
       return;
     }
+    // The project-home Chat card is already inside a project, so open that
+    // project's chat. The Chat quick action still uses the project list.
     if (!_isClientUser) {
-      await ProjectPickerScreen.show(context, forChat: true);
+      final prefs = await SharedPreferences.getInstance();
+      final projectId = (prefs.getString('project_id') ?? '').trim();
+      final salesSopId = (prefs.getString('sales_sop_id') ?? '').trim();
+      if (!mounted) return;
+      await _navigateToWidget(
+        ChatV1App.openQuick(
+          erpProjectId: projectId.isEmpty ? null : projectId,
+          project: salesSopId.isEmpty ? null : {'sales_sop_id': salesSopId},
+          tasksHint: _tasks,
+        ),
+      );
       return;
     }
     await _navigateToWidget(

@@ -1,18 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'package:url_launcher/url_launcher.dart';
 
-import 'MyTasksScreen.dart';
-import 'SlotsScreen.dart';
-import 'SiteVisitReports.dart';
-import 'UploadPaymentProofScreen.dart';
 import 'app_theme.dart';
-import 'approved_pos_screen.dart';
-import 'indent_proof.dart';
-import 'indents_screen.dart';
-import 'services/app_deep_link_service.dart';
+import 'services/notification_navigator.dart';
 import 'services/notification_service.dart';
+import 'widgets/notification_permission_banner.dart';
 import 'widgets/themed_scaffold.dart';
 import 'widgets/skeleton_loader.dart';
 
@@ -66,8 +60,7 @@ class NotificationPageBodyState extends State<NotificationPageBody> {
 
   Future<void> _bootstrap() async {
     await _service.ensureHydrated();
-    if (mounted) setState(() {});
-    await _service.markAllAsRead();
+    await _service.sync(force: true);
     if (mounted) {
       setState(() => _bootstrapping = false);
     }
@@ -75,7 +68,7 @@ class NotificationPageBodyState extends State<NotificationPageBody> {
 
   Future<void> _handleRefresh() async {
     setState(() => _visibleCount = kNotificationPageSize);
-    await _service.markAllAsRead();
+    await _service.sync(force: true);
   }
 
   void _onScroll() {
@@ -275,226 +268,14 @@ class NotificationPageBodyState extends State<NotificationPageBody> {
     return asString == '1' || asString == 'true' || asString == 'yes';
   }
 
-  String? _firstString(Map<String, dynamic> map, List<String> keys) {
-    for (final key in keys) {
-      final value = map[key]?.toString().trim() ?? '';
-      if (value.isNotEmpty && value.toLowerCase() != 'null') return value;
-    }
-    return null;
-  }
-
   Future<void> _openNotification(Map<String, dynamic> notification) async {
     if (_opening) return;
     setState(() => _opening = true);
     try {
-      final opened = await _navigateForNotification(notification);
-      if (!opened && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('No linked page for this notification yet.'),
-          ),
-        );
-      }
+      await NotificationNavigator.open(context, notification);
     } finally {
       if (mounted) setState(() => _opening = false);
     }
-  }
-
-  Future<bool> _navigateForNotification(
-    Map<String, dynamic> notification,
-  ) async {
-    final link = _firstString(notification, [
-      'redirect_url',
-      'url',
-      'link',
-      'deep_link',
-      'deeplink',
-      'href',
-      'open_url',
-    ]);
-    if (link != null) {
-      final uri = Uri.tryParse(link);
-      if (uri != null) {
-        final deepScreen = AppDeepLinkService.resolveScreen(uri);
-        if (deepScreen == 'payment_proof') {
-          await Navigator.of(context).push(
-            MaterialPageRoute(
-              builder: (_) => const UploadPaymentProofScreen(),
-            ),
-          );
-          return true;
-        }
-        if (uri.scheme == 'http' || uri.scheme == 'https') {
-          if (await canLaunchUrl(uri)) {
-            await launchUrl(uri, mode: LaunchMode.externalApplication);
-            return true;
-          }
-        }
-      }
-    }
-
-    final screen = (_firstString(notification, [
-              'screen',
-              'open_tab',
-              'native_screen',
-              'wf_native_screen',
-              'redirect_page',
-              'type',
-              'category',
-              'notification_type',
-            ]) ??
-            '')
-        .toLowerCase()
-        .replaceAll('-', '_')
-        .replaceAll(' ', '_');
-
-    final taskId = _firstString(notification, [
-      'task_id',
-      'erp_task_id',
-      'workflow_task_id',
-      'focus_task_id',
-    ]);
-    final indentId = _firstString(notification, [
-      'indent_id',
-      'indentId',
-      'wf_indent_id',
-    ]);
-    final projectId = _firstString(notification, [
-      'project_id',
-      'projectId',
-      'pr_id',
-    ]);
-    final projectName = _firstString(notification, [
-      'project_name',
-      'client_name',
-      'project',
-    ]);
-
-    final blob =
-        '${notification['title'] ?? ''} ${notification['body'] ?? ''} $screen'
-            .toLowerCase();
-
-    if (indentId != null &&
-        (screen.contains('indent_proof') ||
-            screen.contains('site_proof') ||
-            blob.contains('indent proof') ||
-            blob.contains('site proof'))) {
-      await openIndentProofScreen(context, indentId: indentId);
-      return true;
-    }
-
-    if (indentId != null &&
-        (isIndentReviewApproveScreenValue(screen) ||
-            screen.contains('indents_view_open') ||
-            screen.contains('view_open_indents') ||
-            blob.contains('review and approve the indent') ||
-            (blob.contains('review') &&
-                blob.contains('approve') &&
-                blob.contains('indent') &&
-                !blob.contains('proof')))) {
-      await openIndentViewOpenScreen(
-        context,
-        indentId: indentId,
-        projectId: projectId,
-        projectName: projectName,
-      );
-      return true;
-    }
-
-    if (screen.contains('payment_proof') ||
-        screen.contains('upload_proof') ||
-        blob.contains('upload proof') ||
-        blob.contains('payment proof')) {
-      await Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => const UploadPaymentProofScreen(),
-        ),
-      );
-      return true;
-    }
-
-    if (taskId != null ||
-        screen.contains('task') ||
-        blob.contains('task') ||
-        blob.contains('assigned')) {
-      await _openMyTasks(focusTaskId: taskId);
-      return true;
-    }
-
-    if (indentId != null ||
-        screen.contains('indent') ||
-        blob.contains('indent')) {
-      final prefs = await SharedPreferences.getInstance();
-      await Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => IndentsScreenLayout(
-            initialTab: blob.contains('my indent')
-                ? kIndentsMyIndentsTab
-                : kIndentsViewOpenTab,
-            initialProjectId: projectId ?? prefs.getString('project_id'),
-            initialProjectName: projectName ?? prefs.getString('client_name'),
-          ),
-        ),
-      );
-      return true;
-    }
-
-    if (screen.contains('approved_po') ||
-        screen.contains('purchase_order') ||
-        blob.contains('approved po') ||
-        blob.contains('purchase order') ||
-        RegExp(r'\bpo\b').hasMatch(blob)) {
-      final prefs = await SharedPreferences.getInstance();
-      await Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => ApprovedPosScreenLayout(
-            initialProjectId: projectId ?? prefs.getString('project_id'),
-            initialProjectName: projectName ?? prefs.getString('client_name'),
-          ),
-        ),
-      );
-      return true;
-    }
-
-    if (screen.contains('slot') ||
-        blob.contains('visit date') ||
-        blob.contains('site visit slot') ||
-        blob.contains('slots')) {
-      await Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => const SlotsScreen()),
-      );
-      return true;
-    }
-
-    if (screen.contains('site_visit') || blob.contains('site visit')) {
-      final prefs = await SharedPreferences.getInstance();
-      final fixedId = projectId ?? prefs.getString('project_id');
-      await Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => SiteVisitReportsScreen(
-            fixedProjectId: fixedId,
-            projectFixed: fixedId != null && fixedId.isNotEmpty,
-          ),
-        ),
-      );
-      return true;
-    }
-
-    return false;
-  }
-
-  Future<void> _openMyTasks({String? focusTaskId}) async {
-    final tasks = await fetchTasksForCurrentUser();
-    if (!mounted) return;
-    await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => MyTasksScreen(
-          tasks: tasks,
-          focusTaskId: focusTaskId,
-          onRefresh: fetchTasksForCurrentUser,
-        ),
-      ),
-    );
   }
 
   @override
@@ -556,10 +337,38 @@ class NotificationPageBodyState extends State<NotificationPageBody> {
           );
         }
 
-        return RefreshIndicator(
-          color: _navy,
-          onRefresh: _handleRefresh,
-          child: content,
+        final unread = _service.unreadCount;
+        return PopScope(
+          onPopInvokedWithResult: (didPop, _) {
+            if (didPop) unawaited(_service.markAllAsRead());
+          },
+          child: Column(
+          children: [
+            const NotificationPermissionBanner(),
+            if (unread > 0)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    unread == 1 ? '1 new' : '$unread new',
+                    style: const TextStyle(
+                      color: _navy,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ),
+            Expanded(
+              child: RefreshIndicator(
+                color: _navy,
+                onRefresh: _handleRefresh,
+                child: content,
+              ),
+            ),
+          ],
+        ),
         );
       },
     );

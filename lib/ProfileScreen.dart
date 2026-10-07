@@ -30,6 +30,7 @@ class _ProfileScreenState extends State<ProfileScreen>
   String? _picturePath;
   bool? _backgroundLocationOn;
   bool _loading = true;
+
   /// Fallback matches pubspec `version:` when PackageInfo is unavailable
   /// (e.g. before a full rebuild after adding the plugin).
   String _appVersion = 'Version 3.0.1';
@@ -88,9 +89,8 @@ class _ProfileScreenState extends State<ProfileScreen>
     if (role.toLowerCase() == 'client' && clientName.isNotEmpty) {
       displayName = clientName;
     } else if (username.isNotEmpty) {
-      displayName = username.contains('-')
-          ? username.split('-').first.trim()
-          : username;
+      displayName =
+          username.contains('-') ? username.split('-').first.trim() : username;
     } else {
       displayName = 'User';
     }
@@ -106,7 +106,8 @@ class _ProfileScreenState extends State<ProfileScreen>
       final version = info.version.trim();
       final build = info.buildNumber.trim();
       if (version.isNotEmpty) {
-        appVersion = build.isNotEmpty ? 'Version $version ($build)' : 'Version $version';
+        appVersion =
+            build.isNotEmpty ? 'Version $version ($build)' : 'Version $version';
       }
     } catch (_) {
       // Keep any previously loaded version label.
@@ -278,15 +279,17 @@ class _ProfileScreenState extends State<ProfileScreen>
       builder: (context, themeMode, _) {
         final isDark = themeMode != ThemeMode.light;
         return AnnotatedRegion<SystemUiOverlayStyle>(
-          value: isDark ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark,
+          value:
+              isDark ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark,
           child: Scaffold(
             backgroundColor: AppTheme.backgroundPrimary,
             appBar: AppBar(
               backgroundColor: AppTheme.backgroundSecondary,
               foregroundColor: AppTheme.textPrimary,
               elevation: 0,
-              systemOverlayStyle:
-                  isDark ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark,
+              systemOverlayStyle: isDark
+                  ? SystemUiOverlayStyle.light
+                  : SystemUiOverlayStyle.dark,
               title: Text(
                 'Profile',
                 style: TextStyle(
@@ -298,7 +301,8 @@ class _ProfileScreenState extends State<ProfileScreen>
             ),
             body: _loading
                 ? const Center(
-                    child: CircularProgressIndicator(color: AppTheme.accentBlue),
+                    child:
+                        CircularProgressIndicator(color: AppTheme.accentBlue),
                   )
                 : Column(
                     children: [
@@ -402,8 +406,26 @@ class _ProfileScreenState extends State<ProfileScreen>
           ),
           Switch.adaptive(
             value: isDark,
-            activeThumbColor: AppTheme.accentBlue,
-            activeTrackColor: AppTheme.accentBlue.withValues(alpha: 0.45),
+            thumbColor: WidgetStateProperty.resolveWith((states) {
+              if (states.contains(WidgetState.selected)) {
+                return Colors.white;
+              }
+              // Off state stays obvious on a white card so dark mode is easy
+              // to turn back on.
+              return isDark ? const Color(0xFFF4F4F5) : AppTheme.navy;
+            }),
+            trackColor: WidgetStateProperty.resolveWith((states) {
+              if (states.contains(WidgetState.selected)) {
+                return AppTheme.accentBlue;
+              }
+              return isDark ? const Color(0xFF3F3F46) : const Color(0xFFE4E4E7);
+            }),
+            trackOutlineColor: WidgetStateProperty.resolveWith((states) {
+              if (states.contains(WidgetState.selected)) {
+                return AppTheme.accentBlue;
+              }
+              return isDark ? const Color(0xFF71717A) : const Color(0xFFA1A1AA);
+            }),
             onChanged: (value) {
               unawaited(ThemeService.instance.setDark(value));
             },
@@ -616,12 +638,8 @@ class _ProfileScreenState extends State<ProfileScreen>
     final statusColor =
         isOn ? const Color(0xFF34D399) : const Color(0xFFFBBF24);
     final statusBg = isOn
-        ? (AppTheme.isDark
-            ? const Color(0xFF14352B)
-            : const Color(0xFFD1FAE5))
-        : (AppTheme.isDark
-            ? const Color(0xFF3A2F14)
-            : const Color(0xFFFEF3C7));
+        ? (AppTheme.isDark ? const Color(0xFF14352B) : const Color(0xFFD1FAE5))
+        : (AppTheme.isDark ? const Color(0xFF3A2F14) : const Color(0xFFFEF3C7));
 
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
@@ -700,7 +718,9 @@ class _ProfileScreenState extends State<ProfileScreen>
                 child: OutlinedButton(
                   onPressed: backgroundOn == null
                       ? null
-                      : (isOn ? _confirmTurnOffLocation : _openLocationSettings),
+                      : (isOn
+                          ? _confirmTurnOffLocation
+                          : _openLocationSettings),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: AppTheme.textPrimary,
                     side: BorderSide(color: AppTheme.borderColor),

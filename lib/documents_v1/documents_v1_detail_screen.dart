@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../app_theme.dart';
 import '../client_portal/client_portal_document_ui.dart';
 import '../models/workflow_document.dart';
+import '../services/document_file_download.dart';
 import '../widgets/workflow_document_viewer.dart';
 
 class DocumentsV1DetailScreen extends StatelessWidget {
@@ -118,6 +119,25 @@ class DocumentsV1DetailScreen extends StatelessWidget {
               ),
             ),
           ),
+          if (document.canDownload && document.hasUrl) ...[
+            const SizedBox(height: 10),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () => downloadWorkflowDocument(context, document),
+                icon: const Icon(Icons.download_rounded),
+                label: const Text('Download'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: ClientPortalDocTheme.accentBlue,
+                  minimumSize: const Size.fromHeight(48),
+                  side: const BorderSide(color: ClientPortalDocTheme.accentBlue),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );

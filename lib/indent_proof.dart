@@ -359,7 +359,15 @@ class IndentProofTabState extends State<IndentProofTab> {
               break;
             }
           }
-          _openDetail(match ?? {'id': initialId, 'indent_id': initialId});
+          if (match == null) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('This indent is no longer available.'),
+              ),
+            );
+            return;
+          }
+          _openDetail(match);
         });
       }
     } catch (e) {

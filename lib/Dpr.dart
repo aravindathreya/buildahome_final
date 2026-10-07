@@ -38,6 +38,7 @@ class DprState extends State<DprScreen> {
   bool _isLoading = true;
   String? _error;
   bool _canAddDailyUpdate = false;
+  bool _canDeleteUpdate = false;
   String? _projectId;
   String? _projectName;
 
@@ -217,12 +218,16 @@ class DprState extends State<DprScreen> {
         '';
     final normalized = role.toLowerCase().trim().replaceAll(RegExp(r'\s+'), ' ');
     // Super Admin is often stored as Admin in prefs.
-    final allowed = normalized == 'site engineer' ||
+    // Site engineers can add updates, but cannot delete photos or updates.
+    final canAdd = normalized == 'site engineer' ||
         normalized == 'super admin' ||
         normalized == 'admin';
+    final canDelete =
+        normalized == 'super admin' || normalized == 'admin';
     if (!mounted) return;
     setState(() {
-      _canAddDailyUpdate = allowed;
+      _canAddDailyUpdate = canAdd;
+      _canDeleteUpdate = canDelete;
       _projectId = prefs.getString('project_id');
       _projectName =
           prefs.getString('client_name') ?? prefs.getString('project_name');
@@ -252,6 +257,7 @@ class DprState extends State<DprScreen> {
   }
 
   Future<void> _confirmDelete(List<dynamic> updateIds) async {
+    if (!_canDeleteUpdate) return;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -462,7 +468,7 @@ class DprState extends State<DprScreen> {
                     ),
                   ),
                 ),
-                if (_canAddDailyUpdate)
+                if (_canDeleteUpdate)
                   IconButton(
                     onPressed: () => _confirmDelete(ids),
                     tooltip: 'Delete',

@@ -1484,4 +1484,164 @@ void main() {
       expect(named.icon, Icons.electrical_services_outlined);
     });
   });
+
+  group('document download access', () {
+    WorkflowDocumentUpload firstDoc(MobileDocumentsSnapshot snapshot) {
+      return snapshot
+          .library.libraryCategories.first.sections.first.documents.first;
+    }
+
+    test('download is shown until the web restricts it', () {
+      final snapshot = parseMobileDocumentsPayload(
+        _architecturalPayload(projectId: '9', floorPlans: ['Plan A']),
+        viewerRole: 'Client',
+      )!;
+      expect(snapshot.canDownload, isTrue);
+      expect(firstDoc(snapshot).canDownload, isTrue);
+    });
+
+    test('can_download true shows download on every file', () {
+      final payload = _architecturalPayload(
+        projectId: '9',
+        floorPlans: ['Plan A'],
+      );
+      payload['can_download'] = true;
+      final snapshot = parseMobileDocumentsPayload(
+        payload,
+        viewerRole: 'Site Engineer',
+      )!;
+      expect(snapshot.canDownload, isTrue);
+      expect(firstDoc(snapshot).canDownload, isTrue);
+      expect(
+        snapshot.library.libraryCategories
+            .firstWhere((c) => c.label == 'Contracts')
+            .sections
+            .first
+            .documents
+            .first
+            .canDownload,
+        isTrue,
+      );
+    });
+
+    test('download_roles decides who sees download', () {
+      final payload = _architecturalPayload(
+        projectId: '9',
+        floorPlans: ['Plan A'],
+      );
+      payload['download_roles'] = ['Project Manager', 'Admin'];
+
+      final manager = parseMobileDocumentsPayload(
+        payload,
+        viewerRole: 'Project Manager',
+      )!;
+      final engineer = parseMobileDocumentsPayload(
+        payload,
+        viewerRole: 'Site Engineer',
+      )!;
+
+      expect(manager.canDownload, isTrue);
+      expect(firstDoc(manager).canDownload, isTrue);
+      expect(engineer.canDownload, isFalse);
+      expect(firstDoc(engineer).canDownload, isFalse);
+    });
+
+    test('download_access.roles and empty list are honored', () {
+      final allowed = _architecturalPayload(
+        projectId: '9',
+        floorPlans: ['Plan A'],
+      );
+      allowed['download_access'] = {
+        'roles': ['Client'],
+      };
+      expect(
+        parseMobileDocumentsPayload(allowed, viewerRole: 'Client')!.canDownload,
+        isTrue,
+      );
+      expect(
+        parseMobileDocumentsPayload(allowed, viewerRole: 'client')!.canDownload,
+        isTrue,
+      );
+
+      final nobody = _architecturalPayload(
+        projectId: '9',
+        floorPlans: ['Plan A'],
+      );
+      nobody['download_roles'] = <String>[];
+      expect(
+        parseMobileDocumentsPayload(nobody, viewerRole: 'Admin')!.canDownload,
+        isFalse,
+      );
+    });
+
+    test('one file can turn download off while the catalog allows it', () {
+      final payload = {
+        'message': 'success',
+        'configured': true,
+        'project_id': '9',
+        'can_download': true,
+        'categories': [
+          {
+            'id': 'architectural',
+            'label': 'Architectural',
+            'types': [
+              {
+                'id': 'floor_plans',
+                'label': 'Floor Plans',
+                'documents': [
+                  {
+                    'id': 'fp_0',
+                    'name': 'Plan A',
+                    'status': 'uploaded',
+                    'url': '/files/a.pdf',
+                  },
+                  {
+                    'id': 'fp_1',
+                    'name': 'Plan B',
+                    'status': 'uploaded',
+                    'url': '/files/b.pdf',
+                    'can_download': false,
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      };
+      final snapshot = parseMobileDocumentsPayload(
+        payload,
+        viewerRole: 'Client',
+      )!;
+      final parsed =
+          snapshot.library.libraryCategories.first.sections.first.documents;
+      expect(parsed.first.canDownload, isTrue);
+      expect(parsed[1].canDownload, isFalse);
+    });
+
+    test('cached catalog keeps the web download rule', () {
+      final payload = _architecturalPayload(
+        projectId: '9',
+        floorPlans: ['Plan A'],
+      );
+      payload['download_roles'] = ['Client'];
+      final snapshot = parseMobileDocumentsPayload(
+        payload,
+        viewerRole: 'Client',
+      )!;
+      final restored = MobileDocumentsSnapshot.fromJson(
+        snapshot.toJson(),
+        expectedProjectId: '9',
+        viewerRole: 'Client',
+      )!;
+      expect(restored.canDownload, isTrue);
+      expect(firstDoc(restored).canDownload, isTrue);
+
+      final otherRole = MobileDocumentsSnapshot.fromJson(
+        snapshot.toJson(),
+        expectedProjectId: '9',
+        viewerRole: 'Billing',
+      )!;
+      expect(otherRole.canDownload, isFalse);
+    });
+  });
 }

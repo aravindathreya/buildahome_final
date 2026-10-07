@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'app_theme.dart';
 import 'dart:io';
 
@@ -13,9 +14,9 @@ import 'package:url_launcher/url_launcher.dart';
 import 'FullScreenImage.dart';
 import 'Payments.dart';
 import 'models/payment_proof_item.dart';
-import 'services/app_logout.dart';
 import 'services/camera_permission.dart';
 import 'services/client_portal_service.dart';
+import 'services/session_manager.dart';
 import 'widgets/skeleton_loader.dart';
 
 class UploadPaymentProofScreen extends StatefulWidget {
@@ -76,6 +77,9 @@ class _UploadPaymentProofScreenState extends State<UploadPaymentProofScreen>
   bool _canUpload = true;
   List<PaymentProofItem> _items = [];
   List<PaymentProofPendingTask> _pendingStageTasks = [];
+  /// Bill images uploaded during this visit. They disappear after the screen
+  /// is left and opened again.
+  final Set<String> _sessionProofKeys = {};
   Timer? _pollTimer;
   String? _removingUrl;
   String? _apiToken;
@@ -85,6 +89,7 @@ class _UploadPaymentProofScreenState extends State<UploadPaymentProofScreen>
   String? _pendingError;
   List<PendingPaymentRow> _pendingPayments = [];
   double _pendingTotal = 0;
+  List<PaymentBillRef> _billRefs = const [];
 
   @override
   void initState() {
@@ -94,9 +99,25 @@ class _UploadPaymentProofScreenState extends State<UploadPaymentProofScreen>
     if (widget.showPendingPayments) {
       unawaited(_loadPendingPayments());
     }
+    if (!widget.allowUpload) {
+      unawaited(_loadPaymentBills());
+    }
     _pollTimer = Timer.periodic(_snapshotPollInterval, (_) {
       _refreshQuietly();
     });
+  }
+
+  Future<void> _loadPaymentBills() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final projectId = prefs.getString('project_id')?.trim() ?? '';
+      if (projectId.isEmpty) return;
+      final snapshot = await fetchProjectPaymentsSnapshot(projectId);
+      if (!mounted) return;
+      setState(() => _billRefs = paymentBillRefs(snapshot));
+    } catch (e) {
+      print('[Previous payment] bill stages skipped: $e');
+    }
   }
 
   Future<void> _loadPendingPayments() async {
@@ -143,7 +164,10 @@ class _UploadPaymentProofScreenState extends State<UploadPaymentProofScreen>
     }
   }
 
-  Future<void> _load({bool showSpinner = true}) async {
+  Future<void> _load({
+    bool showSpinner = true,
+    bool rememberNewUploads = false,
+  }) async {
     if (_refreshInFlight && !showSpinner) return;
     _refreshInFlight = true;
     if (showSpinner) {
@@ -156,12 +180,14 @@ class _UploadPaymentProofScreenState extends State<UploadPaymentProofScreen>
     try {
       final token = await _portal.currentApiToken();
       final headers = await _portal.authenticatedImageHeaders();
-      final payload = await _portal.getPaymentProof();
+      final payload = await _asSelectedProjectClient(
+        () => _portal.getPaymentProof(),
+      );
       if (!mounted) return;
       setState(() {
         _apiToken = token;
         _imageHeaders = headers;
-        _applyPayload(payload);
+        _applyPayload(payload, rememberNewUploads: rememberNewUploads);
         _loading = false;
       });
     } catch (e) {
@@ -182,9 +208,37 @@ class _UploadPaymentProofScreenState extends State<UploadPaymentProofScreen>
       return;
     }
     await _load(showSpinner: false);
+    if (!widget.allowUpload) {
+      unawaited(_loadPaymentBills());
+    }
   }
 
-  void _applyPayload(Map<String, dynamic> payload) {
+  Set<String> _proofKeys(PaymentProofItem item) {
+    final keys = <String>{};
+    if (item.url.isNotEmpty) keys.add(item.url);
+    final name = item.filename.trim();
+    if (name.isNotEmpty) keys.add('file:$name');
+    if (keys.isEmpty && item.index != null) keys.add('idx:${item.index}');
+    return keys;
+  }
+
+  bool _uploadedThisVisit(PaymentProofItem item) =>
+      _proofKeys(item).any(_sessionProofKeys.contains);
+
+  /// Uploaded images stay only for this visit, bill or not.
+  /// Leaving the screen and coming back hides them.
+  bool _showProofInGallery(PaymentProofItem item) {
+    if (!widget.allowUpload) return true;
+    return _uploadedThisVisit(item);
+  }
+
+  void _applyPayload(
+    Map<String, dynamic> payload, {
+    bool rememberNewUploads = false,
+  }) {
+    final previousKeys = <String>{
+      for (final item in _items) ..._proofKeys(item),
+    };
     final section = _portal.sectionOf(payload);
     final source = section.isNotEmpty ? section : payload;
     final project = source['project'] is Map
@@ -202,29 +256,101 @@ class _UploadPaymentProofScreenState extends State<UploadPaymentProofScreen>
       resolveUrl: (url) => _portal.serveUrl(url, apiToken: _apiToken),
     );
     _pendingStageTasks = PaymentProofItem.pendingTasksFromPayload(payload);
+    if (rememberNewUploads) {
+      for (final item in _items) {
+        final keys = _proofKeys(item);
+        if (keys.isEmpty || keys.any(previousKeys.contains)) continue;
+        _sessionProofKeys.addAll(keys);
+      }
+    }
     _error = null;
     _noProject = false;
   }
 
   bool get _uploadEnabled => widget.allowUpload && _canUpload;
 
-  List<PaymentProofStageSection> get _gallerySections =>
-      PaymentProofItem.buildGallerySections(
-        items: _items,
-        pendingTasks: _pendingStageTasks,
+  AllocatedPendingPayments get _allocatedPending =>
+      allocateFinanceApprovedPayments(
+        rows: _pendingPayments,
+        proofs: _items,
       );
+
+  List<PendingPaymentRow> get _visiblePendingPayments =>
+      widget.showPendingPayments ? _allocatedPending.rows : _pendingPayments;
+
+  double get _visiblePendingTotal => _visiblePendingPayments.fold<double>(
+        0,
+        (sum, row) => sum + row.amount,
+      );
+
+  List<PaymentProofItem> get _proofsVisibleInGallery =>
+      _items.where(_showProofInGallery).toList();
+
+  List<PaymentProofStageSection> get _gallerySections {
+    final cleared = widget.showPendingPayments
+        ? _allocatedPending.clearedNameKeys
+        : const <String>{};
+    final tasks = _pendingStageTasks
+        .where(
+          (task) => !paymentStageNameIsCleared(task.stageName, cleared),
+        )
+        .toList();
+    return PaymentProofItem.buildGallerySections(
+      items: _proofsVisibleInGallery,
+      pendingTasks: tasks,
+    )
+        .where((section) => !section.isAwaiting)
+        .where(
+          (section) => !paymentStageNameIsCleared(section.label, cleared),
+        )
+        .toList();
+  }
 
   String _messageOf(Object e) =>
       e.toString().replaceFirst('Exception: ', '').trim();
 
+  /// Staff are not bound to a client portal of their own. Scope the proof
+  /// request to the project they already have open, then drop that scope.
+  Future<T> _asSelectedProjectClient<T>(Future<T> Function() action) async {
+    final prefs = await SharedPreferences.getInstance();
+    final role = (prefs.getString('role') ?? '').trim();
+    final impersonate = role.isNotEmpty && role != 'Client';
+    if (impersonate) _portal.beginClientImpersonation();
+    try {
+      return await action();
+    } finally {
+      if (impersonate) _portal.endClientImpersonation();
+    }
+  }
+
   bool _handleAuthOrNoProject(Object e) {
+    final message = _messageOf(e);
+    final lower = message.toLowerCase();
     final isUnauthorized = e is ClientPortalApiException
         ? e.isUnauthorized
-        : _messageOf(e).toLowerCase().contains('unauthorized') ||
-            _messageOf(e).toLowerCase().contains('not authenticated');
+        : lower.contains('unauthorized') || lower.contains('not authenticated');
     if (isUnauthorized) {
-      // ignore: unawaited_futures
-      AppLogout.logoutAndGoToLogin(context: context);
+      // A payment-proof 401 is often "this section is not available", not a
+      // replaced session. Logging out here dumped the user to login whenever
+      // they opened Previous payment. Only an explicit invalid token does that.
+      if (lower.contains('invalid api token')) {
+        unawaited(
+          SessionManager.instance.handleStatusAndBody(
+            statusCode: e is ClientPortalApiException ? e.statusCode : 401,
+            body: jsonEncode({'message': message}),
+            requestHadCredentials: true,
+          ),
+        );
+        return true;
+      }
+      setState(() {
+        _loading = false;
+        _uploading = false;
+        _noProject = false;
+        _error = message.isEmpty
+            ? 'Could not load previous payments right now.'
+            : message;
+      });
       return true;
     }
 
@@ -370,14 +496,16 @@ class _UploadPaymentProofScreenState extends State<UploadPaymentProofScreen>
       _error = null;
     });
     try {
-      final result = await _portal.uploadPaymentProofs(
-        files,
-        stageTaskId: stageTaskId,
+      final result = await _asSelectedProjectClient(
+        () => _portal.uploadPaymentProofs(
+          files,
+          stageTaskId: stageTaskId,
+        ),
       );
       if (!mounted) return;
-      setState(() => _applyPayload(result));
+      setState(() => _applyPayload(result, rememberNewUploads: true));
       if (!PaymentProofItem.payloadHasFileRecords(result)) {
-        await _load(showSpinner: false);
+        await _load(showSpinner: false, rememberNewUploads: true);
       }
       final count = result['saved_count'] is num
           ? (result['saved_count'] as num).toInt()
@@ -392,7 +520,7 @@ class _UploadPaymentProofScreenState extends State<UploadPaymentProofScreen>
       if (!mounted) return;
       if (_handleAuthOrNoProject(e)) return;
       if (ClientPortalService.isStalePaymentProofStageError(e)) {
-        await _load(showSpinner: false);
+        await _load(showSpinner: false, rememberNewUploads: true);
         if (!mounted) return;
         if (_items.isNotEmpty) {
           _showSuccess('Payment proof uploaded successfully.');
@@ -489,10 +617,12 @@ class _UploadPaymentProofScreenState extends State<UploadPaymentProofScreen>
 
     setState(() => _removingUrl = item.url);
     try {
-      final result = await _portal.deletePaymentProof(
-        index: item.index,
-        filename: item.filename.isEmpty ? null : item.filename,
-        url: item.url,
+      final result = await _asSelectedProjectClient(
+        () => _portal.deletePaymentProof(
+          index: item.index,
+          filename: item.filename.isEmpty ? null : item.filename,
+          url: item.url,
+        ),
       );
       if (!mounted) return;
       if (result['section'] is Map ||
@@ -667,6 +797,10 @@ class _UploadPaymentProofScreenState extends State<UploadPaymentProofScreen>
             ),
             const SizedBox(height: 12),
             const _EmptyProofsState(),
+          ] else if (widget.allowUpload &&
+              _proofsVisibleInGallery.isEmpty &&
+              _gallerySections.isEmpty) ...[
+            const SizedBox.shrink(),
           ] else ...[
             ..._buildProofSections(),
           ],
@@ -692,13 +826,15 @@ class _UploadPaymentProofScreenState extends State<UploadPaymentProofScreen>
         ),
         const SizedBox(height: 4),
         Text(
-          'Each screenshot shows the NT / non-NT bills it was applied to.',
+          'Tap the arrow on a payment to see the stages it was applied to.',
           style: TextStyle(
             color: _textSecondary,
             fontSize: 12.5,
             height: 1.35,
           ),
         ),
+        const SizedBox(height: 8),
+        const _PaymentStatusLegend(),
         const SizedBox(height: 12),
         _ProofGrid(
           items: _items,
@@ -707,12 +843,15 @@ class _UploadPaymentProofScreenState extends State<UploadPaymentProofScreen>
           onTap: _openItem,
           onRemove: (_) async {},
           allowRemove: false,
+          showAppliedStages: true,
+          billRefs: _billRefs,
         ),
       ];
     }
 
-    final useGallery = _pendingStageTasks.isNotEmpty ||
-        _items.any((e) => e.billStages.isNotEmpty || e.stageTaskId != null);
+    final visible = _proofsVisibleInGallery;
+    final sections = _gallerySections;
+    final useGallery = sections.isNotEmpty;
     if (!useGallery) {
       return [
         Text(
@@ -725,7 +864,7 @@ class _UploadPaymentProofScreenState extends State<UploadPaymentProofScreen>
         ),
         const SizedBox(height: 12),
         _ProofGrid(
-          items: _items,
+          items: visible,
           imageHeaders: _imageHeaders,
           removingUrl: _removingUrl,
           onTap: _openItem,
@@ -734,7 +873,6 @@ class _UploadPaymentProofScreenState extends State<UploadPaymentProofScreen>
       ];
     }
 
-    final sections = _gallerySections;
     final widgets = <Widget>[
       Text(
         'Proofs by stage',
@@ -756,6 +894,14 @@ class _UploadPaymentProofScreenState extends State<UploadPaymentProofScreen>
       const SizedBox(height: 14),
     ];
 
+    final placed = <String>{
+      for (final section in sections)
+        for (final item in section.items) ..._proofKeys(item),
+    };
+    final loose = visible
+        .where((item) => _proofKeys(item).every((key) => !placed.contains(key)))
+        .toList();
+
     for (var i = 0; i < sections.length; i++) {
       final section = sections[i];
       widgets.add(
@@ -765,9 +911,20 @@ class _UploadPaymentProofScreenState extends State<UploadPaymentProofScreen>
           onOpen: () => _openStageSection(section),
         ),
       );
-      if (i != sections.length - 1) {
+      if (i != sections.length - 1 || loose.isNotEmpty) {
         widgets.add(const SizedBox(height: 14));
       }
+    }
+    if (loose.isNotEmpty) {
+      widgets.add(
+        _ProofGrid(
+          items: loose,
+          imageHeaders: _imageHeaders,
+          removingUrl: _removingUrl,
+          onTap: _openItem,
+          onRemove: _removeItem,
+        ),
+      );
     }
     return widgets;
   }
@@ -802,7 +959,7 @@ class _UploadPaymentProofScreenState extends State<UploadPaymentProofScreen>
     );
     if (!mounted) return;
     if (result != null) {
-      setState(() => _applyPayload(result));
+      setState(() => _applyPayload(result, rememberNewUploads: true));
     } else {
       await _refreshQuietly();
     }
@@ -824,9 +981,9 @@ class _UploadPaymentProofScreenState extends State<UploadPaymentProofScreen>
                 ),
               ),
             ),
-            if (!_pendingLoading && _pendingTotal > 0)
+            if (!_pendingLoading && _visiblePendingTotal > 0)
               Text(
-                _currency.format(_pendingTotal),
+                _currency.format(_visiblePendingTotal),
                 style: const TextStyle(
                   color: Color(0xFFDC2626),
                   fontSize: 14.5,
@@ -858,7 +1015,7 @@ class _UploadPaymentProofScreenState extends State<UploadPaymentProofScreen>
           )
         else if (_pendingError != null)
           _ErrorBanner(message: _pendingError!)
-        else if (_pendingPayments.isEmpty)
+        else if (_visiblePendingPayments.isEmpty)
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(14),
@@ -886,12 +1043,12 @@ class _UploadPaymentProofScreenState extends State<UploadPaymentProofScreen>
             ),
             child: Column(
               children: [
-                for (var i = 0; i < _pendingPayments.length; i++) ...[
+                for (var i = 0; i < _visiblePendingPayments.length; i++) ...[
                   if (i > 0) Divider(height: 1, color: AppTheme.border),
                   _PendingPaymentTile(
-                    row: _pendingPayments[i],
-                    amountText: _pendingPayments[i].amount > 0
-                        ? _currency.format(_pendingPayments[i].amount)
+                    row: _visiblePendingPayments[i],
+                    amountText: _visiblePendingPayments[i].amount > 0
+                        ? _currency.format(_visiblePendingPayments[i].amount)
                         : '—',
                   ),
                 ],
@@ -965,6 +1122,8 @@ class _ProofGrid extends StatelessWidget {
   final Future<void> Function(PaymentProofItem item) onTap;
   final Future<void> Function(PaymentProofItem item) onRemove;
   final bool allowRemove;
+  final bool showAppliedStages;
+  final List<PaymentBillRef> billRefs;
 
   const _ProofGrid({
     required this.items,
@@ -973,6 +1132,8 @@ class _ProofGrid extends StatelessWidget {
     required this.onTap,
     required this.onRemove,
     this.allowRemove = true,
+    this.showAppliedStages = false,
+    this.billRefs = const [],
   });
 
   @override
@@ -981,6 +1142,9 @@ class _ProofGrid extends StatelessWidget {
       builder: (context, constraints) {
         const gap = 12.0;
         final width = (constraints.maxWidth - gap) / 2;
+        final stagesByUrl = showAppliedStages
+            ? previousPaymentStagesByUrl(proofs: items, bills: billRefs)
+            : const <String, List<String>>{};
         return Wrap(
           spacing: gap,
           runSpacing: gap,
@@ -996,6 +1160,9 @@ class _ProofGrid extends StatelessWidget {
                   onRemove: allowRemove && item.canRemove
                       ? () => onRemove(item)
                       : null,
+                  showAppliedStages: showAppliedStages,
+                  billRefs: billRefs,
+                  stageLabels: stagesByUrl[item.url] ?? const <String>[],
                 ),
               ),
           ],
@@ -1228,21 +1395,37 @@ class _ProofStageDetailScreen extends StatefulWidget {
 class _ProofStageDetailScreenState extends State<_ProofStageDetailScreen> {
   late List<PaymentProofItem> _items = List.of(widget.initialItems);
   late List<PaymentProofItem> _allItems = List.of(widget.allItems);
+  late final Set<String> _visibleUrls = {
+    for (final item in widget.initialItems)
+      if (item.url.isNotEmpty) item.url,
+  };
   Map<String, dynamic>? _lastPayload;
   bool _uploading = false;
   String? _removingUrl;
   final _picker = ImagePicker();
 
-  Future<void> _refresh() async {
+  bool _keepOnThisVisit(PaymentProofItem item) {
+    return item.url.isNotEmpty && _visibleUrls.contains(item.url);
+  }
+
+  Future<void> _refresh({bool captureNew = false}) async {
     try {
       final payload = await widget.portal.getPaymentProof();
       if (!mounted) return;
-      _apply(payload);
+      _apply(payload, captureNew: captureNew);
     } catch (_) {}
   }
 
-  void _apply(Map<String, dynamic> payload) {
+  void _apply(Map<String, dynamic> payload, {bool captureNew = false}) {
+    final before = _allItems.map((item) => item.url).toSet();
     final tokenItems = PaymentProofItem.listFromPayload(payload);
+    if (captureNew) {
+      for (final item in tokenItems) {
+        if (item.url.isNotEmpty && !before.contains(item.url)) {
+          _visibleUrls.add(item.url);
+        }
+      }
+    }
     final tasks = PaymentProofItem.pendingTasksFromPayload(payload);
     final sections = PaymentProofItem.buildGallerySections(
       items: tokenItems,
@@ -1258,7 +1441,9 @@ class _ProofStageDetailScreenState extends State<_ProofStageDetailScreen> {
     setState(() {
       _lastPayload = payload;
       _allItems = tokenItems;
-      _items = match?.items ?? const [];
+      _items = (match?.items ?? const <PaymentProofItem>[])
+          .where(_keepOnThisVisit)
+          .toList();
     });
   }
 
@@ -1271,9 +1456,9 @@ class _ProofStageDetailScreenState extends State<_ProofStageDetailScreen> {
         stageTaskId: widget.stageTaskId,
       );
       if (!mounted) return;
-      _apply(result);
+      _apply(result, captureNew: true);
       if (!PaymentProofItem.payloadHasFileRecords(result)) {
-        await _refresh();
+        await _refresh(captureNew: true);
       }
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1617,6 +1802,9 @@ class _ProofCard extends StatelessWidget {
   final VoidCallback? onRemove;
   final bool removing;
   final Map<String, String> imageHeaders;
+  final bool showAppliedStages;
+  final List<PaymentBillRef> billRefs;
+  final List<String> stageLabels;
 
   const _ProofCard({
     required this.item,
@@ -1624,12 +1812,18 @@ class _ProofCard extends StatelessWidget {
     this.onRemove,
     this.removing = false,
     this.imageHeaders = const {},
+    this.showAppliedStages = false,
+    this.billRefs = const [],
+    this.stageLabels = const [],
   });
 
   @override
   Widget build(BuildContext context) {
     final rejected = item.isRejected;
     final rejectText = item.rejectionDisplayText;
+    final dotStatus =
+        showAppliedStages ? previousPaymentDotStatus(item, billRefs) : '';
+    final showInlineBills = stageLabels.isEmpty;
     return Material(
       color: rejected ? const Color(0xFF3F1D24) : AppTheme.darkBackgroundSecondary,
       borderRadius: BorderRadius.circular(16),
@@ -1725,31 +1919,19 @@ class _ProofCard extends StatelessWidget {
                       ),
                     ),
                   ),
-                  Padding(
-                    padding: EdgeInsets.fromLTRB(
-                      10,
-                      10,
-                      10,
-                      rejectText.isNotEmpty ||
-                              item.clearedBillsText.isNotEmpty ||
-                              item.allocationHeading.isNotEmpty
-                          ? 6
-                          : 12,
-                    ),
-                    child: Text(
-                      item.displayAmount,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: rejected
-                            ? _UploadPaymentProofScreenState._rejectMuted
-                            : _UploadPaymentProofScreenState._textPrimary,
-                        fontWeight: FontWeight.w800,
-                        fontSize: 15,
-                      ),
-                    ),
+                  _ProofAmountRow(
+                    amount: item.displayAmount,
+                    rejected: rejected,
+                    stageLabels: stageLabels,
+                    dotStatus: dotStatus,
+                    tightBottom: rejectText.isNotEmpty ||
+                        (showInlineBills &&
+                            (item.clearedBillsText.isNotEmpty ||
+                                item.allocationHeading.isNotEmpty)) ||
+                        stageLabels.isNotEmpty ||
+                        dotStatus.isNotEmpty,
                   ),
-                  if (item.allocationHeading.isNotEmpty)
+                  if (showInlineBills && item.allocationHeading.isNotEmpty)
                     Padding(
                       padding: EdgeInsets.fromLTRB(
                         10,
@@ -1773,7 +1955,7 @@ class _ProofCard extends StatelessWidget {
                         ),
                       ),
                     ),
-                  if (item.clearedBillsText.isNotEmpty)
+                  if (showInlineBills && item.clearedBillsText.isNotEmpty)
                     Padding(
                       padding: EdgeInsets.fromLTRB(
                         10,
@@ -1843,6 +2025,160 @@ class _ProofCard extends StatelessWidget {
                     ),
                   ),
                 ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PaymentStatusLegend extends StatelessWidget {
+  const _PaymentStatusLegend();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Wrap(
+      spacing: 12,
+      runSpacing: 4,
+      children: [
+        _LegendDot(color: Color(0xFF22C55E), label: 'Paid'),
+        _LegendDot(color: Color(0xFF3B82F6), label: 'In review'),
+        _LegendDot(color: Color(0xFFEAB308), label: 'Pending'),
+      ],
+    );
+  }
+}
+
+class _LegendDot extends StatelessWidget {
+  final Color color;
+  final String label;
+
+  const _LegendDot({required this.color, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 8,
+          height: 8,
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+        ),
+        const SizedBox(width: 6),
+        Text(
+          label,
+          style: TextStyle(
+            color: _UploadPaymentProofScreenState._textSecondary,
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ProofAmountRow extends StatefulWidget {
+  final String amount;
+  final bool rejected;
+  final List<String> stageLabels;
+  final String dotStatus;
+  final bool tightBottom;
+
+  const _ProofAmountRow({
+    required this.amount,
+    required this.rejected,
+    required this.stageLabels,
+    this.dotStatus = '',
+    required this.tightBottom,
+  });
+
+  @override
+  State<_ProofAmountRow> createState() => _ProofAmountRowState();
+}
+
+class _ProofAmountRowState extends State<_ProofAmountRow> {
+  bool _open = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final hasStages = widget.stageLabels.isNotEmpty;
+    return Padding(
+      padding: EdgeInsets.fromLTRB(10, 6, 4, widget.tightBottom ? 4 : 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              if (widget.dotStatus.isNotEmpty) ...[
+                Container(
+                  width: 8,
+                  height: 8,
+                  decoration: BoxDecoration(
+                    color: previousPaymentDotColor(widget.dotStatus),
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                const SizedBox(width: 6),
+              ],
+              Expanded(
+                child: Text(
+                  widget.amount,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: widget.rejected
+                        ? _UploadPaymentProofScreenState._rejectMuted
+                        : _UploadPaymentProofScreenState._textPrimary,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 15,
+                  ),
+                ),
+              ),
+              if (hasStages)
+                Material(
+                  color: AppTheme.darkBackgroundPrimaryLight,
+                  shape: const CircleBorder(),
+                  child: InkWell(
+                    customBorder: const CircleBorder(),
+                    onTap: () => setState(() => _open = !_open),
+                    child: SizedBox(
+                      width: 28,
+                      height: 28,
+                      child: Icon(
+                        _open
+                            ? Icons.keyboard_arrow_up_rounded
+                            : Icons.keyboard_arrow_down_rounded,
+                        color: _UploadPaymentProofScreenState._textPrimary,
+                        size: 22,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          if (hasStages && _open)
+            Padding(
+              padding: const EdgeInsets.only(right: 6, bottom: 6),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  for (final label in widget.stageLabels)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 4),
+                      child: Text(
+                        label,
+                        style: TextStyle(
+                          color: _UploadPaymentProofScreenState._textPrimary,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          height: 1.3,
+                        ),
+                      ),
+                    ),
+                ],
               ),
             ),
         ],

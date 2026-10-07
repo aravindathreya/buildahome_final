@@ -3,9 +3,9 @@ import 'dart:async';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../services/data_provider.dart';
+import '../../widgets/open_shared_document.dart';
 import '../chat_v1_api.dart';
 import '../chat_v1_controller.dart';
 import '../chat_v1_doc_clarification.dart';
@@ -116,14 +116,13 @@ class _ChatV1DocThreadScreenState extends State<ChatV1DocThreadScreen> {
 
   Future<void> _openPdf() async {
     final path = _doc?.pdfUrl;
-    if (path == null || path.isEmpty) return;
-    final uri = Uri.parse(path);
-    final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
-    if (!ok && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not open PDF')),
-      );
-    }
+    if (path == null || path.isEmpty || !mounted) return;
+    await openSharedDocument(
+      context,
+      url: path,
+      fileName: _doc?.pdfName ?? 'Document.pdf',
+      contentType: 'application/pdf',
+    );
   }
 
   Future<void> _approve() async {
@@ -653,14 +652,22 @@ class _ChatV1DocThreadScreenState extends State<ChatV1DocThreadScreen> {
                     padding: const EdgeInsets.only(bottom: 4),
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(8),
-                      child: SizeChangedLayoutNotifier(
-                        child: Image.network(
-                          att.storagePath,
-                          width: 180,
-                          cacheWidth: 360,
-                          cacheHeight: 360,
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => Text(att.fileName),
+                      child: GestureDetector(
+                        onTap: () => openSharedDocument(
+                          context,
+                          url: att.storagePath,
+                          fileName: att.fileName,
+                          contentType: att.contentType,
+                        ),
+                        child: SizeChangedLayoutNotifier(
+                          child: Image.network(
+                            att.storagePath,
+                            width: 180,
+                            cacheWidth: 360,
+                            cacheHeight: 360,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => Text(att.fileName),
+                          ),
                         ),
                       ),
                     ),
@@ -669,9 +676,11 @@ class _ChatV1DocThreadScreenState extends State<ChatV1DocThreadScreen> {
                 return InkWell(
                   onTap: () {
                     if (att.storagePath.isEmpty) return;
-                    launchUrl(
-                      Uri.parse(att.storagePath),
-                      mode: LaunchMode.externalApplication,
+                    openSharedDocument(
+                      context,
+                      url: att.storagePath,
+                      fileName: att.fileName,
+                      contentType: att.contentType,
                     );
                   },
                   child: Padding(

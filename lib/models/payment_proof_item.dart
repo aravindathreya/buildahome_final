@@ -28,6 +28,7 @@ class PaymentProofItem {
   final List<PaymentProofBillStage> billStages;
   final String allocationHeading;
   final String allocationState;
+  final String financeStatus;
   final String summaryText;
   /// Workflow / payment-stage task this proof was uploaded for, when known.
   final int? stageTaskId;
@@ -52,6 +53,7 @@ class PaymentProofItem {
     this.billStages = const [],
     this.allocationHeading = '',
     this.allocationState = '',
+    this.financeStatus = '',
     this.summaryText = '',
     this.stageTaskId,
     this.stageName = '',
@@ -67,8 +69,26 @@ class PaymentProofItem {
   bool get isRejected => isStatusRejected || isNotABill || note.isNotEmpty;
 
   bool get isApproved {
-    final s = status.toLowerCase();
-    return s == 'approved' || s == 'accepted' || s == 'verified';
+    if (_isApprovedWord(status) || _isApprovedWord(financeStatus)) return true;
+    return false;
+  }
+
+  /// Finance has accepted this proof, so its amount can clear pending stages
+  /// and the screenshot should leave Proofs by stage.
+  bool get isFinanceSettled {
+    if (isStatusRejected || isNotABill) return false;
+    if (isApproved) return true;
+    final state = allocationState.trim().toLowerCase();
+    return state == 'applied' || state == 'cleared';
+  }
+
+  static bool _isApprovedWord(String value) {
+    final s = value.trim().toLowerCase().replaceAll('_', ' ');
+    if (s.contains('unapprov')) return false;
+    return s == 'approved' ||
+        s == 'accepted' ||
+        s == 'verified' ||
+        s == 'finance approved';
   }
 
   /// A file the classifier accepted as a real bill, and finance has not rejected.
@@ -96,6 +116,18 @@ class PaymentProofItem {
   String get notABillBadgeText {
     if (rejectionLabel.isNotEmpty) return rejectionLabel;
     return notABillFallback;
+  }
+
+  /// Stages this payment was applied to.
+  /// Non-NT uses the stage name. NT uses the description from creation.
+  List<String> get appliedStageLabels {
+    if (isNotABill) return const [];
+    final labels = <String>[];
+    for (final stage in billStages) {
+      final text = stage.appliedLabel.trim();
+      if (text.isNotEmpty && !labels.contains(text)) labels.add(text);
+    }
+    return labels;
   }
 
   /// Parsed bill amount under the thumbnail whenever the API sent one.
@@ -142,13 +174,32 @@ class PaymentProofItem {
     final rejectedFlag = _asBool(flat['is_rejected']) == true ||
         _asBool(flat['rejected']) == true;
 
-    final billStages = PaymentProofBillStage.listFromProofJson(flat);
     final summaryText = (_asString(flat['summary_text']) ?? '').trim();
     final stageName = (_asString(flat['stage_name']) ??
             _asString(flat['task_name']) ??
             _asString(flat['payment_stage_name']) ??
             '')
         .trim();
+    final stageTaskId = _asInt(flat['stage_task_id']) ??
+        _asInt(flat['task_id']) ??
+        _asInt(flat['payment_stage_task_id']);
+    var billStages = PaymentProofBillStage.listFromProofJson(flat);
+    if (billStages.isEmpty && stageName.isNotEmpty) {
+      final kind = normalizeBillStageKind(
+        flat['kind'] ?? flat['bill_kind'] ?? flat['bill_type'],
+      );
+      billStages = [
+        PaymentProofBillStage(
+          id: stageTaskId,
+          stageName: stageName,
+          kind: kind.isEmpty ? 'non_nt' : kind,
+          description: (_asString(flat['description']) ??
+                  _asString(flat['p_note']) ??
+                  '')
+              .trim(),
+        ),
+      ];
+    }
     return PaymentProofItem(
       url: url,
       filename: filename,
@@ -174,10 +225,9 @@ class PaymentProofItem {
       billStages: billStages,
       allocationHeading: (_asString(flat['heading']) ?? '').trim(),
       allocationState: (_asString(flat['allocation_state']) ?? '').trim(),
+      financeStatus: (_asString(flat['finance_status']) ?? '').trim(),
       summaryText: summaryText,
-      stageTaskId: _asInt(flat['stage_task_id']) ??
-          _asInt(flat['task_id']) ??
-          _asInt(flat['payment_stage_task_id']),
+      stageTaskId: stageTaskId,
       stageName: stageName,
     );
   }
@@ -830,6 +880,8 @@ Map<String, dynamic> _flattenProofJson(Map<String, dynamic> json) {
     'parsed',
     'bill',
     'result',
+    'allocation',
+    'applied',
   ]) {
     final nested = json[key];
     if (nested is! Map) continue;

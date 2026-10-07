@@ -15,6 +15,8 @@ import '../app_theme.dart';
 import '../chat_v1/chat_v1_api.dart';
 import '../services/app_deep_link_service.dart';
 import '../services/client_generation_service.dart';
+import '../services/push/notification_permission_controller.dart';
+import '../services/push/push_notification_service.dart';
 import '../services/data_provider.dart';
 import '../services/profile_picture_service.dart';
 
@@ -113,6 +115,8 @@ class LoginScreenNewState extends State<LoginScreenNew>
     setState(() {
       showSplash = false;
     });
+    // Splash was covering the home. Ask now so the system dialog is visible.
+    unawaited(NotificationPermissionController.instance.promptOnAppOpen());
   }
 
   Future<void> _revealLoginForm() async {
@@ -160,6 +164,7 @@ class LoginScreenNewState extends State<LoginScreenNew>
       (route) => false,
     );
     await AppDeepLinkService.instance.onAppReady();
+    await PushNotificationService.instance.markAppReady();
   }
 
   checkIfAlreadyLoggedIn() async {
@@ -264,6 +269,7 @@ class LoginScreenNewState extends State<LoginScreenNew>
       (route) => false,
     );
     await AppDeepLinkService.instance.onAppReady();
+    await PushNotificationService.instance.markAppReady();
   }
 
   /// Normalize to E.164-style +91XXXXXXXXXX for Indian numbers.
@@ -336,6 +342,7 @@ class LoginScreenNewState extends State<LoginScreenNew>
       await ProfilePictureService.clearStored();
     }
     ProfilePictureService.onLoggedIn();
+    unawaited(PushNotificationService.instance.syncTokenForCurrentUser());
   }
 
   void _startResendCooldown() {
@@ -1362,6 +1369,8 @@ class LoginScreenNewState extends State<LoginScreenNew>
                     Center(
                       child: Image.asset(
                         _splashAsset,
+                        width: MediaQuery.sizeOf(context).width,
+                        height: MediaQuery.sizeOf(context).height * 0.72,
                         fit: BoxFit.contain,
                         alignment: Alignment.center,
                         filterQuality: FilterQuality.high,

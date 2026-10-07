@@ -23,6 +23,8 @@ import 'user_picker.dart';
 import 'services/app_logout.dart';
 import 'services/data_provider.dart';
 import 'services/notification_service.dart';
+import 'services/push/notification_permission_controller.dart';
+import 'widgets/notification_permission_banner.dart';
 import 'services/profile_picture_service.dart';
 import 'services/project_open_timing.dart';
 import 'services/rbac_service.dart';
@@ -170,6 +172,13 @@ class _AdminDashboardState extends State<AdminDashboard>
         ProfilePictureService.promptsSuppressed;
 
     await Future<void>.delayed(const Duration(milliseconds: 800));
+    if (aborted()) return;
+
+    try {
+      await NotificationPermissionController.instance.promptOnAppOpen();
+    } catch (e) {
+      debugPrint('[Startup] notification permission error: $e');
+    }
     if (aborted()) return;
 
     try {
@@ -1542,6 +1551,7 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
           padding: const EdgeInsets.only(bottom: 28),
           children: [
             _buildUserHeader(),
+            const NotificationPermissionBanner(),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
               child: Column(
@@ -1690,6 +1700,7 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
                     ),
                   ),
                 );
+                await NotificationService.instance.markAllAsRead();
                 _loadUnreadNotifications(force: true);
               },
               borderRadius: BorderRadius.circular(999),

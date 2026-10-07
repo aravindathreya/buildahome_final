@@ -4,6 +4,8 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'push/alert_push.dart';
+
 /// Caches notifications locally and syncs only the delta when possible.
 ///
 /// The list API may return a full snapshot or (if supported) items newer than
@@ -27,6 +29,9 @@ class NotificationService {
   DateTime? _lastSyncedAt;
   String? _newestTimestamp;
   Future<void>? _inFlightSync;
+  Future<void>? _markReadFlight;
+  bool _syncedThisProcess = false;
+  final Map<String, Map<String, dynamic>> _chatAlerts = {};
 
   List<Map<String, dynamic>> get notifications =>
       List<Map<String, dynamic>>.unmodifiable(notificationsNotifier.value);
@@ -77,8 +82,16 @@ class NotificationService {
     }
   }
 
-  Future<void> markAllAsRead() async {
-    await sync(force: true, markRead: true);
+  Future<void> markAllAsRead() {
+    final existing = _markReadFlight;
+    if (existing != null) return existing;
+    final future = sync(force: true, markRead: true);
+    _markReadFlight = future;
+    return future.whenComplete(() {
+      if (identical(_markReadFlight, future)) {
+        _markReadFlight = null;
+      }
+    });
   }
 
   Future<void> clear() async {
@@ -90,6 +103,8 @@ class NotificationService {
     _userId = null;
     _lastSyncedAt = null;
     _newestTimestamp = null;
+    _syncedThisProcess = false;
+    _chatAlerts.clear();
     notificationsNotifier.value = const [];
     unreadCountNotifier.value = 0;
     isSyncingNotifier.value = false;
@@ -133,9 +148,24 @@ class NotificationService {
               .map((item) => Map<String, dynamic>.from(item))
               .toList();
 
+          final hadBaseline = _syncedThisProcess;
+          final previousFingerprints = notificationsNotifier.value
+              .map(fingerprint)
+              .toSet();
           final merged = _mergeRemote(notificationsNotifier.value, remote);
+          final fresh = AlertPushMapper.selectNewAlerts(
+            hadBaseline: hadBaseline,
+            previousFingerprints: previousFingerprints,
+            next: merged,
+            fingerprint: fingerprint,
+            isUnread: _isUnread,
+          );
           _applyLocalState(merged, userId: userId, syncedAt: DateTime.now());
+          _syncedThisProcess = true;
           await _persist(userId, merged);
+          if (fresh.isNotEmpty) {
+            AlertPushInbox.deliver(fresh);
+          }
         }
       }
     } catch (_) {
@@ -250,6 +280,88 @@ class NotificationService {
         : _newestTimestampFrom(cached);
   }
 
+  /// One in-app alert per conversation. Later messages update the count
+  /// instead of adding another row.
+  void upsertChatAlert({
+    required String conversationId,
+    required String title,
+    required String body,
+    int count = 1,
+  }) {
+    final id = conversationId.trim();
+    if (id.isEmpty) return;
+    _chatAlerts['chat:$id'] = {
+      'id': 'chat:$id',
+      'title': title,
+      'body': body,
+      'type': 'chat',
+      'conversation_id': id,
+      'unread': 1,
+      'count': count < 1 ? 1 : count,
+      'timestamp': DateTime.now().toIso8601String(),
+    };
+    _publishChatAlerts();
+  }
+
+  /// A push arrived before the next list sync. Count it on the bell now.
+  void noteIncomingAlert(Map<String, String> data) {
+    final title = (data['title'] ?? '').toString().trim();
+    final body = (data['body'] ?? '').toString().trim();
+    if (title.isEmpty && body.isEmpty) return;
+    final item = Map<String, dynamic>.from(data);
+    item['unread'] = 1;
+    item['count'] = 1;
+    if ((item['timestamp'] ?? '').toString().trim().isEmpty) {
+      item['timestamp'] = DateTime.now().toIso8601String();
+    }
+    final remote = notificationsNotifier.value
+        .where((entry) => !_isLocalChatAlert(entry))
+        .map((entry) => Map<String, dynamic>.from(entry))
+        .toList();
+    final key = fingerprint(item);
+    final index = remote.indexWhere((entry) => fingerprint(entry) == key);
+    if (index >= 0) {
+      remote[index] = {
+        ...remote[index],
+        ...item,
+        'unread': 1,
+      };
+    } else {
+      remote.insert(0, item);
+    }
+    _setVisible(remote);
+  }
+
+  void removeChatAlert(String conversationId) {
+    if (_chatAlerts.remove('chat:${conversationId.trim()}') == null) return;
+    _publishChatAlerts();
+  }
+
+  void _publishChatAlerts() {
+    final remote = notificationsNotifier.value
+        .where((item) => !_isLocalChatAlert(item))
+        .map((item) => Map<String, dynamic>.from(item))
+        .toList();
+    _setVisible(remote);
+  }
+
+  void _setVisible(List<Map<String, dynamic>> remote) {
+    final combined = <Map<String, dynamic>>[
+      ..._chatAlerts.values.map((item) => Map<String, dynamic>.from(item)),
+      ...remote.where((item) => !_isLocalChatAlert(item)),
+    ];
+    notificationsNotifier.value = List<Map<String, dynamic>>.unmodifiable(
+      combined,
+    );
+    unreadCountNotifier.value = combined.fold<int>(
+      0,
+      (sum, item) => sum + _badgeUnits(item),
+    );
+  }
+
+  bool _isLocalChatAlert(Map<String, dynamic> item) =>
+      (item['id']?.toString() ?? '').startsWith('chat:');
+
   Future<void> _persist(
     String userId,
     List<Map<String, dynamic>> items,
@@ -273,10 +385,7 @@ class NotificationService {
     _userId = userId;
     _lastSyncedAt = syncedAt;
     _newestTimestamp = _newestTimestampFrom(items);
-    notificationsNotifier.value = List<Map<String, dynamic>>.unmodifiable(
-      items.map((item) => Map<String, dynamic>.from(item)),
-    );
-    unreadCountNotifier.value = items.where(_isUnread).length;
+    _setVisible(items.map((item) => Map<String, dynamic>.from(item)).toList());
   }
 
   String? _newestTimestampFrom(List<Map<String, dynamic>> items) {
@@ -293,6 +402,14 @@ class NotificationService {
       if (ts != null && ts.isNotEmpty) return ts;
     }
     return null;
+  }
+
+  int _badgeUnits(Map<String, dynamic> notification) {
+    if (!_isUnread(notification)) return 0;
+    final raw = notification['count'];
+    final parsed = raw is num ? raw.toInt() : int.tryParse('${raw ?? ''}');
+    if (parsed == null || parsed < 1) return 1;
+    return parsed;
   }
 
   bool _isUnread(Map<String, dynamic> notification) {

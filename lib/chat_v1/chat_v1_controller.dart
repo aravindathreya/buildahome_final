@@ -6,6 +6,8 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../services/data_provider.dart';
+import '../services/push/chat_push_grouper.dart';
+import '../services/push/chat_push_inbox.dart';
 import 'chat_v1_api.dart';
 import 'chat_v1_doc_client_notice.dart';
 import 'chat_v1_mapper.dart';
@@ -1251,8 +1253,42 @@ class ChatV1Controller extends ChangeNotifier {
     customGroups = patchChats(customGroups);
     dms = patchChats(dms);
     if (!fromMe) _scheduleClientDocTaskRefresh(conversationId);
+    if (!fromMe) {
+      ChatPushInbox.messageReceived(
+        ChatPushIncoming(
+          conversationId: conversationId,
+          senderName: senderName,
+          preview: preview.label,
+          senderId: senderId,
+          currentUserId: currentUserId,
+          openConversationId: openId,
+          conversationTitle: _conversationTitle(conversationId),
+          messageId: messageId,
+          messageType: (message['type'] ?? message['content_type'] ?? '').toString(),
+          fromMe: fromMe,
+          isGroup: _conversationIsGroup(conversationId),
+        ),
+      );
+    }
 
     if (changed) notifyListeners();
+  }
+
+  String? _conversationTitle(String conversationId) {
+    for (final item in [...channels, ...customGroups, ...dms]) {
+      if (item.id == conversationId) return item.title;
+    }
+    for (final task in [...taskConversations, ...workflowConversations]) {
+      if ((task.conversationId ?? task.id) == conversationId) return task.title;
+    }
+    return null;
+  }
+
+  bool _conversationIsGroup(String conversationId) {
+    for (final item in dms) {
+      if (item.id == conversationId) return false;
+    }
+    return true;
   }
 
   Future<ChatV1ChatItem?> createCustomGroup({

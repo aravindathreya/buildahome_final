@@ -425,9 +425,10 @@ class AuthenticatedDocumentFetcher {
         );
       }
 
-      _debugLog('Action: reject unsupported format');
+      _debugLog('Action: keep bytes for download; preview unsupported');
       return DocumentFetchResult(
         kind: DocumentPayloadKind.unsupported,
+        bytes: bytes,
         userMessage: 'This document format cannot be previewed.',
         statusCode: status,
         contentType: contentType,

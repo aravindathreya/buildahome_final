@@ -319,6 +319,9 @@ class IndentsScreenState extends State<IndentsScreen> {
               MyIndentsTab(
                 initialProjectId: widget.initialProjectId,
                 initialProjectName: widget.initialProjectName,
+                initialIndentId: widget.initialTab == kIndentsMyIndentsTab
+                    ? widget.initialIndentId
+                    : null,
               ),
               IndentProofTab(
                 // Only auto-open proof detail when deeplink asked for proof tab.
@@ -2093,6 +2096,7 @@ class ViewOpenIndentsTabState extends State<ViewOpenIndentsTab> {
   final _scrollController = ScrollController();
   String? _focusIndentId;
   bool _didFocusScroll = false;
+  bool _reportedMissingFocus = false;
 
   @override
   void initState() {
@@ -2187,12 +2191,31 @@ class ViewOpenIndentsTabState extends State<ViewOpenIndentsTab> {
   void _promoteFocusedIndent() {
     final focusId = _focusIndentId;
     if (focusId == null || focusId.isEmpty) return;
-    final index = indents.indexWhere(
+    final index = _pager.all.indexWhere(
       (row) => row is Map && row['id']?.toString().trim() == focusId,
     );
-    if (index <= 0) return;
-    final item = indents.removeAt(index);
-    indents.insert(0, item);
+    if (index < 0) {
+      if (!_pager.serverPaged || !_pager.hasMore) {
+        _reportMissingFocus();
+      }
+      return;
+    }
+    if (index == 0) return;
+    final item = _pager.all.removeAt(index);
+    _pager.all.insert(0, item);
+    _pager.rebuildVisible(resetClientPage: true);
+    indents = _pager.visible;
+  }
+
+  void _reportMissingFocus() {
+    if (_reportedMissingFocus) return;
+    _reportedMissingFocus = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('This indent is no longer available.')),
+      );
+    });
   }
 
   void _scrollToFocusedIndent() {
@@ -2680,11 +2703,13 @@ class ViewOpenIndentsTabState extends State<ViewOpenIndentsTab> {
 class MyIndentsTab extends StatefulWidget {
   final String? initialProjectId;
   final String? initialProjectName;
+  final String? initialIndentId;
 
   const MyIndentsTab({
     Key? key,
     this.initialProjectId,
     this.initialProjectName,
+    this.initialIndentId,
   }) : super(key: key);
 
   @override
@@ -2702,11 +2727,16 @@ class MyIndentsTabState extends State<MyIndentsTab> {
   final _pager = IndentPagedListController();
   final _searchController = TextEditingController();
   final _scrollController = ScrollController();
+  String? _focusIndentId;
+  bool _didFocusScroll = false;
+  bool _reportedMissingFocus = false;
 
   @override
   void initState() {
     super.initState();
     _pager.lockedProjectId = widget.initialProjectId;
+    _focusIndentId = widget.initialIndentId?.trim();
+    if ((_focusIndentId ?? '').isEmpty) _focusIndentId = null;
     _scrollController.addListener(_onScroll);
     call();
   }
@@ -2778,10 +2808,61 @@ class MyIndentsTabState extends State<MyIndentsTab> {
     setState(() {
       _pager.acceptPage(parseIndentListResponse(decoded), reset: reset);
       indents = _pager.visible;
+      _promoteFocusedIndent();
       role = prefs.get('role');
       _loading = false;
       _pager.loadingMore = false;
     });
+    if (reset) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _scrollToFocusedIndent();
+      });
+    }
+  }
+
+  void _promoteFocusedIndent() {
+    final focusId = _focusIndentId;
+    if (focusId == null || focusId.isEmpty) return;
+    final index = _pager.all.indexWhere(
+      (row) => row is Map && row['id']?.toString().trim() == focusId,
+    );
+    if (index < 0) {
+      if (!_pager.serverPaged || !_pager.hasMore) {
+        _reportMissingFocus();
+      }
+      return;
+    }
+    if (index == 0) return;
+    final item = _pager.all.removeAt(index);
+    _pager.all.insert(0, item);
+    _pager.rebuildVisible(resetClientPage: true);
+    indents = _pager.visible;
+  }
+
+  void _reportMissingFocus() {
+    if (_reportedMissingFocus) return;
+    _reportedMissingFocus = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('This indent is no longer available.')),
+      );
+    });
+  }
+
+  void _scrollToFocusedIndent() {
+    if (_didFocusScroll) return;
+    final focusId = _focusIndentId;
+    if (focusId == null || focusId.isEmpty) return;
+    final ctx = GlobalObjectKey('my-indent-$focusId').currentContext;
+    if (ctx == null) return;
+    _didFocusScroll = true;
+    Scrollable.ensureVisible(
+      ctx,
+      duration: const Duration(milliseconds: 350),
+      curve: Curves.easeOutCubic,
+      alignment: 0.08,
+    );
   }
 
   getIndentStatusColor(status) {
@@ -2840,7 +2921,13 @@ class MyIndentsTabState extends State<MyIndentsTab> {
                     if (Index >= indents.length) {
                       return const IndentListLoadMoreTile();
                     }
+                    final indentId = indents[Index] is Map
+                        ? indents[Index]['id']?.toString().trim() ?? ''
+                        : '';
                     return Container(
+                        key: indentId.isEmpty
+                            ? null
+                            : GlobalObjectKey('my-indent-$indentId'),
                         margin: EdgeInsets.only(bottom: 20),
                         decoration: BoxDecoration(
                           gradient: LinearGradient(

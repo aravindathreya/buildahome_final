@@ -170,6 +170,10 @@ class ApprovedPo {
 
   bool get isBilled => billed == 1;
 
+  /// Delivered tab: site proof was uploaded and fully approved.
+  /// Partially delivered receipts stay on Not delivered.
+  bool get isDeliveredReceipt => isComplete && !isPartial;
+
   bool get canViewMaskedDocument => maskedPoDocument != null;
 
   /// PO file exists on server but masked mobile copy is not linked yet.

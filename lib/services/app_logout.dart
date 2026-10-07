@@ -15,6 +15,7 @@ import 'mobile_documents_service.dart';
 import 'mobile_more_menu_service.dart';
 import 'mobile_quick_actions_service.dart';
 import 'notification_service.dart';
+import 'push/push_notification_service.dart';
 import 'profile_picture_service.dart';
 import 'staff_location_tracker.dart';
 import '../widgets/client_home_tour.dart';
@@ -45,6 +46,11 @@ class AppLogout {
   /// Wipe persisted auth state (safe to run after login is already showing).
   static Future<void> clearLocalSession() async {
     _clearInMemoryNow();
+    try {
+      await PushNotificationService.instance.unbindCurrentUser();
+    } catch (e) {
+      print('[AppLogout] FCM unregister failed: $e');
+    }
 
     try {
       await ClientGenerationService.instance.clear();
@@ -78,8 +84,10 @@ class AppLogout {
 
     Map<String, bool> preservedTourFlags = const {};
     Map<String, int> preservedSkipCounts = const {};
+    String? preservedDeviceId;
     try {
       final preferences = await SharedPreferences.getInstance();
+      preservedDeviceId = preferences.getString('fcm_device_id');
       // Keep "Welcome to your home" completion across logout/login.
       preservedTourFlags = {
         for (final key in preferences.getKeys())
@@ -94,6 +102,9 @@ class AppLogout {
             key: preferences.getInt(key) ?? 0,
       };
       await preferences.clear();
+      if (preservedDeviceId != null && preservedDeviceId.trim().isNotEmpty) {
+        await preferences.setString('fcm_device_id', preservedDeviceId.trim());
+      }
       await ClientHomeTour.restorePreservedFlags(preservedTourFlags);
       await ProfilePictureService.restorePreservedSkipCounts(
         preservedSkipCounts,

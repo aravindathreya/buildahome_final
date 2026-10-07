@@ -160,8 +160,15 @@ class KycDocumentRecord {
     return fallback;
   }
 
-  WorkflowDocumentUpload toWorkflowUpload(String label) {
+  WorkflowDocumentUpload toWorkflowUpload(
+    String label, {
+    bool canDownload = false,
+  }) {
     final name = filename?.trim().isNotEmpty == true ? filename! : label;
+    final allowed = canDownload ||
+        raw['can_download'] == true ||
+        raw['can_download'] == 1 ||
+        raw['can_download']?.toString().toLowerCase() == 'true';
     return WorkflowDocumentUpload(
       id: id ?? 'kyc-$docKey-${url ?? name}',
       documentKey: docKey,
@@ -173,7 +180,10 @@ class KycDocumentRecord {
       uploadedAt: uploadedAtDisplay,
       sectionLabel: 'KYC',
       categoryLabel: 'KYC & Documents',
-      raw: raw,
+      raw: {
+        ...raw,
+        'can_download': allowed,
+      },
     );
   }
 

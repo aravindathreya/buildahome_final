@@ -19,6 +19,8 @@ import 'app_theme.dart';
 import 'ClientPortalScreen.dart';
 import 'ProjectSituationShell.dart';
 import 'services/app_logout.dart';
+import 'widgets/notification_permission_banner.dart';
+import 'services/push/notification_permission_controller.dart';
 import 'services/data_provider.dart';
 import 'services/mobile_quick_actions.dart';
 import 'services/mobile_quick_actions_service.dart';
@@ -39,6 +41,9 @@ class LegacyClientHomeState extends State<LegacyClientHome> {
   void initState() {
     super.initState();
     _loadDisplayName();
+    unawaited(
+      NotificationPermissionController.instance.promptOnClientHome(),
+    );
   }
 
   _loadDisplayName() async {
@@ -185,6 +190,7 @@ class LegacyClientHomeState extends State<LegacyClientHome> {
                   ],
                 ),
               ),
+              const NotificationPermissionBanner(),
               const Expanded(
                 child: LegacyClientDashboardScreen(),
               ),

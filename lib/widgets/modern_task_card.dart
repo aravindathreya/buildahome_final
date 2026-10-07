@@ -960,6 +960,8 @@ class TaskSummaryStatCard extends StatelessWidget {
   final IconData icon;
   final Color iconColor;
   final Color iconBg;
+  final bool selected;
+  final VoidCallback? onTap;
 
   const TaskSummaryStatCard({
     super.key,
@@ -968,16 +970,21 @@ class TaskSummaryStatCard extends StatelessWidget {
     required this.icon,
     required this.iconColor,
     required this.iconBg,
+    this.selected = false,
+    this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    final card = Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
       decoration: BoxDecoration(
         color: kTaskCardSurface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: kTaskBorder),
+        border: Border.all(
+          color: selected ? iconColor : kTaskBorder,
+          width: selected ? 1.5 : 1,
+        ),
         boxShadow: const [
           BoxShadow(
             color: kTaskSoftShadow,
@@ -1027,6 +1034,17 @@ class TaskSummaryStatCard extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+
+    if (onTap == null) return card;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: card,
       ),
     );
   }

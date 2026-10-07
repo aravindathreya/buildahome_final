@@ -1,8 +1,8 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'app_theme.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
-import 'models/workflow_document.dart';
-import 'widgets/workflow_document_viewer.dart';
+import 'widgets/open_shared_document.dart';
 import 'FullScreenImage.dart';
 import 'models/mobile_chatbot.dart';
 import 'services/mobile_chatbot_service.dart';
@@ -366,14 +366,12 @@ class _MessageBlock extends StatelessWidget {
                     bottomRight: Radius.circular(message.fromBot ? 16 : 4),
                   ),
                 ),
-                child: Text(
-                  message.text,
-                  style: TextStyle(
-                    color: fg,
-                    fontSize: 14,
-                    height: 1.35,
-                    fontWeight: FontWeight.w500,
-                  ),
+                child: _LinkedMessageText(
+                  text: message.text,
+                  color: fg,
+                  linkColor: message.fromBot
+                      ? const Color(0xFF0B5CAB)
+                      : const Color(0xFFD6E4FF),
                 ),
               ),
             ),
@@ -417,22 +415,10 @@ class _StageCard extends StatelessWidget {
     required String url,
     required String title,
   }) async {
-    final trimmed = url.trim();
-    if (trimmed.isEmpty) return;
-
-    final doc = WorkflowDocumentUpload(
-      id: 'chatbot-${trimmed.hashCode}',
-      documentKey: 'chatbot_attachment',
-      name: title.trim().isEmpty ? 'Document' : title.trim(),
-      url: trimmed,
-      contentType: 'application/pdf',
-      isLatest: true,
-    );
-
-    await openWorkflowDocument(
+    await openSharedDocument(
       context,
-      doc,
-      clientMode: true,
+      url: url,
+      fileName: title,
     );
   }
 
@@ -641,6 +627,42 @@ class _StageCard extends StatelessWidget {
   }
 }
 
+class _LinkedMessageText extends StatelessWidget {
+  const _LinkedMessageText({
+    required this.text,
+    required this.color,
+    required this.linkColor,
+  });
+
+  final String text;
+  final Color color;
+  final Color linkColor;
+
+  @override
+  Widget build(BuildContext context) {
+    final base = TextStyle(
+      color: color,
+      fontSize: 14,
+      height: 1.35,
+      fontWeight: FontWeight.w500,
+    );
+    final pieces = splitPlainTextLinks(text);
+    if (!pieces.any((piece) => piece.isLink)) {
+      return Text(text, style: base);
+    }
+    final linkStyle = base.copyWith(
+      color: linkColor,
+      decoration: TextDecoration.underline,
+      fontWeight: FontWeight.w700,
+    );
+    return _TappableLinkText(
+      text: text,
+      style: base,
+      linkStyle: linkStyle,
+    );
+  }
+}
+
 class _TypingBubble extends StatelessWidget {
   const _TypingBubble();
 
@@ -663,6 +685,73 @@ class _TypingBubble extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+class _TappableLinkText extends StatefulWidget {
+  const _TappableLinkText({
+    required this.text,
+    required this.style,
+    required this.linkStyle,
+  });
+
+  final String text;
+  final TextStyle style;
+  final TextStyle linkStyle;
+
+  @override
+  State<_TappableLinkText> createState() => _TappableLinkTextState();
+}
+
+class _TappableLinkTextState extends State<_TappableLinkText> {
+  final List<TapGestureRecognizer> _recognizers = [];
+  String? _cached;
+  List<InlineSpan> _spans = const [];
+
+  @override
+  void dispose() {
+    _releaseRecognizers();
+    super.dispose();
+  }
+
+  void _releaseRecognizers() {
+    for (final recognizer in _recognizers) {
+      recognizer.dispose();
+    }
+    _recognizers.clear();
+  }
+
+  void _sync() {
+    if (_cached == widget.text) return;
+    _cached = widget.text;
+    _releaseRecognizers();
+    _spans = [
+      for (final piece in splitPlainTextLinks(widget.text))
+        if (!piece.isLink)
+          TextSpan(text: piece.text, style: widget.style)
+        else
+          TextSpan(
+            text: piece.text,
+            style: widget.linkStyle,
+            recognizer: _recognizerFor(piece.text),
+          ),
+    ];
+  }
+
+  TapGestureRecognizer _recognizerFor(String url) {
+    final recognizer = TapGestureRecognizer()
+      ..onTap = () {
+        if (!mounted) return;
+        openSharedDocument(context, url: url, fileName: url);
+      };
+    _recognizers.add(recognizer);
+    return recognizer;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    _sync();
+    return Text.rich(TextSpan(children: _spans));
   }
 }
 

@@ -10,6 +10,8 @@ class PaymentProofBillStage {
   final bool partial;
   final num? billAmount;
   final String billNumber;
+  /// Text entered when the NT bill was created.
+  final String description;
 
   const PaymentProofBillStage({
     this.id,
@@ -20,6 +22,7 @@ class PaymentProofBillStage {
     this.partial = false,
     this.billAmount,
     this.billNumber = '',
+    this.description = '',
   });
 
   bool get isNt => kind == 'nt';
@@ -29,6 +32,18 @@ class PaymentProofBillStage {
     final namePart = stageName.trim().toLowerCase();
     final billPart = billNumber.trim().toLowerCase();
     return '$kind|$idPart|$namePart|$billPart';
+  }
+
+  /// Non-NT shows the stage name. NT shows the description from creation.
+  String get appliedLabel {
+    if (isNt) {
+      final note = description.trim();
+      if (note.isNotEmpty) return note;
+      return stageName.trim();
+    }
+    final name = stageName.trim();
+    if (name.isNotEmpty) return name;
+    return sectionLabel;
   }
 
   String get sectionLabel {
@@ -50,6 +65,13 @@ class PaymentProofBillStage {
         .trim();
     final amount = _asNum(json['amount']);
     final amountDisplay = (_asString(json['amount_display']) ?? '').trim();
+    final description = (_asString(json['description']) ??
+            _asString(json['p_note']) ??
+            _asString(json['note']) ??
+            _asString(json['bill_description']) ??
+            _asString(json['nt_description']) ??
+            '')
+        .trim();
     return PaymentProofBillStage(
       id: _asInt(json['id']),
       stageName: stageName,
@@ -61,6 +83,7 @@ class PaymentProofBillStage {
       partial: json['partial'] == true,
       billAmount: _asNum(json['bill_amount']),
       billNumber: (_asString(json['bill_number']) ?? '').trim(),
+      description: description,
     );
   }
 
@@ -94,6 +117,10 @@ class PaymentProofBillStage {
     addAll(json['non_nt_bills'], forceKind: 'non_nt');
     addAll(json['cleared_bills']);
     addAll(json['finance_applied_bills']);
+    addAll(json['applied_bills']);
+    addAll(json['bills']);
+    addAll(json['stages']);
+    addAll(json['allocation']);
     return out;
   }
 }

@@ -1,8 +1,10 @@
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../widgets/open_shared_document.dart';
 import '../chat_v1_controller.dart';
 import '../chat_v1_importance.dart';
 import '../chat_v1_mentions.dart';
@@ -307,7 +309,7 @@ class Cv1MessageBubble extends StatelessWidget {
             ),
           ),
           child: Text(
-            message.replyPreview!,
+            message.replyPreview ?? '',
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
@@ -371,6 +373,7 @@ class Cv1MessageBubble extends StatelessWidget {
       image = Image.memory(
         Uint8List.fromList(bytes),
         width: 240,
+        height: 180,
         fit: BoxFit.cover,
         gaplessPlayback: true,
       );
@@ -378,8 +381,9 @@ class Cv1MessageBubble extends StatelessWidget {
       image = CachedNetworkImage(
         imageUrl: url,
         width: 240,
+        height: 180,
         memCacheWidth: 480,
-        memCacheHeight: 480,
+        memCacheHeight: 360,
         fit: BoxFit.cover,
         errorWidget: (_, __, ___) => _fileTile(
           context,
@@ -467,6 +471,11 @@ class Cv1MessageBubble extends StatelessWidget {
   /// WhatsApp-style document bubble with open / share actions.
   Widget _documentCard(BuildContext context, ChatV1Attachment att) {
     final url = ChatV1Utils.resolveMediaUrl(att.storagePath);
+    final plan = planSharedDocumentOpen(
+      url: url,
+      fileName: att.fileName,
+      contentType: att.contentType,
+    );
     final accent = att.isPdf ? ChatV1Theme.rejected : ChatV1Theme.mention;
     final meta = [
       att.displayExt,
@@ -478,7 +487,12 @@ class Cv1MessageBubble extends StatelessWidget {
       borderRadius: BorderRadius.circular(12),
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
-        onTap: () => _showDocumentActions(context, att),
+        onTap: () => openSharedDocument(
+          context,
+          url: url,
+          fileName: att.fileName,
+          contentType: att.contentType,
+        ),
         child: Padding(
           padding: const EdgeInsets.fromLTRB(10, 10, 8, 8),
           child: Column(
@@ -543,9 +557,21 @@ class Cv1MessageBubble extends StatelessWidget {
                 children: [
                   Expanded(
                     child: TextButton.icon(
-                      onPressed: url.isEmpty ? null : () => _openUrl(url),
-                      icon: const Icon(Icons.open_in_new_rounded, size: 16),
-                      label: const Text('Open'),
+                      onPressed: url.isEmpty
+                          ? null
+                          : () => openSharedDocument(
+                                context,
+                                url: url,
+                                fileName: att.fileName,
+                                contentType: att.contentType,
+                              ),
+                      icon: Icon(
+                        plan.inApp
+                            ? Icons.visibility_rounded
+                            : Icons.open_in_new_rounded,
+                        size: 16,
+                      ),
+                      label: Text(plan.inApp ? 'Open' : 'Open link'),
                       style: TextButton.styleFrom(
                         foregroundColor: ChatV1Theme.accent,
                         padding: const EdgeInsets.symmetric(vertical: 6),
@@ -592,6 +618,11 @@ class Cv1MessageBubble extends StatelessWidget {
     ChatV1Attachment att,
   ) async {
     final url = ChatV1Utils.resolveMediaUrl(att.storagePath);
+    final plan = planSharedDocumentOpen(
+      url: url,
+      fileName: att.fileName,
+      contentType: att.contentType,
+    );
     await showModalBottomSheet<void>(
       context: context,
       backgroundColor: ChatV1Theme.secondary(context),
@@ -639,13 +670,24 @@ class Cv1MessageBubble extends StatelessWidget {
                 ),
                 const Divider(height: 8),
                 ListTile(
-                  leading: const Icon(Icons.open_in_new_rounded),
-                  title: const Text('Open'),
-                  subtitle: const Text('Open with another app'),
+                  leading: Icon(
+                    plan.inApp
+                        ? Icons.visibility_rounded
+                        : Icons.open_in_new_rounded,
+                  ),
+                  title: Text(plan.inApp ? 'Open' : 'Open link'),
+                  subtitle: Text(
+                    plan.inApp ? 'View in the app' : 'Open this link',
+                  ),
                   enabled: url.isNotEmpty,
                   onTap: () {
                     Navigator.pop(sheetContext);
-                    _openUrl(url);
+                    openSharedDocument(
+                      context,
+                      url: url,
+                      fileName: att.fileName,
+                      contentType: att.contentType,
+                    );
                   },
                 ),
                 ListTile(
@@ -746,7 +788,8 @@ class Cv1MessageBubble extends StatelessWidget {
       currentUserName: ctrl.currentUserName,
       mentions: message.mentions,
     );
-    if (!segments.any((s) => s.isMention)) {
+    if (!segments.any((s) => s.isMention) &&
+        !splitPlainTextLinks(visible).any((piece) => piece.isLink)) {
       return Text(visible, style: base);
     }
     final mentionStyle = base.copyWith(
@@ -760,18 +803,17 @@ class Cv1MessageBubble extends StatelessWidget {
           ? const Color(0xFF7DE5A8)
           : const Color(0xFF157A42),
     );
-    return Text.rich(
-      TextSpan(
-        children: [
-          for (final segment in segments)
-            TextSpan(
-              text: segment.text,
-              style: segment.isSelf
-                  ? selfStyle
-                  : segment.isMention ? mentionStyle : base,
-            ),
-        ],
-      ),
+    final linkStyle = base.copyWith(
+      color: ChatV1Theme.accent,
+      decoration: TextDecoration.underline,
+      fontWeight: FontWeight.w600,
+    );
+    return _LinkedChatText(
+      segments: segments,
+      base: base,
+      mentionStyle: mentionStyle,
+      selfStyle: selfStyle,
+      linkStyle: linkStyle,
     );
   }
 
@@ -802,7 +844,9 @@ class Cv1MessageBubble extends StatelessWidget {
 
   Widget _file(BuildContext context) {
     final pdf = message.type == ChatV1MsgType.pdf;
-    return Row(
+    final link = _firstHttpLink(message.body) ??
+        _firstHttpLink(message.fileName ?? '');
+    final row = Row(
       children: [
         Container(
           width: 42,
@@ -835,6 +879,22 @@ class Cv1MessageBubble extends StatelessWidget {
         ),
       ],
     );
+    if (link == null) return row;
+    return InkWell(
+      onTap: () => openSharedDocument(
+        context,
+        url: link,
+        fileName: message.fileName ?? link,
+      ),
+      child: row,
+    );
+  }
+
+  String? _firstHttpLink(String text) {
+    for (final piece in splitPlainTextLinks(text)) {
+      if (piece.isLink) return piece.text;
+    }
+    return null;
   }
 
   Widget _media(BuildContext context) {
@@ -971,6 +1031,98 @@ class Cv1MessageBubble extends StatelessWidget {
         ),
       ],
     );
+  }
+}
+
+/// Message text with mentions and tappable links.
+///
+/// Links stay inside the paragraph as [TextSpan]s. A [WidgetSpan] child lays
+/// out with no height limit and throws a null-check while Flutter places it.
+class _LinkedChatText extends StatefulWidget {
+  final List<MentionTextSegment> segments;
+  final TextStyle base;
+  final TextStyle mentionStyle;
+  final TextStyle selfStyle;
+  final TextStyle linkStyle;
+
+  const _LinkedChatText({
+    required this.segments,
+    required this.base,
+    required this.mentionStyle,
+    required this.selfStyle,
+    required this.linkStyle,
+  });
+
+  @override
+  State<_LinkedChatText> createState() => _LinkedChatTextState();
+}
+
+class _LinkedChatTextState extends State<_LinkedChatText> {
+  final List<TapGestureRecognizer> _recognizers = [];
+  List<InlineSpan> _spans = const [];
+  String _key = '';
+
+  @override
+  void dispose() {
+    _releaseRecognizers();
+    super.dispose();
+  }
+
+  void _releaseRecognizers() {
+    for (final recognizer in _recognizers) {
+      recognizer.dispose();
+    }
+    _recognizers.clear();
+  }
+
+  void _syncSpans() {
+    final key = widget.segments
+        .map((segment) =>
+            '${segment.isMention}:${segment.isSelf}:${segment.text}')
+        .join('\u0000');
+    if (key == _key) return;
+    _key = key;
+    _releaseRecognizers();
+    _spans = [
+      for (final segment in widget.segments)
+        if (segment.isMention)
+          TextSpan(
+            text: segment.text,
+            style: segment.isSelf ? widget.selfStyle : widget.mentionStyle,
+          )
+        else
+          ..._linkSpans(segment.text),
+    ];
+  }
+
+  List<InlineSpan> _linkSpans(String text) {
+    return [
+      for (final piece in splitPlainTextLinks(text))
+        if (!piece.isLink)
+          TextSpan(text: piece.text, style: widget.base)
+        else
+          TextSpan(
+            text: piece.text,
+            style: widget.linkStyle,
+            recognizer: _recognizerFor(piece.text),
+          ),
+    ];
+  }
+
+  TapGestureRecognizer _recognizerFor(String url) {
+    final recognizer = TapGestureRecognizer()
+      ..onTap = () {
+        if (!mounted) return;
+        openSharedDocument(context, url: url, fileName: url);
+      };
+    _recognizers.add(recognizer);
+    return recognizer;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    _syncSpans();
+    return Text.rich(TextSpan(children: _spans));
   }
 }
 

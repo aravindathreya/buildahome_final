@@ -47,6 +47,9 @@ class _ClientPortalScreenState extends State<ClientPortalScreen> {
   Map<String, dynamic>? _project;
   bool _tutorialDone = false;
   WorkflowDocumentLibrary? _docLibrary;
+  /// True while the document library is still loading and nothing is cached.
+  /// KYC is pinned and can show immediately; other rows wait on this.
+  bool _docsLoading = false;
   /// KYC hub row: Client + Super Admin only (not other staff roles).
   bool _canSeeKyc = false;
   String? _viewerRole;
@@ -177,12 +180,14 @@ class _ClientPortalScreenState extends State<ClientPortalScreen> {
           payload['tutorial_completed'] == true;
       if (apiTutorial) _tutorialDone = true;
 
+      final cachedLibrary = _libraryFromMemory(prefs);
       setState(() {
         _loading = false;
         _project = project.isEmpty
             ? <String, dynamic>{'client_name': 'Your project'}
             : project;
-        _docLibrary = _libraryFromMemory(prefs);
+        _docLibrary = cachedLibrary;
+        _docsLoading = cachedLibrary == null;
       });
       unawaited(_refreshDocLibrary(prefs));
     } catch (e) {
@@ -218,9 +223,17 @@ class _ClientPortalScreenState extends State<ClientPortalScreen> {
   }
 
   Future<void> _refreshDocLibrary(SharedPreferences prefs) async {
-    final library = await _loadDocLibrary(prefs);
-    if (!mounted || library == null) return;
-    setState(() => _docLibrary = library);
+    try {
+      final library = await _loadDocLibrary(prefs);
+      if (!mounted) return;
+      setState(() {
+        _docsLoading = false;
+        if (library != null) _docLibrary = library;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _docsLoading = false);
+    }
   }
 
   Future<WorkflowDocumentLibrary?> _loadDocLibrary(
@@ -336,6 +349,7 @@ class _ClientPortalScreenState extends State<ClientPortalScreen> {
     final pinned = sections.where((section) => section.isPinnedSpecial).toList();
     final catalog = sections.where((section) => section.isCatalog).toList();
     final steps = sections.where((section) => section.isProjectStep).toList();
+    final waitingForDocuments = _docsLoading && _docLibrary == null;
 
     Widget hubCard(ClientPortalHubItem section, {required bool journeyStyle}) {
       return Padding(
@@ -364,20 +378,30 @@ class _ClientPortalScreenState extends State<ClientPortalScreen> {
             const SizedBox(height: 14),
           ],
           ...pinned.map((section) => hubCard(section, journeyStyle: true)),
-          if (catalog.isNotEmpty) ...[
-            if (pinned.isNotEmpty) const SizedBox(height: 6),
-            const ClientPortalSectionHeading(label: 'Document Categories'),
-            const SizedBox(height: 10),
-            ...catalog
-                .map((section) => hubCard(section, journeyStyle: false)),
-          ],
-          if (steps.isNotEmpty) ...[
-            if (pinned.isNotEmpty || catalog.isNotEmpty)
-              const SizedBox(height: 6),
-            const ClientPortalSectionHeading(label: 'Site'),
-            const SizedBox(height: 10),
-            ...steps
-                .map((section) => hubCard(section, journeyStyle: true)),
+          if (waitingForDocuments) ...[
+            if (pinned.isNotEmpty) const SizedBox(height: 8),
+            const SkeletonListLoader(
+              cardCount: 4,
+              showSummary: false,
+              shrinkWrap: true,
+              padding: EdgeInsets.zero,
+            ),
+          ] else ...[
+            if (catalog.isNotEmpty) ...[
+              if (pinned.isNotEmpty) const SizedBox(height: 6),
+              const ClientPortalSectionHeading(label: 'Document Categories'),
+              const SizedBox(height: 10),
+              ...catalog
+                  .map((section) => hubCard(section, journeyStyle: false)),
+            ],
+            if (steps.isNotEmpty) ...[
+              if (pinned.isNotEmpty || catalog.isNotEmpty)
+                const SizedBox(height: 6),
+              const ClientPortalSectionHeading(label: 'Site'),
+              const SizedBox(height: 10),
+              ...steps
+                  .map((section) => hubCard(section, journeyStyle: true)),
+            ],
           ],
         ],
       ),

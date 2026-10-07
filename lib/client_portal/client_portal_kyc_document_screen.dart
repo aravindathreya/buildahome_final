@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 
 import '../app_theme.dart';
+import '../models/workflow_document.dart';
+import '../services/document_file_download.dart';
+import '../services/mobile_documents_service.dart';
 import '../widgets/workflow_document_viewer.dart';
 import 'client_portal_document_ui.dart';
 import 'client_portal_kyc_ui.dart';
@@ -56,9 +59,17 @@ class ClientPortalKycDocumentScreen extends StatelessWidget {
     }
     openWorkflowDocument(
       context,
-      record.toWorkflowUpload(label),
+      _upload(),
       clientMode: true,
     );
+  }
+
+  bool get _canDownload =>
+      record.hasUrl &&
+      MobileDocumentsService.instance.currentUserCanDownloadDocuments;
+
+  WorkflowDocumentUpload _upload() {
+    return record.toWorkflowUpload(label, canDownload: _canDownload);
   }
 
   void _showMenu(BuildContext context) {
@@ -79,6 +90,15 @@ class ClientPortalKycDocumentScreen extends StatelessWidget {
                 _viewDocument(context);
               },
             ),
+            if (_canDownload)
+              ListTile(
+                leading: const Icon(Icons.download_rounded),
+                title: const Text('Download'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  downloadWorkflowDocument(context, _upload());
+                },
+              ),
             ListTile(
               leading: const Icon(Icons.upload_file_outlined),
               title: const Text('Replace document'),

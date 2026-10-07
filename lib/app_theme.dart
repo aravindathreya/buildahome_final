@@ -98,8 +98,11 @@ class AppTheme {
         centerTitle: false,
         systemOverlayStyle: SystemUiOverlayStyle.dark,
         iconTheme: const IconThemeData(color: lightTextPrimary, size: 22),
-        actionsIconTheme: const IconThemeData(color: lightTextPrimary, size: 22),
+        actionsIconTheme:
+            const IconThemeData(color: lightTextPrimary, size: 22),
         titleTextStyle: const TextStyle(
+          inherit: false,
+          textBaseline: TextBaseline.alphabetic,
           color: lightTextPrimary,
           fontSize: 18,
           fontWeight: FontWeight.w800,
@@ -127,6 +130,8 @@ class AppTheme {
             borderRadius: BorderRadius.circular(14),
           ),
           textStyle: const TextStyle(
+            inherit: false,
+            textBaseline: TextBaseline.alphabetic,
             fontSize: 14.5,
             fontWeight: FontWeight.w700,
             fontFamily: 'Mulish-Regular',
@@ -137,6 +142,8 @@ class AppTheme {
         style: TextButton.styleFrom(
           foregroundColor: accentBlue,
           textStyle: const TextStyle(
+            inherit: false,
+            textBaseline: TextBaseline.alphabetic,
             fontSize: 13.5,
             fontWeight: FontWeight.w700,
             fontFamily: 'Mulish-Regular',
@@ -165,11 +172,15 @@ class AppTheme {
         type: BottomNavigationBarType.fixed,
         elevation: 0,
         selectedLabelStyle: TextStyle(
+          inherit: false,
+          textBaseline: TextBaseline.alphabetic,
           fontSize: 11,
           fontWeight: FontWeight.w700,
           fontFamily: 'Mulish-Regular',
         ),
         unselectedLabelStyle: TextStyle(
+          inherit: false,
+          textBaseline: TextBaseline.alphabetic,
           fontSize: 11,
           fontWeight: FontWeight.w500,
           fontFamily: 'Mulish-Regular',
@@ -180,11 +191,15 @@ class AppTheme {
         unselectedLabelColor: mutedGrey,
         indicatorSize: TabBarIndicatorSize.tab,
         labelStyle: const TextStyle(
+          inherit: false,
+          textBaseline: TextBaseline.alphabetic,
           fontSize: 13,
           fontWeight: FontWeight.w700,
           fontFamily: 'Mulish-Regular',
         ),
         unselectedLabelStyle: const TextStyle(
+          inherit: false,
+          textBaseline: TextBaseline.alphabetic,
           fontSize: 13,
           fontWeight: FontWeight.w600,
           fontFamily: 'Mulish-Regular',
@@ -198,11 +213,15 @@ class AppTheme {
         backgroundColor: lightBackgroundPrimaryLight,
         selectedColor: primaryColorConst.withValues(alpha: 0.12),
         labelStyle: const TextStyle(
+          inherit: false,
+          textBaseline: TextBaseline.alphabetic,
           color: lightTextPrimary,
           fontWeight: FontWeight.w600,
           fontFamily: 'Mulish-Regular',
         ),
         secondaryLabelStyle: const TextStyle(
+          inherit: false,
+          textBaseline: TextBaseline.alphabetic,
           color: Colors.white,
           fontWeight: FontWeight.w600,
           fontFamily: 'Mulish-Regular',
@@ -220,12 +239,16 @@ class AppTheme {
           borderRadius: BorderRadius.circular(20),
         ),
         titleTextStyle: const TextStyle(
+          inherit: false,
+          textBaseline: TextBaseline.alphabetic,
           color: lightTextPrimary,
           fontSize: 18,
           fontWeight: FontWeight.w800,
           fontFamily: 'Mulish-Regular',
         ),
         contentTextStyle: const TextStyle(
+          inherit: false,
+          textBaseline: TextBaseline.alphabetic,
           color: mutedGrey,
           fontSize: 14,
           fontWeight: FontWeight.w500,
@@ -243,6 +266,8 @@ class AppTheme {
       snackBarTheme: SnackBarThemeData(
         backgroundColor: primaryColorConst,
         contentTextStyle: const TextStyle(
+          inherit: false,
+          textBaseline: TextBaseline.alphabetic,
           color: Colors.white,
           fontWeight: FontWeight.w600,
           fontFamily: 'Mulish-Regular',
@@ -284,8 +309,22 @@ class AppTheme {
           borderRadius: BorderRadius.circular(14),
           borderSide: const BorderSide(color: Color(0xFFDC2626)),
         ),
-        labelStyle: const TextStyle(color: mutedGrey, fontWeight: FontWeight.w500),
-        hintStyle: const TextStyle(color: mutedGrey, fontWeight: FontWeight.w500),
+        labelStyle: const TextStyle(
+          inherit: false,
+          textBaseline: TextBaseline.alphabetic,
+          color: mutedGrey,
+          fontSize: 14,
+          fontWeight: FontWeight.w500,
+          fontFamily: 'Mulish-Regular',
+        ),
+        hintStyle: const TextStyle(
+          inherit: false,
+          textBaseline: TextBaseline.alphabetic,
+          color: mutedGrey,
+          fontSize: 14,
+          fontWeight: FontWeight.w500,
+          fontFamily: 'Mulish-Regular',
+        ),
         contentPadding:
             const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       ),
@@ -307,7 +346,9 @@ class AppTheme {
         titleMedium: TextStyle(
             color: lightTextPrimary, fontSize: 15, fontWeight: FontWeight.w700),
         titleSmall: TextStyle(
-            color: lightTextPrimary, fontSize: 13.5, fontWeight: FontWeight.w700),
+            color: lightTextPrimary,
+            fontSize: 13.5,
+            fontWeight: FontWeight.w700),
         bodyLarge: TextStyle(
             color: lightTextPrimary, fontSize: 15, fontWeight: FontWeight.w500),
         bodyMedium: TextStyle(
@@ -315,7 +356,9 @@ class AppTheme {
         bodySmall: TextStyle(
             color: mutedGrey, fontSize: 12.5, fontWeight: FontWeight.w500),
         labelLarge: TextStyle(
-            color: lightTextPrimary, fontSize: 13.5, fontWeight: FontWeight.w700),
+            color: lightTextPrimary,
+            fontSize: 13.5,
+            fontWeight: FontWeight.w700),
       ),
       iconTheme: const IconThemeData(color: lightTextPrimary),
       drawerTheme: const DrawerThemeData(
@@ -367,6 +410,8 @@ class AppTheme {
         systemOverlayStyle: SystemUiOverlayStyle.light,
         iconTheme: const IconThemeData(color: _darkTextPrimary),
         titleTextStyle: const TextStyle(
+          inherit: false,
+          textBaseline: TextBaseline.alphabetic,
           color: _darkTextPrimary,
           fontSize: 18,
           fontWeight: FontWeight.w800,
@@ -379,17 +424,6 @@ class AppTheme {
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
           side: const BorderSide(color: Color(0xFF3F3F46)),
-        ),
-      ),
-      elevatedButtonTheme: ElevatedButtonThemeData(
-        style: ElevatedButton.styleFrom(
-          backgroundColor: primaryColorConstLight,
-          foregroundColor: Colors.white,
-          elevation: 0,
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
-          ),
         ),
       ),
       inputDecorationTheme: InputDecorationTheme(
@@ -405,39 +439,78 @@ class AppTheme {
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: primaryColorConstLight, width: 1.5),
+          borderSide:
+              const BorderSide(color: primaryColorConstLight, width: 1.5),
         ),
-        labelStyle: const TextStyle(color: _darkTextSecondary),
-        hintStyle: const TextStyle(color: _darkTextSecondary),
+        labelStyle: const TextStyle(
+          inherit: false,
+          textBaseline: TextBaseline.alphabetic,
+          color: _darkTextSecondary,
+          fontSize: 14,
+          fontWeight: FontWeight.w500,
+          fontFamily: 'Mulish-Regular',
+        ),
+        hintStyle: const TextStyle(
+          inherit: false,
+          textBaseline: TextBaseline.alphabetic,
+          color: _darkTextSecondary,
+          fontSize: 14,
+          fontWeight: FontWeight.w500,
+          fontFamily: 'Mulish-Regular',
+        ),
         contentPadding:
             const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       ),
-      textTheme: ThemeData.dark().textTheme.apply(
-        fontFamily: 'Mulish-Regular',
-        bodyColor: _darkTextPrimary,
-        displayColor: _darkTextPrimary,
-      ).copyWith(
-        headlineLarge: const TextStyle(
-            color: _darkTextPrimary, fontSize: 26, fontWeight: FontWeight.w800),
-        headlineMedium: const TextStyle(
-            color: _darkTextPrimary, fontSize: 22, fontWeight: FontWeight.w800),
-        headlineSmall: const TextStyle(
-            color: _darkTextPrimary, fontSize: 18, fontWeight: FontWeight.w800),
-        bodyLarge: const TextStyle(color: _darkTextPrimary, fontSize: 15),
-        bodyMedium: const TextStyle(color: _darkTextPrimary, fontSize: 14),
-        bodySmall: const TextStyle(color: _darkTextSecondary, fontSize: 12.5),
-        titleLarge: const TextStyle(color: _darkTextPrimary, fontSize: 18, fontWeight: FontWeight.w800),
-        titleMedium: const TextStyle(color: _darkTextPrimary, fontSize: 16, fontWeight: FontWeight.w700),
-        titleSmall: const TextStyle(color: _darkTextPrimary, fontSize: 14, fontWeight: FontWeight.w600),
-        labelLarge: const TextStyle(color: _darkTextPrimary, fontSize: 14, fontWeight: FontWeight.w600),
-        labelMedium: const TextStyle(color: _darkTextSecondary, fontSize: 12),
-        labelSmall: const TextStyle(color: _darkTextSecondary, fontSize: 11),
-      ),
+      textTheme: ThemeData.dark()
+          .textTheme
+          .apply(
+            fontFamily: 'Mulish-Regular',
+            bodyColor: _darkTextPrimary,
+            displayColor: _darkTextPrimary,
+          )
+          .copyWith(
+            headlineLarge: const TextStyle(
+                color: _darkTextPrimary,
+                fontSize: 26,
+                fontWeight: FontWeight.w800),
+            headlineMedium: const TextStyle(
+                color: _darkTextPrimary,
+                fontSize: 22,
+                fontWeight: FontWeight.w800),
+            headlineSmall: const TextStyle(
+                color: _darkTextPrimary,
+                fontSize: 18,
+                fontWeight: FontWeight.w800),
+            bodyLarge: const TextStyle(color: _darkTextPrimary, fontSize: 15),
+            bodyMedium: const TextStyle(color: _darkTextPrimary, fontSize: 14),
+            bodySmall:
+                const TextStyle(color: _darkTextSecondary, fontSize: 12.5),
+            titleLarge: const TextStyle(
+                color: _darkTextPrimary,
+                fontSize: 18,
+                fontWeight: FontWeight.w800),
+            titleMedium: const TextStyle(
+                color: _darkTextPrimary,
+                fontSize: 16,
+                fontWeight: FontWeight.w700),
+            titleSmall: const TextStyle(
+                color: _darkTextPrimary,
+                fontSize: 14,
+                fontWeight: FontWeight.w600),
+            labelLarge: const TextStyle(
+                color: _darkTextPrimary,
+                fontSize: 14,
+                fontWeight: FontWeight.w600),
+            labelMedium:
+                const TextStyle(color: _darkTextSecondary, fontSize: 12),
+            labelSmall:
+                const TextStyle(color: _darkTextSecondary, fontSize: 11),
+          ),
       primaryTextTheme: ThemeData.dark().primaryTextTheme.apply(
-        fontFamily: 'Mulish-Regular',
-        bodyColor: _darkTextPrimary,
-        displayColor: _darkTextPrimary,
-      ),
+            fontFamily: 'Mulish-Regular',
+            bodyColor: _darkTextPrimary,
+            displayColor: _darkTextPrimary,
+          ),
       iconTheme: const IconThemeData(color: _darkTextPrimary),
       primaryIconTheme: const IconThemeData(color: _darkTextPrimary),
       listTileTheme: const ListTileThemeData(
@@ -447,12 +520,16 @@ class AppTheme {
       dialogTheme: const DialogThemeData(
         backgroundColor: _darkBackgroundSecondary,
         titleTextStyle: TextStyle(
+          inherit: false,
+          textBaseline: TextBaseline.alphabetic,
           color: _darkTextPrimary,
           fontSize: 18,
           fontWeight: FontWeight.w800,
           fontFamily: 'Mulish-Regular',
         ),
         contentTextStyle: TextStyle(
+          inherit: false,
+          textBaseline: TextBaseline.alphabetic,
           color: _darkTextPrimary,
           fontSize: 14,
           fontFamily: 'Mulish-Regular',
@@ -466,11 +543,111 @@ class AppTheme {
           borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
         ),
       ),
+      elevatedButtonTheme: ElevatedButtonThemeData(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: primaryColorConstLight,
+          foregroundColor: Colors.white,
+          elevation: 0,
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
+          textStyle: const TextStyle(
+            inherit: false,
+            textBaseline: TextBaseline.alphabetic,
+            fontSize: 14.5,
+            fontWeight: FontWeight.w700,
+            fontFamily: 'Mulish-Regular',
+          ),
+        ),
+      ),
+      textButtonTheme: TextButtonThemeData(
+        style: TextButton.styleFrom(
+          foregroundColor: accentBlue,
+          textStyle: const TextStyle(
+            inherit: false,
+            textBaseline: TextBaseline.alphabetic,
+            fontSize: 13.5,
+            fontWeight: FontWeight.w700,
+            fontFamily: 'Mulish-Regular',
+          ),
+        ),
+      ),
+      chipTheme: ChipThemeData(
+        backgroundColor: _darkBackgroundPrimaryLight,
+        selectedColor: primaryColorConstLight.withValues(alpha: 0.2),
+        labelStyle: const TextStyle(
+          inherit: false,
+          textBaseline: TextBaseline.alphabetic,
+          color: _darkTextPrimary,
+          fontWeight: FontWeight.w600,
+          fontFamily: 'Mulish-Regular',
+        ),
+        secondaryLabelStyle: const TextStyle(
+          inherit: false,
+          textBaseline: TextBaseline.alphabetic,
+          color: Colors.white,
+          fontWeight: FontWeight.w600,
+          fontFamily: 'Mulish-Regular',
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(999),
+          side: const BorderSide(color: _darkBorder),
+        ),
+      ),
+      snackBarTheme: SnackBarThemeData(
+        backgroundColor: primaryColorConstLight,
+        contentTextStyle: const TextStyle(
+          inherit: false,
+          textBaseline: TextBaseline.alphabetic,
+          color: Colors.white,
+          fontWeight: FontWeight.w600,
+          fontFamily: 'Mulish-Regular',
+        ),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+      ),
+      tabBarTheme: TabBarThemeData(
+        labelColor: Colors.white,
+        unselectedLabelColor: _darkTextSecondary,
+        indicatorSize: TabBarIndicatorSize.tab,
+        labelStyle: const TextStyle(
+          inherit: false,
+          textBaseline: TextBaseline.alphabetic,
+          fontSize: 13,
+          fontWeight: FontWeight.w700,
+          fontFamily: 'Mulish-Regular',
+        ),
+        unselectedLabelStyle: const TextStyle(
+          inherit: false,
+          textBaseline: TextBaseline.alphabetic,
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+          fontFamily: 'Mulish-Regular',
+        ),
+      ),
       bottomNavigationBarTheme: const BottomNavigationBarThemeData(
         backgroundColor: _darkBackgroundSecondary,
         selectedItemColor: Colors.white,
         unselectedItemColor: _darkTextSecondary,
         type: BottomNavigationBarType.fixed,
+        selectedLabelStyle: TextStyle(
+          inherit: false,
+          textBaseline: TextBaseline.alphabetic,
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+          fontFamily: 'Mulish-Regular',
+        ),
+        unselectedLabelStyle: TextStyle(
+          inherit: false,
+          textBaseline: TextBaseline.alphabetic,
+          fontSize: 11,
+          fontWeight: FontWeight.w500,
+          fontFamily: 'Mulish-Regular',
+        ),
       ),
       progressIndicatorTheme: const ProgressIndicatorThemeData(
         color: primaryColorConstLight,

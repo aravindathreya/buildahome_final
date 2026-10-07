@@ -61,6 +61,212 @@ class ProjectPaymentsSnapshot {
   }
 }
 
+class PaymentBillRef {
+  final String taskId;
+  final String name;
+  final String description;
+  final bool isTender;
+  final String status;
+  final double amount;
+
+  const PaymentBillRef({
+    required this.taskId,
+    required this.name,
+    required this.description,
+    required this.isTender,
+    required this.status,
+    this.amount = 0,
+  });
+
+  /// Non-NT shows the stage name. NT shows the description from creation.
+  String get appliedLabel {
+    if (!isTender) {
+      final note = description.trim();
+      if (note.isNotEmpty && note.toLowerCase() != 'null') return note;
+    }
+    return name.trim();
+  }
+}
+
+List<PaymentBillRef> paymentBillRefs(ProjectPaymentsSnapshot snapshot) {
+  final out = <PaymentBillRef>[];
+  for (final item in [...snapshot.tenderItems, ...snapshot.nonTenderItems]) {
+    out.add(PaymentBillRef(
+      taskId: item.taskId?.trim() ?? '',
+      name: item.name,
+      description: item.note?.trim() ?? '',
+      isTender: item.isTender,
+      status: item.status,
+      amount: item.resolvedAmount(
+        item.isTender ? snapshot.tenderSummary : snapshot.nonTenderSummary,
+      ),
+    ));
+  }
+  return out;
+}
+
+List<PaymentBillRef> paymentBillsForProof(
+  PaymentProofItem item,
+  List<PaymentBillRef> bills,
+) {
+  final hits = <PaymentBillRef>[];
+  void add(PaymentBillRef? ref) {
+    if (ref == null) return;
+    if (hits.any((e) => e.taskId == ref.taskId && e.name == ref.name)) return;
+    hits.add(ref);
+  }
+
+  PaymentBillRef? byId(String? id) {
+    final wanted = id?.trim() ?? '';
+    if (wanted.isEmpty) return null;
+    for (final bill in bills) {
+      if (bill.taskId == wanted) return bill;
+    }
+    return null;
+  }
+
+  PaymentBillRef? byName(String name, {bool? isTender}) {
+    final key = _paymentMatchKey(name);
+    if (key.isEmpty) return null;
+    for (final bill in bills) {
+      if (isTender != null && bill.isTender != isTender) continue;
+      if (_paymentMatchKey(bill.name) == key) return bill;
+    }
+    return null;
+  }
+
+  add(byId(item.stageTaskId?.toString()));
+  add(byName(item.stageName));
+  for (final stage in item.billStages) {
+    add(byId(stage.id?.toString()));
+    add(byName(stage.stageName, isTender: !stage.isNt));
+    add(byName(stage.sectionLabel, isTender: !stage.isNt));
+  }
+  return hits;
+}
+
+List<String> previousPaymentStageLabels(
+  PaymentProofItem item,
+  List<PaymentBillRef> bills,
+) {
+  if (item.isNotABill) return const [];
+  if (item.appliedStageLabels.isNotEmpty) return item.appliedStageLabels;
+  final matched = paymentBillsForProof(item, bills)
+      .map((bill) => bill.appliedLabel.trim())
+      .where((label) => label.isNotEmpty)
+      .toSet()
+      .toList();
+  if (matched.isNotEmpty) return matched;
+  final stage = item.stageName.trim();
+  if (stage.isNotEmpty) return [stage];
+  final text = item.clearedBillsText.trim();
+  if (text.isEmpty) return const [];
+  return text
+      .split('\n')
+      .map((line) => line.replaceFirst(RegExp(r'^(NT|Non-NT):\s*'), '').trim())
+      .where((line) => line.isNotEmpty)
+      .toList();
+}
+
+class _RemainingBill {
+  final PaymentBillRef bill;
+  double left;
+
+  _RemainingBill(this.bill, this.left);
+}
+
+/// Stages each previous-payment screenshot was applied to, in upload order.
+/// When the proof names its stages, those are used. Otherwise the receipt
+/// amount is walked across tender stages, then NT bills.
+Map<String, List<String>> previousPaymentStagesByUrl({
+  required List<PaymentProofItem> proofs,
+  required List<PaymentBillRef> bills,
+}) {
+  final pools = <_RemainingBill>[
+    for (final bill in bills)
+      if (!isPaymentStatusScheduled(bill.status) && bill.amount > 0.5)
+        _RemainingBill(bill, bill.amount),
+  ];
+  var cursor = 0;
+  final ordered = [...proofs]..sort((a, b) {
+      final byIndex = (a.index ?? 1 << 30).compareTo(b.index ?? 1 << 30);
+      if (byIndex != 0) return byIndex;
+      return a.url.compareTo(b.url);
+    });
+  final out = <String, List<String>>{};
+
+  for (final proof in ordered) {
+    if (proof.url.isEmpty || proof.isNotABill || proof.isStatusRejected) {
+      continue;
+    }
+    final amount = proof.receiptTotal?.toDouble() ?? 0;
+    final explicit = previousPaymentStageLabels(proof, bills);
+    final hasExplicit = proof.appliedStageLabels.isNotEmpty ||
+        proof.stageName.trim().isNotEmpty ||
+        proof.clearedBillsText.trim().isNotEmpty;
+    if (hasExplicit && explicit.isNotEmpty) {
+      out[proof.url] = explicit;
+      var left = amount;
+      while (left > 0.5 && cursor < pools.length) {
+        final pool = pools[cursor];
+        if (left + 0.5 >= pool.left) {
+          left -= pool.left;
+          pool.left = 0;
+          cursor++;
+        } else {
+          pool.left -= left;
+          left = 0;
+        }
+      }
+      continue;
+    }
+
+    if (amount <= 0.5 || cursor >= pools.length) continue;
+    final labels = <String>[];
+    var left = amount;
+    while (left > 0.5 && cursor < pools.length) {
+      final pool = pools[cursor];
+      final label = pool.bill.appliedLabel.trim();
+      if (label.isNotEmpty && !labels.contains(label)) labels.add(label);
+      if (left + 0.5 >= pool.left) {
+        left -= pool.left;
+        pool.left = 0;
+        cursor++;
+      } else {
+        pool.left -= left;
+        left = 0;
+      }
+    }
+    if (labels.isNotEmpty) out[proof.url] = labels;
+  }
+  return out;
+}
+
+/// `paid` | `in review` | `pending`. Empty when the file is not a bill.
+String previousPaymentDotStatus(
+  PaymentProofItem item,
+  List<PaymentBillRef> bills,
+) {
+  if (item.isNotABill || item.isStatusRejected) return '';
+  final linked = paymentBillsForProof(item, bills);
+  if (item.isFinanceSettled ||
+      linked.any((bill) => isPaymentStatusPaid(bill.status))) {
+    return 'paid';
+  }
+  if (linked.any((bill) => isPaymentStatusInReview(bill.status)) ||
+      item.isBill == true ||
+      item.isCorrectBill) {
+    return 'in review';
+  }
+  return 'pending';
+}
+
+Color previousPaymentDotColor(String status) {
+  if (isPaymentStatusPaid(status)) return const Color(0xFF22C55E);
+  if (isPaymentStatusInReview(status)) return const Color(0xFF3B82F6);
+  return const Color(0xFFEAB308);
+}
+
 class PendingPaymentRow {
   final String name;
   final double amount;
@@ -73,6 +279,74 @@ class PendingPaymentRow {
     required this.isTender,
     required this.status,
   });
+}
+
+class AllocatedPendingPayments {
+  final List<PendingPaymentRow> rows;
+
+  /// Stage names fully covered by finance-approved proofs.
+  final Set<String> clearedNameKeys;
+
+  const AllocatedPendingPayments({
+    required this.rows,
+    required this.clearedNameKeys,
+  });
+
+  double get total => rows.fold<double>(0, (sum, row) => sum + row.amount);
+}
+
+/// Applies finance-approved proof totals onto pending stages in list order.
+///
+/// A 13 lakh proof against two 7 lakh stages clears the first and leaves
+/// 1 lakh on the second. Tender and non-tender rows share one running total.
+AllocatedPendingPayments allocateFinanceApprovedPayments({
+  required List<PendingPaymentRow> rows,
+  required List<PaymentProofItem> proofs,
+}) {
+  var pool = 0.0;
+  for (final proof in proofs) {
+    if (!proof.isFinanceSettled) continue;
+    final amount = proof.receiptTotal?.toDouble() ?? 0;
+    if (amount > 0) pool += amount;
+  }
+
+  if (pool <= 0.5) {
+    return AllocatedPendingPayments(
+      rows: rows,
+      clearedNameKeys: const {},
+    );
+  }
+
+  final remaining = <PendingPaymentRow>[];
+  final cleared = <String>{};
+  for (final row in rows) {
+    if (pool <= 0.5 || row.amount <= 0) {
+      if (row.amount > 0.5) remaining.add(row);
+      continue;
+    }
+    if (pool + 0.5 >= row.amount) {
+      pool -= row.amount;
+      final key = _paymentMatchKey(row.name);
+      if (key.isNotEmpty) cleared.add(key);
+      continue;
+    }
+    remaining.add(PendingPaymentRow(
+      name: row.name,
+      amount: row.amount - pool,
+      isTender: row.isTender,
+      status: row.status,
+    ));
+    pool = 0;
+  }
+
+  return AllocatedPendingPayments(rows: remaining, clearedNameKeys: cleared);
+}
+
+bool paymentStageNameIsCleared(String name, Set<String> clearedNameKeys) {
+  if (clearedNameKeys.isEmpty) return false;
+  final key = _paymentMatchKey(name);
+  if (key.isEmpty) return false;
+  return clearedNameKeys.contains(key);
 }
 
 bool isPaymentStatusPaid(String status) {
@@ -272,6 +546,7 @@ Future<ProjectPaymentsSnapshot> fetchProjectPaymentsSnapshot(
             markedAsDueOn: item['marked_as_due_on']?.toString(),
             markedAsPaidOn: item['marked_as_paid_on']?.toString(),
             isTender: true,
+            taskId: taskId,
           );
       })
       .toList();
@@ -290,12 +565,14 @@ Future<ProjectPaymentsSnapshot> fetchProjectPaymentsSnapshot(
               taskId: taskId,
               proofs: proofs,
             ),
+            note: item['p_note']?.toString(),
             startDate: item['start_date']?.toString(),
             endDate: item['end_date']?.toString(),
             markedAsDueOn: item['marked_as_due_on']?.toString(),
             markedAsPaidOn: item['marked_as_paid_on']?.toString(),
             isTender: false,
             amountOverride: _paymentValueToDouble(item['payment']),
+            taskId: taskId,
           );
       })
       .toList();
@@ -321,8 +598,13 @@ class PaymentTaskWidget extends StatelessWidget {
 
 class PaymentsDashboard extends StatefulWidget {
   final PaymentCategory initialCategory;
+  final String? initialSearch;
 
-  const PaymentsDashboard({Key? key, required this.initialCategory}) : super(key: key);
+  const PaymentsDashboard({
+    Key? key,
+    required this.initialCategory,
+    this.initialSearch,
+  }) : super(key: key);
 
   @override
   _PaymentsDashboardState createState() => _PaymentsDashboardState();
@@ -352,6 +634,11 @@ class _PaymentsDashboardState extends State<PaymentsDashboard> {
     super.initState();
     print('[Payments] initState called');
     selectedCategory = widget.initialCategory;
+    final seed = widget.initialSearch?.trim() ?? '';
+    if (seed.isNotEmpty) {
+      _searchController.text = seed;
+      _searchQuery = seed;
+    }
     _loadData();
   }
 
@@ -566,6 +853,7 @@ class _PaymentsDashboardState extends State<PaymentsDashboard> {
                 markedAsDueOn: item['marked_as_due_on']?.toString(),
                 markedAsPaidOn: item['marked_as_paid_on']?.toString(),
                 isTender: true,
+                taskId: taskId,
               );
           })
           .toList();
@@ -586,12 +874,14 @@ class _PaymentsDashboardState extends State<PaymentsDashboard> {
                   taskId: taskId,
                   proofs: proofs,
                 ),
+                note: item['p_note']?.toString(),
                 startDate: item['start_date']?.toString(),
                 endDate: item['end_date']?.toString(),
                 markedAsDueOn: item['marked_as_due_on']?.toString(),
                 markedAsPaidOn: item['marked_as_paid_on']?.toString(),
                 isTender: false,
                 amountOverride: _toDouble(item['payment']),
+                taskId: taskId,
               );
           })
           .toList();
@@ -1683,6 +1973,7 @@ class PaymentItem {
   final String? markedAsDueOn;
   final String? markedAsPaidOn;
   final double? amountOverride;
+  final String? taskId;
 
   const PaymentItem({
     required this.name,
@@ -1695,6 +1986,7 @@ class PaymentItem {
     this.markedAsDueOn,
     this.markedAsPaidOn,
     this.amountOverride,
+    this.taskId,
   });
 
   bool get isPaid => isPaymentStatusPaid(status);

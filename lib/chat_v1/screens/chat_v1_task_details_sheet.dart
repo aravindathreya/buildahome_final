@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
 
+import '../../widgets/open_shared_document.dart';
 import '../chat_v1_models.dart';
 import '../chat_v1_theme.dart';
 
@@ -41,10 +41,12 @@ class ChatV1TaskDetailsSheet extends StatelessWidget {
     }
   }
 
-  Future<void> _openUrl(String url) async {
-    final uri = Uri.tryParse(url);
-    if (uri == null) return;
-    await launchUrl(uri, mode: LaunchMode.externalApplication);
+  Future<void> _openAttachment(
+    BuildContext context,
+    String url,
+    String name,
+  ) async {
+    await openSharedDocument(context, url: url, fileName: name);
   }
 
   @override
@@ -215,7 +217,7 @@ class ChatV1TaskDetailsSheet extends StatelessWidget {
                       ),
                       title: Text(f.name),
                       trailing: const Icon(Icons.open_in_new_rounded, size: 18),
-                      onTap: () => _openUrl(f.url),
+                      onTap: () => _openAttachment(context, f.url, f.name),
                     );
                   }).toList(),
                 ),

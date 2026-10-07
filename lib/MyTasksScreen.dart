@@ -1050,31 +1050,6 @@ bool isTaskCompletedStatus(Map task) {
   return kCompletedTaskStatuses.contains(normalizeTaskStatusValue(task));
 }
 
-/// Same pending bucket as the My Tasks "Pending tasks" card.
-const Set<String> kPendingTaskStatuses = {
-  'pending',
-  'scheduled',
-  'in_progress',
-  'ready',
-  'waiting_approval',
-  'rejected',
-};
-
-bool isPendingTaskStatus(Map task) {
-  return kPendingTaskStatuses.contains(normalizeTaskStatusValue(task));
-}
-
-/// Home-screen pending total. Matches My Tasks with no search or project filter.
-int countHomePendingTasks(Iterable<dynamic> tasks, {String? userRole}) {
-  var count = 0;
-  for (final task in tasks) {
-    if (task is! Map) continue;
-    if (shouldHideIndentProofReviewTask(task, userRole)) continue;
-    if (isPendingTaskStatus(task)) count++;
-  }
-  return count;
-}
-
 bool isTaskAssignedToUser(Map task, String userId) {
   final normalizedUserId = userId.trim();
   if (normalizedUserId.isEmpty) return false;
@@ -1195,6 +1170,30 @@ List<Map<String, dynamic>> filterActiveRecentTasks(
       .where((task) => !shouldHideIndentProofReviewTask(task, userRole))
       .map((task) => Map<String, dynamic>.from(task))
       .toList();
+}
+
+/// Pending tasks shown on the staff home overview. Matches the My Tasks
+/// pending tab, including tasks hidden from site engineers.
+int countHomePendingTasks(
+  List<dynamic> tasks, {
+  String? userRole,
+}) {
+  const pendingStatuses = {
+    'pending',
+    'scheduled',
+    'in_progress',
+    'ready',
+    'waiting_approval',
+    'rejected',
+  };
+  var count = 0;
+  for (final task in tasks) {
+    if (task is! Map) continue;
+    if (!pendingStatuses.contains(normalizeTaskStatusValue(task))) continue;
+    if (shouldHideIndentProofReviewTask(task, userRole)) continue;
+    count++;
+  }
+  return count;
 }
 
 Future<void> openIndentProofReviewFromTask(
@@ -1715,7 +1714,14 @@ class _MyTasksScreenState extends State<MyTasksScreen>
   bool _showAssignedToMeOnly = false;
   bool _showCreatedByMeOnly = false;
 
-  static const Set<String> _pendingStatuses = kPendingTaskStatuses;
+  static const Set<String> _pendingStatuses = {
+    'pending',
+    'scheduled',
+    'in_progress',
+    'ready',
+    'waiting_approval',
+    'rejected',
+  };
   static const Set<String> _completedStatuses = kCompletedTaskStatuses;
 
   bool get _hasActiveFilters =>
@@ -1736,7 +1742,6 @@ class _MyTasksScreenState extends State<MyTasksScreen>
         task['can_complete_workflow_task'],
         task['indent_reason_blocks_complete'],
         task['indent_reason_block_message'],
-        task['outstanding_amount'],
         jsonEncode(task['workflow_task_actions'] ?? const []),
         jsonEncode(task['workflow_actions'] ?? const []),
         jsonEncode(task['workflow_delay_gate'] ?? const {}),
@@ -1900,6 +1905,7 @@ class _MyTasksScreenState extends State<MyTasksScreen>
     return source
         .where((task) {
           final clearPayment = isClearOutstandingPaymentTask(task);
+          // Outstanding payment stays visible (and first) for this project.
           if (!clearPayment) {
             if (_selectedProjectId != null) {
               if (!isTaskForProject(task, _selectedProjectId!)) return false;
@@ -2279,10 +2285,6 @@ class _MyTasksScreenState extends State<MyTasksScreen>
         next['can_update'] = false;
         return next;
       }).toList();
-      pinClearOutstandingPaymentTask(
-        _tasks,
-        outstandingAmount: _totalOutstanding,
-      );
       _tasksSignature = _tasksListSignature(_tasks);
     });
   }
@@ -2450,15 +2452,13 @@ class _MyTasksScreenState extends State<MyTasksScreen>
           ),
         const SizedBox(width: 4),
       ],
-      bottom: PreferredSize(
-        preferredSize: Size.fromHeight(_isSearchVisible ? 126 : 66),
-        child: Container(
-          color: AppTheme.darkBackgroundSecondary,
-          padding: const EdgeInsets.fromLTRB(18, 0, 18, 14),
-          child: Column(
-            children: [
-              if (_isSearchVisible) ...[
-                TextField(
+      bottom: _isSearchVisible
+          ? PreferredSize(
+              preferredSize: const Size.fromHeight(68),
+              child: Container(
+                color: AppTheme.darkBackgroundSecondary,
+                padding: const EdgeInsets.fromLTRB(18, 0, 18, 14),
+                child: TextField(
                   controller: _searchController,
                   focusNode: _searchFocusNode,
                   textInputAction: TextInputAction.search,
@@ -2502,51 +2502,9 @@ class _MyTasksScreenState extends State<MyTasksScreen>
                     ),
                   ),
                 ),
-                const SizedBox(height: 10),
-              ],
-              Container(
-                height: 48,
-                padding: const EdgeInsets.all(4),
-                decoration: BoxDecoration(
-                  color: AppTheme.darkBackgroundPrimaryLight,
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: TabBar(
-                  controller: _tabController,
-                  indicatorSize: TabBarIndicatorSize.tab,
-                  dividerColor: Colors.transparent,
-                  splashFactory: NoSplash.splashFactory,
-                  overlayColor: WidgetStateProperty.all(Colors.transparent),
-                  labelPadding: EdgeInsets.zero,
-                  indicator: BoxDecoration(
-                    color: AppTheme.navy,
-                    borderRadius: BorderRadius.circular(11),
-                  ),
-                  labelColor: Colors.white,
-                  unselectedLabelColor: _premiumMuted,
-                  labelStyle: const TextStyle(
-                      fontSize: 13, fontWeight: FontWeight.w700),
-                  unselectedLabelStyle: const TextStyle(
-                      fontSize: 13, fontWeight: FontWeight.w600),
-                  tabs: [
-                    SizedBox(
-                      height: 40,
-                      child: Center(
-                          child: Text('Pending (${pendingTasks.length})')),
-                    ),
-                    SizedBox(
-                      height: 40,
-                      child: Center(
-                          child:
-                              Text('Completed (${completedTasks.length})')),
-                    ),
-                  ],
-                ),
               ),
-            ],
-          ),
-        ),
-      ),
+            )
+          : null,
       body: Column(
         children: [
           if (_hasActiveFilters || hasSearchQuery)
@@ -2593,28 +2551,38 @@ class _MyTasksScreenState extends State<MyTasksScreen>
             ),
           Padding(
             padding: const EdgeInsets.fromLTRB(18, 14, 18, 0),
-            child: Row(
-              children: [
-                Expanded(
-                  child: TaskSummaryStatCard(
-                    value: '${pendingTasks.length}',
-                    label: 'Pending tasks',
-                    icon: Icons.assignment_outlined,
-                    iconColor: const Color(0xFFEAB308),
-                    iconBg: const Color(0xFF3A2F14),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: TaskSummaryStatCard(
-                    value: '${completedTasks.length}',
-                    label: 'Completed tasks',
-                    icon: Icons.check_circle_outline_rounded,
-                    iconColor: const Color(0xFF34D399),
-                    iconBg: const Color(0xFF14352B),
-                  ),
-                ),
-              ],
+            child: AnimatedBuilder(
+              animation: _tabController,
+              builder: (context, _) {
+                final isPending = _tabController.index == 0;
+                return Row(
+                  children: [
+                    Expanded(
+                      child: TaskSummaryStatCard(
+                        value: '${pendingTasks.length}',
+                        label: 'Pending tasks',
+                        icon: Icons.assignment_outlined,
+                        iconColor: const Color(0xFFEAB308),
+                        iconBg: const Color(0xFF3A2F14),
+                        selected: isPending,
+                        onTap: () => _tabController.animateTo(0),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: TaskSummaryStatCard(
+                        value: '${completedTasks.length}',
+                        label: 'Completed tasks',
+                        icon: Icons.check_circle_outline_rounded,
+                        iconColor: const Color(0xFF34D399),
+                        iconBg: const Color(0xFF14352B),
+                        selected: !isPending,
+                        onTap: () => _tabController.animateTo(1),
+                      ),
+                    ),
+                  ],
+                );
+              },
             ),
           ),
           Padding(
@@ -2774,7 +2742,7 @@ class _TaskList extends StatelessWidget {
     required this.onWorkflowActionCompleted,
     this.onWorkflowTaskFinished,
     this.onClearOutstandingPaymentClosed,
-    this.showWorkflowActions = true,
+        this.showWorkflowActions = true,
     this.onCreateTask,
     this.focusTaskId,
   });

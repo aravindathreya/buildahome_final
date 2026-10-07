@@ -18,6 +18,7 @@ import '../chat_v1_models.dart';
 import '../chat_v1_socket.dart';
 import '../chat_v1_theme.dart';
 import '../chat_v1_utils.dart';
+import '../../services/push/chat_push_inbox.dart';
 import '../widgets/chat_v1_common.dart';
 import '../widgets/chat_v1_composer.dart';
 import '../widgets/chat_v1_message_bubble.dart';
@@ -160,6 +161,7 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
     _loadMentionPeople();
     _bindSocket();
     if (_isErpTask) _loadErpDetails();
+    ChatPushInbox.conversationOpened(_conversationId);
   }
 
   void _onScroll() {
