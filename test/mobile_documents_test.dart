@@ -855,17 +855,21 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
-          home: DocumentsV1CategoryScreen(category: category),
+          home: DocumentsV1CategoryScreen(
+            category: category,
+            viewerRole: 'Client',
+          ),
         ),
       );
 
       expect(find.text('Architectural'), findsOneWidget);
-      expect(find.text('Floor Plans'), findsOneWidget);
+      expect(find.text('Ground Floor Plan'), findsOneWidget);
+      expect(find.text('First Floor Plan'), findsOneWidget);
       expect(find.text('Contracts'), findsNothing);
     });
 
     testWidgets(
-        'For me Architectural shows Final and Revisions sections',
+        'Architectural opens straight to its documents',
         (tester) async {
       final snapshot = parseMobileDocumentsPayload({
         'message': 'success',
@@ -948,15 +952,18 @@ void main() {
           home: DocumentsV1CategoryScreen(
             category: category,
             clientMode: true,
+            viewerRole: 'Client',
           ),
         ),
       );
 
-      expect(find.text('Architectural'), findsOneWidget);
-      expect(find.text('Final'), findsOneWidget);
-      expect(find.text('Revisions'), findsOneWidget);
-      expect(find.text('Floor Plans'), findsNothing);
-      expect(find.text('Elevations'), findsNothing);
+      expect(find.text('Architectural'), findsWidgets);
+      expect(find.text('Ground Floor Plan'), findsOneWidget);
+      expect(find.text('Ground Floor Plan old'), findsOneWidget);
+      expect(find.text('First Floor Plan'), findsOneWidget);
+      expect(find.text('Front Elevation'), findsOneWidget);
+      expect(find.text('Final'), findsNothing);
+      expect(find.text('Revisions'), findsNothing);
     });
 
     testWidgets('renders individual documents including pending rows',

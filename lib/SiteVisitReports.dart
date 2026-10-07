@@ -134,6 +134,7 @@ class _SiteVisitReportsScreenState extends State<SiteVisitReportsScreen> with Si
     if (mounted) {
       setState(() {
         _isClient = isClient;
+        if (isClient) _myReportsOnly = false;
         if (!isClient) {
           _tabController = TabController(length: 2, vsync: this);
           _tabController!.addListener(_handleTabSelection);
@@ -151,27 +152,27 @@ class _SiteVisitReportsScreenState extends State<SiteVisitReportsScreen> with Si
   
   Future<void> _setFixedProject() async {
     if (widget.fixedProjectId == null || !widget.projectFixed) return;
-    
-    // Find the project in the list
+
     await _ensureProjectsLoaded();
+    dynamic project;
     try {
-      final project = _projects.firstWhere(
+      project = _projects.firstWhere(
         (p) => p['id'].toString() == widget.fixedProjectId,
       );
-      
-      if (project != null && mounted) {
-        setState(() {
-          _createProject = project;
-          _viewProject = project;
-        });
-        // Auto-fetch reports for the fixed project
-        if (_viewProject != null) {
-          _fetchReports();
-        }
-      }
-    } catch (e) {
-      print('[SiteVisitReports] Project not found: ${widget.fixedProjectId}');
+    } catch (_) {
+      project = {
+        'id': widget.fixedProjectId,
+        'name': 'Project',
+      };
     }
+
+    if (!mounted) return;
+    setState(() {
+      _createProject = project;
+      _viewProject = project;
+      if (_isClient) _myReportsOnly = false;
+    });
+    _fetchReports();
   }
 
   @override
@@ -554,15 +555,22 @@ class _SiteVisitReportsScreenState extends State<SiteVisitReportsScreen> with Si
         ? null
         : rawUserId;
 
+    final role = (prefs.getString('role') ?? '').trim().toLowerCase();
+    final isClient = _isClient || role == 'client';
+
     final Map<String, String> query = {};
 
-    if (_viewProject != null) {
-      query['project_id'] = _viewProject!['id'].toString();
+    final projectId = _viewProject?['id']?.toString() ??
+        (widget.projectFixed ? widget.fixedProjectId : null);
+    if (projectId != null &&
+        projectId.isNotEmpty &&
+        projectId.toLowerCase() != 'null') {
+      query['project_id'] = projectId;
     }
 
-    // No project selected: the API still requires a user id ("View All Projects"
-    // means this user's reports across projects).
-    final includeUser = _myReportsOnly || _viewProject == null;
+    // Clients see every report on their project, including ones added by staff.
+    // "View All Projects" with no project still needs this user's id.
+    final includeUser = !isClient && (_myReportsOnly || query.isEmpty);
     if (includeUser && currentUserId != null) {
       query['created_by_user_id'] = currentUserId;
     }
@@ -1497,110 +1505,119 @@ class _SiteVisitReportsScreenState extends State<SiteVisitReportsScreen> with Si
           child: ListView(
             padding: EdgeInsets.all(20),
             children: [
-              _SectionHeader(title: 'Filters'),
-              _InputCard(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Project',
-                      style: TextStyle(
-                        color: AppTheme.mutedGrey,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 0.5,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            _viewProject == null
-                                ? 'All projects'
-                                : _viewProject['name'] ?? 'Project #${_viewProject['id']}',
-                            style: TextStyle(
-                              color: AppTheme.darkTextPrimary,
-                              fontWeight: FontWeight.w800,
-                              fontSize: 15,
-                            ),
-                          ),
-                        ),
-                        if (!widget.projectFixed)
-                          TextButton(
-                            onPressed: _fetchingReports ? null : () => _openProjectPicker(forCreate: false),
-                            style: TextButton.styleFrom(
-                              foregroundColor: AppTheme.accentBlue,
-                              textStyle: const TextStyle(fontWeight: FontWeight.w700),
-                            ),
-                            child: const Text('Change'),
-                          ),
-                        if (_viewProject != null && !widget.projectFixed)
-                          IconButton(
-                            icon: const Icon(Icons.close, color: AppTheme.mutedGrey),
-                            onPressed: _fetchingReports
-                                ? null
-                                : () {
-                                    setState(() {
-                                      _viewProject = null;
-                                      _reports = [];
-                                      _hasSearched = false;
-                                      _reportsError = null;
-                                    });
-                                  },
-                          ),
-                        
-                      ],
-                    ),
-                    Divider(height: 24),
-                    SwitchListTile(
-                      contentPadding: EdgeInsets.zero,
-                      activeColor: AppTheme.darkTextPrimary,
-                      thumbColor: MaterialStateProperty.all(Colors.white),
-                      title: Text(
-                        'Only my reports',
+              if (!_isClient) ...[
+                _SectionHeader(title: 'Filters'),
+                _InputCard(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Project',
                         style: TextStyle(
-                          color: AppTheme.darkTextPrimary,
+                          color: AppTheme.mutedGrey,
+                          fontSize: 12,
                           fontWeight: FontWeight.w700,
+                          letterSpacing: 0.5,
                         ),
                       ),
-                      value: _myReportsOnly,
-                      onChanged: _fetchingReports
-                          ? null
-                          : (value) {
-                              setState(() {
-                                _myReportsOnly = value;
-                              });
-                              // Auto-trigger search when toggle changes
-                              _fetchReports();
-                            },
-                    ),
-                  ],
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              _viewProject == null
+                                  ? 'All projects'
+                                  : _viewProject['name'] ??
+                                      'Project #${_viewProject['id']}',
+                              style: TextStyle(
+                                color: AppTheme.darkTextPrimary,
+                                fontWeight: FontWeight.w800,
+                                fontSize: 15,
+                              ),
+                            ),
+                          ),
+                          if (!widget.projectFixed)
+                            TextButton(
+                              onPressed: _fetchingReports
+                                  ? null
+                                  : () => _openProjectPicker(forCreate: false),
+                              style: TextButton.styleFrom(
+                                foregroundColor: AppTheme.accentBlue,
+                                textStyle:
+                                    const TextStyle(fontWeight: FontWeight.w700),
+                              ),
+                              child: const Text('Change'),
+                            ),
+                          if (_viewProject != null && !widget.projectFixed)
+                            IconButton(
+                              icon: const Icon(Icons.close,
+                                  color: AppTheme.mutedGrey),
+                              onPressed: _fetchingReports
+                                  ? null
+                                  : () {
+                                      setState(() {
+                                        _viewProject = null;
+                                        _reports = [];
+                                        _hasSearched = false;
+                                        _reportsError = null;
+                                      });
+                                    },
+                            ),
+                        ],
+                      ),
+                      Divider(height: 24),
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        activeColor: AppTheme.darkTextPrimary,
+                        thumbColor: MaterialStateProperty.all(Colors.white),
+                        title: Text(
+                          'Only my reports',
+                          style: TextStyle(
+                            color: AppTheme.darkTextPrimary,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        value: _myReportsOnly,
+                        onChanged: _fetchingReports
+                            ? null
+                            : (value) {
+                                setState(() {
+                                  _myReportsOnly = value;
+                                });
+                                _fetchReports();
+                              },
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-              SizedBox(height: 16),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed: _fetchingReports ? null : _fetchReports,
-                  icon: const Icon(Icons.search_rounded),
-                  label: Text(_viewProject == null ? 'View All Projects' : 'Refresh Reports'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppTheme.navy,
-                    foregroundColor: Colors.white,
-                    elevation: 0,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    textStyle: const TextStyle(
-                      fontSize: 14.5,
-                      fontWeight: FontWeight.w700,
+                SizedBox(height: 16),
+              ],
+              if (!_isClient) ...[
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: _fetchingReports ? null : _fetchReports,
+                    icon: const Icon(Icons.search_rounded),
+                    label: Text(_viewProject == null
+                        ? 'View All Projects'
+                        : 'Refresh Reports'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppTheme.navy,
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      textStyle: const TextStyle(
+                        fontSize: 14.5,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                   ),
                 ),
-              ),
-              SizedBox(height: 24),
+                SizedBox(height: 24),
+              ],
               if (_fetchingReports)
                 const SkeletonListLoader(
                   showSummary: false,
@@ -1622,9 +1639,11 @@ class _SiteVisitReportsScreenState extends State<SiteVisitReportsScreen> with Si
               else if (_reports.isEmpty)
                 _EmptyState(
                   icon: Icons.travel_explore,
-                  message: _viewProject == null 
-                      ? 'Click "View All Projects" to see all site visit reports.'
-                      : 'Search to view site visit reports.',
+                  message: _isClient
+                      ? 'No site visit reports yet.'
+                      : _viewProject == null
+                          ? 'Click "View All Projects" to see all site visit reports.'
+                          : 'Search to view site visit reports.',
                 )
               else
                 ..._reports.map((report) => _ReportTile(

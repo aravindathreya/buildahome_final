@@ -410,6 +410,32 @@ class _DocumentsV1CategoryScreenState extends State<DocumentsV1CategoryScreen>
   bool get _architecturalGrouped =>
       isArchitecturalDocumentCategory(_category);
 
+  bool get _receiptsAndAgreements =>
+      isReceiptsAndAgreementsCategory(_category);
+
+  WorkflowDocumentUpload? _singleOpenableDocument(
+    WorkflowDocumentSection section,
+  ) {
+    final docs = section.documents.where((doc) {
+      if (doc.isAreaStatement) return false;
+      return documentAccessForUpload(
+        catalogVisibilityRole(_viewerRole),
+        doc,
+      ).view;
+    }).toList();
+    if (docs.isEmpty) return null;
+    final keys = docs
+        .map((doc) =>
+            doc.documentKey.trim().isEmpty ? doc.id : doc.documentKey)
+        .toSet();
+    if (keys.length != 1) return null;
+    docs.sort((a, b) {
+      if (a.isLatest != b.isLatest) return a.isLatest ? -1 : 1;
+      return (b.revision ?? 0).compareTo(a.revision ?? 0);
+    });
+    return docs.first;
+  }
+
   List<WorkflowDocumentSection> get _filteredSections {
     if (_architecturalGrouped) {
       return clientPortalArchitecturalSections(
@@ -425,8 +451,29 @@ class _DocumentsV1CategoryScreenState extends State<DocumentsV1CategoryScreen>
 
   @override
   Widget build(BuildContext context) {
-    final sections = _filteredSections;
     final category = _category;
+    if (_architecturalGrouped || _receiptsAndAgreements) {
+      final section = _architecturalGrouped
+          ? buildClientPortalArchitecturalDocumentsSection(category)
+          : buildFlatCategoryDocumentsSection(category);
+      final direct = _singleOpenableDocument(section);
+      if (direct != null) {
+        return DocumentsV1DetailScreen(
+          document: direct,
+          clientMode: widget.clientMode,
+          categoryLabel: category.label,
+          viewerRole: _viewerRole,
+        );
+      }
+      return DocumentsV1ListScreen(
+        categoryLabel: category.label,
+        section: section,
+        clientMode: widget.clientMode,
+        viewerRole: _viewerRole,
+      );
+    }
+
+    final sections = _filteredSections;
 
     return Scaffold(
       backgroundColor: AppTheme.getBackgroundPrimary(context),
@@ -523,7 +570,6 @@ class DocumentsV1ListScreen extends StatefulWidget {
 class _DocumentsV1ListScreenState extends State<DocumentsV1ListScreen>
     with _DebouncedSearchRebuild {
   final _searchCtrl = TextEditingController();
-  int _filterIndex = 1;
   ClientPortalDocumentSort _sort = ClientPortalDocumentSort.newest;
   String? _viewerRole;
   bool _mutating = false;
@@ -536,23 +582,6 @@ class _DocumentsV1ListScreenState extends State<DocumentsV1ListScreen>
       widget.categoryLabel.toLowerCase().contains('floor plan') ||
       widget.section.clientJourneyKey?.contains('design') == true ||
       widget.section.clientJourneyKey?.contains('floor_plan') == true;
-
-  /// Final / Revisions layout for Client and internal roles.
-  bool get _architecturalGroupedList {
-    if (isClientPortalArchitecturalGroupedSection(widget.section)) {
-      return true;
-    }
-    final category = widget.categoryLabel.toLowerCase();
-    return category.contains('architectural') ||
-        category.contains('architecture');
-  }
-
-  bool get _architecturalRevisionsList {
-    final id = widget.section.id.trim().toLowerCase();
-    final label = widget.section.label.trim().toLowerCase();
-    return _architecturalGroupedList &&
-        (id == 'revisions' || label == 'revisions');
-  }
 
   bool get _hideAreaStatement =>
       forMeDocRoleBucket(_viewerRole) == ForMeDocRoleBucket.client ||
@@ -607,23 +636,7 @@ class _DocumentsV1ListScreenState extends State<DocumentsV1ListScreen>
         )
         .toList();
 
-    List<WorkflowDocumentUpload> base;
-    if (_architecturalGroupedList) {
-      base = _architecturalRevisionsList
-          ? docs.where((doc) => !isClientPortalFinalDocument(doc)).toList()
-          : docs.where(isClientPortalFinalDocument).toList();
-    } else {
-      switch (_filterIndex) {
-        case 1:
-          base = docs.where((doc) => doc.isLatest).toList();
-          break;
-        case 2:
-          base = docs.where((doc) => !doc.isLatest).toList();
-          break;
-        default:
-          base = docs;
-      }
-    }
+    List<WorkflowDocumentUpload> base = docs;
 
     final q = _searchCtrl.text.trim();
     final searched = q.isEmpty
@@ -700,17 +713,6 @@ class _DocumentsV1ListScreenState extends State<DocumentsV1ListScreen>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (!_architecturalGroupedList)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
-                child: ClientPortalFilterTabs(
-                  selectedIndex: _filterIndex,
-                  onChanged: (index) {
-                    setState(() => _filterIndex = index);
-                    _prefetchTop();
-                  },
-                ),
-              ),
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
               child: ClientPortalSearchBar(

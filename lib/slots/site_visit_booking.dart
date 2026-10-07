@@ -401,7 +401,11 @@ class _BookingState extends State<SiteVisitBooking> {
                                   _noteBox(),
                                 ],
                               ],
-                              if (step == 2 && widget.readOnly && option == null && preferences.isEmpty)
+                              if (step == 2 &&
+                                  widget.readOnly &&
+                                  option == null &&
+                                  preferences.isEmpty &&
+                                  slot.options.isEmpty)
                                 _panel(
                                     child: Text(
                                         slot.isSubmitted
@@ -411,8 +415,28 @@ class _BookingState extends State<SiteVisitBooking> {
                                                 : 'This visit does not have a slot to change.',
                                         style: const TextStyle(
                                             color: visitMuted, height: 1.4))),
+                              if (widget.readOnly && slot.options.isNotEmpty) ...[
+                                const SizedBox(height: 8),
+                                const Text('Slots given',
+                                    style: TextStyle(
+                                        fontSize: 17,
+                                        fontWeight: FontWeight.w600)),
+                                const SizedBox(height: 12),
+                                for (final given in slot.options)
+                                  _timeCard(
+                                    title: _offeredClock(given),
+                                    subtitle: _offeredWhen(given),
+                                    period: given.periodLabel,
+                                    selected: _optionIsChosen(given),
+                                    markSelected: true,
+                                    onTap: () {},
+                                  ),
+                              ],
                               if (step == 2) ...[
-                                if (!preferred && option != null)
+                                if (!preferred &&
+                                    option != null &&
+                                    !(widget.readOnly &&
+                                        slot.options.isNotEmpty))
                                   _panel(
                                       child: Column(children: [
                                     VisitDetail(
@@ -532,9 +556,36 @@ class _BookingState extends State<SiteVisitBooking> {
       ));
 
   String _optionTimeTitle(SalesSopSlotOption o) {
+    final clock = _offeredClock(o);
+    if (clock.isNotEmpty) return clock;
     if (o.timeLabel.trim().isNotEmpty) return o.timeLabel.trim();
-    if (o.parsedDateTime != null) return _timeLabel(o.parsedDateTime!);
     return o.display;
+  }
+
+  String _offeredClock(SalesSopSlotOption o) {
+    final clock = o.clockLabel.trim();
+    if (clock.isNotEmpty) return clock;
+    if (o.parsedDateTime != null && slotSourceHasClock(o.datetime)) {
+      return _timeLabel(o.parsedDateTime!);
+    }
+    return '';
+  }
+
+  String _offeredWhen(SalesSopSlotOption o) {
+    final range = _rangeSubtitle(
+        o.timeLabel.trim().isNotEmpty ? o.timeLabel : o.display);
+    if (range.isNotEmpty) return range;
+    final dt = o.parsedDateTime;
+    if (dt == null) return '';
+    return _dateLabel(dt);
+  }
+
+  bool _optionIsChosen(SalesSopSlotOption o) {
+    if (o.isAccepted) return true;
+    final accepted = slot.acceptedSlot;
+    if (accepted == null) return false;
+    if (accepted.index > 0 && accepted.index == o.index) return true;
+    return accepted.display == o.display && accepted.datetime == o.datetime;
   }
 
   String _periodFor(DateTime? dt, String label) {
@@ -596,7 +647,7 @@ class _BookingState extends State<SiteVisitBooking> {
       return [
         for (final item in slot.timeOptions)
           _timeCard(
-            title: _clockTitle(item.time.isEmpty ? item.label : item.time),
+            title: _predefinedClock(item),
             subtitle: _rangeSubtitle(item.time.isEmpty ? item.label : item.time),
             period: _periodFor(
                 null, item.label.isNotEmpty ? item.label : item.time),
@@ -633,14 +684,21 @@ class _BookingState extends State<SiteVisitBooking> {
     return [
       for (final o in options)
         _timeCard(
-          title: _clockTitle(_optionTimeTitle(o)),
-          subtitle: _rangeSubtitle(
-              o.timeLabel.trim().isNotEmpty ? o.timeLabel : _optionTimeTitle(o)),
-          period: _periodFor(o.parsedDateTime, o.timeLabel),
+          title: _offeredClock(o),
+          subtitle: _offeredWhen(o),
+          period: o.periodLabel,
           selected: option == o,
+          markSelected: true,
           onTap: () => setState(() => option = o),
         ),
     ];
+  }
+
+  String _predefinedClock(SalesSopSlotTimeOption item) {
+    final raw = item.time.isEmpty ? item.label : item.time;
+    final clock = firstSlotClock(raw) ?? periodWordToClock(raw);
+    if (clock != null) return clock;
+    return _clockTitle(raw);
   }
 
   String _clockTitle(String raw) {
@@ -734,8 +792,10 @@ class _BookingState extends State<SiteVisitBooking> {
     required String period,
     required bool selected,
     required VoidCallback onTap,
-  }) =>
-      Padding(
+    bool markSelected = false,
+  }) {
+    final chosen = markSelected && selected;
+    return Padding(
           padding: const EdgeInsets.only(bottom: 10),
           child: InkWell(
               onTap: onTap,
@@ -744,14 +804,26 @@ class _BookingState extends State<SiteVisitBooking> {
                   padding:
                       const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
                   decoration: visitDecoration(
-                      color: selected ? const Color(0xFF252036) : visitCard,
-                      border: selected ? visitPurple : null),
+                      color: chosen
+                          ? const Color(0xFF14532D)
+                          : selected
+                              ? const Color(0xFF252036)
+                              : visitCard,
+                      border: chosen
+                          ? const Color(0xFF22C55E)
+                          : selected
+                              ? visitPurple
+                              : null),
                   child: Row(children: [
                     Icon(
                         selected
                             ? Icons.radio_button_checked
                             : Icons.radio_button_off,
-                        color: selected ? visitPurple : visitMuted),
+                        color: chosen
+                            ? const Color(0xFF86EFAC)
+                            : selected
+                                ? visitPurple
+                                : visitMuted),
                     const SizedBox(width: 16),
                     Expanded(
                         child: Column(
@@ -760,6 +832,14 @@ class _BookingState extends State<SiteVisitBooking> {
                           Text(title,
                               style: const TextStyle(
                                   fontSize: 18, fontWeight: FontWeight.w600)),
+                          if (chosen) ...[
+                            const SizedBox(height: 4),
+                            const Text('This is selected',
+                                style: TextStyle(
+                                    color: Color(0xFF86EFAC),
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w700)),
+                          ],
                           if (subtitle.trim().isNotEmpty &&
                               subtitle.trim().toLowerCase() !=
                                   title.trim().toLowerCase()) ...[
@@ -777,6 +857,7 @@ class _BookingState extends State<SiteVisitBooking> {
                               fontSize: 13,
                               fontWeight: FontWeight.w600)),
                   ]))));
+  }
   Widget _calendar() {
     final first = DateTime(month.year, month.month);
     final offset = first.weekday % 7;

@@ -77,7 +77,7 @@ void main() {
           MobileQuickActionSurface.staffHome,
           'chatbox',
         ),
-        'Chat V1',
+        'Chat',
       );
       expect(
         flutterTitleForMobileQuickAction(

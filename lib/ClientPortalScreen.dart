@@ -47,7 +47,6 @@ class _ClientPortalScreenState extends State<ClientPortalScreen> {
   Map<String, dynamic>? _project;
   bool _tutorialDone = false;
   WorkflowDocumentLibrary? _docLibrary;
-  String _impersonatedClientName = '';
   /// KYC hub row: Client + Super Admin only (not other staff roles).
   bool _canSeeKyc = false;
   String? _viewerRole;
@@ -85,8 +84,6 @@ class _ClientPortalScreenState extends State<ClientPortalScreen> {
       );
       _tutorialDone = prefs.getBool('client_portal_tutorial_done') ?? false;
       if (widget.impersonatingClient) {
-        _impersonatedClientName =
-            (prefs.getString('client_name') ?? '').trim();
         final projectId = (prefs.getString('project_id') ?? '').trim();
         if (projectId.isEmpty) {
           if (!mounted) return;
@@ -172,9 +169,6 @@ class _ClientPortalScreenState extends State<ClientPortalScreen> {
       final name = project['client_name']?.toString();
       if (name != null && name.isNotEmpty) {
         await prefs.setString('client_name', name);
-        if (widget.impersonatingClient) {
-          _impersonatedClientName = name.trim();
-        }
       }
 
       // Tutorial flag may also come from API.
@@ -263,7 +257,6 @@ class _ClientPortalScreenState extends State<ClientPortalScreen> {
             '')
         .trim();
     final salesSopId = (prefs.getString('sales_sop_id') ?? '').trim();
-    _impersonatedClientName = clientName;
 
     final library = await _loadDocLibrary(prefs);
     if (!mounted) return;
@@ -330,40 +323,6 @@ class _ClientPortalScreenState extends State<ClientPortalScreen> {
     );
   }
 
-  Widget _impersonationBanner() {
-    final name = _impersonatedClientName.isNotEmpty
-        ? _impersonatedClientName
-        : 'this client';
-    return Container(
-      width: double.infinity,
-      margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      decoration: BoxDecoration(
-        color: const Color(0xFFEEF2FF),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFC7D2FE)),
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.visibility_outlined,
-              size: 18, color: Color(0xFF4F46E5)),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              'Viewing as $name — client portal details',
-              style: const TextStyle(
-                color: Color(0xFF3730A3),
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                height: 1.3,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildBody() {
     if (_loading) return const SkeletonListLoader(cardCount: 5);
     if (_error != null) {
@@ -394,41 +353,34 @@ class _ClientPortalScreenState extends State<ClientPortalScreen> {
       );
     }
 
-    return Column(
-      children: [
-        if (widget.impersonatingClient) _impersonationBanner(),
-        Expanded(
-          child: RefreshIndicator(
-            color: AppTheme.navy,
-            onRefresh: _bootstrap,
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
-              children: [
-                if (!_tutorialDone && !widget.impersonatingClient) ...[
-                  _TutorialBanner(onComplete: _completeTutorial),
-                  const SizedBox(height: 14),
-                ],
-                ...pinned.map((section) => hubCard(section, journeyStyle: true)),
-                if (catalog.isNotEmpty) ...[
-                  if (pinned.isNotEmpty) const SizedBox(height: 6),
-                  const ClientPortalSectionHeading(label: 'Document Categories'),
-                  const SizedBox(height: 10),
-                  ...catalog
-                      .map((section) => hubCard(section, journeyStyle: false)),
-                ],
-                if (steps.isNotEmpty) ...[
-                  if (pinned.isNotEmpty || catalog.isNotEmpty)
-                    const SizedBox(height: 6),
-                  const ClientPortalSectionHeading(label: 'Site'),
-                  const SizedBox(height: 10),
-                  ...steps
-                      .map((section) => hubCard(section, journeyStyle: true)),
-                ],
-              ],
-            ),
-          ),
-        ),
-      ],
+    return RefreshIndicator(
+      color: AppTheme.navy,
+      onRefresh: _bootstrap,
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
+        children: [
+          if (!_tutorialDone && !widget.impersonatingClient) ...[
+            _TutorialBanner(onComplete: _completeTutorial),
+            const SizedBox(height: 14),
+          ],
+          ...pinned.map((section) => hubCard(section, journeyStyle: true)),
+          if (catalog.isNotEmpty) ...[
+            if (pinned.isNotEmpty) const SizedBox(height: 6),
+            const ClientPortalSectionHeading(label: 'Document Categories'),
+            const SizedBox(height: 10),
+            ...catalog
+                .map((section) => hubCard(section, journeyStyle: false)),
+          ],
+          if (steps.isNotEmpty) ...[
+            if (pinned.isNotEmpty || catalog.isNotEmpty)
+              const SizedBox(height: 6),
+            const ClientPortalSectionHeading(label: 'Site'),
+            const SizedBox(height: 10),
+            ...steps
+                .map((section) => hubCard(section, journeyStyle: true)),
+          ],
+        ],
+      ),
     );
   }
 

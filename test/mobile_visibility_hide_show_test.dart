@@ -273,7 +273,7 @@ void main() {
     'Client Portal',
     'Slots',
     'Project Timeline',
-    'Chat V1',
+    'Chat',
     '3D House Tour',
     'Inspection Requests',
   ];
@@ -297,7 +297,7 @@ void main() {
     'Project Gallery',
     '3D House Tour',
     'ChatBox',
-    'Chat V1',
+    'Chat',
     'Project Status',
     'Checklist',
     'Request Drawings',

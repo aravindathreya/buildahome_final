@@ -312,11 +312,13 @@ class Cv1StickToBottomState extends State<Cv1StickToBottom> {
 class Cv1FilterChips extends StatelessWidget {
   final ChatV1Filter selected;
   final ValueChanged<ChatV1Filter> onChanged;
+  final bool hideTasks;
 
   const Cv1FilterChips({
     super.key,
     required this.selected,
     required this.onChanged,
+    this.hideTasks = false,
   });
 
   String _label(ChatV1Filter f) {
@@ -334,7 +336,10 @@ class Cv1FilterChips extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const items = ChatV1Filter.values;
+    final items = [
+      for (final item in ChatV1Filter.values)
+        if (!hideTasks || item != ChatV1Filter.tasks) item,
+    ];
     return SizedBox(
       height: 42,
       child: ListView.separated(

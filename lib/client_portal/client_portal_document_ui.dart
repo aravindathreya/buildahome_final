@@ -1445,6 +1445,54 @@ List<WorkflowDocumentSection> clientPortalArchitecturalSections(
       .toList();
 }
 
+/// Final and Revisions documents together, shown directly under Architectural.
+WorkflowDocumentSection buildClientPortalArchitecturalDocumentsSection(
+  WorkflowDocumentCategory category,
+) {
+  return _flatCategoryDocumentsSection(category);
+}
+
+bool isReceiptsAndAgreementsCategory(WorkflowDocumentCategory category) {
+  final blob =
+      '${category.id} ${category.label} ${category.clientJourneyKey ?? ''} ${category.libraryGroupKey ?? ''}'
+          .toLowerCase();
+  return blob.contains('receipts_and_agreements') ||
+      (blob.contains('receipt') && blob.contains('agreement'));
+}
+
+/// Every file in the folder, so opening it shows the documents themselves.
+WorkflowDocumentSection buildFlatCategoryDocumentsSection(
+  WorkflowDocumentCategory category,
+) {
+  return _flatCategoryDocumentsSection(category);
+}
+
+WorkflowDocumentSection _flatCategoryDocumentsSection(
+  WorkflowDocumentCategory category,
+) {
+  final docs = <WorkflowDocumentUpload>[];
+  final seen = <String>{};
+  for (final section in category.sections) {
+    for (final doc in section.documents) {
+      if (doc.isAreaStatement) continue;
+      final key = doc.id.isNotEmpty
+          ? doc.id
+          : '${doc.documentKey}|${doc.revision ?? ''}|${doc.url ?? ''}|${doc.name}';
+      if (!seen.add(key)) continue;
+      docs.add(doc);
+    }
+  }
+  return WorkflowDocumentSection(
+    id: category.id,
+    label: category.label,
+    categoryId: category.id,
+    categoryLabel: category.label,
+    clientJourneyKey: category.clientJourneyKey,
+    libraryGroupKey: category.libraryGroupKey,
+    documents: docs,
+  );
+}
+
 List<WorkflowDocumentCategory> filterWorkflowCategoriesBySearch(
   List<WorkflowDocumentCategory> categories,
   String query,

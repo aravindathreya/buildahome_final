@@ -1372,9 +1372,9 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
         route: () => _routeForCurrentProject(() => ProjectSituationShell.timeline()),
       ),
       _quickActionTile(
-        title: 'Chat V1',
+        title: 'Chat',
         icon: Icons.forum_outlined,
-        route: () => ChatV1App.openQuick(tasksHint: _tasks),
+        route: () => _openStaffChatPicker(),
       ),
       _quickActionTile(
         title: '3D House Tour',
@@ -1513,13 +1513,10 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
             ),
           );
     final totalProjects = projects.length;
-    final pendingCount = _tasks.where((task) {
-      if (task is Map) {
-        final status = task['status']?.toString().toLowerCase() ?? '';
-        return status == 'pending';
-      }
-      return false;
-    }).length;
+    final pendingCount = countHomePendingTasks(
+      _tasks,
+      userRole: currentUserRole,
+    );
 
     return RefreshIndicator(
       onRefresh: () async {
@@ -2109,8 +2106,8 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
         return 'Tests';
       case 'ChatBox':
         return 'Chat';
-      case 'Chat V1':
-        return 'Chat V1';
+      case 'Chat':
+        return 'Chat';
       case 'Project Status':
         return 'Status';
       case 'My Notifications':
@@ -2173,7 +2170,6 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
         return Icons.checklist_rtl_rounded;
       case 'ChatBox':
         return Icons.chat_bubble_rounded;
-      case 'Chat V1':
       case 'Chat':
         return Icons.forum_rounded;
       case 'Project Status':

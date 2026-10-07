@@ -396,6 +396,7 @@ class CreateIndentTabState extends State<CreateIndentTab> {
   var unit = 'Unit';
   var quantityTextController = new TextEditingController();
   var purposeTextController = new TextEditingController();
+  var reasonCommentTextController = new TextEditingController();
   var diffCostTextController = new TextEditingController(text: '0');
   var approvalTaken = false;
   var attachedFileName = '';
@@ -441,6 +442,7 @@ class CreateIndentTabState extends State<CreateIndentTab> {
     _pageController.dispose();
     quantityTextController.dispose();
     purposeTextController.dispose();
+    reasonCommentTextController.dispose();
     diffCostTextController.dispose();
     super.dispose();
   }
@@ -471,14 +473,26 @@ class CreateIndentTabState extends State<CreateIndentTab> {
   void loadProjects() async {
     await DataProvider().loadProjects(force: false);
     if (!mounted) return;
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
     setState(() {
       projects = DataProvider().projects;
       _applyInitialProjectSelection();
+      if (selectedProject == null) {
+        _selectProject(
+          prefs.getString('project_id'),
+          prefs.getString('client_name'),
+        );
+      }
     });
   }
 
   void _applyInitialProjectSelection() {
-    final id = widget.initialProjectId?.trim() ?? '';
+    _selectProject(widget.initialProjectId, widget.initialProjectName);
+  }
+
+  void _selectProject(String? rawId, String? rawName) {
+    final id = rawId?.trim() ?? '';
     if (id.isEmpty) return;
 
     Map? match;
@@ -495,15 +509,12 @@ class CreateIndentTabState extends State<CreateIndentTab> {
       return;
     }
 
-    final name = widget.initialProjectName?.trim() ?? '';
-    if (name.isNotEmpty) {
-      // Keep UI usable when project isn't in the loaded list yet.
-      selectedProject = {
-        'id': id,
-        'name': name,
-      };
-      projectId = id;
-    }
+    final name = rawName?.trim() ?? '';
+    selectedProject = {
+      'id': id,
+      'name': name.isNotEmpty ? name : 'Current project',
+    };
+    projectId = id;
   }
 
   void loadMaterials() async {
@@ -577,7 +588,7 @@ class CreateIndentTabState extends State<CreateIndentTab> {
 
   List<String> _getStepTitles() {
     return [
-      'Select Project',
+      'Comment',
       'Select Material',
       'Quantity & Unit',
       'Details',
@@ -588,7 +599,7 @@ class CreateIndentTabState extends State<CreateIndentTab> {
 
   List<String> _getStepInstructions() {
     return [
-      'Choose the project for this indent',
+      'Add an optional comment',
       'Select the material you need',
       'Enter quantity and select unit',
       'Enter difference cost, approval status, and purpose',
@@ -600,7 +611,8 @@ class CreateIndentTabState extends State<CreateIndentTab> {
   bool _isStepCompleted(int stepIndex) {
     switch (stepIndex) {
       case 0:
-        return selectedProject != null;
+        return reasonCommentTextController.text.trim().isNotEmpty ||
+            _currentStep > 0;
       case 1:
         return selectedMaterial != null && selectedMaterial.isNotEmpty;
       case 2:
@@ -760,7 +772,7 @@ class CreateIndentTabState extends State<CreateIndentTab> {
               });
             },
             children: [
-              _buildStep1Project(),
+              _buildStep2Comment(),
               _buildStep3Material(),
               _buildStep4QuantityUnit(),
               _buildStep5Details(),
@@ -776,6 +788,8 @@ class CreateIndentTabState extends State<CreateIndentTab> {
   }
 
   Widget _buildNavigationButtons() {
+    final showSkip = _currentStep == 0 &&
+        reasonCommentTextController.text.trim().isEmpty;
     return Container(
       padding: EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -902,7 +916,7 @@ class CreateIndentTabState extends State<CreateIndentTab> {
                         ),
                       ] else ...[
                         Text(
-                          'Next',
+                          showSkip ? 'Skip' : 'Next',
                           style: TextStyle(
                             color: Colors.white,
                             fontSize: 16,
@@ -911,7 +925,7 @@ class CreateIndentTabState extends State<CreateIndentTab> {
                         ),
                         SizedBox(width: 8),
                         Icon(
-                          Icons.arrow_forward,
+                          showSkip ? Icons.skip_next : Icons.arrow_forward,
                           color: Colors.white,
                           size: 20,
                         ),
@@ -935,18 +949,13 @@ class CreateIndentTabState extends State<CreateIndentTab> {
         MaterialPageRoute(
           builder: (context) => FullScreenMessage(
             title: 'Validation Error',
-            message: 'Please select a project',
+            message: 'Open a project before creating an indent',
             icon: Icons.error_outline,
             iconColor: Colors.red,
             buttonText: 'OK',
             onButtonPressed: () => Navigator.pop(context),
           ),
         ),
-      );
-      _pageController.animateToPage(
-        0,
-        duration: Duration(milliseconds: 300),
-        curve: Curves.easeInOut,
       );
       return;
     }
@@ -1099,6 +1108,10 @@ class CreateIndentTabState extends State<CreateIndentTab> {
         'user_id': user_id?.toString() ?? '',
         'timestamp': formattedDate,
       };
+      final reasonComment = reasonCommentTextController.text.trim();
+      if (reasonComment.isNotEmpty) {
+        body['reason_comment'] = reasonComment;
+      }
       var response = await http.post(Uri.parse(url), body: body).timeout(
         Duration(seconds: 30),
         onTimeout: () {
@@ -1172,6 +1185,7 @@ class CreateIndentTabState extends State<CreateIndentTab> {
         unit = 'Unit';
         quantityTextController.text = '';
         purposeTextController.text = '';
+        reasonCommentTextController.text = '';
         diffCostTextController.text = '0';
         approvalTaken = false;
         attachedFileName = '';
@@ -1288,82 +1302,69 @@ class CreateIndentTabState extends State<CreateIndentTab> {
     }
   }
 
-  Widget _buildStep1Project() {
+  Widget _buildStep2Comment() {
+    final hasComment = reasonCommentTextController.text.trim().isNotEmpty;
     return SingleChildScrollView(
       padding: EdgeInsets.all(20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           _buildSectionHeader(
-            'Select Project',
-            Icons.folder_special,
-            isCompleted: selectedProject != null,
-            instruction: 'Choose the project for this indent from the list below',
+            'Comment',
+            Icons.comment_outlined,
+            isCompleted: hasComment || _currentStep > 0,
+            instruction: 'Add an optional comment. You can skip this step',
           ),
+          if (selectedProject != null) ...[
+            SizedBox(height: 8),
+            Text(
+              selectedProject['name']?.toString() ?? '',
+              style: TextStyle(
+                color: AppTheme.getTextSecondary(context),
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
           SizedBox(height: 20),
-
-          
-          InkWell(
-            onTap: () async {
-              final result = await SearchableSelect.show(
-                context: context,
-                title: 'Select Project',
-                items: projects,
-                itemLabel: (item) => item['name'] ?? 'Unknown',
-                selectedItem: selectedProject,
-              );
-              if (result != null) {
-                setState(() {
-                  selectedProject = result;
-                  projectId = result['id'].toString();
-                });
-              }
-            },
-            borderRadius: BorderRadius.circular(16),
-            child: Container(
-              padding: EdgeInsets.symmetric(horizontal: 16, vertical: 18),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    AppTheme.getBackgroundSecondary(context),
-                    AppTheme.getBackgroundPrimaryLight(context),
-                  ],
-                ),
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.2),
-                    blurRadius: 8,
-                    offset: Offset(0, 4),
-                  ),
+          Container(
+            padding: EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  AppTheme.getBackgroundSecondary(context),
+                  AppTheme.getBackgroundPrimaryLight(context),
                 ],
               ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      selectedProject != null
-                          ? (selectedProject['name'] ?? 'Unknown')
-                          : 'Select a project',
-                      style: TextStyle(
-                        color: selectedProject != null
-                            ? AppTheme.getTextPrimary(context)
-                            : AppTheme.getTextSecondary(context),
-                        fontSize: 16,
-                        fontWeight: selectedProject != null
-                            ? FontWeight.w500
-                            : FontWeight.normal,
-                      ),
-                    ),
-                  ),
-                  Icon(
-                    Icons.arrow_forward_ios,
-                    color: AppTheme.getPrimaryColor(context),
-                    size: 18,
-                  ),
-                ],
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.2),
+                  blurRadius: 8,
+                  offset: Offset(0, 4),
+                ),
+              ],
+            ),
+            child: TextFormField(
+              controller: reasonCommentTextController,
+              keyboardType: TextInputType.multiline,
+              textCapitalization: TextCapitalization.sentences,
+              minLines: 3,
+              maxLines: 4,
+              style: TextStyle(
+                fontSize: 16,
+                color: AppTheme.getTextPrimary(context),
+              ),
+              onChanged: (value) {
+                setState(() {});
+              },
+              decoration: InputDecoration(
+                hintText: 'Add an optional comment',
+                hintStyle: TextStyle(color: AppTheme.getTextSecondary(context)),
+                border: InputBorder.none,
+                contentPadding: EdgeInsets.symmetric(horizontal: 0, vertical: 0),
               ),
             ),
           ),
@@ -1839,6 +1840,17 @@ class CreateIndentTabState extends State<CreateIndentTab> {
                 ? (selectedProject['name'] ?? 'Unknown')
                 : 'Not selected',
             isComplete: selectedProject != null,
+          ),
+          SizedBox(height: 16),
+
+          _buildPreviewCard(
+            icon: Icons.comment_outlined,
+            title: 'Comment',
+            content: reasonCommentTextController.text.trim().isNotEmpty
+                ? reasonCommentTextController.text.trim()
+                : 'None',
+            isComplete: reasonCommentTextController.text.trim().isNotEmpty,
+            isTextContent: true,
           ),
           SizedBox(height: 16),
           

@@ -4,6 +4,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'app_theme.dart';
 import 'chat_v1/chat_v1_api.dart';
 import 'chat_v1/chat_v1_app.dart';
+import 'chat_v1/chat_v1_mapper.dart';
+import 'chat_v1/chat_v1_utils.dart';
 import 'services/data_provider.dart';
 import 'services/project_open_timing.dart';
 import 'widgets/opening_project_splash.dart';
@@ -62,7 +64,9 @@ class ProjectPickerScreen {
       final refreshFuture = () async {
         try {
           await provider.loadProjects(
-            force: projects.isEmpty || provider.lastProjectsLoad == null,
+            force: forChat ||
+                projects.isEmpty ||
+                provider.lastProjectsLoad == null,
           );
         } catch (_) {}
         return List<dynamic>.from(provider.projects);
@@ -140,10 +144,11 @@ class ProjectPickerScreen {
                   .toList();
               if (forChat && unreadByKey.isNotEmpty) {
                 filtered.sort((a, b) {
-                  final unread = _projectUnread(b, unreadByKey)
-                      .unread
-                      .compareTo(_projectUnread(a, unreadByKey).unread);
-                  if (unread != 0) return unread;
+                  final aHint = _projectUnread(a, unreadByKey);
+                  final bHint = _projectUnread(b, unreadByKey);
+                  final byRecent =
+                      bHint.activityAt.compareTo(aHint.activityAt);
+                  if (byRecent != 0) return byRecent;
                   final an = a['name']?.toString().toLowerCase() ?? '';
                   final bn = b['name']?.toString().toLowerCase() ?? '';
                   return an.compareTo(bn);
@@ -324,6 +329,10 @@ class ProjectPickerScreen {
                                           ? _projectUnread(project, unreadByKey)
                                           : null;
                                       final unread = unreadHint?.unread ?? 0;
+                                      final messagePreview = forChat
+                                          ? _chatMessagePreview(unreadHint)
+                                          : '';
+                                      final activityAt = unreadHint?.lastActivity;
                                       final rowAccent = unread > 0
                                           ? const Color(0xFF22C55E)
                                           : accent;
@@ -524,7 +533,9 @@ class ProjectPickerScreen {
                                                                   if (clientName !=
                                                                           null &&
                                                                       clientName
-                                                                          .isNotEmpty) ...[
+                                                                          .isNotEmpty &&
+                                                                      messagePreview
+                                                                          .isEmpty) ...[
                                                                     const SizedBox(
                                                                         height:
                                                                             3),
@@ -538,6 +549,33 @@ class ProjectPickerScreen {
                                                                             12,
                                                                         fontWeight:
                                                                             FontWeight.w500,
+                                                                      ),
+                                                                      maxLines:
+                                                                          1,
+                                                                      overflow:
+                                                                          TextOverflow
+                                                                              .ellipsis,
+                                                                    ),
+                                                                  ],
+                                                                  if (messagePreview
+                                                                      .isNotEmpty) ...[
+                                                                    const SizedBox(
+                                                                        height:
+                                                                            4),
+                                                                    Text(
+                                                                      messagePreview,
+                                                                      style:
+                                                                          TextStyle(
+                                                                        color: unread >
+                                                                                0
+                                                                            ? AppTheme.darkTextPrimary
+                                                                            : _muted,
+                                                                        fontSize:
+                                                                            12.5,
+                                                                        fontWeight: unread >
+                                                                                0
+                                                                            ? FontWeight.w700
+                                                                            : FontWeight.w500,
                                                                       ),
                                                                       maxLines:
                                                                           1,
@@ -585,10 +623,44 @@ class ProjectPickerScreen {
                                                                 ],
                                                               ),
                                                             ),
-                                                            const Icon(
-                                                              Icons
-                                                                  .chevron_right_rounded,
-                                                              color: _muted,
+                                                            Column(
+                                                              mainAxisAlignment:
+                                                                  MainAxisAlignment
+                                                                      .center,
+                                                              crossAxisAlignment:
+                                                                  CrossAxisAlignment
+                                                                      .end,
+                                                              children: [
+                                                                if (activityAt !=
+                                                                        null &&
+                                                                    activityAt
+                                                                            .millisecondsSinceEpoch >
+                                                                        0)
+                                                                  Text(
+                                                                    ChatV1Utils
+                                                                        .timeAgo(
+                                                                            activityAt),
+                                                                    style:
+                                                                        TextStyle(
+                                                                      color: unread >
+                                                                              0
+                                                                          ? const Color(
+                                                                              0xFF22C55E)
+                                                                          : _muted,
+                                                                      fontSize:
+                                                                          11,
+                                                                      fontWeight:
+                                                                          FontWeight
+                                                                              .w700,
+                                                                    ),
+                                                                  ),
+                                                                const Icon(
+                                                                  Icons
+                                                                      .chevron_right_rounded,
+                                                                  color:
+                                                                      _muted,
+                                                                ),
+                                                              ],
                                                             ),
                                                           ],
                                                         ),
@@ -676,13 +748,33 @@ class _EmptyState extends StatelessWidget {
   }
 }
 
+String _chatMessagePreview(ChatProjectUnread? hint) {
+  final conversation = hint?.conversation;
+  if (conversation == null || conversation.isEmpty) return '';
+  final last = conversation['last_message'];
+  if (last != null) {
+    final formatted = ChatV1Mapper.formatLastMessagePreview(last);
+    if (!formatted.isEmpty) return formatted.label;
+  }
+  for (final key in const [
+    'last_message_preview',
+    'last_message_text',
+    'preview',
+  ]) {
+    final text = conversation[key]?.toString().trim() ?? '';
+    if (text.isNotEmpty && text.toLowerCase() != 'null') return text;
+  }
+  return '';
+}
+
 ChatProjectUnread _projectUnread(
   dynamic project,
   Map<String, ChatProjectUnread> unreadByKey,
 ) {
   const none = ChatProjectUnread(unread: 0, conversation: {});
   if (project is! Map || unreadByKey.isEmpty) return none;
-  ChatProjectUnread? best;
+  ChatProjectUnread? newest;
+  var unread = 0;
   final keys = <String>[
     for (final key in const [
       'id',
@@ -700,7 +792,16 @@ ChatProjectUnread _projectUnread(
     if (id.isEmpty) continue;
     final hint = unreadByKey[id];
     if (hint == null) continue;
-    if (best == null || hint.unread > best.unread) best = hint;
+    if (hint.unread > unread) unread = hint.unread;
+    if (newest == null || hint.activityAt.isAfter(newest.activityAt)) {
+      newest = hint;
+    }
   }
-  return best ?? none;
+  if (newest == null) return none;
+  if (newest.unread == unread) return newest;
+  return ChatProjectUnread(
+    unread: unread,
+    conversation: newest.conversation,
+    lastActivity: newest.lastActivity,
+  );
 }

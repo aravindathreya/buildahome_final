@@ -2346,6 +2346,20 @@ class _SlotRadioCard extends StatelessWidget {
                       ),
                     ),
                   ],
+                  if (selected) ...[
+                    const SizedBox(height: 4),
+                    const Text(
+                      'This is selected',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: Color(0xFF86EFAC),
+                        fontSize: 10,
+                        height: 1.2,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -3111,9 +3125,25 @@ class _SlotParts {
 
 _SlotParts _slotDisplay(SalesSopSlotOption option) {
   final display = option.display.trim();
+  final clock = option.clockLabel.trim();
+  final period = option.periodLabel.trim();
+  final timeLine = [
+    if (clock.isNotEmpty) _prettyTime(clock),
+    if (period.isNotEmpty && period.toLowerCase() != clock.toLowerCase())
+      period,
+  ].join(' · ');
+  if (option.parsedDateTime != null) {
+    return _SlotParts(
+      dateLine: DateFormat('EEE, d MMM').format(option.parsedDateTime!),
+      timeLine: timeLine,
+    );
+  }
   final time = option.timeLabel.trim();
   if (time.isNotEmpty && time != display) {
-    return _SlotParts(dateLine: _compactDate(display), timeLine: _prettyTime(time));
+    return _SlotParts(
+      dateLine: _compactDate(display),
+      timeLine: timeLine.isNotEmpty ? timeLine : _prettyTime(time),
+    );
   }
 
   final match = RegExp(

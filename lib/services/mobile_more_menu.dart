@@ -165,7 +165,7 @@ const Map<String, String> kMobileMoreMenuProjectTitles = {
   'nt_payments': 'Upgrades and Additions Cost',
   'upload_payment_proof': 'Upload proof',
   'indents': 'Indents',
-  'chatbox': 'Chat V1',
+  'chatbox': 'Chat',
   'mobile_live_test': 'Mobile Live Test',
   kMobileMoreMenuLogoutKey: 'Log out',
 };
@@ -192,7 +192,7 @@ const Map<MobileMoreMenuSurface, Map<String, String>>
     'site_visit_reports': 'Site Visits',
     'test_reports': 'Test Reports',
     'inspection_requests': 'Inspection Requests',
-    'chatbox': 'Chat V1',
+    'chatbox': 'Chat',
     'project_status': 'Project Status',
     'mobile_live_test': 'Mobile Live Test',
     kMobileMoreMenuLogoutKey: 'Log out',

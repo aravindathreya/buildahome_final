@@ -434,25 +434,29 @@ class ChatV1Api {
   /// conversation payload already includes `unread_count`, `context_id`,
   /// `sales_sop_id`, and `project_id` — no extra office endpoint is required.
   Future<Map<String, ChatProjectUnread>> unreadHintsByProjectKey() async {
+    final rows = <Map<String, dynamic>>[];
     try {
-      final filtered = await _listConversationPages(
+      rows.addAll(await _listConversationPages(
         const {'has_unread': '1'},
         pageSize: 100,
         maxPages: 5,
-      );
-      final hints = ChatProjectUnread.fromConversationRows(filtered);
-      if (hints.isNotEmpty) return hints;
+      ));
     } catch (e) {
       print(
         '[ChatV1Api] unread filter unavailable ($e) — scanning recent chats',
       );
     }
-    final recent = await _listConversationPages(
-      const {},
-      pageSize: 100,
-      maxPages: 5,
-    );
-    return ChatProjectUnread.fromConversationRows(recent);
+    try {
+      rows.addAll(await _listConversationPages(
+        const {},
+        pageSize: 100,
+        maxPages: 5,
+      ));
+    } catch (e) {
+      if (rows.isEmpty) rethrow;
+      print('[ChatV1Api] recent chat scan failed ($e)');
+    }
+    return ChatProjectUnread.fromConversationRows(rows);
   }
 
   int _rowUnread(Map<String, dynamic> row) => ChatProjectUnread.rowUnread(row);
@@ -958,10 +962,17 @@ class ChatProjectUnread {
   final int unread;
   final Map<String, dynamic> conversation;
 
+  /// When the newest unread message on this project arrived.
+  final DateTime? lastActivity;
+
   const ChatProjectUnread({
     required this.unread,
     required this.conversation,
+    this.lastActivity,
   });
+
+  DateTime get activityAt =>
+      lastActivity ?? DateTime.fromMillisecondsSinceEpoch(0);
 
   String get conversationId =>
       (conversation['id'] ?? conversation['conversation_id'] ?? '')
@@ -981,14 +992,21 @@ class ChatProjectUnread {
     List<Map<String, dynamic>> rows,
   ) {
     final totals = <String, int>{};
+    final counted = <String, Set<String>>{};
     final open = <String, Map<String, dynamic>>{};
     final activity = <String, DateTime>{};
     for (final row in rows) {
       final unread = rowUnread(row);
-      if (unread <= 0) continue;
       final when = _activityAt(row);
+      final conversationId =
+          (row['id'] ?? row['conversation_id'] ?? '').toString();
       for (final key in projectKeys(row)) {
-        totals[key] = (totals[key] ?? 0) + unread;
+        if (unread > 0 && conversationId.isNotEmpty) {
+          final seen = counted.putIfAbsent(key, () => <String>{});
+          if (seen.add(conversationId)) {
+            totals[key] = (totals[key] ?? 0) + unread;
+          }
+        }
         final previous = activity[key];
         if (previous == null || !when.isBefore(previous)) {
           activity[key] = when;
@@ -996,12 +1014,14 @@ class ChatProjectUnread {
         }
       }
     }
+    final keys = <String>{...totals.keys, ...open.keys};
     return {
-      for (final entry in totals.entries)
-        if (open[entry.key] != null)
-          entry.key: ChatProjectUnread(
-            unread: entry.value,
-            conversation: open[entry.key]!,
+      for (final key in keys)
+        if (open[key] != null)
+          key: ChatProjectUnread(
+            unread: totals[key] ?? 0,
+            conversation: open[key]!,
+            lastActivity: activity[key],
           ),
     };
   }

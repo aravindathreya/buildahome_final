@@ -44,6 +44,7 @@ import 'widgets/indent_site_proof_summary_card.dart';
 import 'widgets/modern_task_card.dart';
 import 'widgets/themed_scaffold.dart';
 import 'widgets/skeleton_loader.dart';
+import 'Payments.dart';
 import 'SlotsScreen.dart';
 import 'UploadPaymentProofScreen.dart';
 
@@ -165,6 +166,57 @@ bool isClearOutstandingPaymentTask(Map task) {
   return _taskCategoryMatches(task, (normalized) {
     return normalized == kClearOutstandingPaymentCategory;
   });
+}
+
+Map<String, dynamic> buildClearOutstandingPaymentTask({
+  required double amount,
+}) {
+  final formatter =
+      NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0);
+  final amountText = formatter.format(amount);
+  return <String, dynamic>{
+    'id': kClearOutstandingPaymentTaskId,
+    'title': 'Clear outstanding payment',
+    'task_name': 'Clear outstanding payment',
+    'description':
+        'You have $amountText pending. Upload payment proof to clear dues.',
+    'status': 'pending',
+    'category': kClearOutstandingPaymentCategory,
+    'task_category': kClearOutstandingPaymentCategory,
+    'outstanding_amount': amount,
+  };
+}
+
+/// Puts the synthetic clear-payment task at index 0 when [outstandingAmount] > 0.
+void pinClearOutstandingPaymentTask(
+  List<dynamic> tasks, {
+  required double outstandingAmount,
+}) {
+  tasks.removeWhere(
+    (task) => task is Map && isClearOutstandingPaymentTask(task),
+  );
+  if (outstandingAmount <= 0) return;
+  tasks.insert(
+    0,
+    buildClearOutstandingPaymentTask(amount: outstandingAmount),
+  );
+}
+
+List<Map<String, dynamic>> moveClearOutstandingPaymentFirst(
+  List<Map<String, dynamic>> tasks,
+) {
+  final index = tasks.indexWhere(isClearOutstandingPaymentTask);
+  if (index <= 0) return tasks;
+  final next = List<Map<String, dynamic>>.from(tasks);
+  final pinned = next.removeAt(index);
+  next.insert(0, pinned);
+  return next;
+}
+
+double outstandingAmountFromTask(Map task) {
+  final raw = task['outstanding_amount'];
+  if (raw is num) return raw.toDouble();
+  return double.tryParse(raw?.toString() ?? '') ?? 0;
 }
 
 /// Client task to approve a raised NT bill.
@@ -998,6 +1050,31 @@ bool isTaskCompletedStatus(Map task) {
   return kCompletedTaskStatuses.contains(normalizeTaskStatusValue(task));
 }
 
+/// Same pending bucket as the My Tasks "Pending tasks" card.
+const Set<String> kPendingTaskStatuses = {
+  'pending',
+  'scheduled',
+  'in_progress',
+  'ready',
+  'waiting_approval',
+  'rejected',
+};
+
+bool isPendingTaskStatus(Map task) {
+  return kPendingTaskStatuses.contains(normalizeTaskStatusValue(task));
+}
+
+/// Home-screen pending total. Matches My Tasks with no search or project filter.
+int countHomePendingTasks(Iterable<dynamic> tasks, {String? userRole}) {
+  var count = 0;
+  for (final task in tasks) {
+    if (task is! Map) continue;
+    if (shouldHideIndentProofReviewTask(task, userRole)) continue;
+    if (isPendingTaskStatus(task)) count++;
+  }
+  return count;
+}
+
 bool isTaskAssignedToUser(Map task, String userId) {
   final normalizedUserId = userId.trim();
   if (normalizedUserId.isEmpty) return false;
@@ -1624,6 +1701,8 @@ class _MyTasksScreenState extends State<MyTasksScreen>
   late List<dynamic> _tasks;
   bool _isRefreshing = false;
   String? _tasksSignature;
+  String? _sourceTasksSignature;
+  double _totalOutstanding = 0;
 
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
@@ -1636,14 +1715,7 @@ class _MyTasksScreenState extends State<MyTasksScreen>
   bool _showAssignedToMeOnly = false;
   bool _showCreatedByMeOnly = false;
 
-  static const Set<String> _pendingStatuses = {
-    'pending',
-    'scheduled',
-    'in_progress',
-    'ready',
-    'waiting_approval',
-    'rejected',
-  };
+  static const Set<String> _pendingStatuses = kPendingTaskStatuses;
   static const Set<String> _completedStatuses = kCompletedTaskStatuses;
 
   bool get _hasActiveFilters =>
@@ -1664,6 +1736,7 @@ class _MyTasksScreenState extends State<MyTasksScreen>
         task['can_complete_workflow_task'],
         task['indent_reason_blocks_complete'],
         task['indent_reason_block_message'],
+        task['outstanding_amount'],
         jsonEncode(task['workflow_task_actions'] ?? const []),
         jsonEncode(task['workflow_actions'] ?? const []),
         jsonEncode(task['workflow_delay_gate'] ?? const {}),
@@ -1692,6 +1765,12 @@ class _MyTasksScreenState extends State<MyTasksScreen>
       initialIndex: initialIndex,
     );
     _tasks = List<dynamic>.from(widget.tasks);
+    _seedOutstandingFrom(_tasks);
+    pinClearOutstandingPaymentTask(
+      _tasks,
+      outstandingAmount: _totalOutstanding,
+    );
+    _sourceTasksSignature = _tasksListSignature(widget.tasks);
     _tasksSignature = _tasksListSignature(_tasks);
     _logDelayGatedTasks(_tasks);
     _searchController.addListener(() {
@@ -1705,6 +1784,9 @@ class _MyTasksScreenState extends State<MyTasksScreen>
       });
     });
     _loadCurrentUserId();
+    if (widget.onRefresh == null) {
+      unawaited(_reloadOutstandingPaymentTask());
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _refreshTasks();
     });
@@ -1714,11 +1796,59 @@ class _MyTasksScreenState extends State<MyTasksScreen>
   void didUpdateWidget(covariant MyTasksScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
     final nextSignature = _tasksListSignature(widget.tasks);
-    if (nextSignature != _tasksSignature) {
+    if (nextSignature != _sourceTasksSignature) {
+      _sourceTasksSignature = nextSignature;
       _tasks = List<dynamic>.from(widget.tasks);
-      _tasksSignature = nextSignature;
+      _seedOutstandingFrom(_tasks);
+      pinClearOutstandingPaymentTask(
+        _tasks,
+        outstandingAmount: _totalOutstanding,
+      );
+      _tasksSignature = _tasksListSignature(_tasks);
       _logDelayGatedTasks(_tasks);
     }
+  }
+
+  void _seedOutstandingFrom(List<dynamic> tasks) {
+    for (final task in tasks.whereType<Map>()) {
+      if (!isClearOutstandingPaymentTask(task)) continue;
+      final amount = outstandingAmountFromTask(task);
+      if (amount > 0) _totalOutstanding = amount;
+      break;
+    }
+  }
+
+  /// Returns true when outstanding was resolved (including zero for non-clients).
+  Future<bool> _loadOutstandingPayments() async {
+    final prefs = await SharedPreferences.getInstance();
+    final role = (prefs.getString('role') ?? '').trim().toLowerCase();
+    if (role != 'client') {
+      _totalOutstanding = 0;
+      return true;
+    }
+    final projectId = (prefs.getString('project_id') ?? '').trim();
+    if (projectId.isEmpty) return false;
+    try {
+      final snapshot = await fetchProjectPaymentsSnapshot(projectId);
+      if (!mounted) return false;
+      _totalOutstanding = snapshot.totalOutstanding;
+      return true;
+    } catch (e) {
+      print('[MyTasks] Error loading outstanding payments: $e');
+      return false;
+    }
+  }
+
+  Future<void> _reloadOutstandingPaymentTask() async {
+    await _loadOutstandingPayments();
+    if (!mounted) return;
+    setState(() {
+      pinClearOutstandingPaymentTask(
+        _tasks,
+        outstandingAmount: _totalOutstanding,
+      );
+      _tasksSignature = _tasksListSignature(_tasks);
+    });
   }
 
   void _logDelayGatedTasks(List<dynamic> tasks) {
@@ -1769,25 +1899,31 @@ class _MyTasksScreenState extends State<MyTasksScreen>
     final query = _searchController.text.toLowerCase().trim();
     return source
         .where((task) {
-          if (_selectedProjectId != null) {
-            if (!isTaskForProject(task, _selectedProjectId!)) return false;
-          }
+          final clearPayment = isClearOutstandingPaymentTask(task);
+          if (!clearPayment) {
+            if (_selectedProjectId != null) {
+              if (!isTaskForProject(task, _selectedProjectId!)) return false;
+            }
 
-          if (_showAssignedToMeOnly && _currentUserId != null) {
-            if (!isTaskAssignedToUser(task, _currentUserId!)) return false;
-          }
+            if (_showAssignedToMeOnly && _currentUserId != null) {
+              if (!isTaskAssignedToUser(task, _currentUserId!)) return false;
+            }
 
-          if (_showCreatedByMeOnly && _currentUserId != null) {
-            final userId = task['user_id']?.toString() ??
-                task['created_by']?.toString() ??
-                '';
-            if (userId != _currentUserId) return false;
+            if (_showCreatedByMeOnly && _currentUserId != null) {
+              final userId = task['user_id']?.toString() ??
+                  task['created_by']?.toString() ??
+                  '';
+              if (userId != _currentUserId) return false;
+            }
           }
 
           if (query.isNotEmpty) {
             final haystack = [
               task['note'],
               task['s_note'],
+              task['task_name'],
+              task['title'],
+              task['description'],
               task['project_name'],
               task['assigned_to_name'],
               task['assignee_name'],
@@ -1808,10 +1944,13 @@ class _MyTasksScreenState extends State<MyTasksScreen>
         .toList();
   }
 
-  List<Map<String, dynamic>> get _pendingTasks => _applyTaskFilters(
-        _tasks
-            .whereType<Map>()
-            .where((task) => _pendingStatuses.contains(_taskStatus(task))),
+  List<Map<String, dynamic>> get _pendingTasks =>
+      moveClearOutstandingPaymentFirst(
+        _applyTaskFilters(
+          _tasks
+              .whereType<Map>()
+              .where((task) => _pendingStatuses.contains(_taskStatus(task))),
+        ),
       );
 
   List<Map<String, dynamic>> get _completedTasks => _applyTaskFilters(
@@ -2097,12 +2236,22 @@ class _MyTasksScreenState extends State<MyTasksScreen>
     _isRefreshing = true;
 
     try {
-      final updatedTasks = await widget.onRefresh!();
+      final updatedTasksFuture = widget.onRefresh!();
+      final loadedOutstandingFuture = _loadOutstandingPayments();
+      final updatedTasks = await updatedTasksFuture;
+      if (!mounted) return;
+      final loadedOutstanding = await loadedOutstandingFuture;
       if (!mounted) return;
       final nextTasks = List<dynamic>.from(updatedTasks);
+      if (!loadedOutstanding) _seedOutstandingFrom(nextTasks);
+      pinClearOutstandingPaymentTask(
+        nextTasks,
+        outstandingAmount: _totalOutstanding,
+      );
       final nextSignature = _tasksListSignature(nextTasks);
       setState(() {
         _tasks = nextTasks;
+        _sourceTasksSignature = _tasksListSignature(updatedTasks);
         _tasksSignature = nextSignature;
         _isRefreshing = false;
       });
@@ -2130,6 +2279,10 @@ class _MyTasksScreenState extends State<MyTasksScreen>
         next['can_update'] = false;
         return next;
       }).toList();
+      pinClearOutstandingPaymentTask(
+        _tasks,
+        outstandingAmount: _totalOutstanding,
+      );
       _tasksSignature = _tasksListSignature(_tasks);
     });
   }
@@ -2177,6 +2330,7 @@ class _MyTasksScreenState extends State<MyTasksScreen>
       emptyIcon: Icons.pending_actions,
       onWorkflowActionCompleted: _refreshTasks,
       onWorkflowTaskFinished: _onWorkflowTaskFinished,
+      onClearOutstandingPaymentClosed: _reloadOutstandingPaymentTask,
       onCreateTask: _openCreateTask,
       focusTaskId: widget.focusTaskId,
     );
@@ -2607,6 +2761,7 @@ class _TaskList extends StatelessWidget {
   final IconData emptyIcon;
   final Future<void> Function() onWorkflowActionCompleted;
   final Future<void> Function(String taskId)? onWorkflowTaskFinished;
+  final Future<void> Function()? onClearOutstandingPaymentClosed;
   final bool showWorkflowActions;
   final VoidCallback? onCreateTask;
   final String? focusTaskId;
@@ -2618,6 +2773,7 @@ class _TaskList extends StatelessWidget {
     required this.emptyIcon,
     required this.onWorkflowActionCompleted,
     this.onWorkflowTaskFinished,
+    this.onClearOutstandingPaymentClosed,
     this.showWorkflowActions = true,
     this.onCreateTask,
     this.focusTaskId,
@@ -2670,6 +2826,7 @@ class _TaskList extends StatelessWidget {
             accentIndex: index,
             onWorkflowActionCompleted: onWorkflowActionCompleted,
             onWorkflowTaskFinished: onWorkflowTaskFinished,
+            onClearOutstandingPaymentClosed: onClearOutstandingPaymentClosed,
             showWorkflowActions: showWorkflowActions,
             isSelected:
                 focusId.isNotEmpty && task['id']?.toString() == focusId,
@@ -2684,6 +2841,7 @@ class _TaskCard extends StatefulWidget {
   final Map<String, dynamic> task;
   final Future<void> Function() onWorkflowActionCompleted;
   final Future<void> Function(String taskId)? onWorkflowTaskFinished;
+  final Future<void> Function()? onClearOutstandingPaymentClosed;
   final bool showWorkflowActions;
   final int accentIndex;
   final bool isSelected;
@@ -2692,6 +2850,7 @@ class _TaskCard extends StatefulWidget {
     required this.task,
     required this.onWorkflowActionCompleted,
     this.onWorkflowTaskFinished,
+    this.onClearOutstandingPaymentClosed,
     this.showWorkflowActions = true,
     this.accentIndex = 0,
     this.isSelected = false,
@@ -2775,6 +2934,20 @@ class _TaskCardState extends State<_TaskCard> {
     );
   }
 
+  Future<void> _openClearOutstandingPayment() async {
+    if (!mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => const UploadPaymentProofScreen(
+          showPendingPayments: true,
+          allowUpload: true,
+        ),
+      ),
+    );
+    if (!mounted) return;
+    await widget.onClearOutstandingPaymentClosed?.call();
+  }
+
   Widget? _buildTaskOverflowMenu({
     required String taskId,
     required bool isCreatedByMe,
@@ -2836,6 +3009,7 @@ class _TaskCardState extends State<_TaskCard> {
       task['can_complete_workflow_task'],
       task['indent_reason_blocks_complete'],
       task['indent_reason_block_message'],
+      task['outstanding_amount'],
       jsonEncode(task['workflow_task_actions'] ?? const []),
       jsonEncode(task['workflow_actions'] ?? const []),
       jsonEncode(task['workflow_delay_gate'] ?? const {}),
@@ -2947,11 +3121,18 @@ class _TaskCardState extends State<_TaskCard> {
         filterVisibleWorkflowActions(task, _workflowActions);
     final paymentProofTask = isClientUploadStagePaymentProofTask(task);
     final approveNtBillTask = isClientApproveNtBillTask(task);
-    final title = paymentProofTask
-        ? clientUploadStagePaymentProofCardTitle(task)
-        : approveNtBillTask
-            ? clientApproveNtBillCardTitle(task)
-            : workflowTaskDisplayTitle(task);
+    final clearPayment = isClearOutstandingPaymentTask(task);
+    final title = clearPayment
+        ? 'Clear outstanding payment'
+        : paymentProofTask
+            ? clientUploadStagePaymentProofCardTitle(task)
+            : approveNtBillTask
+                ? clientApproveNtBillCardTitle(task)
+                : workflowTaskDisplayTitle(task);
+    final clearPaymentAmount = clearPayment
+        ? NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0)
+            .format(outstandingAmountFromTask(task))
+        : null;
     final uploadedPhotos = _uploadedPhotos;
     final showApprovalButtons = shouldShowWorkflowApprovalButtons(task);
     final completeAction = _findSwipeCompleteAction(workflowActions);
@@ -3076,31 +3257,35 @@ class _TaskCardState extends State<_TaskCard> {
 
     return ModernTaskCard(
       title: title,
-      projectName: projectName,
-      materialLabel: materialLabel,
-      assigneeName: assignedToName,
-      dateLabel: createdAt.isNotEmpty
-          ? (paymentProofTask || approveNtBillTask
-              ? formatErpCreatedAtIst(createdAt)
-              : _formatDate(createdAt))
-          : null,
-      durationLabel: mainCriticalDurationLabel(task),
+      projectName: clearPayment ? null : projectName,
+      materialLabel: clearPayment ? null : materialLabel,
+      assigneeName: clearPayment ? null : assignedToName,
+      dateLabel: clearPaymentAmount ??
+          (createdAt.isNotEmpty
+              ? (paymentProofTask || approveNtBillTask
+                  ? formatErpCreatedAtIst(createdAt)
+                  : _formatDate(createdAt))
+              : null),
+      durationLabel: clearPayment ? null : mainCriticalDurationLabel(task),
       // Delayed → pending/scheduled chip styling, never Ready.
-      status: delayGated ? 'pending' : status,
-      statusLabel: statusLabel,
+      status: clearPayment || delayGated ? 'pending' : status,
+      statusLabel: clearPayment ? 'Pending' : statusLabel,
       accentIndex: widget.accentIndex,
       isSelected: widget.isSelected,
       tintedBackground: true,
-      onSwipeComplete: completeAction == null
+      onTap: clearPayment ? _openClearOutstandingPayment : null,
+      onSwipeComplete: clearPayment || completeAction == null
           ? null
           : () => _handleSwipeComplete(completeAction),
       swipeCompleteLabel: completeAction == null
           ? 'Swipe to complete'
           : _swipeCompleteLabel(completeAction),
-      menu: _buildTaskOverflowMenu(
-        taskId: taskId,
-        isCreatedByMe: isCreatedByMe,
-      ),
+      menu: clearPayment
+          ? null
+          : _buildTaskOverflowMenu(
+              taskId: taskId,
+              isCreatedByMe: isCreatedByMe,
+            ),
       footer: footerChildren.isEmpty
           ? null
           : Column(

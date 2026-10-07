@@ -29,7 +29,15 @@ class SalesSopSlotOption {
         ]) ??
         '';
     final date = _firstString(json, const ['date']) ?? '';
-    final time = _firstString(json, const ['time_label', 'time']) ?? '';
+    final periodLabel =
+        _firstString(json, const ['time_label', 'period']) ?? '';
+    final clockField =
+        _firstString(json, const ['time', 'start_time', 'clock']) ?? '';
+    final time = firstSlotClock(clockField) != null &&
+            periodWord(periodLabel) != null &&
+            firstSlotClock(periodLabel) == null
+        ? clockField
+        : (periodLabel.isNotEmpty ? periodLabel : clockField);
     var resolvedDatetime = datetime;
     if (resolvedDatetime.isEmpty && date.isNotEmpty) {
       resolvedDatetime = time.isNotEmpty ? '$date $time' : date;
@@ -51,6 +59,94 @@ class SalesSopSlotOption {
 
   DateTime? get parsedDateTime =>
       parseHomeSlotDateTime(datetime) ?? parseHomeSlotDateTime(display);
+
+  /// Clock time for a slot. Period words such as Morning stay as [periodLabel].
+  String get clockLabel {
+    final fromTime = firstSlotClock(timeLabel);
+    if (fromTime != null) return fromTime;
+    final fromDisplay = firstSlotClock(display);
+    if (fromDisplay != null) return fromDisplay;
+    final dt = parsedDateTime;
+    if (dt != null && slotSourceHasClock(datetime)) {
+      return DateFormat('h:mm a').format(dt);
+    }
+    final mapped = periodWordToClock(timeLabel) ?? periodWordToClock(display);
+    if (mapped != null) return mapped;
+    final label = timeLabel.trim();
+    if (label.isNotEmpty && periodWordToClock(label) == null) return label;
+    return '';
+  }
+
+  String get periodLabel {
+    final fromTime = periodWord(timeLabel);
+    if (fromTime != null) return fromTime;
+    final fromDisplay = periodWord(display);
+    if (fromDisplay != null) return fromDisplay;
+    final fromClock = periodFromClock(firstSlotClock(timeLabel)) ??
+        periodFromClock(firstSlotClock(display)) ??
+        periodFromClock(clockLabel);
+    if (fromClock != null) return fromClock;
+    final dt = parsedDateTime;
+    if (dt == null || !slotSourceHasClock(datetime)) return '';
+    return periodFromHour(dt.hour);
+  }
+}
+
+String periodFromHour(int hour) {
+  if (hour < 11) return 'Morning';
+  if (hour < 16) return 'Afternoon';
+  return 'Evening';
+}
+
+String? periodFromClock(String? clock) {
+  if (clock == null || clock.trim().isEmpty) return null;
+  try {
+    return periodFromHour(DateFormat('h:mm a').parseLoose(clock).hour);
+  } catch (_) {
+    return null;
+  }
+}
+
+String? firstSlotClock(String raw) {
+  final match = RegExp(r'\d{1,2}:\d{2}\s*(?:AM|PM)?', caseSensitive: false)
+      .firstMatch(raw);
+  if (match == null) return null;
+  var text = match.group(0)!.replaceAll(RegExp(r'\s+'), ' ').trim();
+  if (!RegExp(r'AM|PM', caseSensitive: false).hasMatch(text)) {
+    final parsed = DateFormat('H:mm').parseLoose(text);
+    text = DateFormat('h:mm a').format(parsed);
+  }
+  return text.toUpperCase().replaceAll('  ', ' ');
+}
+
+String? periodWord(String raw) {
+  final match =
+      RegExp(r'\b(morning|afternoon|evening)\b', caseSensitive: false)
+          .firstMatch(raw);
+  if (match == null) return null;
+  final word = match.group(1)!;
+  return '${word[0].toUpperCase()}${word.substring(1).toLowerCase()}';
+}
+
+String? periodWordToClock(String raw) {
+  switch (periodWord(raw)) {
+    case 'Morning':
+      return '10:00 AM';
+    case 'Afternoon':
+      return '1:00 PM';
+    case 'Evening':
+      return '4:00 PM';
+    default:
+      return null;
+  }
+}
+
+bool slotSourceHasClock(String raw) {
+  final text = raw.trim();
+  if (text.isEmpty) return false;
+  if (RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(text)) return false;
+  return text.contains(':') ||
+      RegExp(r'\bAM\b|\bPM\b', caseSensitive: false).hasMatch(text);
 }
 
 class SalesSopSlotTimeOption {
@@ -650,6 +746,24 @@ class SalesSopSlot {
             ),
           );
         }
+      }
+      if (options.isNotEmpty) return options;
+    }
+    for (final key in keys) {
+      final raw = json[key];
+      if (raw is! List || raw.isEmpty) continue;
+      final options = <SalesSopSlotOption>[];
+      for (var i = 0; i < raw.length; i++) {
+        final row = raw[i];
+        if (row is! Map) continue;
+        final map = Map<String, dynamic>.from(row);
+        if (map['datetime'] == null &&
+            map['date'] == null &&
+            map['time_label'] == null &&
+            map['time'] == null) {
+          continue;
+        }
+        options.add(SalesSopSlotOption.fromJson(map, i + 1));
       }
       if (options.isNotEmpty) return options;
     }

@@ -717,9 +717,13 @@ class NavMenuWidgetState extends State<NavMenuWidget> {
     if (canChatV1) {
       collabEntries.add(_NavEntry(
         actionKey: 'chatbox',
-        title: 'Chat V1',
+        title: 'Chat',
         icon: Icons.forum_rounded,
-        route: () => ChatV1App.openQuick(),
+        route: isClient ? () => ChatV1App.openQuick() : null,
+        action: isClient
+            ? null
+            : (context) =>
+                ProjectPickerScreen.show(context, forChat: true),
       ));
       if (!isClient) {
         collabEntries.add(_NavEntry(

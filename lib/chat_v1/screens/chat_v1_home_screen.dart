@@ -111,11 +111,16 @@ class _ChatV1HomeScreenState extends State<ChatV1HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (!_ctrl.showProjectTasksHub && _filter == ChatV1Filter.tasks) {
+      _filter = ChatV1Filter.all;
+    }
     final channels = _apply(_ctrl.channels);
-    final hubs = _apply([
-      if (_ctrl.channels.isNotEmpty || _ctrl.allProjectTasks.isNotEmpty)
-        _ctrl.tasksHub,
-    ]);
+    final hubs = _ctrl.showProjectTasksHub
+        ? _apply([
+            if (_ctrl.channels.isNotEmpty || _ctrl.allProjectTasks.isNotEmpty)
+              _ctrl.tasksHub,
+          ])
+        : const <ChatV1ChatItem>[];
     final custom = _apply(_ctrl.customGroups);
     final dms = _apply(_ctrl.dms);
     final chatRows = _chatHomeRows(
@@ -151,6 +156,7 @@ class _ChatV1HomeScreenState extends State<ChatV1HomeScreen> {
               ),
               Cv1FilterChips(
                 selected: _filter,
+                hideTasks: !_ctrl.showProjectTasksHub,
                 onChanged: (f) => setState(() => _filter = f),
               ),
               const SizedBox(height: 4),

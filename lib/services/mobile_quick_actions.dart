@@ -156,7 +156,7 @@ const Map<MobileQuickActionSurface, Map<String, String>>
     'client_portal': 'Client Portal',
     'slots': 'Slots',
     'project_timeline': 'Project Timeline',
-    'chatbox': 'Chat V1',
+    'chatbox': 'Chat',
     'updates': 'Daily Update',
     'virtual_tour': '3D House Tour',
     'inspection_requests': 'Inspection Requests',

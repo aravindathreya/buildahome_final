@@ -149,6 +149,9 @@ class ProjectTimelineScreenState extends State<ProjectTimelineScreen>
 
   bool get isRefreshing => _isLoading;
 
+  bool get _isClient =>
+      (DataProvider().currentRole ?? '').trim().toLowerCase() == 'client';
+
   Future<void> refresh() => _loadTimeline();
 
   @override
@@ -449,15 +452,16 @@ class ProjectTimelineScreenState extends State<ProjectTimelineScreen>
     }
 
     if (_tasks.isEmpty) {
+      final showHandover = _remainingDays != null && !_isClient;
+      if (!showHandover) return _buildEmptyTimelineState();
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (_remainingDays != null)
-            TentativeHandoverCard(
-              remainingDays: _remainingDays!,
-              margin: const EdgeInsets.fromLTRB(18, 4, 18, 12),
-              compact: true,
-            ),
+          TentativeHandoverCard(
+            remainingDays: _remainingDays!,
+            margin: const EdgeInsets.fromLTRB(18, 4, 18, 12),
+            compact: true,
+          ),
           Expanded(child: _buildEmptyTimelineState()),
         ],
       );
@@ -557,7 +561,7 @@ class ProjectTimelineScreenState extends State<ProjectTimelineScreen>
               ),
             ],
           ),
-          if (remaining != null) ...[
+          if (remaining != null && !_isClient) ...[
             const SizedBox(height: 14),
             TentativeHandoverCard(
               remainingDays: remaining,

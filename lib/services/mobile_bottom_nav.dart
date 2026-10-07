@@ -257,7 +257,7 @@ const Map<MobileBottomNavSurface, Map<String, String>>
     'projects': 'Projects',
     'site_visit_reports': 'Site Visits',
     'updates': 'Daily Update',
-    'chatbox': 'Chat V1',
+    'chatbox': 'Chat',
     'documents': 'Documents',
     'gallery': 'Project Gallery',
     'scheduler': 'Scheduler',

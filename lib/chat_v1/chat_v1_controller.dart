@@ -54,6 +54,16 @@ class ChatV1Controller extends ChangeNotifier {
   bool loading = false;
   String? error;
 
+  /// Client viewers do not see the local Project Tasks hub.
+  bool viewerIsClient = false;
+
+  /// The Project Tasks row is assembled in the app, not returned by the server.
+  bool get showProjectTasksHub {
+    if (viewerIsClient) return false;
+    final role = (DataProvider().currentRole ?? '').trim().toLowerCase();
+    return role != 'client';
+  }
+
   List<ChatV1ChatItem> channels = [];
   List<ChatV1ChatItem> customGroups = [];
   List<ChatV1ChatItem> dms = [];
@@ -453,6 +463,7 @@ class ChatV1Controller extends ChangeNotifier {
         allProjectTasks.isNotEmpty;
     loading = true;
     error = null;
+    viewerIsClient = await _viewerIsClient();
     final socketSession = _socket.sessionGeneration;
     await _ensureFlagsLoaded();
     // Keep previous lists visible while refreshing so reopen feels instant.
@@ -1267,7 +1278,9 @@ class ChatV1Controller extends ChangeNotifier {
     // Channels first, then single Project Tasks hub (ERP + workflow).
     return [
       ...channels,
-      if (channels.isNotEmpty || allProjectTasks.isNotEmpty) tasksHub,
+      if (showProjectTasksHub &&
+          (channels.isNotEmpty || allProjectTasks.isNotEmpty))
+        tasksHub,
     ];
   }
 

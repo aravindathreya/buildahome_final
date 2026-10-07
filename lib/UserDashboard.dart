@@ -1026,21 +1026,16 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
   bool get _shouldShowClearPaymentTask =>
       _isClientUser && _totalOutstanding > 0;
 
-  Map<String, dynamic> get _clearPaymentTask {
-    final formatter =
-        NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0);
-    final amountText = formatter.format(_totalOutstanding);
-    return <String, dynamic>{
-      'id': kClearOutstandingPaymentTaskId,
-      'title': 'Clear outstanding payment',
-      'task_name': 'Clear outstanding payment',
-      'description':
-          'You have $amountText pending. Upload payment proof to clear dues.',
-      'status': 'pending',
-      'category': kClearOutstandingPaymentCategory,
-      'task_category': kClearOutstandingPaymentCategory,
-      'outstanding_amount': _totalOutstanding,
-    };
+  Map<String, dynamic> get _clearPaymentTask =>
+      buildClearOutstandingPaymentTask(amount: _totalOutstanding);
+
+  List<dynamic> _tasksForMyTasksScreen() {
+    final tasks = List<dynamic>.from(_tasks);
+    pinClearOutstandingPaymentTask(
+      tasks,
+      outstandingAmount: _shouldShowClearPaymentTask ? _totalOutstanding : 0,
+    );
+    return tasks;
   }
 
   loadDataFromProvider() async {
@@ -1255,7 +1250,8 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
 
   Future<List<dynamic>> _refreshTasksForMyTasks() async {
     await loadTasks(silent: true);
-    return List<dynamic>.from(_tasks);
+    await _loadOutstandingPayments();
+    return _tasksForMyTasksScreen();
   }
 
   Future<void> updateTaskStatus(int taskId, String newStatus) async {
@@ -2365,7 +2361,7 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
   void _openAllTasks() {
     _navigateToWidget(
       MyTasksScreen(
-        tasks: _tasks,
+        tasks: _tasksForMyTasksScreen(),
         onRefresh: _refreshTasksForMyTasks,
         initialTabIndex: 0,
       ),
@@ -2400,7 +2396,7 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
     }
     _navigateToWidget(
       MyTasksScreen(
-        tasks: _tasks,
+        tasks: _tasksForMyTasksScreen(),
         onRefresh: _refreshTasksForMyTasks,
         focusTaskId: task['id']?.toString(),
       ),
@@ -2973,7 +2969,7 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
         'title': 'My tasks',
         'icon': Icons.pending_actions_rounded,
         'route': () => MyTasksScreen(
-              tasks: _tasks,
+              tasks: _tasksForMyTasksScreen(),
               onRefresh: _refreshTasksForMyTasks,
             ),
       });
@@ -3144,9 +3140,9 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
     if (_currentRole == 'Client' ||
         rbac.canViewSync(_currentRole, RBACService.tasksAndNotes)) {
       menuItems.add({
-        'title': 'Chat V1',
+        'title': 'Chat',
         'icon': Icons.forum_outlined,
-        'route': () => ChatV1App.openQuick(),
+        'route': _openChatQuickAction,
       });
     }
 
@@ -3259,7 +3255,7 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
     'Project Timeline',
     'Client Information',
     'Upload payment proofs',
-    'Chat V1',
+    'Chat',
     'Project Status',
   ];
 
@@ -4213,9 +4209,19 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
       await showFeatureComingSoon(context, featureName: 'Chat');
       return;
     }
+    if (!_isClientUser) {
+      await ProjectPickerScreen.show(context, forChat: true);
+      return;
+    }
     await _navigateToWidget(
       ChatV1App.openQuick(tasksHint: _tasks),
     );
+  }
+
+  /// Same project list as the main dashboard: only projects this person has.
+  FutureOr<dynamic> _openChatQuickAction() {
+    if (_isClientUser) return ChatV1App.openQuick();
+    return ProjectPickerScreen.show(context, forChat: true);
   }
 
   /// Opens a backend bottom-nav tab by canonical action key.
@@ -4231,7 +4237,7 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
     if (canonical == 'my_tasks') {
       await _navigateToWidget(
         MyTasksScreen(
-          tasks: List<dynamic>.from(_tasks),
+          tasks: _tasksForMyTasksScreen(),
           onRefresh: _refreshTasksForMyTasks,
         ),
         chromeStyle: chromeStyle,
@@ -4250,6 +4256,10 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
     if (canonical == 'chatbox') {
       if (_restrictLegacyClientFeatures) {
         await showFeatureComingSoon(context, featureName: 'Chat');
+        return;
+      }
+      if (!_isClientUser) {
+        await ProjectPickerScreen.show(context, forChat: true);
         return;
       }
       await _navigateToWidget(
@@ -4332,7 +4342,6 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
     final title = item['title'].toString();
     final comingSoon =
         _restrictLegacyClientFeatures && !_isLegacyFeatureAllowed(title);
-    final badge = _quickActionBadgeCount(title);
     final label = _restrictLegacyClientFeatures && title == 'ChatBox'
         ? 'Notes & Comments'
         : _quickActionLabel(title);
@@ -4380,31 +4389,6 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
                     color: _ink,
                   ),
                 ),
-                if (!comingSoon && badge != null)
-                  Positioned(
-                    right: -4,
-                    top: -4,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 6,
-                        vertical: 2,
-                      ),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFEF4444),
-                        borderRadius: BorderRadius.circular(999),
-                        border: Border.all(color: Colors.white, width: 1.5),
-                      ),
-                      child: Text(
-                        badge.toString(),
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 10,
-                          fontWeight: FontWeight.w700,
-                          height: 1,
-                        ),
-                      ),
-                    ),
-                  ),
                 if (comingSoon)
                   Positioned(
                     right: -6,
@@ -4474,8 +4458,8 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
         return 'Schedule';
       case 'ChatBox':
         return 'Chat';
-      case 'Chat V1':
-        return 'Chat V1';
+      case 'Chat':
+        return 'Chat';
       case 'Project Status':
         return 'Status';
       case 'Site Visit Reports':
@@ -4497,11 +4481,6 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
       default:
         return title;
     }
-  }
-
-  int? _quickActionBadgeCount(String title) {
-    if (title == 'Site Visit Reports') return 6;
-    return null;
   }
 
   IconData _quickActionIcon(String title, IconData fallback) {
@@ -4547,7 +4526,7 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
         return Icons.calendar_month_rounded;
       case 'ChatBox':
         return Icons.chat_bubble_rounded;
-      case 'Chat V1':
+      case 'Chat':
         return Icons.forum_rounded;
       case 'Project Status':
         return Icons.flag_rounded;
