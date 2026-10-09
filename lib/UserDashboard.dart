@@ -3057,11 +3057,18 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
       menuItems.add({
         'title': 'Indents',
         'icon': Icons.request_quote,
-        'route': () {
+        'route': () async {
           final dp = DataProvider();
+          final prefs = await SharedPreferences.getInstance();
+          final projectId =
+              (dp.clientProjectId ?? prefs.getString('project_id') ?? '')
+                  .trim();
+          final projectName = (prefs.getString('client_name') ?? '').trim();
           return IndentsScreenLayout(
-            initialProjectId: dp.clientProjectId,
-            initialProjectName: username == ' ' ? null : username,
+            initialProjectId: projectId.isEmpty ? null : projectId,
+            initialProjectName: projectName.isNotEmpty
+                ? projectName
+                : (username == ' ' ? null : username),
           );
         },
       });

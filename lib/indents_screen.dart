@@ -451,6 +451,12 @@ class CreateIndentTabState extends State<CreateIndentTab> {
   }
 
   void _nextStep() {
+    if (_currentStep == 0 && selectedProject == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Select a project')),
+      );
+      return;
+    }
     if (_currentStep < _totalSteps - 1) {
       _pageController.nextPage(
         duration: Duration(milliseconds: 300),
@@ -473,6 +479,9 @@ class CreateIndentTabState extends State<CreateIndentTab> {
     user_id = prefs.getString('user_id');
   }
 
+  bool get _projectLocked =>
+      (widget.initialProjectId?.trim().isNotEmpty ?? false);
+
   void loadProjects() async {
     await DataProvider().loadProjects(force: false);
     if (!mounted) return;
@@ -480,12 +489,14 @@ class CreateIndentTabState extends State<CreateIndentTab> {
     if (!mounted) return;
     setState(() {
       projects = DataProvider().projects;
-      _applyInitialProjectSelection();
-      if (selectedProject == null) {
-        _selectProject(
-          prefs.getString('project_id'),
-          prefs.getString('client_name'),
-        );
+      if (_projectLocked) {
+        _applyInitialProjectSelection();
+        if (selectedProject == null) {
+          _selectProject(
+            prefs.getString('project_id'),
+            prefs.getString('client_name'),
+          );
+        }
       }
     });
   }
@@ -518,6 +529,38 @@ class CreateIndentTabState extends State<CreateIndentTab> {
       'name': name.isNotEmpty ? name : 'Current project',
     };
     projectId = id;
+  }
+
+  String _projectLabel(dynamic project) {
+    if (project is! Map) return project?.toString() ?? '';
+    for (final key in const ['name', 'client_name', 'project_name']) {
+      final text = project[key]?.toString().trim() ?? '';
+      if (text.isNotEmpty && text.toLowerCase() != 'null') return text;
+    }
+    return 'Project';
+  }
+
+  Future<void> _pickProject() async {
+    if (projects.isEmpty) {
+      await DataProvider().loadProjects(force: true);
+      if (!mounted) return;
+      setState(() {
+        projects = DataProvider().projects;
+      });
+    }
+    if (!mounted) return;
+    final result = await SearchableSelect.show(
+      context: context,
+      title: 'Select Project',
+      items: projects,
+      itemLabel: _projectLabel,
+      selectedItem: selectedProject,
+    );
+    if (result is! Map || !mounted) return;
+    setState(() {
+      selectedProject = Map<String, dynamic>.from(result);
+      projectId = result['id']?.toString();
+    });
   }
 
   void loadMaterials() async {
@@ -792,6 +835,7 @@ class CreateIndentTabState extends State<CreateIndentTab> {
 
   Widget _buildNavigationButtons() {
     final showSkip = _currentStep == 0 &&
+        selectedProject != null &&
         reasonCommentTextController.text.trim().isEmpty;
     return Container(
       padding: EdgeInsets.all(20),
@@ -952,7 +996,7 @@ class CreateIndentTabState extends State<CreateIndentTab> {
         MaterialPageRoute(
           builder: (context) => FullScreenMessage(
             title: 'Validation Error',
-            message: 'Open a project before creating an indent',
+            message: 'Please select a project',
             icon: Icons.error_outline,
             iconColor: Colors.red,
             buttonText: 'OK',
@@ -1318,14 +1362,73 @@ class CreateIndentTabState extends State<CreateIndentTab> {
             isCompleted: hasComment || _currentStep > 0,
             instruction: 'Add an optional comment. You can skip this step',
           ),
-          if (selectedProject != null) ...[
+          if (_projectLocked && selectedProject != null) ...[
             SizedBox(height: 8),
             Text(
-              selectedProject['name']?.toString() ?? '',
+              _projectLabel(selectedProject),
               style: TextStyle(
                 color: AppTheme.getTextSecondary(context),
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+          if (!_projectLocked) ...[
+            SizedBox(height: 20),
+            InkWell(
+              onTap: _pickProject,
+              borderRadius: BorderRadius.circular(16),
+              child: Container(
+                padding: EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      AppTheme.getBackgroundSecondary(context),
+                      AppTheme.getBackgroundPrimaryLight(context),
+                    ],
+                  ),
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.2),
+                      blurRadius: 8,
+                      offset: Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.folder_special,
+                      color: AppTheme.getPrimaryColor(context),
+                      size: 20,
+                    ),
+                    SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        selectedProject != null
+                            ? _projectLabel(selectedProject)
+                            : 'Select a project',
+                        style: TextStyle(
+                          color: selectedProject != null
+                              ? AppTheme.getTextPrimary(context)
+                              : AppTheme.getTextSecondary(context),
+                          fontSize: 16,
+                          fontWeight: selectedProject != null
+                              ? FontWeight.w500
+                              : FontWeight.normal,
+                        ),
+                      ),
+                    ),
+                    Icon(
+                      Icons.arrow_forward_ios,
+                      color: AppTheme.getPrimaryColor(context),
+                      size: 18,
+                    ),
+                  ],
+                ),
               ),
             ),
           ],
@@ -1840,7 +1943,7 @@ class CreateIndentTabState extends State<CreateIndentTab> {
             icon: Icons.folder_special,
             title: 'Project',
             content: selectedProject != null
-                ? (selectedProject['name'] ?? 'Unknown')
+                ? _projectLabel(selectedProject)
                 : 'Not selected',
             isComplete: selectedProject != null,
           ),
