@@ -139,6 +139,11 @@ class LoginScreenNewState extends State<LoginScreenNew>
     }
   }
 
+  bool _startupSessionExpired(Object? error) {
+    final text = error?.toString().toLowerCase() ?? '';
+    return text.contains('unauthorized') || text.contains('api token');
+  }
+
   Future<void> _waitForDestinationReady() async {
     final ready = _destinationReady;
     if (ready == null) return;
@@ -217,12 +222,27 @@ class LoginScreenNewState extends State<LoginScreenNew>
         });
       }
 
+      // A failed timeline or offline lookup must not keep the splash up.
+      // Future.wait would otherwise throw and skip the handoff.
+      Object? prepError;
+      try {
+        await prepFuture;
+      } catch (e) {
+        prepError = e;
+        print('[Login] Home prep failed, continuing past splash: $e');
+      }
       await Future.wait<void>([
         _minSplashFuture,
-        prepFuture,
         _waitForDestinationReady(),
       ]);
       if (!mounted) return;
+      if (_startupSessionExpired(prepError)) {
+        if (mounted) {
+          setState(() => _preloadedDestination = null);
+        }
+        await _revealLoginForm();
+        return;
+      }
       await _promotePreloadedDestination();
     } else {
       await _minSplashFuture;

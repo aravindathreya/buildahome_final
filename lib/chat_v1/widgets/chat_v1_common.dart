@@ -223,6 +223,7 @@ class Cv1StickToBottom extends StatefulWidget {
 class Cv1StickToBottomState extends State<Cv1StickToBottom> {
   bool _stick = true;
   bool _scheduled = false;
+  double _lastExtent = -1;
 
   void jumpToEnd({bool animate = false}) {
     _stick = true;
@@ -233,6 +234,7 @@ class Cv1StickToBottomState extends State<Cv1StickToBottom> {
     final controller = widget.controller;
     if (!controller.hasClients) return;
     final target = controller.position.maxScrollExtent;
+    _lastExtent = target;
     if (target - controller.position.pixels <= 2) return;
     if (animate) {
       controller.animateTo(
@@ -295,7 +297,13 @@ class Cv1StickToBottomState extends State<Cv1StickToBottom> {
   Widget build(BuildContext context) {
     return NotificationListener<ScrollMetricsNotification>(
       onNotification: (notification) {
-        if (notification.metrics.axis == Axis.vertical) _schedulePin();
+        if (notification.metrics.axis != Axis.vertical) return false;
+        final extent = notification.metrics.maxScrollExtent;
+        // Pixel changes from a bounce must not pin again. Only a taller
+        // list (new message or a picture finishing layout) should.
+        final grew = _lastExtent < 0 || extent > _lastExtent + 1;
+        _lastExtent = extent;
+        if (grew) _schedulePin();
         return false;
       },
       child: NotificationListener<SizeChangedLayoutNotification>(

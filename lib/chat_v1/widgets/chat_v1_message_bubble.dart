@@ -368,52 +368,63 @@ class Cv1MessageBubble extends StatelessWidget {
   Widget _imageAttachment(BuildContext context, ChatV1Attachment att) {
     final url = ChatV1Utils.resolveMediaUrl(att.storagePath);
     final bytes = att.previewBytes;
-    Widget image;
-    if (bytes != null && bytes.isNotEmpty) {
-      image = Image.memory(
-        Uint8List.fromList(bytes),
-        width: 240,
-        height: 180,
-        fit: BoxFit.cover,
-        gaplessPlayback: true,
-      );
-    } else {
-      image = CachedNetworkImage(
-        imageUrl: url,
-        width: 240,
-        height: 180,
-        memCacheWidth: 480,
-        memCacheHeight: 360,
-        fit: BoxFit.cover,
-        errorWidget: (_, __, ___) => _fileTile(
-          context,
-          name: att.fileName,
-          meta: att.contentType,
-          icon: Icons.broken_image_outlined,
-          onTap: () => _openUrl(url),
-        ),
-        placeholder: (context, _) => Container(
-          width: 240,
-          height: 160,
-          alignment: Alignment.center,
-          color: ChatV1Theme.bg(context),
-          child: const SizedBox(
-            width: 22,
-            height: 22,
-            child: CircularProgressIndicator(strokeWidth: 2),
-          ),
-        ),
-      );
-    }
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final available = constraints.maxWidth.isFinite
+            ? constraints.maxWidth
+            : MediaQuery.sizeOf(context).width * 0.72;
+        final width = available.clamp(96.0, 240.0);
+        final height = width * 0.75;
+        Widget image;
+        if (bytes != null && bytes.isNotEmpty) {
+          image = Image.memory(
+            Uint8List.fromList(bytes),
+            width: width,
+            height: height,
+            fit: BoxFit.cover,
+            gaplessPlayback: true,
+          );
+        } else {
+          image = CachedNetworkImage(
+            imageUrl: url,
+            width: width,
+            height: height,
+            memCacheWidth: 480,
+            memCacheHeight: 360,
+            fit: BoxFit.cover,
+            errorWidget: (_, __, ___) => SizedBox(
+              width: width,
+              height: height,
+              child: _fileTile(
+                context,
+                name: att.fileName,
+                meta: att.contentType,
+                icon: Icons.broken_image_outlined,
+                onTap: () => _openUrl(url),
+              ),
+            ),
+            placeholder: (context, _) => Container(
+              width: width,
+              height: height,
+              alignment: Alignment.center,
+              color: ChatV1Theme.bg(context),
+              child: const SizedBox(
+                width: 22,
+                height: 22,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            ),
+          );
+        }
 
-    return SizeChangedLayoutNotifier(
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(10),
-        child: GestureDetector(
-          onTap: () => _showImageViewer(context, att),
-          child: image,
-        ),
-      ),
+        return ClipRRect(
+          borderRadius: BorderRadius.circular(10),
+          child: GestureDetector(
+            onTap: () => _showImageViewer(context, att),
+            child: image,
+          ),
+        );
+      },
     );
   }
 
