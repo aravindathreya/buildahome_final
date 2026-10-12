@@ -1044,29 +1044,36 @@ class ClientPortalCategoryCard extends StatelessWidget {
 class ClientPortalSectionCard extends StatelessWidget {
   final WorkflowDocumentSection section;
   final VoidCallback onTap;
+  final String? viewerRole;
 
   const ClientPortalSectionCard({
     super.key,
     required this.section,
     required this.onTap,
+    this.viewerRole,
   });
 
   @override
   Widget build(BuildContext context) {
     final visual = sectionVisualFor(section);
-    final visible = sectionWithMobileVisibleDocuments(section);
-    final isRevisions = section.id.trim().toLowerCase() == 'revisions' ||
-        section.label.trim().toLowerCase() == 'revisions';
-    final countAllFiles =
-        isRevisions || isMultiFileDocumentSection(section);
+    var visibleDocs = sectionWithMobileVisibleDocuments(section).documents;
+    final role = viewerRole?.trim();
+    if (role != null && role.isNotEmpty) {
+      visibleDocs = visibleDocs
+          .where(
+            (doc) => documentAccessForUpload(
+              catalogVisibilityRole(role),
+              doc,
+            ).view,
+          )
+          .toList();
+    }
     return ClientPortalCategoryCard(
       icon: visual.icon,
       title: section.label,
       subtitle: visual.subtitle,
-      // Checked / current versions only — multi-file still counts every peer.
-      badgeCount: countAllFiles
-          ? visible.documents.length
-          : visible.documentCount,
+      // Same rows the folder list will show (after access filter).
+      badgeCount: visibleDocs.length,
       iconBg: visual.iconBg,
       iconFg: visual.iconFg,
       journeyStyle: true,
@@ -1678,11 +1685,33 @@ bool _matchPaintShade(String blob) =>
     (blob.contains('paint') && !blob.contains('repaint'));
 
 String _architecturalDocBlob(WorkflowDocumentUpload doc) {
-  return '${doc.documentKey} ${doc.name} ${doc.sectionLabel} ${doc.taskName ?? ''} ${doc.url ?? ''}'
+  return '${doc.sectionId} ${doc.documentKey} ${doc.name} ${doc.sectionLabel} ${doc.taskName ?? ''} ${doc.url ?? ''}'
       .toLowerCase();
 }
 
+/// Prefer the checklist section id so a file named cost_sheet.pdf still lands
+/// in Final Elevation / Soil / etc. instead of being dropped as unmatched.
+_ArchitecturalTypeDef? _typeForSectionId(
+  String sectionId,
+  List<_ArchitecturalTypeDef> types,
+) {
+  final id = sectionId.trim().toLowerCase();
+  if (id.isEmpty) return null;
+  const aliases = <String, String>{
+    'filler_slab_detail': 'filler_slab',
+    'elevation_2d': '2d_elevation',
+    '2d_elevation': '2d_elevation',
+  };
+  final resolved = aliases[id] ?? id;
+  for (final type in types) {
+    if (type.id == resolved || type.id == id) return type;
+  }
+  return null;
+}
+
 _ArchitecturalTypeDef? _architecturalTypeForDoc(WorkflowDocumentUpload doc) {
+  final bySection = _typeForSectionId(doc.sectionId, _architecturalTypeDefs);
+  if (bySection != null) return bySection;
   final blob = _architecturalDocBlob(doc);
   for (final type in _architecturalTypeDefs) {
     if (type.matches(blob)) return type;
@@ -1722,7 +1751,7 @@ List<WorkflowDocumentSection> buildArchitecturalTypeSections(
   return [
     for (final type in _architecturalTypeDefs)
       if (!(hideAreaStatement && type.id == 'final_area_statement'))
-        sectionWithMobileVisibleDocuments(
+        _checklistFolderWithPeers(
           WorkflowDocumentSection(
             id: type.id,
             label: type.label,
@@ -1831,8 +1860,27 @@ bool _mapTruthy(dynamic raw) {
   return text == 'true' || text == 'yes';
 }
 
+bool? _truthyFlag(dynamic value) {
+  if (value == null) return null;
+  if (value is bool) return value;
+  if (value is num) return value != 0;
+  final text = value.toString().trim().toLowerCase();
+  if (text.isEmpty || text == 'null') return null;
+  if (text == 'true' || text == 'yes' || text == '1') return true;
+  if (text == 'false' || text == 'no' || text == '0') return false;
+  return null;
+}
+
 /// Office "versions" checkbox / share flags (checked = show in app).
+///
+/// Checklist Original (`is_primary`) and `show_on_mobile` must win over generic
+/// `selected`/`checked` fields — those were hiding Original on Plumbing/Soil.
 bool? documentVersionExplicitVisibility(Map<String, dynamic> raw) {
+  if (_mapTruthy(raw['is_primary'])) return true;
+  if (raw.containsKey('show_on_mobile')) {
+    final mobile = _truthyFlag(raw['show_on_mobile']);
+    if (mobile != null) return mobile;
+  }
   for (final key in const [
     'checked',
     'is_checked',
@@ -1854,15 +1902,23 @@ bool? documentVersionExplicitVisibility(Map<String, dynamic> raw) {
     'show_to_client',
   ]) {
     if (!raw.containsKey(key)) continue;
-    final value = raw[key];
-    if (value is bool) return value;
-    if (value is num) return value != 0;
-    final text = value.toString().trim().toLowerCase();
-    if (text.isEmpty || text == 'null') continue;
-    if (text == 'true' || text == 'yes' || text == '1') return true;
-    if (text == 'false' || text == 'no' || text == '0') return false;
+    final parsed = _truthyFlag(raw[key]);
+    if (parsed != null) return parsed;
   }
   return null;
+}
+
+/// Checklist folder peers (Original + ticked extras) must not share one
+/// version-family key or the app keeps only the newest upload.
+bool _isChecklistPeerDocument(WorkflowDocumentUpload doc) {
+  final raw = doc.raw;
+  if (_mapTruthy(raw['is_primary']) || _mapTruthy(raw['show_on_mobile'])) {
+    return true;
+  }
+  final fileKey = (raw['file_key'] ?? '').toString().trim().toLowerCase();
+  if (fileKey.startsWith('slot:')) return true;
+  final key = doc.documentKey.trim().toLowerCase();
+  return key.startsWith('checklist:') || key.startsWith('slot:');
 }
 
 bool _documentIsCurrentVersion(WorkflowDocumentUpload doc) {
@@ -1910,10 +1966,11 @@ List<WorkflowDocumentUpload> filterDocumentsForMobileDisplay(
     byKey['__family__'] = List<WorkflowDocumentUpload>.from(documents);
   } else {
     for (final doc in documents) {
-      final key = keepAllMultiFilePeers
-          ? (doc.documentKey.isNotEmpty
-              ? doc.documentKey
-              : (doc.id.isNotEmpty ? doc.id : doc.name))
+      // Original + each ticked checklist file is its own row (never one family).
+      final key = (keepAllMultiFilePeers || _isChecklistPeerDocument(doc))
+          ? (doc.id.isNotEmpty
+              ? doc.id
+              : ((doc.url ?? '').isNotEmpty ? doc.url! : doc.documentKey))
           : _versionGroupKey(doc);
       byKey.putIfAbsent(key, () => <WorkflowDocumentUpload>[]).add(doc);
     }
@@ -1934,7 +1991,8 @@ List<WorkflowDocumentUpload> filterDocumentsForMobileDisplay(
         if (visibility == true) return true;
         return _documentIsCurrentVersion(doc);
       }).toList();
-    } else if (keepAllMultiFilePeers) {
+    } else if (keepAllMultiFilePeers ||
+        group.any(_isChecklistPeerDocument)) {
       chosen = group.where((doc) {
         final status = (doc.status ?? '').trim().toLowerCase();
         return status != 'superseded' && status != 'older';
@@ -1974,10 +2032,27 @@ List<WorkflowDocumentUpload> filterDocumentsForMobileDisplay(
   return out;
 }
 
+/// Checklist type folders (Final Elevation, Soil, Plumbing, …): always keep
+/// Original + every ticked peer. Do not collapse to the newest upload only.
+WorkflowDocumentSection _checklistFolderWithPeers(
+  WorkflowDocumentSection section,
+) {
+  return section.copyWithDocuments(
+    filterDocumentsForMobileDisplay(
+      section.documents,
+      keepAllMultiFilePeers: true,
+      singleVersionFamily: false,
+    ),
+  );
+}
+
 WorkflowDocumentSection sectionWithMobileVisibleDocuments(
   WorkflowDocumentSection section,
 ) {
-  final keepPeers = isMultiFileDocumentSection(section);
+  // Architectural Final Elevation, Plumbing, Soil, etc. — keep every
+  // checklist Original + ticked peer, not only the newest revision.
+  final keepPeers = isMultiFileDocumentSection(section) ||
+      section.documents.any(_isChecklistPeerDocument);
   return section.copyWithDocuments(
     filterDocumentsForMobileDisplay(
       section.documents,
@@ -2160,6 +2235,11 @@ _ArchitecturalTypeDef? _matchTypeForDocInSection({
   required WorkflowDocumentSection section,
   required List<_ArchitecturalTypeDef> types,
 }) {
+  final byDocSection = _typeForSectionId(doc.sectionId, types);
+  if (byDocSection != null) return byDocSection;
+  final byFolder = _typeForSectionId(section.id, types);
+  if (byFolder != null) return byFolder;
+
   final docBlob = _architecturalDocBlob(doc);
   final sectionBlob = '${section.id} ${section.label}'.toLowerCase();
 
@@ -2216,7 +2296,7 @@ List<WorkflowDocumentSection> _buildTypeSectionsFromDefs(
   // Named checklist folders only — no vague "Other" row.
   return [
     for (final type in types)
-      sectionWithMobileVisibleDocuments(
+      _checklistFolderWithPeers(
         WorkflowDocumentSection(
           id: type.id,
           label: type.label,
@@ -2319,10 +2399,14 @@ bool isMultiFileDocumentCategory(WorkflowDocumentCategory category) {
 }
 
 /// Section-level multi-file check (Soil / Booking under Quality / Pre-conversion).
+/// Checklist folders can hold several ticked peers — count/show all of them.
 bool isMultiFileDocumentSection(WorkflowDocumentSection section) {
   final blob =
       '${section.id} ${section.label} ${section.categoryId} ${section.categoryLabel} ${section.clientJourneyKey ?? ''} ${section.libraryGroupKey ?? ''}';
-  return isMultiFileDocumentBlob(blob);
+  if (isMultiFileDocumentBlob(blob)) return true;
+  // Any checklist row with 2+ openable peers (Final Floor plan, Proposal, …).
+  final openable = section.documents.where((doc) => doc.hasUrl).length;
+  return openable > 1;
 }
 
 /// Kept for callers that still use the Electrical / Plumbing name.
@@ -2730,6 +2814,7 @@ class ClientPortalJourneySectionsBody extends StatelessWidget {
   final bool statusSuccess;
   final bool showHelpCard;
   final List<Widget>? leadingChildren;
+  final String? viewerRole;
 
   const ClientPortalJourneySectionsBody({
     super.key,
@@ -2743,6 +2828,7 @@ class ClientPortalJourneySectionsBody extends StatelessWidget {
     this.statusSuccess = true,
     this.showHelpCard = true,
     this.leadingChildren,
+    this.viewerRole,
   });
 
   @override
@@ -2786,6 +2872,7 @@ class ClientPortalJourneySectionsBody extends StatelessWidget {
               padding: const EdgeInsets.only(bottom: 10),
               child: ClientPortalSectionCard(
                 section: section,
+                viewerRole: viewerRole,
                 onTap: () => onSectionTap(section),
               ),
             ),

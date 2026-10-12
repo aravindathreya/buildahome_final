@@ -673,6 +673,7 @@ class _DocumentsV1CategoryScreenState extends State<DocumentsV1CategoryScreen>
                         padding: const EdgeInsets.only(bottom: 10),
                         child: ClientPortalSectionCard(
                           section: section,
+                          viewerRole: _viewerRole,
                           onTap: () => openDocumentsV1Section(
                             context,
                             categoryLabel: category.label,
@@ -1246,6 +1247,7 @@ class _ClientJourneyDocumentsScreenState
                     emptyMessage: hasLegacy && _sections.isEmpty
                         ? 'No workflow reports yet. Legacy links may be available above.'
                         : 'No documents yet.',
+                viewerRole: widget.clientMode ? 'Client' : null,
                 leadingChildren: [
                   if (widget.embedded) ...[
                     ClientPortalScreenHeader(
@@ -1280,6 +1282,7 @@ class _ClientJourneyDocumentsScreenState
                   categoryLabel: widget.title,
                   section: section,
                   clientMode: widget.clientMode,
+                  viewerRole: widget.clientMode ? 'Client' : null,
                 ),
               )
             : ListView(
@@ -1337,11 +1340,13 @@ class _ClientJourneyDocumentsScreenState
                         padding: const EdgeInsets.only(bottom: 10),
                         child: ClientPortalSectionCard(
                           section: section,
+                          viewerRole: widget.clientMode ? 'Client' : null,
                           onTap: () => openDocumentsV1Section(
                             context,
                             categoryLabel: widget.title,
                             section: section,
                             clientMode: widget.clientMode,
+                            viewerRole: widget.clientMode ? 'Client' : null,
                           ),
                         ),
                       ),

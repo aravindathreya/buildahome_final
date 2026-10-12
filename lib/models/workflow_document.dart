@@ -320,8 +320,24 @@ class WorkflowDocumentSection {
     this.documents = const [],
   });
 
-  List<WorkflowDocumentUpload> get latestDocuments =>
-      documents.where((doc) => doc.isLatest).toList();
+  /// Mobile-visible rows: current/latest plus checklist Original and ticked peers.
+  List<WorkflowDocumentUpload> get latestDocuments {
+    bool keep(WorkflowDocumentUpload doc) {
+      if (doc.isLatest) return true;
+      final raw = doc.raw;
+      bool flag(dynamic value) {
+        if (value == true || value == 1) return true;
+        final text = value?.toString().trim().toLowerCase();
+        return text == 'true' || text == 'yes' || text == '1';
+      }
+
+      if (flag(raw['is_primary']) || flag(raw['show_on_mobile'])) return true;
+      final fileKey = (raw['file_key'] ?? '').toString().trim().toLowerCase();
+      return fileKey.startsWith('slot:');
+    }
+
+    return documents.where(keep).toList();
+  }
 
   int get documentCount => latestDocuments.length;
 

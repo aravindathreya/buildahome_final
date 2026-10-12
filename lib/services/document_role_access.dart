@@ -302,6 +302,34 @@ ForMeDocKind classifyForMeDocument({
     journeyKey,
     libraryGroupKey,
   ].whereType<String>().join(' '));
+  final sectionBlob = _norm([sectionId, sectionLabel].whereType<String>().join(' '));
+  final categoryBlob =
+      _norm([categoryId, categoryLabel, journeyKey, libraryGroupKey]
+          .whereType<String>()
+          .join(' '));
+
+  // Checklist folder identity wins over filename noise. Test G uploads named
+  // cost_sheet.pdf into Final Elevation / Plumbing / Soil were classified as
+  // Planning & Commercial, so the folder badge counted them but access checks
+  // hid every row inside.
+  if (sectionBlob.contains('plumb') ||
+      (categoryBlob.contains('plumb') && sectionBlob.contains('drawing'))) {
+    return ForMeDocKind.plumbing;
+  }
+  if (sectionBlob.contains('soil') ||
+      (categoryBlob.contains('quality') && sectionBlob.contains('soil'))) {
+    return ForMeDocKind.qualitySoilTest;
+  }
+  if (sectionBlob.contains('electrical') ||
+      (categoryBlob.contains('electrical') && sectionBlob.contains('drawing'))) {
+    return ForMeDocKind.electrical;
+  }
+  if (sectionBlob.contains('final elevation') ||
+      (sectionBlob.contains('elevation') &&
+          !sectionBlob.contains('2d') &&
+          !sectionBlob.contains('2 d'))) {
+    return ForMeDocKind.architecturalElevation;
+  }
 
   if (blob.contains('kyc')) return ForMeDocKind.kyc;
 
@@ -318,11 +346,12 @@ ForMeDocKind classifyForMeDocument({
     return ForMeDocKind.siteDocument;
   }
 
+  // Do NOT match bare "cost sheet" — checklist files are often named
+  // cost_sheet.pdf and live under Elevation / Plumbing / Soil.
   if ((blob.contains('planning') && blob.contains('commercial')) ||
       blob.contains('planning_commercial') ||
       blob.contains('final cost sheet') ||
-      blob.contains('final_cost_sheet') ||
-      blob.contains('cost sheet')) {
+      blob.contains('final_cost_sheet')) {
     return ForMeDocKind.planningCommercial;
   }
 

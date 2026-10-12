@@ -9,10 +9,13 @@ import 'mobile_documents.dart';
 
 /// Loads workflow dashboard documents from `sales_sop_details`.
 ///
-/// Data sources (merged, de-duplicated):
-/// - `workflow_dashboard_sections` (documents tree)
-/// - `workflow_dashboard_uploads` (flat upload list)
-/// - Task payloads with `dashboard_card == documents`
+/// Preferred source for checklist folders:
+/// - `workflow_dashboard_sections.documents[].sections[].checklist_files`
+///
+/// Fallback sources (skipped when that folder list is already present):
+/// - `workflow_dashboard_uploads`
+/// - Task payloads
+/// - Legacy card document maps
 class WorkflowDocumentService {
   WorkflowDocumentService._();
   static final WorkflowDocumentService instance = WorkflowDocumentService._();
@@ -250,6 +253,11 @@ class WorkflowDocumentService {
       );
     }
 
+    // Sections that already have the server folder list (checklist_files).
+    // Do not also merge uploads/tasks/cards into those folders — that is what
+    // made Electrical point drawing show the same PDFs 3–5 times.
+    final folderFilledSections = <String>{};
+
     // Primary category tree: workflow_dashboard_sections.documents[]
     for (final categoryMap in _extractDocumentCategoryBlueprints(salesSopDetails)) {
       final categoryId = _stringValue(categoryMap['category_id']) ?? '';
@@ -265,9 +273,11 @@ class WorkflowDocumentService {
         for (final sectionNode in sections) {
           if (sectionNode is! Map) continue;
           final sectionMap = Map<String, dynamic>.from(sectionNode);
+          final sectionId = _stringValue(sectionMap['section_id']) ?? '';
+          final sectionLabel = _stringValue(sectionMap['section_label']) ?? '';
           registerSection(
-            sectionId: _stringValue(sectionMap['section_id']) ?? '',
-            sectionLabel: _stringValue(sectionMap['section_label']) ?? '',
+            sectionId: sectionId,
+            sectionLabel: sectionLabel,
             iconName: _stringValue(sectionMap['section_icon']) ??
                 _stringValue(sectionMap['icon']),
             categoryId: categoryId.isNotEmpty ? categoryId : libraryGroupKey,
@@ -276,6 +286,37 @@ class WorkflowDocumentService {
                 clientJourneyKey,
             libraryGroupKey: libraryGroupKey,
           );
+
+          // Canonical folder contents from the server — one map per file already.
+          final folderFiles =
+              sectionMap['checklist_files'] ?? sectionMap['files'];
+          if (folderFiles is List && folderFiles.isNotEmpty) {
+            var added = 0;
+            final inherited = <String, dynamic>{
+              'category_id':
+                  categoryId.isNotEmpty ? categoryId : libraryGroupKey,
+              'category_label': categoryLabel,
+              'section_id': sectionId,
+              'section_label': sectionLabel,
+              'client_journey_key':
+                  _stringValue(sectionMap['client_journey_key']) ??
+                      clientJourneyKey,
+              'library_group_key': libraryGroupKey,
+            };
+            for (final item in folderFiles) {
+              if (item is! Map) continue;
+              final upload = _uploadFromMap(
+                Map<String, dynamic>.from(item),
+                inherited: inherited,
+              );
+              if (upload == null) continue;
+              addUpload(upload);
+              added += 1;
+            }
+            if (added > 0 && sectionId.isNotEmpty) {
+              folderFilledSections.add(sectionId);
+            }
+          }
         }
       } else if (categoryId.isNotEmpty || libraryGroupKey.isNotEmpty) {
         registerSection(
@@ -292,11 +333,12 @@ class WorkflowDocumentService {
     }
 
     for (final sectionMap in _extractSectionMaps(salesSopDetails)) {
+      final sectionId = _stringValue(sectionMap['section_id']) ??
+          _stringValue(sectionMap['dashboard_section']) ??
+          _stringValue(sectionMap['id']) ??
+          '';
       registerSection(
-        sectionId: _stringValue(sectionMap['section_id']) ??
-            _stringValue(sectionMap['dashboard_section']) ??
-            _stringValue(sectionMap['id']) ??
-            '',
+        sectionId: sectionId,
         sectionLabel: _stringValue(sectionMap['section_label']) ??
             _stringValue(sectionMap['dashboard_section_label']) ??
             _stringValue(sectionMap['label']) ??
@@ -321,7 +363,12 @@ class WorkflowDocumentService {
         presentation: _presentationFromMap(sectionMap),
       );
 
-      final inlineItems = sectionMap['items'] ?? sectionMap['documents'];
+      // Folder already filled from documents[].sections[].checklist_files.
+      if (folderFilledSections.contains(sectionId)) continue;
+
+      final inlineItems = sectionMap['checklist_files'] ??
+          sectionMap['items'] ??
+          sectionMap['documents'];
       if (inlineItems is List) {
         for (final item in inlineItems) {
           if (item is! Map) continue;
@@ -340,17 +387,23 @@ class WorkflowDocumentService {
 
     for (final map in _extractUploadMaps(salesSopDetails)) {
       final upload = _uploadFromMap(map);
-      if (upload != null) addUpload(upload);
+      if (upload == null) continue;
+      if (folderFilledSections.contains(upload.sectionId)) continue;
+      addUpload(upload);
     }
 
     for (final map in _extractTaskDocumentMaps(taskData)) {
       final upload = _uploadFromMap(map);
-      if (upload != null) addUpload(upload);
+      if (upload == null) continue;
+      if (folderFilledSections.contains(upload.sectionId)) continue;
+      addUpload(upload);
     }
 
     for (final map in _extractCardDocumentMaps(salesSopDetails)) {
       final upload = _uploadFromMap(map);
-      if (upload != null) addUpload(upload);
+      if (upload == null) continue;
+      if (folderFilledSections.contains(upload.sectionId)) continue;
+      addUpload(upload);
     }
 
     final dedupedUploads = _dedupeUploads(uploads);
@@ -561,11 +614,30 @@ class WorkflowDocumentService {
   ) {
     if (uploads.isEmpty) return const [];
 
+    bool isChecklistPeer(WorkflowDocumentUpload upload) {
+      final raw = upload.raw;
+      if (_truthy(raw['is_primary']) || _truthy(raw['show_on_mobile'])) {
+        return true;
+      }
+      final fileKey = (raw['file_key'] ?? '').toString().trim().toLowerCase();
+      if (fileKey.startsWith('slot:')) return true;
+      final key = upload.documentKey.trim().toLowerCase();
+      return key.startsWith('checklist:') || key.startsWith('slot:');
+    }
+
     final byKey = <String, List<WorkflowDocumentUpload>>{};
     for (final upload in uploads) {
-      final key = upload.documentKey.isNotEmpty
-          ? upload.documentKey
-          : _slug(upload.name);
+      // Original + ticked checklist peers stay separate (do not mark older as
+      // superseded — that hid Original on Plumbing / Soil).
+      final key = isChecklistPeer(upload)
+          ? (upload.id.isNotEmpty
+              ? upload.id
+              : ((upload.url ?? '').isNotEmpty
+                  ? upload.url!
+                  : upload.documentKey))
+          : (upload.documentKey.isNotEmpty
+              ? upload.documentKey
+              : _slug(upload.name));
       byKey.putIfAbsent(key, () => <WorkflowDocumentUpload>[]).add(upload);
     }
 
@@ -578,10 +650,13 @@ class WorkflowDocumentService {
         return (b.uploadedAt ?? '').compareTo(a.uploadedAt ?? '');
       });
 
+      final peers = entries.any(isChecklistPeer);
       var markedLatest = false;
       for (var i = 0; i < entries.length; i++) {
         final entry = entries[i];
-        final latest = entry.isLatest || (!markedLatest && i == 0);
+        final latest = peers
+            ? true
+            : (entry.isLatest || (!markedLatest && i == 0));
         if (latest) markedLatest = true;
         grouped.add(
           WorkflowDocumentUpload(
@@ -622,15 +697,39 @@ class WorkflowDocumentService {
     final seen = <String>{};
     final out = <WorkflowDocumentUpload>[];
     for (final upload in uploads) {
-      final key = [
-        upload.documentKey,
-        upload.url,
-        upload.revision?.toString() ?? '',
-        upload.id,
-      ].join('|').toLowerCase();
+      // Prefer path identity so S3 + /files/ copies of the same PDF collapse.
+      final pathKey = _normalizedFilePath(upload.url);
+      final key = pathKey.isNotEmpty
+          ? '${upload.sectionId}|$pathKey'
+          : [
+              upload.sectionId,
+              upload.documentKey,
+              upload.url,
+              upload.revision?.toString() ?? '',
+              upload.id,
+            ].join('|').toLowerCase();
       if (seen.add(key)) out.add(upload);
     }
     return out;
+  }
+
+  /// Host/query-insensitive path so the same PDF is not listed twice.
+  String _normalizedFilePath(String? url) {
+    var path = (url ?? '').split('?').first.trim().toLowerCase();
+    if (path.isEmpty) return '';
+    if (path.contains('://')) {
+      path = path.split('://').last;
+      final slash = path.indexOf('/');
+      path = slash >= 0 ? path.substring(slash + 1) : path;
+    }
+    path = path.replaceFirst(RegExp(r'^/+'), '');
+    for (final prefix in const ['files/', 'static/', 'uploads/']) {
+      if (path.startsWith(prefix)) {
+        path = path.substring(prefix.length);
+        break;
+      }
+    }
+    return path.replaceFirst(RegExp(r'^/+'), '').replaceAll(RegExp(r'/+$'), '');
   }
 
   List<Map<String, dynamic>> _extractDocumentCategoryBlueprints(

@@ -630,11 +630,24 @@ List<WorkflowDocumentUpload> _peerFilesForMultiFileSection({
       blob.contains('booking');
   if (!multiFile) return documents;
 
-  // Prefer unique file URLs so the list/count matches what the user uploaded.
+  // Prefer unique file paths so S3 + /files/ copies do not double-count.
   final out = <WorkflowDocumentUpload>[];
   final seenUrls = <String>{};
   for (final doc in documents) {
-    final url = (doc.url ?? '').trim().toLowerCase();
+    var path = (doc.url ?? '').split('?').first.trim().toLowerCase();
+    if (path.contains('://')) {
+      path = path.split('://').last;
+      final slash = path.indexOf('/');
+      path = slash >= 0 ? path.substring(slash + 1) : path;
+    }
+    path = path.replaceFirst(RegExp(r'^/+'), '');
+    for (final prefix in const ['files/', 'static/', 'uploads/']) {
+      if (path.startsWith(prefix)) {
+        path = path.substring(prefix.length);
+        break;
+      }
+    }
+    final url = path.isNotEmpty ? path : (doc.url ?? '').trim().toLowerCase();
     if (url.isNotEmpty && !seenUrls.add(url)) continue;
     out.add(
       WorkflowDocumentUpload(
@@ -798,14 +811,61 @@ List<Map<String, dynamic>> expandMobileDocumentFileMaps(
     ];
   }
 
+  // Electrical / Plumbing / Soil / Booking names used to force expansion even
+  // when the server already sent one openable file row. That multiplied Docs.
+  const nestedListKeys = [
+    'checklist_files',
+    'files',
+    'attachments',
+    'uploaded_files',
+    'uploads',
+    'versions',
+    'revisions',
+    'documents',
+    'document_files',
+    'all_files',
+    'all_uploads',
+  ];
+  final directUrl = _resolveUrl(map);
+  final hasNestedLists = nestedListKeys.any((key) {
+    final value = map[key];
+    return value is List && value.isNotEmpty;
+  });
+  if (directUrl != null && !hasNestedLists) {
+    return [
+      {
+        ...map,
+        'url': directUrl,
+      },
+    ];
+  }
+
   final nested = <Map<String, dynamic>>[];
   final seenUrls = <String>{};
+
+  String pathKey(String url) {
+    var path = url.split('?').first.trim().toLowerCase();
+    if (path.contains('://')) {
+      path = path.split('://').last;
+      final slash = path.indexOf('/');
+      path = slash >= 0 ? path.substring(slash + 1) : path;
+    }
+    path = path.replaceFirst(RegExp(r'^/+'), '');
+    for (final prefix in const ['files/', 'static/', 'uploads/']) {
+      if (path.startsWith(prefix)) {
+        path = path.substring(prefix.length);
+        break;
+      }
+    }
+    return path;
+  }
 
   void takeUrl(String? raw, [Map<String, dynamic>? source]) {
     final trimmed = (raw ?? '').trim();
     if (!_looksLikeFileUrl(trimmed)) return;
     final abs = _absoluteUrl(trimmed);
-    if (!seenUrls.add(abs.toLowerCase())) return;
+    final key = pathKey(abs);
+    if (!seenUrls.add(key.isNotEmpty ? key : abs.toLowerCase())) return;
     if (source != null) {
       nested.add({
         ...source,
@@ -877,6 +937,7 @@ List<Map<String, dynamic>> expandMobileDocumentFileMaps(
   // Soil / Booking / MEP often put the real multi-file list under `uploads`
   // while `files` still has a single primary entry.
   const nestedKeys = [
+    'checklist_files',
     'files',
     'attachments',
     'uploaded_files',
@@ -1137,11 +1198,25 @@ List<WorkflowDocumentUpload> _markLatestPerKey(
   List<WorkflowDocumentUpload> uploads,
 ) {
   if (uploads.isEmpty) return const [];
+
+  bool isChecklistPeer(WorkflowDocumentUpload upload) {
+    final raw = upload.raw;
+    if (_truthy(raw['is_primary']) || _truthy(raw['show_on_mobile'])) {
+      return true;
+    }
+    final fileKey = (raw['file_key'] ?? '').toString().trim().toLowerCase();
+    if (fileKey.startsWith('slot:')) return true;
+    final key = upload.documentKey.trim().toLowerCase();
+    return key.startsWith('checklist:') || key.startsWith('slot:');
+  }
+
   final byKey = <String, List<WorkflowDocumentUpload>>{};
   for (final upload in uploads) {
-    final key = upload.documentKey.isNotEmpty
-        ? upload.documentKey
-        : upload.id;
+    final key = isChecklistPeer(upload)
+        ? (upload.id.isNotEmpty
+            ? upload.id
+            : ((upload.url ?? '').isNotEmpty ? upload.url! : upload.documentKey))
+        : (upload.documentKey.isNotEmpty ? upload.documentKey : upload.id);
     byKey.putIfAbsent(key, () => <WorkflowDocumentUpload>[]).add(upload);
   }
 
@@ -1153,12 +1228,15 @@ List<WorkflowDocumentUpload> _markLatestPerKey(
       if (ar != br) return br.compareTo(ar);
       return (b.uploadedAt ?? '').compareTo(a.uploadedAt ?? '');
     });
+    final peers = group.any(isChecklistPeer);
     var markedLatest = false;
     for (var i = 0; i < group.length; i++) {
       final entry = group[i];
       final status = (entry.status ?? '').trim().toLowerCase();
-      final superseded = status == 'superseded' || status == 'older';
-      final latest = !superseded && (entry.isLatest || (!markedLatest && i == 0));
+      final superseded = !peers && (status == 'superseded' || status == 'older');
+      final latest = peers
+          ? true
+          : (!superseded && (entry.isLatest || (!markedLatest && i == 0)));
       if (latest) markedLatest = true;
       out.add(
         WorkflowDocumentUpload(
