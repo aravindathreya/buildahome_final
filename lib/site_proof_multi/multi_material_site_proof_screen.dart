@@ -16,6 +16,7 @@ import '../services/location_service.dart';
 import '../services/capture_time.dart';
 import '../services/multi_material_site_proof_service.dart';
 import '../widgets/themed_scaffold.dart';
+import '../user_facing_error.dart';
 
 enum _WizardPhase { select, evidence, success }
 
@@ -266,7 +267,7 @@ class _MultiMaterialSiteProofScreenState
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _error = e.toString().replaceFirst('Exception: ', '');
+        _error = userFacingError(e);
       });
     }
   }
@@ -474,7 +475,7 @@ class _MultiMaterialSiteProofScreenState
       var ok = false;
       if (kDebugMode) {
         ok = await _confirmDebugLocationOverride(
-          'Unable to read GPS. ${e.toString()}',
+          userFacingError(e, fallback: 'Unable to read GPS.'),
         );
       }
       if (!mounted) return;
@@ -573,7 +574,7 @@ class _MultiMaterialSiteProofScreenState
     } catch (e) {
       if (!mounted) return;
       setState(() => _busy = false);
-      _snack(e.toString().replaceFirst('Exception: ', ''), error: true);
+      _snack(userFacingError(e), error: true);
     }
   }
 
@@ -743,7 +744,7 @@ class _MultiMaterialSiteProofScreenState
     } catch (e) {
       if (!mounted) return;
       setState(() => _busy = false);
-      _snack(e.toString().replaceFirst('Exception: ', ''), error: true);
+      _snack(userFacingError(e), error: true);
     }
   }
 
@@ -804,7 +805,7 @@ class _MultiMaterialSiteProofScreenState
     } catch (e) {
       if (!mounted) return;
       _snack(
-        'Could not autosave delivery media: ${e.toString().replaceFirst('Exception: ', '')}',
+        'Could not autosave delivery media: ${userFacingError(e)}',
         error: true,
       );
     }
@@ -827,7 +828,7 @@ class _MultiMaterialSiteProofScreenState
     } catch (e) {
       if (!mounted) return;
       _snack(
-        'Could not autosave vehicle media: ${e.toString().replaceFirst('Exception: ', '')}',
+        'Could not autosave vehicle media: ${userFacingError(e)}',
         error: true,
       );
     }
@@ -1726,7 +1727,7 @@ class _MultiMaterialSiteProofScreenState
     } catch (e) {
       if (!mounted) return;
       setState(() => _busy = false);
-      _snack(e.toString().replaceFirst('Exception: ', ''), error: true);
+      _snack(userFacingError(e), error: true);
     }
   }
 

@@ -6,6 +6,7 @@ import 'services/data_provider.dart';
 import 'widgets/project_situation_switcher.dart';
 import 'widgets/skeleton_loader.dart';
 import 'widgets/tentative_handover_card.dart';
+import 'user_facing_error.dart';
 
 Color get _cardSurface => AppTheme.darkBackgroundSecondary;
 Color get _ink => AppTheme.darkTextPrimary;
@@ -247,7 +248,7 @@ class ProjectTimelineScreenState extends State<ProjectTimelineScreen>
       setState(() {
         _applyProviderData(DataProvider());
         _isLoading = false;
-        _errorMessage = e.toString().replaceFirst('Exception: ', '');
+        _errorMessage = userFacingError(e);
       });
     }
   }
@@ -623,9 +624,13 @@ class ProjectTimelineScreenState extends State<ProjectTimelineScreen>
   }
 
   Widget _buildErrorState() {
-    final message = _errorMessage ?? 'Please try again.';
-    final isAuthError = message.toLowerCase().contains('unauthorized') ||
-        message.toLowerCase().contains('log in again');
+    final message = situationError(
+      _errorMessage,
+      fallback: _criticalOnly
+          ? 'Could not load the critical timeline. Please try again.'
+          : 'Could not load the schedule. Please try again.',
+    );
+    final offline = isOfflineUserMessage(message);
 
     return Center(
       child: Padding(
@@ -634,30 +639,20 @@ class ProjectTimelineScreenState extends State<ProjectTimelineScreen>
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(
-              isAuthError
-                  ? Icons.lock_outline_rounded
-                  : Icons.error_outline_rounded,
-              color: Colors.red,
+              offline ? Icons.wifi_off_rounded : Icons.info_outline_rounded,
+              color: offline ? Colors.grey : Colors.red,
               size: 48,
             ),
             const SizedBox(height: 16),
             Text(
-              isAuthError
-                  ? 'Could not authorize this request'
-                  : (_criticalOnly
-                      ? 'Could not load critical timeline'
-                      : 'Could not load schedule'),
-              style: TextStyle(
-                color: _ink,
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
               message,
               textAlign: TextAlign.center,
-              style: TextStyle(color: _muted, fontSize: 13),
+              style: TextStyle(
+                color: _ink,
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                height: 1.35,
+              ),
             ),
             const SizedBox(height: 20),
             ElevatedButton(
@@ -738,7 +733,9 @@ class _TimelineTaskCard extends StatelessWidget {
               color: highlight
                   ? AppTheme.accentBlue
                   : isCompleted
-                      ? const Color(0xFF14532D)
+                      ? (AppTheme.isDark
+                          ? const Color(0xFF14532D)
+                          : const Color(0xFF86EFAC))
                       : AppTheme.border,
               width: highlight ? 1.6 : 1,
             ),
@@ -881,23 +878,33 @@ class _TimelineTaskCard extends StatelessWidget {
                   padding:
                       const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF3B2A14),
+                    color: AppTheme.isDark
+                        ? const Color(0xFF3B2A14)
+                        : const Color(0xFFFFF7ED),
                     borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: const Color(0xFF92400E)),
+                    border: Border.all(
+                      color: AppTheme.isDark
+                          ? const Color(0xFF92400E)
+                          : const Color(0xFFFDBA74),
+                    ),
                   ),
                   child: Row(
                     children: [
-                      const Icon(
+                      Icon(
                         Icons.schedule_rounded,
                         size: 15,
-                        color: Color(0xFFFBBF24),
+                        color: AppTheme.isDark
+                            ? const Color(0xFFFBBF24)
+                            : const Color(0xFF9A3412),
                       ),
                       const SizedBox(width: 6),
                       Expanded(
                         child: Text(
                           'Complete in $durationLabel',
-                          style: const TextStyle(
-                            color: Color(0xFFFBBF24),
+                          style: TextStyle(
+                            color: AppTheme.isDark
+                                ? const Color(0xFFFBBF24)
+                                : const Color(0xFF9A3412),
                             fontSize: 12.5,
                             fontWeight: FontWeight.w800,
                           ),

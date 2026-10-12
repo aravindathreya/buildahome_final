@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'widgets/material.dart';
 import 'package:intl/intl.dart';
 import 'app_theme.dart';
+import 'user_facing_error.dart';
 import 'widgets/searchable_select.dart';
 import 'widgets/full_screen_message.dart';
 import 'widgets/full_screen_progress.dart';
@@ -1064,7 +1065,7 @@ class StockReportState extends State<StockReport> {
         MaterialPageRoute(
           builder: (context) => FullScreenMessage(
             title: 'Error',
-            message: 'Error: ${e.toString()}',
+            message: userFacingError(e),
             icon: Icons.error_outline,
             iconColor: Colors.red,
             buttonText: 'OK',

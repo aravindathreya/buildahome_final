@@ -13,6 +13,7 @@ import 'services/client_portal_service.dart';
 import 'services/data_provider.dart';
 import 'widgets/dashboard_chrome.dart';
 import 'widgets/themed_scaffold.dart';
+import 'user_facing_error.dart';
 
 enum PaymentCategory {
   tender,
@@ -718,7 +719,7 @@ class _PaymentsDashboardState extends State<PaymentsDashboard> {
       if (_shouldIgnoreLoad(requestId)) return;
 
       _safeSetState(() {
-        errorMessage = e.toString().replaceAll('Exception: ', '');
+        errorMessage = userFacingError(e);
       });
     } finally {
       if (_shouldIgnoreLoad(requestId)) return;
@@ -939,11 +940,13 @@ class _PaymentsDashboardState extends State<PaymentsDashboard> {
         : 'Payments';
     final isAdminChrome =
         DashboardChrome.of(context) == DashboardChromeStyle.admin;
-    final tabLabelColor =
-        isAdminChrome ? Colors.white : AppTheme.darkTextPrimary;
+    // Selected labels sit on the navy tab pill, so they stay white in light mode.
+    final tabLabelColor = Colors.white;
     final tabUnselectedColor = isAdminChrome
         ? Colors.white.withValues(alpha: 0.7)
-        : AppTheme.mutedGrey;
+        : (AppTheme.isDark
+            ? AppTheme.darkTextSecondary
+            : const Color(0xFF3E4A63));
     final tabIndicatorColor =
         isAdminChrome ? Colors.white : AppTheme.navy;
 

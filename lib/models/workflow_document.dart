@@ -119,6 +119,13 @@ class WorkflowDocumentUpload {
     if (task != null && task.isNotEmpty && docName.isNotEmpty && docName != task) {
       return docName;
     }
+    final fileName = (raw['filename'] ?? raw['file_name'])?.toString().trim();
+    if (fileName != null &&
+        fileName.isNotEmpty &&
+        fileName.toLowerCase() != displayTitle.toLowerCase() &&
+        fileName.toLowerCase() != docName.toLowerCase()) {
+      return fileName;
+    }
     final section = sectionLabel.trim();
     if (section.isNotEmpty &&
         section != displayTitle &&
@@ -140,14 +147,12 @@ class WorkflowDocumentUpload {
         case 'available':
           return 'Available';
         case 'pending':
-          return 'Pending';
         case 'missing':
-          return 'Missing';
         case 'inactive':
-          return 'Inactive';
         case 'mandatory':
         case 'required':
-          return 'Required';
+          // File already present — do not keep catalog "pending/required".
+          return hasUrl ? (isLatest ? 'Latest' : 'Uploaded') : 'Pending';
         case 'superseded':
           return 'Superseded';
         case 'verified':
@@ -457,6 +462,7 @@ class WorkflowDocumentLibrary {
   }
 
   /// Categories for client document lists (excludes KYC / office / receipts).
+  /// Site inspection report stays in the list for For Me and Docs.
   List<WorkflowDocumentCategory> get documentsTabCategories {
     const excluded = {
       'kyc_documents',
@@ -467,7 +473,6 @@ class WorkflowDocumentLibrary {
       'uncategorised',
       'site_preparation',
       'demolition_details',
-      'site_inspection',
     };
     bool keep(WorkflowDocumentCategory category) {
       if (isUncategorizedDocumentCategory(category)) return false;
@@ -480,8 +485,7 @@ class WorkflowDocumentLibrary {
       if (key.contains('kyc')) return false;
       if (key.contains('site_prep') ||
           key.contains('site_preparation') ||
-          key.contains('demolition') ||
-          key.contains('site_inspection')) {
+          key.contains('demolition')) {
         return false;
       }
       return true;

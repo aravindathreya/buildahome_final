@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'app_theme.dart';
 import 'services/data_provider.dart';
 import 'widgets/skeleton_loader.dart';
+import 'user_facing_error.dart';
 
 Color get _ink => AppTheme.darkTextPrimary;
 Color get _muted => AppTheme.darkTextSecondary;
@@ -137,7 +138,7 @@ class ProjectTimelineStatusScreenState
             : List<Map<String, dynamic>>.from(
                 DataProvider().clientCriticalTimelineTasks);
         _isLoading = false;
-        _errorMessage = e.toString().replaceFirst('Exception: ', '');
+        _errorMessage = userFacingError(e);
       });
     }
   }
@@ -424,9 +425,11 @@ class ProjectTimelineStatusScreenState
   }
 
   Widget _buildErrorState() {
-    final message = _errorMessage ?? 'Please try again.';
-    final isAuthError = message.toLowerCase().contains('unauthorized') ||
-        message.toLowerCase().contains('log in again');
+    final message = situationError(
+      _errorMessage,
+      fallback: 'Could not load project status. Please try again.',
+    );
+    final offline = isOfflineUserMessage(message);
 
     return Center(
       child: Padding(
@@ -435,28 +438,20 @@ class ProjectTimelineStatusScreenState
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(
-              isAuthError
-                  ? Icons.lock_outline_rounded
-                  : Icons.error_outline_rounded,
-              color: Colors.red,
+              offline ? Icons.wifi_off_rounded : Icons.info_outline_rounded,
+              color: offline ? Colors.grey : Colors.red,
               size: 48,
             ),
             const SizedBox(height: 16),
             Text(
-              isAuthError
-                  ? 'Could not authorize this request'
-                  : 'Could not load project status',
-              style: TextStyle(
-                color: _ink,
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
               message,
               textAlign: TextAlign.center,
-              style: TextStyle(color: _muted, fontSize: 13),
+              style: TextStyle(
+                color: _ink,
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                height: 1.35,
+              ),
             ),
             const SizedBox(height: 20),
             ElevatedButton(

@@ -157,7 +157,10 @@ class ClientPortalKycDocumentScreen extends StatelessWidget {
                         width: 96,
                         height: 96,
                         decoration: BoxDecoration(
-                          color: visual.iconBg,
+                          color: AppTheme.iconBoxFill(
+                            visual.iconBg,
+                            visual.iconFg,
+                          ),
                           shape: BoxShape.circle,
                         ),
                       ),
@@ -165,12 +168,13 @@ class ClientPortalKycDocumentScreen extends StatelessWidget {
                         width: 72,
                         height: 72,
                         decoration: BoxDecoration(
-                          color: visual.iconFg.withValues(alpha: 0.12),
+                          color: AppTheme.iconBoxInk(visual.iconFg)
+                              .withValues(alpha: 0.12),
                           shape: BoxShape.circle,
                         ),
                         child: Icon(
                           visual.icon,
-                          color: visual.iconFg,
+                          color: AppTheme.iconBoxInk(visual.iconFg),
                           size: 36,
                         ),
                       ),

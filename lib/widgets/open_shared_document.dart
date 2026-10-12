@@ -77,15 +77,18 @@ SharedDocumentOpenPlan planSharedDocumentOpen({
   final mime = contentType.trim().toLowerCase();
   final pdf = _looksLikePdf(resolved, name, mime);
   final image = _looksLikeImage(resolved, name, mime);
+  final office = _looksLikeOffice(resolved, name, mime);
   final private = AuthenticatedDocumentFetcher.classifyUrl(resolved) ==
       DocumentUrlProfile.buildahomePrivate;
-  final inApp = pdf || image || private;
+  final inApp = pdf || image || office || private;
 
   var resolvedType = contentType.trim();
-  if (pdf || (private && !image)) {
+  if (pdf || (private && !image && !office)) {
     resolvedType = 'application/pdf';
   } else if (image) {
     resolvedType = mime.startsWith('image/') ? contentType.trim() : 'image/jpeg';
+  } else if (office) {
+    resolvedType = mime.isNotEmpty ? contentType.trim() : resolvedType;
   } else if (resolvedType == 'application/octet-stream') {
     resolvedType = '';
   }
@@ -105,6 +108,10 @@ Future<void> openSharedDocument(
   required String url,
   String fileName = '',
   String contentType = '',
+  bool clientMode = false,
+  /// When true, document-like URLs always use the in-app viewer even if
+  /// [planSharedDocumentOpen] would otherwise treat them as browser links.
+  bool forceInApp = false,
 }) async {
   final plan = planSharedDocumentOpen(
     url: url,
@@ -116,7 +123,8 @@ Future<void> openSharedDocument(
     return;
   }
 
-  if (plan.inApp) {
+  final useInApp = plan.inApp || forceInApp;
+  if (useInApp) {
     final document = WorkflowDocumentUpload(
       id: 'shared-${plan.url.hashCode}',
       documentKey: 'shared_document',
@@ -126,8 +134,8 @@ Future<void> openSharedDocument(
       isLatest: true,
     );
     if (!context.mounted) return;
-    await openWorkflowDocument(context, document, clientMode: false);
-    return;
+    await openWorkflowDocument(context, document, clientMode: clientMode);
+     return;
   }
 
   final uri = Uri.tryParse(plan.url);
@@ -154,6 +162,30 @@ bool _looksLikePdf(String url, String name, String mime) {
 bool _looksLikeImage(String url, String name, String mime) {
   if (mime.startsWith('image/')) return true;
   return _hasImageExtension(_pathOnly(url)) || _hasImageExtension(name);
+}
+
+bool _looksLikeOffice(String url, String name, String mime) {
+  if (mime.contains('msword') ||
+      mime.contains('officedocument') ||
+      mime.contains('ms-excel') ||
+      mime.contains('ms-powerpoint') ||
+      mime.contains('opendocument')) {
+    return true;
+  }
+  final path = _pathOnly(url).toLowerCase();
+  final lowerName = name.toLowerCase();
+  bool has(String ext) => path.endsWith(ext) || lowerName.endsWith(ext);
+  return has('.doc') ||
+      has('.docx') ||
+      has('.xls') ||
+      has('.xlsx') ||
+      has('.ppt') ||
+      has('.pptx') ||
+      has('.odt') ||
+      has('.ods') ||
+      has('.rtf') ||
+      has('.txt') ||
+      has('.csv');
 }
 
 bool _hasImageExtension(String value) {

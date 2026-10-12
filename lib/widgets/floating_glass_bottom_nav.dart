@@ -40,6 +40,7 @@ class FloatingGlassBottomNav extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final dark = AppTheme.isDark;
     return SafeArea(
       top: false,
       minimum: const EdgeInsets.only(bottom: _bottomInset),
@@ -56,31 +57,37 @@ class FloatingGlassBottomNav extends StatelessWidget {
             borderRadius: BorderRadius.circular(_barRadius),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.28),
-                blurRadius: 24,
-                offset: const Offset(0, 10),
+                color: Colors.black.withValues(alpha: dark ? 0.28 : 0.08),
+                blurRadius: dark ? 24 : 16,
+                offset: Offset(0, dark ? 10 : 4),
               ),
             ],
           ),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(_barRadius),
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
+            child: _barSurface(
+              dark: dark,
               child: Container(
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(_barRadius),
-                  color: AppTheme.darkBackgroundSecondary.withValues(alpha: 0.62),
+                  color: dark
+                      ? AppTheme.darkBackgroundSecondary.withValues(alpha: 0.72)
+                      : Colors.white,
                   border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.12),
+                    color: dark
+                        ? Colors.white.withValues(alpha: 0.12)
+                        : AppTheme.border,
                   ),
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      Colors.white.withValues(alpha: 0.10),
-                      Colors.white.withValues(alpha: 0.02),
-                    ],
-                  ),
+                  gradient: dark
+                      ? LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            Colors.white.withValues(alpha: 0.10),
+                            Colors.white.withValues(alpha: 0.02),
+                          ],
+                        )
+                      : null,
                 ),
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
                 child: Row(
@@ -89,8 +96,10 @@ class FloatingGlassBottomNav extends StatelessWidget {
                     final color = item.disabled
                         ? const Color(0xFF6B7280)
                         : (item.selected
-                            ? Colors.white
-                            : AppTheme.mutedGrey);
+                            ? (dark ? Colors.white : AppTheme.navy)
+                            : (dark
+                                ? AppTheme.mutedGrey
+                                : const Color(0xFF4B5568)));
                     return Expanded(
                       child: Material(
                         color: Colors.transparent,
@@ -135,6 +144,14 @@ class FloatingGlassBottomNav extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+
+  Widget _barSurface({required bool dark, required Widget child}) {
+    if (!dark) return child;
+    return BackdropFilter(
+      filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
+      child: child,
     );
   }
 }

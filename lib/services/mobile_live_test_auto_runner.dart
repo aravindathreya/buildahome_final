@@ -8,6 +8,7 @@ import '../models/mobile_live_test.dart';
 import 'mobile_live_test_access.dart';
 import 'mobile_live_test_controller.dart';
 import 'mobile_live_test_service.dart';
+import '../user_facing_error.dart';
 
 /// Walks assigned live-test tasks and submits real action payloads
 /// (uploads, %, yes/no, status, complete) without opening each sheet.
@@ -77,7 +78,7 @@ class MobileLiveTestAutoRunner {
           _onChanged?.call();
         } catch (e) {
           skipped.add(itemRunId);
-          status = '${task.name}: ${e.toString().replaceFirst('Exception: ', '')}';
+          status = '${task.name}: ${userFacingError(e)}';
           _onChanged?.call();
         }
 

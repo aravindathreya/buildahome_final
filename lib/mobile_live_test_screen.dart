@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'app_theme.dart';
+import 'user_facing_error.dart';
 import 'MyTasksScreen.dart';
 import 'mobile_live_test_widgets.dart';
 import 'models/mobile_live_test.dart';
@@ -105,7 +106,7 @@ class _MobileLiveTestScreenState extends State<MobileLiveTestScreen>
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.toString())),
+        SnackBar(content: Text(userFacingError(e))),
       );
     }
   }
@@ -262,7 +263,6 @@ class _MobileLiveTestScreenState extends State<MobileLiveTestScreen>
                             child: MyTasksScreen(
                               tasks: _myTasks(),
                               onRefresh: _refreshMyTasks,
-                              showCreateTask: false,
                               embedded: true,
                             ),
                           ),

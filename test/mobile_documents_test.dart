@@ -487,8 +487,780 @@ void main() {
       };
       expect(names['Front'], 'Uploaded');
       expect(names['Rear'], 'Pending');
-      expect(names['Side'], 'Missing');
+      expect(names['Side'], 'Pending');
       expect(names['Terrace'], 'Available');
+    });
+
+    test('Quality splits SIPR and SD into inspection report and site document',
+        () {
+      final category = WorkflowDocumentCategory(
+        id: 'quality_test_reports',
+        label: 'Quality and test report',
+        sections: [
+          WorkflowDocumentSection(
+            id: 'soil',
+            label: 'Soil test report',
+            categoryId: 'quality_test_reports',
+            categoryLabel: 'Quality and test report',
+            documents: [
+              WorkflowDocumentUpload(
+                id: 's1',
+                documentKey: 'soil_test_report',
+                name: 'Soil test report',
+                url: '/files/soil.pdf',
+                status: 'uploaded',
+                isLatest: true,
+              ),
+            ],
+          ),
+          WorkflowDocumentSection(
+            id: 'sipr_sd',
+            label: 'SIPR,SD',
+            categoryId: 'quality_test_reports',
+            categoryLabel: 'Quality and test report',
+            documents: [
+              WorkflowDocumentUpload(
+                id: 'sipr1',
+                documentKey: 'report_a',
+                name: 'Inspection pack.pdf',
+                url: '/files/sipr.pdf',
+                status: 'uploaded',
+                isLatest: true,
+              ),
+              WorkflowDocumentUpload(
+                id: 'sd1',
+                documentKey: 'site_document',
+                name: 'Site document pack',
+                url: '/files/sd.pdf',
+                status: 'uploaded',
+                isLatest: true,
+              ),
+            ],
+          ),
+        ],
+      );
+
+      final sections = buildChecklistTypeSectionsForCategory(category)!;
+      expect(
+        sections.map((s) => s.label).toList(),
+        [
+          'Soil test report',
+          'QC Reports(NDT test reports)',
+          'Site inspection report',
+          'Site document',
+        ],
+      );
+      expect(sections.any((s) => s.label == 'Other'), isFalse);
+      expect(sections.any((s) => s.label == 'SIPR,SD'), isFalse);
+      expect(
+        sections
+            .firstWhere((s) => s.label == 'Site inspection report')
+            .documents
+            .map((d) => d.id),
+        contains('sipr1'),
+      );
+      expect(
+        sections
+            .firstWhere((s) => s.label == 'Site document')
+            .documents
+            .single
+            .id,
+        'sd1',
+      );
+      expect(
+        sectionVisualFor(
+          sections.firstWhere((s) => s.label == 'Soil test report'),
+        ).subtitle,
+        'Soil investigation reports',
+      );
+    });
+
+    test('structural checklist folders and framing shows checked versions only',
+        () {
+      final category = WorkflowDocumentCategory(
+        id: 'structural_civil',
+        label: 'Structural & Civil',
+        sections: [
+          WorkflowDocumentSection(
+            id: 'all',
+            label: 'All',
+            categoryId: 'structural_civil',
+            categoryLabel: 'Structural & Civil',
+            documents: [
+              WorkflowDocumentUpload(
+                id: 'f1',
+                documentKey: 'framing_drawing',
+                name: 'Sample - Framing drawing.pdf',
+                url: '/files/framing_v1.pdf',
+                status: 'uploaded',
+                isLatest: false,
+                revision: 1,
+                uploadedAt: '2026-10-06',
+                raw: const {'checked': true},
+              ),
+              WorkflowDocumentUpload(
+                id: 'f2',
+                documentKey: 'framing_drawing',
+                name: 'framing drawing 2.jpg',
+                url: '/files/framing_v2.jpg',
+                status: 'uploaded',
+                isLatest: true,
+                revision: 2,
+                uploadedAt: '2026-10-12',
+                raw: const {'is_current': true},
+              ),
+              WorkflowDocumentUpload(
+                id: 'f3',
+                documentKey: 'framing_drawing',
+                name: 'framing old unused.pdf',
+                url: '/files/framing_v0.pdf',
+                status: 'uploaded',
+                isLatest: false,
+                revision: 0,
+                uploadedAt: '2026-10-01',
+                raw: const {'checked': false},
+              ),
+              WorkflowDocumentUpload(
+                id: 'found1',
+                documentKey: 'foundation',
+                name: 'Foundation upto plinth',
+                url: '/files/foundation.pdf',
+                status: 'uploaded',
+                isLatest: true,
+              ),
+            ],
+          ),
+        ],
+      );
+
+      final sections = buildChecklistTypeSectionsForCategory(category)!;
+      expect(
+        sections.map((s) => s.label).toList(),
+        [
+          'Framing drawing',
+          'Foundation upto plinth',
+          'Floor wise slab drawings',
+        ],
+      );
+      final framing =
+          sections.firstWhere((s) => s.label == 'Framing drawing');
+      expect(framing.documents.map((d) => d.id).toList()..sort(), ['f1', 'f2']);
+      expect(framing.documents.any((d) => d.id == 'f3'), isFalse);
+    });
+
+    test('checklist folders keep multiple distinct files across all types', () {
+      WorkflowDocumentUpload doc({
+        required String id,
+        required String key,
+        required String name,
+        required String url,
+        Map<String, dynamic> raw = const {'checked': true},
+      }) {
+        return WorkflowDocumentUpload(
+          id: id,
+          documentKey: key,
+          name: name,
+          url: url,
+          status: 'uploaded',
+          isLatest: true,
+          raw: raw,
+        );
+      }
+
+      final architectural = WorkflowDocumentCategory(
+        id: 'architectural',
+        label: 'Architectural',
+        sections: [
+          WorkflowDocumentSection(
+            id: 'all',
+            label: 'All',
+            categoryId: 'architectural',
+            categoryLabel: 'Architectural',
+            documents: [
+              doc(
+                id: 'fp1',
+                key: 'ground_floor_plan',
+                name: 'Ground Floor Plan',
+                url: '/g.pdf',
+              ),
+              doc(
+                id: 'fp2',
+                key: 'first_floor_plan',
+                name: 'First Floor Plan',
+                url: '/f.pdf',
+              ),
+              doc(
+                id: 'wd1',
+                key: 'working_drawing_a',
+                name: 'Working drawing A',
+                url: '/wa.pdf',
+              ),
+              doc(
+                id: 'wd2',
+                key: 'working_drawing_b',
+                name: 'Working drawing B',
+                url: '/wb.pdf',
+              ),
+              doc(
+                id: 'fs1',
+                key: 'filler_slab_kitchen',
+                name: 'Filler slab - Kitchen',
+                url: '/fk.pdf',
+              ),
+              doc(
+                id: 'fs2',
+                key: 'filler_slab_toilet',
+                name: 'Filler slab - Toilet',
+                url: '/ft.pdf',
+              ),
+              doc(
+                id: 'sec1',
+                key: 'section_aa',
+                name: 'Section AA',
+                url: '/saa.pdf',
+              ),
+              doc(
+                id: 'sec2',
+                key: 'section_bb',
+                name: 'Section BB',
+                url: '/sbb.pdf',
+              ),
+              doc(
+                id: 'el1',
+                key: 'front_elevation',
+                name: 'Front Elevation',
+                url: '/fe.pdf',
+              ),
+              doc(
+                id: 'el2',
+                key: 'side_elevation',
+                name: 'Side Elevation',
+                url: '/se.pdf',
+              ),
+              doc(
+                id: 'e2d1',
+                key: '2d_elevation_front',
+                name: '2D Elevation Front',
+                url: '/2df.pdf',
+              ),
+              doc(
+                id: 'e2d2',
+                key: '2d_elevation_rear',
+                name: '2D Elevation Rear',
+                url: '/2dr.pdf',
+              ),
+              doc(
+                id: 'dw1',
+                key: 'door_detail',
+                name: 'Door detail',
+                url: '/door.pdf',
+              ),
+              doc(
+                id: 'dw2',
+                key: 'window_grill',
+                name: 'Window grill',
+                url: '/grill.pdf',
+              ),
+              doc(
+                id: 'fl1',
+                key: 'flooring_living',
+                name: 'Flooring living',
+                url: '/fl1.pdf',
+              ),
+              doc(
+                id: 'fl2',
+                key: 'flooring_bedroom',
+                name: 'Flooring bedroom',
+                url: '/fl2.pdf',
+              ),
+              doc(
+                id: 'dado1',
+                key: 'dado_kitchen',
+                name: 'Dado Kitchen',
+                url: '/dk.pdf',
+              ),
+              doc(
+                id: 'dado2',
+                key: 'dado_toilet',
+                name: 'Dado Toilet',
+                url: '/dt.pdf',
+              ),
+              doc(
+                id: 'fab1',
+                key: 'fabrication_a',
+                name: 'Fabrication A',
+                url: '/fa.pdf',
+              ),
+              doc(
+                id: 'fab2',
+                key: 'fabrication_b',
+                name: 'Fabrication B',
+                url: '/fb.pdf',
+              ),
+              doc(
+                id: 'sky1',
+                key: 'skylight_a',
+                name: 'Skylight A',
+                url: '/sa.pdf',
+              ),
+              doc(
+                id: 'sky2',
+                key: 'skylight_b',
+                name: 'Skylight B',
+                url: '/sb.pdf',
+              ),
+              doc(
+                id: 'paint1',
+                key: 'paint_shade_ext',
+                name: 'Paint shade exterior',
+                url: '/pe.pdf',
+              ),
+              doc(
+                id: 'paint2',
+                key: 'paint_shade_int',
+                name: 'Paint shade interior',
+                url: '/pi.pdf',
+              ),
+              doc(
+                id: 'area1',
+                key: 'area_statement_v1',
+                name: 'Final Area statement A',
+                url: '/aa.pdf',
+              ),
+              doc(
+                id: 'area2',
+                key: 'area_statement_v2',
+                name: 'Final Area statement B',
+                url: '/ab.pdf',
+              ),
+            ],
+          ),
+        ],
+      );
+
+      final archSections = buildArchitecturalTypeSections(architectural);
+      void expectPair(String label, List<String> ids) {
+        final section = archSections.firstWhere((s) => s.label == label);
+        expect(
+          section.documents.map((d) => d.id).toList()..sort(),
+          ids..sort(),
+          reason: label,
+        );
+      }
+
+      expectPair('Final Floor plan', ['fp1', 'fp2']);
+      expectPair('Working drawing', ['wd1', 'wd2']);
+      expectPair('Filler slab detail (if any)', ['fs1', 'fs2']);
+      expectPair('Section', ['sec1', 'sec2']);
+      expectPair('Final Elevation', ['el1', 'el2']);
+      expectPair('2D Elevation', ['e2d1', 'e2d2']);
+      expectPair('Door/Window/ grill detail', ['dw1', 'dw2']);
+      expectPair('Flooring details', ['fl1', 'fl2']);
+      expectPair('Dado Detail - Kitchen/toilet', ['dado1', 'dado2']);
+      expectPair('Fabrication Detail', ['fab1', 'fab2']);
+      expectPair('Skylight detail', ['sky1', 'sky2']);
+      expectPair('Paint shade', ['paint1', 'paint2']);
+      expectPair('Final Area statement', ['area1', 'area2']);
+
+      final structural = WorkflowDocumentCategory(
+        id: 'structural_civil',
+        label: 'Structural & Civil',
+        sections: [
+          WorkflowDocumentSection(
+            id: 'all',
+            label: 'All',
+            categoryId: 'structural_civil',
+            categoryLabel: 'Structural & Civil',
+            documents: [
+              doc(
+                id: 'fr1',
+                key: 'framing_gf',
+                name: 'Framing GF',
+                url: '/fr1.pdf',
+              ),
+              doc(
+                id: 'fr2',
+                key: 'framing_ff',
+                name: 'Framing FF',
+                url: '/fr2.pdf',
+              ),
+              doc(
+                id: 'found1',
+                key: 'foundation_a',
+                name: 'Foundation A',
+                url: '/fo1.pdf',
+              ),
+              doc(
+                id: 'found2',
+                key: 'foundation_b',
+                name: 'Foundation B',
+                url: '/fo2.pdf',
+              ),
+              doc(
+                id: 'slab1',
+                key: 'floor_wise_slab_gf',
+                name: 'Floor wise slab GF',
+                url: '/sl1.pdf',
+              ),
+              doc(
+                id: 'slab2',
+                key: 'floor_wise_slab_ff',
+                name: 'Floor wise slab FF',
+                url: '/sl2.pdf',
+              ),
+            ],
+          ),
+        ],
+      );
+      final structSections =
+          buildChecklistTypeSectionsForCategory(structural)!;
+      expect(
+        structSections
+            .firstWhere((s) => s.label == 'Framing drawing')
+            .documents
+            .map((d) => d.id)
+            .toList()
+          ..sort(),
+        ['fr1', 'fr2'],
+      );
+      expect(
+        structSections
+            .firstWhere((s) => s.label == 'Foundation upto plinth')
+            .documents
+            .map((d) => d.id)
+            .toList()
+          ..sort(),
+        ['found1', 'found2'],
+      );
+      expect(
+        structSections
+            .firstWhere((s) => s.label == 'Floor wise slab drawings')
+            .documents
+            .map((d) => d.id)
+            .toList()
+          ..sort(),
+        ['slab1', 'slab2'],
+      );
+
+      final quality = WorkflowDocumentCategory(
+        id: 'quality',
+        label: 'Quality',
+        sections: [
+          WorkflowDocumentSection(
+            id: 'all',
+            label: 'All',
+            categoryId: 'quality',
+            categoryLabel: 'Quality',
+            documents: [
+              doc(
+                id: 'soil1',
+                key: 'soil_a',
+                name: 'Soil test A',
+                url: '/soil1.pdf',
+              ),
+              doc(
+                id: 'soil2',
+                key: 'soil_b',
+                name: 'Soil test B',
+                url: '/soil2.pdf',
+              ),
+              doc(
+                id: 'qc1',
+                key: 'ndt_a',
+                name: 'NDT report A',
+                url: '/qc1.pdf',
+              ),
+              doc(
+                id: 'qc2',
+                key: 'ndt_b',
+                name: 'NDT report B',
+                url: '/qc2.pdf',
+              ),
+            ],
+          ),
+        ],
+      );
+      final qualitySections = buildChecklistTypeSectionsForCategory(quality)!;
+      expect(
+        qualitySections
+            .firstWhere((s) => s.label == 'Soil test report')
+            .documents
+            .length,
+        2,
+      );
+      expect(
+        qualitySections
+            .firstWhere((s) => s.label == 'QC Reports(NDT test reports)')
+            .documents
+            .length,
+        2,
+      );
+
+      final preConversion = WorkflowDocumentCategory(
+        id: 'pre_conversion',
+        label: 'Pre Conversion',
+        sections: [
+          WorkflowDocumentSection(
+            id: 'all',
+            label: 'All',
+            categoryId: 'pre_conversion',
+            categoryLabel: 'Pre Conversion',
+            documents: [
+              doc(
+                id: 'prop1',
+                key: 'proposal_a',
+                name: 'Proposal A',
+                url: '/p1.pdf',
+              ),
+              doc(
+                id: 'prop2',
+                key: 'proposal_b',
+                name: 'Proposal B',
+                url: '/p2.pdf',
+              ),
+              doc(
+                id: 'book1',
+                key: 'booking_a',
+                name: 'Booking form A',
+                url: '/b1.pdf',
+              ),
+              doc(
+                id: 'book2',
+                key: 'booking_b',
+                name: 'Booking form B',
+                url: '/b2.pdf',
+              ),
+            ],
+          ),
+        ],
+      );
+      final preSections =
+          buildChecklistTypeSectionsForCategory(preConversion)!;
+      expect(
+        preSections.firstWhere((s) => s.label == 'Proposal').documents.length,
+        2,
+      );
+      expect(
+        preSections
+            .firstWhere((s) => s.label == 'Booking form')
+            .documents
+            .length,
+        2,
+      );
+    });
+
+    test('working drawing office versions keep checked rows on mobile', () {
+      final expanded = expandMobileDocumentFileMaps({
+        'id': 'wd1',
+        'document_key': 'working_drawing',
+        'name': 'Working drawing',
+        'status': 'uploaded',
+        'versions': [
+          {
+            'id': 'v1',
+            'url': '/files/working_v1.pdf',
+            'revision': 1,
+            'checked': false,
+          },
+          {
+            'id': 'v2',
+            'url': '/files/working_v2.pdf',
+            'revision': 2,
+            'checked': true,
+            'is_latest': true,
+          },
+        ],
+      });
+      expect(expanded, hasLength(2));
+      expect(expanded.where((m) => m['checked'] == true), hasLength(1));
+      expect(
+        expanded.firstWhere((m) => m['checked'] == true)['url'].toString(),
+        contains('working_v2'),
+      );
+
+      final snapshot = parseMobileDocumentsPayload({
+        'message': 'success',
+        'configured': true,
+        'project_id': 'wd-versions',
+        'categories': [
+          {
+            'id': 'architectural',
+            'label': 'Architectural',
+            'types': [
+              {
+                'id': 'drawings',
+                'label': 'Drawings',
+                'documents': [
+                  {
+                    'id': 'wd1',
+                    'document_key': 'working_drawing',
+                    'name': 'Working drawing',
+                    'status': 'uploaded',
+                    'versions': [
+                      {
+                        'id': 'v1',
+                        'url': '/files/working_v1.pdf',
+                        'checked': false,
+                      },
+                      {
+                        'id': 'v2',
+                        'url': '/files/working_v2.pdf',
+                        'checked': true,
+                        'is_latest': true,
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      })!;
+      final category = snapshot.library.libraryCategories.single;
+      final sections = buildArchitecturalTypeSections(category);
+      final working =
+          sections.firstWhere((s) => s.label == 'Working drawing');
+      expect(working.documents, hasLength(1));
+      expect(working.documents.single.url, contains('working_v2'));
+      expect(
+        documentVersionExplicitVisibility(working.documents.single.raw),
+        isTrue,
+      );
+    });
+
+    test('architectural nested upload does not duplicate the row', () {
+      final expanded = expandMobileDocumentFileMaps({
+        'id': 'wd1',
+        'document_key': 'working_drawing',
+        'name': 'Sample - Working drawing.pdf',
+        'status': 'pending',
+        'url': '/files/working.pdf',
+        'latest_upload': {
+          'id': 'up1',
+          'url':
+              'https://cdn.example.com/bucket/working?X-Amz-Signature=sig',
+        },
+        'files': [
+          {
+            'id': 'f1',
+            'url': 'https://cdn.example.com/bucket/working?X-Amz-Signature=sig',
+          },
+        ],
+      });
+      expect(expanded, hasLength(1));
+      expect(expanded.single['url'], isNotNull);
+      expect(
+        expanded.single['url'].toString(),
+        anyOf(
+          contains('/files/working.pdf'),
+          contains('cdn.example.com'),
+        ),
+      );
+
+      final snapshot = parseMobileDocumentsPayload({
+        'message': 'success',
+        'configured': true,
+        'project_id': 'arch-dup',
+        'categories': [
+          {
+            'id': 'architectural',
+            'label': 'Architectural',
+            'types': [
+              {
+                'id': 'drawings',
+                'label': 'Drawings',
+                'documents': [
+                  {
+                    'id': 'wd1',
+                    'document_key': 'working_drawing',
+                    'name': 'Sample - Working drawing.pdf',
+                    'status': 'pending',
+                    'url': '/files/working.pdf',
+                    'latest_upload': {
+                      'url':
+                          'https://cdn.example.com/bucket/working?X-Amz-Signature=sig',
+                    },
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      })!;
+      final docs = snapshot.library.libraryCategories.single.sections.single
+          .documents;
+      expect(docs, hasLength(1));
+      expect(docs.single.hasUrl, isTrue);
+      expect(docs.single.displayStatus, isNot('Pending'));
+    });
+
+    test('nested / signed upload URLs are not left Pending', () {
+      final snapshot = parseMobileDocumentsPayload({
+        'message': 'success',
+        'configured': true,
+        'project_id': 'test-g',
+        'categories': [
+          {
+            'id': 'architectural',
+            'label': 'Architectural',
+            'types': [
+              {
+                'id': 'floor_plans',
+                'label': 'Floor Plans',
+                'documents': [
+                  {
+                    'id': 'gfp',
+                    'document_key': 'ground_floor_plan',
+                    'name': 'Ground Floor Plan',
+                    'status': 'pending',
+                    'latest_upload': {
+                      'id': 'up1',
+                      'url':
+                          'https://cdn.example.com/bucket/obj/abc123?X-Amz-Signature=sig',
+                    },
+                  },
+                  {
+                    'id': 'ffp',
+                    'document_key': 'first_floor_plan',
+                    'name': 'First Floor Plan',
+                    'status': 'required',
+                    'files': [
+                      {
+                        'file_url':
+                            'https://s3.amazonaws.com/buildahome/docs/ffp',
+                      },
+                    ],
+                  },
+                  {
+                    'id': 'prop',
+                    'document_key': 'proposal',
+                    'name': 'Proposal',
+                    'status': 'pending',
+                    'file': '/files/proposal_pack.pdf',
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      })!;
+
+      final docs = snapshot.library.libraryCategories.first.sections.first
+          .documents;
+      expect(docs.length, greaterThanOrEqualTo(3));
+      for (final doc in docs) {
+        expect(doc.hasUrl, isTrue, reason: doc.name);
+        expect(doc.displayStatus, isNot('Pending'), reason: doc.name);
+        expect(
+          ClientPortalStatusBadge.fromStatus(
+            doc.displayStatus,
+            isLatest: doc.isLatest,
+            hasUrl: doc.hasUrl,
+          ),
+          ClientPortalStatusBadgeKind.latest,
+          reason: doc.name,
+        );
+      }
     });
   });
 
@@ -864,13 +1636,15 @@ void main() {
       );
 
       expect(find.text('Architectural'), findsOneWidget);
-      expect(find.text('Ground Floor Plan'), findsOneWidget);
-      expect(find.text('First Floor Plan'), findsOneWidget);
+      // Checklist categories list type folders; files open inside the folder.
+      expect(find.text('Final Floor plan'), findsOneWidget);
+      expect(find.text('Ground Floor Plan'), findsNothing);
+      expect(find.text('First Floor Plan'), findsNothing);
       expect(find.text('Contracts'), findsNothing);
     });
 
     testWidgets(
-        'Architectural opens straight to its documents',
+        'Architectural opens to the 13 type sections',
         (tester) async {
       final snapshot = parseMobileDocumentsPayload({
         'message': 'success',
@@ -882,44 +1656,52 @@ void main() {
             'label': 'Architectural',
             'types': [
               {
-                'id': 'floor_plans',
-                'label': 'Floor Plans',
+                'id': 'mixed',
+                'label': 'Drawings',
                 'documents': [
                   {
                     'id': '1',
-                    'document_key': 'gfp',
+                    'document_key': 'ground_floor_plan',
                     'name': 'Ground Floor Plan',
                     'status': 'uploaded',
                     'url': '/g.pdf',
-                    'is_latest': true,
-                    'revision': 2,
+                    'revision': 1,
+                    'is_latest': false,
                   },
                   {
                     'id': '1b',
-                    'document_key': 'gfp',
-                    'name': 'Ground Floor Plan old',
-                    'status': 'superseded',
-                    'url': '/g-old.pdf',
-                    'is_latest': false,
-                    'revision': 1,
+                    'document_key': 'ground_floor_plan',
+                    'name': 'Ground Floor Plan rev2',
+                    'status': 'uploaded',
+                    'url': '/g2.pdf',
+                    'revision': 2,
+                    'is_latest': true,
+                  },
+                  {
+                    'id': '1c',
+                    'document_key': 'first_floor_plan',
+                    'name': 'First Floor Plan',
+                    'status': 'uploaded',
+                    'url': '/ff.pdf',
+                    'is_latest': true,
                   },
                   {
                     'id': '2',
-                    'name': 'First Floor Plan',
-                    'status': 'pending',
+                    'name': 'Sample - Working drawing.pdf',
+                    'status': 'uploaded',
+                    'url': '/w.pdf',
                   },
-                ],
-              },
-              {
-                'id': 'elevations',
-                'label': 'Elevations',
-                'documents': [
                   {
                     'id': '3',
                     'name': 'Front Elevation',
-                    'status': 'final',
+                    'status': 'uploaded',
                     'url': '/e.pdf',
-                    'is_latest': true,
+                  },
+                  {
+                    'id': '4',
+                    'name': 'Sample - Section.pdf',
+                    'status': 'uploaded',
+                    'url': '/s.pdf',
                   },
                 ],
               },
@@ -928,24 +1710,44 @@ void main() {
         ],
       })!;
       final category = snapshot.library.libraryCategories.single;
-      final finalSection =
-          buildClientPortalArchitecturalFinalSection(category);
-      final revisionsSection =
-          buildClientPortalArchitecturalRevisionsSection(category);
-
-      expect(finalSection.label, 'Final');
+      final typeSections = buildArchitecturalTypeSections(category);
+      expect(typeSections.length, 13);
       expect(
-        finalSection.documents.map((d) => d.name),
-        containsAll(['Ground Floor Plan', 'First Floor Plan', 'Front Elevation']),
+        typeSections.map((s) => s.label).toList(),
+        [
+          'Final Floor plan',
+          'Working drawing',
+          'Filler slab detail (if any)',
+          'Section',
+          'Final Elevation',
+          '2D Elevation',
+          'Door/Window/ grill detail',
+          'Flooring details',
+          'Dado Detail - Kitchen/toilet',
+          'Fabrication Detail',
+          'Skylight detail',
+          'Paint shade',
+          'Final Area statement',
+        ],
       );
       expect(
-        finalSection.documents.map((d) => d.name),
-        isNot(contains('Ground Floor Plan old')),
+        typeSections.any((s) => s.label == 'Final Area statement'),
+        isTrue,
       );
-      expect(revisionsSection.label, 'Revisions');
+      final floorPlans =
+          typeSections.firstWhere((s) => s.label == 'Final Floor plan');
+      // Same key keeps current only; distinct floor plans stay separate.
       expect(
-        revisionsSection.documents.map((d) => d.name),
-        ['Ground Floor Plan old'],
+        floorPlans.documents.map((d) => d.name).toList()..sort(),
+        ['First Floor Plan', 'Ground Floor Plan rev2'],
+      );
+      expect(
+        typeSections.firstWhere((s) => s.label == 'Working drawing').documents,
+        hasLength(1),
+      );
+      expect(
+        typeSections.firstWhere((s) => s.label == 'Section').documents,
+        hasLength(1),
       );
 
       await tester.pumpWidget(
@@ -957,14 +1759,16 @@ void main() {
           ),
         ),
       );
+      await tester.pump();
 
       expect(find.text('Architectural'), findsWidgets);
-      expect(find.text('Ground Floor Plan'), findsOneWidget);
-      expect(find.text('Ground Floor Plan old'), findsOneWidget);
-      expect(find.text('First Floor Plan'), findsOneWidget);
-      expect(find.text('Front Elevation'), findsOneWidget);
-      expect(find.text('Final'), findsNothing);
-      expect(find.text('Revisions'), findsNothing);
+      expect(find.text('Final Floor plan'), findsOneWidget);
+      expect(find.text('Working drawing'), findsOneWidget);
+      expect(find.text('Section'), findsOneWidget);
+      expect(find.text('Final Elevation'), findsOneWidget);
+      // Files stay inside their type folder — not dumped on the category page.
+      expect(find.text('Ground Floor Plan'), findsNothing);
+      expect(find.text('Sample - Working drawing.pdf'), findsNothing);
     });
 
     testWidgets('renders individual documents including pending rows',
@@ -1007,6 +1811,7 @@ void main() {
           home: DocumentsV1ListScreen(
             categoryLabel: 'Architectural',
             section: section,
+            viewerRole: 'Admin',
           ),
         ),
       );
@@ -1027,16 +1832,29 @@ void main() {
           includeContracts: false,
         ),
       )!;
+      final section = g2.library.libraryCategories.single.sections.single;
+      expect(
+        _docNames(section),
+        ['Ground Floor Plan', 'First Floor Plan', 'Second Floor Plan'],
+      );
+
+      tester.view.physicalSize = const Size(800, 3200);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
 
       await tester.pumpWidget(
         MaterialApp(
           home: DocumentsV1ListScreen(
             categoryLabel: 'Architectural',
-            section: g2.library.libraryCategories.single.sections.single,
+            section: section,
+            viewerRole: 'Admin',
           ),
         ),
       );
+      await tester.pump();
 
+      expect(find.text('3 Documents'), findsOneWidget);
       expect(find.text('Second Floor Plan'), findsOneWidget);
     });
   });
@@ -1403,10 +2221,10 @@ void main() {
 
       expect(client, contains('KYC & Documents'));
       expect(client, contains('Structural & Civil'));
-      expect(client, isNot(contains('Site Document')));
+      expect(client, contains('Site inspection report'));
       expect(staff, isNot(contains('KYC & Documents')));
       expect(staff, contains('Structural & Civil'));
-      expect(staff, isNot(contains('Site Document')));
+      expect(staff, contains('Site inspection report'));
     });
 
     test('site engineer hub hides KYC, project documents, and contracts', () {
@@ -1716,6 +2534,403 @@ void main() {
         viewerRole: 'Billing',
       )!;
       expect(otherRole.canDownload, isFalse);
+    });
+  });
+
+  group('multi-file soil / booking / expand', () {
+    test('plumbing drawing keeps every nested upload', () {
+      final snapshot = parseMobileDocumentsPayload({
+        'message': 'success',
+        'configured': true,
+        'project_id': '77',
+        'categories': [
+          {
+            'id': 'mep',
+            'label': 'MEP',
+            'types': [
+              {
+                'id': 'plumbing_drawing',
+                'label': 'Plumbing drawing',
+                'documents': [
+                  {
+                    'document_key': 'plumbing_drawing',
+                    'name': 'Plumbing drawing',
+                    'status': 'uploaded',
+                    'url': '/files/plumb_latest.pdf',
+                    'files': [
+                      {
+                        'id': 'p1',
+                        'url': '/files/plumb_a.pdf',
+                        'name': 'Plumbing A',
+                      },
+                    ],
+                    'uploads': [
+                      {
+                        'id': 'p2',
+                        'url': '/files/plumb_b.pdf',
+                        'name': 'Plumbing B',
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      })!;
+
+      final mep = snapshot.library.libraryCategories
+          .firstWhere((c) => c.label == 'MEP');
+      expect(isMultiFileDocumentCategory(mep), isTrue);
+      final flat = buildFlatCategoryDocumentsSection(mep);
+      expect(flat.documents.length, greaterThanOrEqualTo(2));
+      final urls = flat.documents.map((d) => d.url ?? '').toList();
+      expect(urls.any((u) => u.endsWith('/files/plumb_a.pdf')), isTrue);
+      expect(urls.any((u) => u.endsWith('/files/plumb_b.pdf')), isTrue);
+      expect(workflowDocCountForCategory(mep), flat.documents.length);
+    });
+
+    test('mirrored category sections are stripped for Quality / Pre / Structural',
+        () {
+      final quality = WorkflowDocumentCategory(
+        id: 'quality_test_reports',
+        label: 'Quality & Test Reports',
+        sections: [
+          WorkflowDocumentSection(
+            id: 'quality_test_reports',
+            label: 'Quality and test report',
+            categoryId: 'quality_test_reports',
+            categoryLabel: 'Quality & Test Reports',
+            documents: const [],
+          ),
+          WorkflowDocumentSection(
+            id: 'soil_test',
+            label: 'Soil test report',
+            categoryId: 'quality_test_reports',
+            categoryLabel: 'Quality & Test Reports',
+            documents: const [],
+          ),
+        ],
+      );
+      expect(
+        substantiveDocumentSections(quality).map((s) => s.label).toList(),
+        ['Soil test report'],
+      );
+      expect(catalogCategorySubtitle(quality), 'Soil test report');
+
+      final pre = WorkflowDocumentCategory(
+        id: 'pre_conversion_documents',
+        label: 'Pre Conversion Documents',
+        sections: [
+          WorkflowDocumentSection(
+            id: 'pre_conversion_documents',
+            label: 'Pre Conversion Documents',
+            categoryId: 'pre_conversion_documents',
+            categoryLabel: 'Pre Conversion Documents',
+            documents: const [],
+          ),
+          WorkflowDocumentSection(
+            id: 'proposal',
+            label: 'Proposal',
+            categoryId: 'pre_conversion_documents',
+            categoryLabel: 'Pre Conversion Documents',
+            documents: const [],
+          ),
+          WorkflowDocumentSection(
+            id: 'booking_form',
+            label: 'Booking form',
+            categoryId: 'pre_conversion_documents',
+            categoryLabel: 'Pre Conversion Documents',
+            documents: const [],
+          ),
+        ],
+      );
+      expect(
+        substantiveDocumentSections(pre).map((s) => s.label).toList(),
+        ['Proposal', 'Booking form'],
+      );
+
+      final structural = WorkflowDocumentCategory(
+        id: 'structural_civil',
+        label: 'Structural & Civil',
+        sections: [
+          WorkflowDocumentSection(
+            id: 'structural_civil',
+            label: 'Structural & Civil',
+            categoryId: 'structural_civil',
+            categoryLabel: 'Structural & Civil',
+            documents: const [],
+          ),
+          WorkflowDocumentSection(
+            id: 'gf_structural',
+            label: 'GF Structural',
+            categoryId: 'structural_civil',
+            categoryLabel: 'Structural & Civil',
+            documents: const [],
+          ),
+        ],
+      );
+      expect(
+        substantiveDocumentSections(structural).map((s) => s.label).toList(),
+        ['GF Structural'],
+      );
+    });
+
+    test('Pre-conversion keeps Proposal and Booking form as sections', () {
+      final snapshot = parseMobileDocumentsPayload({
+        'message': 'success',
+        'configured': true,
+        'project_id': '79',
+        'categories': [
+          {
+            'id': 'pre_conversion_documents',
+            'label': 'Pre Conversion Documents',
+            'client_journey_key': 'pre_conversion_documents',
+            'types': [
+              {
+                'id': 'proposal',
+                'label': 'Proposal',
+                'documents': [
+                  {
+                    'document_key': 'proposal',
+                    'name': 'Proposal pack',
+                    'status': 'uploaded',
+                    'url': '/files/proposal.pdf',
+                  },
+                ],
+              },
+              {
+                'id': 'booking_form',
+                'label': 'Booking form',
+                'documents': [
+                  {
+                    'document_key': 'booking_form',
+                    'name': 'Booking form',
+                    'status': 'uploaded',
+                    'uploads': [
+                      {'id': 'b1', 'url': '/files/booking_1.pdf'},
+                      {'id': 'b2', 'url': '/files/booking_2.pdf'},
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      })!;
+
+      final pre = snapshot.library.libraryCategories.firstWhere(
+        (c) => c.label == 'Pre Conversion Documents',
+      );
+      expect(isMultiFileDocumentCategory(pre), isFalse);
+      expect(pre.sections.map((s) => s.label).toList(), [
+        'Proposal',
+        'Booking form',
+      ]);
+      expect(
+        pre.sections.firstWhere((s) => s.label == 'Proposal').documents.length,
+        1,
+      );
+      expect(
+        pre.sections
+            .firstWhere((s) => s.label == 'Booking form')
+            .documents
+            .length,
+        2,
+      );
+    });
+
+    test('Quality is not flattened just because it contains Soil test', () {
+      final snapshot = parseMobileDocumentsPayload({
+        'message': 'success',
+        'configured': true,
+        'project_id': '78',
+        'categories': [
+          {
+            'id': 'quality',
+            'label': 'Quality and test report',
+            'types': [
+              {
+                'id': 'soil_test',
+                'label': 'Soil test report',
+                'documents': [
+                  {
+                    'document_key': 'soil_test_report',
+                    'name': 'Soil test report',
+                    'status': 'uploaded',
+                    'files': [
+                      {'id': 's1', 'url': '/files/soil_a.pdf'},
+                      {'id': 's2', 'url': '/files/soil_b.pdf'},
+                    ],
+                  },
+                ],
+              },
+              {
+                'id': 'ndt',
+                'label': 'NDT report',
+                'documents': [
+                  {
+                    'document_key': 'ndt_report',
+                    'name': 'NDT report',
+                    'status': 'uploaded',
+                    'url': '/files/ndt.pdf',
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      })!;
+
+      final quality = snapshot.library.libraryCategories
+          .firstWhere((c) => c.label == 'Quality and test report');
+      expect(isMultiFileDocumentCategory(quality), isFalse);
+      expect(quality.sections.length, 2);
+      final soil =
+          quality.sections.firstWhere((s) => s.label == 'Soil test report');
+      expect(isMultiFileDocumentSection(soil), isTrue);
+      expect(soil.documents.length, 2);
+    });
+
+    test('expand merges files from every nested list key', () {
+      final expanded = expandMobileDocumentFileMaps({
+        'document_key': 'soil_test_report',
+        'name': 'Soil test report',
+        'url': '/files/soil_cover.pdf',
+        'files': [
+          {'url': '/files/soil_1.pdf'},
+        ],
+        'uploads': [
+          {'url': '/files/soil_2.pdf'},
+          {'url': '/files/soil_1.pdf'},
+        ],
+      });
+      final urls = expanded
+          .map((row) => (row['url'] ?? '').toString())
+          .where((url) => url.isNotEmpty)
+          .toList();
+      expect(urls.any((u) => u.endsWith('/files/soil_1.pdf')), isTrue);
+      expect(urls.any((u) => u.endsWith('/files/soil_2.pdf')), isTrue);
+      expect(urls.any((u) => u.endsWith('/files/soil_cover.pdf')), isTrue);
+      expect(expanded.length, 3);
+    });
+
+    test('expand pulls a second soil PDF from activity history', () {
+      final expanded = expandMobileDocumentFileMaps({
+        'document_key': 'soil_test_report',
+        'name': 'Soil test report',
+        'url': '/files/soil_new.pdf',
+        'is_latest': true,
+        'activity': [
+          {
+            'action': 'uploaded',
+            'file_url': '/files/soil_old.pdf',
+          },
+          {
+            'action': 'uploaded',
+            'url': '/files/soil_new.pdf',
+          },
+        ],
+      });
+      final urls = expanded
+          .map((row) => (row['url'] ?? '').toString())
+          .where((url) => url.isNotEmpty)
+          .toList();
+      expect(urls.any((u) => u.endsWith('/files/soil_old.pdf')), isTrue);
+      expect(urls.any((u) => u.endsWith('/files/soil_new.pdf')), isTrue);
+      expect(expanded.length, greaterThanOrEqualTo(2));
+    });
+
+    test('soil and booking catalog rows keep every upload', () {
+      final snapshot = parseMobileDocumentsPayload({
+        'message': 'success',
+        'configured': true,
+        'project_id': '55',
+        'categories': [
+          {
+            'id': 'quality',
+            'label': 'Quality',
+            'types': [
+              {
+                'id': 'soil_test',
+                'label': 'Soil test report',
+                'documents': [
+                  {
+                    'document_key': 'soil_test_report',
+                    'name': 'Soil test report',
+                    'status': 'uploaded',
+                    'files': [
+                      {
+                        'id': 's1',
+                        'url': '/files/soil_a.pdf',
+                        'name': 'Soil A',
+                      },
+                      {
+                        'id': 's2',
+                        'url': '/files/soil_b.pdf',
+                        'name': 'Soil B',
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+          {
+            'id': 'booking',
+            'label': 'Booking form',
+            'types': [
+              {
+                'id': 'booking_form',
+                'label': 'Booking form',
+                'documents': [
+                  {
+                    'document_key': 'booking_form',
+                    'name': 'Booking form',
+                    'status': 'uploaded',
+                    'uploads': [
+                      {
+                        'id': 'b1',
+                        'url': '/files/booking_1.pdf',
+                        'name': 'Form 1',
+                      },
+                      {
+                        'id': 'b2',
+                        'url': '/files/booking_2.pdf',
+                        'name': 'Form 2',
+                      },
+                      {
+                        'id': 'b3',
+                        'url': '/files/booking_3.pdf',
+                        'name': 'Form 3',
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      })!;
+
+      final quality = snapshot.library.libraryCategories
+          .firstWhere((c) => c.label == 'Quality');
+      final soil = quality.sections.firstWhere((s) => s.label == 'Soil test report');
+      expect(soil.documents.length, 2);
+      expect(isMultiFileDocumentSection(soil), isTrue);
+      expect(
+        buildFlatCategoryDocumentsSection(quality).documents.length,
+        2,
+      );
+
+      final booking = snapshot.library.libraryCategories
+          .firstWhere((c) => c.label == 'Booking form');
+      expect(isMultiFileDocumentCategory(booking), isTrue);
+      expect(workflowDocCountForCategory(booking), 3);
+      expect(
+        buildFlatCategoryDocumentsSection(booking).documents.length,
+        3,
+      );
     });
   });
 }

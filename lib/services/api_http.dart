@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import '../user_facing_error.dart';
 import 'session_manager.dart';
 
 /// HTTP client that inspects every response for invalidated sessions.
@@ -13,7 +14,16 @@ class SessionAwareClient extends http.BaseClient {
 
   @override
   Future<http.StreamedResponse> send(http.BaseRequest request) async {
-    final streamed = await _inner.send(request);
+    final http.StreamedResponse streamed;
+    try {
+      streamed = await _inner.send(request);
+    } on http.ClientException {
+      throw const NetworkUnavailableException();
+    } catch (e) {
+      if (e is SessionInvalidatedException) rethrow;
+      if (isConnectionError(e)) throw const NetworkUnavailableException();
+      rethrow;
+    }
     final bytes = await streamed.stream.toBytes();
 
     // Avoid UTF-8-decoding large 2xx payloads just to inspect the session.

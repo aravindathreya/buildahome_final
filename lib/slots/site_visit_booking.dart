@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/physics.dart';
 import 'package:intl/intl.dart';
+import '../app_theme.dart';
 import '../models/sales_sop_slot.dart';
 import 'site_visits_ui.dart';
+import '../user_facing_error.dart';
 
 class VisitPreference {
   final DateTime dateTime;
@@ -101,7 +103,7 @@ class _BookingState extends State<SiteVisitBooking> {
       ? !day.isBefore(DateTime(minimum.year, minimum.month, minimum.day))
       : slot.options.any(
           (o) => o.parsedDateTime != null && _sameDay(day, o.parsedDateTime!));
-  String _dateLabel(DateTime d) => DateFormat('EEE, d MMMM yyyy').format(d);
+  String _dateLabel(DateTime d) => DateFormat('EEEE, d MMMM yyyy').format(d);
   String _timeLabel(DateTime d) => DateFormat('h:mm a').format(d);
 
   bool get _canContinue {
@@ -193,7 +195,7 @@ class _BookingState extends State<SiteVisitBooking> {
       if (mounted)
         setState(() {
           saving = false;
-          error = e.toString().replaceFirst('Exception: ', '');
+          error = userFacingError(e);
         });
     }
   }
@@ -233,7 +235,7 @@ class _BookingState extends State<SiteVisitBooking> {
                                 fontSize: 16, fontWeight: FontWeight.w700))
                         : Column(children: [
                             Text('Step ${step + 1} of 3',
-                                style: const TextStyle(
+                                style: TextStyle(
                                     color: visitMuted, fontSize: 12)),
                             const SizedBox(height: 10),
                             Row(
@@ -246,7 +248,7 @@ class _BookingState extends State<SiteVisitBooking> {
                                           height: 2,
                                           color: i <= step
                                               ? visitPurple
-                                              : const Color(0xFF373A44)),
+                                              : visitLine),
                                     Container(
                                         width: 18,
                                         height: 18,
@@ -295,7 +297,7 @@ class _BookingState extends State<SiteVisitBooking> {
                                           : step == 1
                                               ? '${_slotCountLabel()}.'
                                               : 'Review your selection and confirm the visit.',
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                       color: visitMuted,
                                       fontSize: 16,
                                       height: 1.5)),
@@ -315,15 +317,15 @@ class _BookingState extends State<SiteVisitBooking> {
                                         crossAxisAlignment:
                                             CrossAxisAlignment.start,
                                         children: [
-                                      const Text('Meeting details',
+                                      Text('Meeting details',
                                           style: TextStyle(
                                               color: visitMuted,
                                               fontSize: 12,
                                               fontWeight: FontWeight.w700)),
                                       const SizedBox(height: 6),
                                       Text(slot.virtualConnectionDetails.trim(),
-                                          style: const TextStyle(
-                                              color: Colors.white,
+                                          style: TextStyle(
+                                              color: visitInk,
                                               height: 1.4)),
                                     ])),
                               ],
@@ -368,12 +370,12 @@ class _BookingState extends State<SiteVisitBooking> {
                                                       customTime = null;
                                                     })),
                                         const SizedBox(height: 8),
-                                        const Text('Slots available',
+                                        Text('Slots available',
                                             style: TextStyle(
-                                                color: Colors.white,
+                                                color: visitInk,
                                                 fontWeight: FontWeight.w700)),
                                         const SizedBox(height: 4),
-                                        const Text(
+                                        Text(
                                             'Next, choose a time for this date.',
                                             style: TextStyle(
                                                 color: visitMuted,
@@ -413,7 +415,7 @@ class _BookingState extends State<SiteVisitBooking> {
                                             : visitIsCompleted(slot)
                                                 ? 'This visit is completed.'
                                                 : 'This visit does not have a slot to change.',
-                                        style: const TextStyle(
+                                        style: TextStyle(
                                             color: visitMuted, height: 1.4))),
                               if (widget.readOnly && slot.options.isNotEmpty) ...[
                                 const SizedBox(height: 8),
@@ -520,7 +522,7 @@ class _BookingState extends State<SiteVisitBooking> {
                           style: OutlinedButton.styleFrom(
                               minimumSize: const Size(double.infinity, 46),
                               side: const BorderSide(color: visitPurple),
-                              foregroundColor: Colors.white,
+                              foregroundColor: visitInk,
                               shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(12))),
                           child: const Text('View all visits')),
@@ -629,7 +631,7 @@ class _BookingState extends State<SiteVisitBooking> {
         : preferred
             ? 1
             : _timesForSelectedDay().length;
-    final when = date == null ? '' : ' on ${DateFormat('EEE, d MMM yyyy').format(date!)}';
+    final when = date == null ? '' : ' on ${DateFormat('EEEE, d MMMM yyyy').format(date!)}';
     return '$count time slot${count == 1 ? '' : 's'} available$when';
   }
 
@@ -748,18 +750,16 @@ class _BookingState extends State<SiteVisitBooking> {
                     hintText:
                         'e.g. Prefer access from gate 2, anything the engineer should know?',
                     hintStyle:
-                        const TextStyle(color: visitMuted, height: 1.5),
-                    counterStyle: const TextStyle(color: visitMuted),
+                        TextStyle(color: visitMuted, height: 1.5),
+                    counterStyle: TextStyle(color: visitMuted),
                     filled: true,
                     fillColor: visitCard,
                     border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(14),
-                        borderSide:
-                            const BorderSide(color: Color(0xFF303440))),
+                        borderSide: BorderSide(color: visitLine)),
                     enabledBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(14),
-                        borderSide:
-                            const BorderSide(color: Color(0xFF303440))))),
+                        borderSide: BorderSide(color: visitLine)))),
           ]);
 
   Widget _panel({required Widget child}) => Container(
@@ -783,7 +783,7 @@ class _BookingState extends State<SiteVisitBooking> {
                 slot.presenceLabel,
                 if (slot.submittedBy.isNotEmpty) 'Given by ${slot.submittedBy}'
               ].where((s) => s.isNotEmpty).join(' · '),
-              style: const TextStyle(color: visitMuted, fontSize: 13)),
+              style: TextStyle(color: visitMuted, fontSize: 13)),
         ]))
       ]));
   Widget _timeCard({
@@ -805,9 +805,13 @@ class _BookingState extends State<SiteVisitBooking> {
                       const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
                   decoration: visitDecoration(
                       color: chosen
-                          ? const Color(0xFF14532D)
+                          ? (AppTheme.isDark
+                              ? const Color(0xFF14532D)
+                              : const Color(0xFFE7F8EF))
                           : selected
-                              ? const Color(0xFF252036)
+                              ? (AppTheme.isDark
+                                  ? const Color(0xFF252036)
+                                  : const Color(0xFFF3EEFF))
                               : visitCard,
                       border: chosen
                           ? const Color(0xFF22C55E)
@@ -845,14 +849,14 @@ class _BookingState extends State<SiteVisitBooking> {
                                   title.trim().toLowerCase()) ...[
                             const SizedBox(height: 4),
                             Text(subtitle,
-                                style: const TextStyle(
+                                style: TextStyle(
                                     color: visitMuted, fontSize: 13)),
                           ]
                         ])),
                     if (period.trim().isNotEmpty &&
                         period.trim().toLowerCase() != title.trim().toLowerCase())
                       Text(period,
-                          style: const TextStyle(
+                          style: TextStyle(
                               color: visitMuted,
                               fontSize: 13,
                               fontWeight: FontWeight.w600)),
@@ -882,7 +886,7 @@ class _BookingState extends State<SiteVisitBooking> {
           Expanded(
               child: Center(
                   child: Text(day,
-                      style: const TextStyle(color: visitMuted, fontSize: 11))))
+                      style: TextStyle(color: visitMuted, fontSize: 11))))
       ]),
       const SizedBox(height: 12),
       GridView.builder(
@@ -911,8 +915,12 @@ class _BookingState extends State<SiteVisitBooking> {
                         color: selected
                             ? visitPurple
                             : enabled
-                                ? const Color(0xFF24352C)
-                                : const Color(0xFF20242B),
+                                ? (AppTheme.isDark
+                                    ? const Color(0xFF24352C)
+                                    : const Color(0xFFE7F8EF))
+                                : (AppTheme.isDark
+                                    ? const Color(0xFF20242B)
+                                    : const Color(0xFFEEF0F4)),
                         borderRadius: BorderRadius.circular(9),
                         border: enabled && !selected
                             ? Border.all(
@@ -923,9 +931,13 @@ class _BookingState extends State<SiteVisitBooking> {
                         children: [
                           Text('$number',
                               style: TextStyle(
-                                  color: enabled
+                                  color: selected
                                       ? Colors.white
-                                      : const Color(0xFF646977),
+                                      : enabled
+                                          ? visitInk
+                                          : (AppTheme.isDark
+                                              ? const Color(0xFF646977)
+                                              : const Color(0xFF9AA3B2)),
                                   fontSize: 13)),
                           if (enabled)
                             Container(
@@ -957,7 +969,7 @@ class _BookingState extends State<SiteVisitBooking> {
                     : 'Your ${slot.title} is scheduled for ${_bookedWhen()}.',
             textAlign: TextAlign.center,
             style:
-                const TextStyle(color: visitMuted, fontSize: 16, height: 1.5)),
+                TextStyle(color: visitMuted, fontSize: 16, height: 1.5)),
         const SizedBox(height: 28),
         _visitHeader(),
         if (!preferred && option != null)

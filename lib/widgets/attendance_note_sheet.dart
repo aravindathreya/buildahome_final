@@ -90,7 +90,8 @@ class _AttendanceNoteSheetState extends State<_AttendanceNoteSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final bottom = MediaQuery.of(context).viewInsets.bottom;
+    final media = MediaQuery.of(context);
+    final bottom = media.viewInsets.bottom + media.padding.bottom;
     return Padding(
       padding: EdgeInsets.fromLTRB(20, 12, 20, 16 + bottom),
       child: Column(

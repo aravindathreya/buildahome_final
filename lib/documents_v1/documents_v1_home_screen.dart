@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../app_theme.dart';
 import '../client_portal/client_portal_document_ui.dart';
+import '../client_portal/client_portal_hub.dart';
 import '../models/workflow_document.dart';
 import '../services/document_file_download.dart';
 import '../services/document_role_access.dart';
@@ -16,6 +17,7 @@ import '../services/workflow_document_service.dart';
 import '../widgets/skeleton_loader.dart';
 import '../widgets/workflow_document_viewer.dart';
 import 'documents_v1_detail_screen.dart';
+import '../user_facing_error.dart';
 
 /// Centralized document library (Documents V1).
 class DocumentsV1HomeScreen extends StatefulWidget {
@@ -171,7 +173,7 @@ class _DocumentsV1HomeScreenState extends State<DocumentsV1HomeScreen>
       setState(() {
         _loading = false;
         if (_library == null) {
-          _error = e.toString().replaceFirst('Exception: ', '');
+          _error = userFacingError(e);
         }
       });
     }
@@ -226,6 +228,7 @@ class _DocumentsV1HomeScreenState extends State<DocumentsV1HomeScreen>
                         color: ClientPortalDocTheme.accentBlue,
                         onRefresh: () => _load(force: true),
                         child: ListView(
+                          physics: const AlwaysScrollableScrollPhysics(),
                           padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
                           children: [
                             const ClientPortalSectionHeading(
@@ -254,9 +257,8 @@ class _DocumentsV1HomeScreenState extends State<DocumentsV1HomeScreen>
                               ...categories.map(
                               (category) {
                                 final visual = categoryVisualForCategory(category);
-                                final cardCount =
-                                    _library?.cardCountForLibraryCategory(category);
-                                final count = cardCount ?? category.documentCount;
+                                final count =
+                                    workflowDocCountForCategory(category);
                                 return Padding(
                                   padding: const EdgeInsets.only(bottom: 10),
                                   child: ClientPortalCategoryCard(
@@ -289,8 +291,8 @@ class _DocumentsV1HomeScreenState extends State<DocumentsV1HomeScreen>
   }
 }
 
-/// Opens a section's file page. One document (or several revisions of the
-/// same file) skips the extra list and goes straight to the file screen.
+/// Opens a section's file page. A single file opens directly. Several
+/// uploads, even of the same document, stay in the list.
 void openDocumentsV1Section(
   BuildContext context, {
   required String categoryLabel,
@@ -298,11 +300,17 @@ void openDocumentsV1Section(
   bool clientMode = false,
   String? viewerRole,
 }) {
-  final hideArea =
-      forMeDocRoleBucket(viewerRole) == ForMeDocRoleBucket.client ||
+  final folder =
+      '$categoryLabel ${section.categoryLabel} ${section.label} ${section.clientJourneyKey ?? ''} ${section.libraryGroupKey ?? ''}'
+          .toLowerCase();
+  final architecturalFolder =
+      folder.contains('architectural') || folder.contains('architecture');
+  final hideArea = !architecturalFolder &&
+      (forMeDocRoleBucket(viewerRole) == ForMeDocRoleBucket.client ||
           usesClientDocumentCatalog(viewerRole) ||
-          (clientMode && forMeDocRoleBucket(viewerRole) == ForMeDocRoleBucket.other);
-  var docs = section.documents;
+          (clientMode &&
+              forMeDocRoleBucket(viewerRole) == ForMeDocRoleBucket.other));
+  var docs = sectionWithMobileVisibleDocuments(section).documents;
   if (hideArea) {
     docs = docs.where((doc) => !doc.isAreaStatement).toList();
   }
@@ -315,11 +323,10 @@ void openDocumentsV1Section(
       )
       .toList();
 
-  final uniqueKeys = docs
-      .map((doc) => doc.documentKey.trim().isEmpty ? doc.id : doc.documentKey)
-      .toSet();
-
-  if (docs.isEmpty || uniqueKeys.length > 1) {
+  // Soil / Booking / Plumbing: always open the file list so every upload
+  // is visible. Other sections still open a single file directly.
+  final forceList = isMultiFileDocumentSection(section) || docs.length != 1;
+  if (forceList) {
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -334,14 +341,7 @@ void openDocumentsV1Section(
     return;
   }
 
-  final keyed = List<WorkflowDocumentUpload>.from(docs);
-  keyed.sort((a, b) {
-    if (a.isLatest != b.isLatest) return a.isLatest ? -1 : 1;
-    final ar = a.revision ?? 0;
-    final br = b.revision ?? 0;
-    return br.compareTo(ar);
-  });
-  final doc = keyed.first;
+  final doc = docs.first;
 
   Navigator.push(
     context,
@@ -354,6 +354,80 @@ void openDocumentsV1Section(
       ),
     ),
   );
+}
+
+/// Force a fresh document catalog for the open project.
+Future<WorkflowDocumentLibrary> reloadWorkflowDocumentLibrary() async {
+  final prefs = await SharedPreferences.getInstance();
+  final projectId = (prefs.getString('project_id') ?? '').trim();
+  final docs = MobileDocumentsService.instance;
+  await docs.ensureLibrary(
+    projectId: projectId.isEmpty ? null : projectId,
+    force: true,
+  );
+  final snapshot = docs.snapshotFor(
+    projectId: projectId.isEmpty ? null : projectId,
+  );
+  if (shouldUseMobileDocumentsSnapshot(snapshot)) {
+    return snapshot!.library;
+  }
+  return WorkflowDocumentService().fetchLibrary(
+    projectId: projectId.isEmpty ? null : projectId,
+  );
+}
+
+bool _sameDocumentKey(String? a, String? b) {
+  final left = (a ?? '').trim().toLowerCase();
+  final right = (b ?? '').trim().toLowerCase();
+  return left.isNotEmpty && left == right;
+}
+
+WorkflowDocumentCategory? findReloadedCategory(
+  WorkflowDocumentLibrary library,
+  WorkflowDocumentCategory current,
+) {
+  final all = <WorkflowDocumentCategory>[
+    ...library.libraryCategories,
+    ...library.clientJourneyCategories,
+  ];
+  for (final category in all) {
+    if (_sameDocumentKey(category.id, current.id) ||
+        _sameDocumentKey(category.libraryGroupKey, current.libraryGroupKey) ||
+        _sameDocumentKey(category.clientJourneyKey, current.clientJourneyKey)) {
+      return category;
+    }
+  }
+  final label = current.label.trim().toLowerCase();
+  for (final category in all) {
+    if (category.label.trim().toLowerCase() == label) return category;
+  }
+  return null;
+}
+
+WorkflowDocumentSection? findReloadedSection(
+  WorkflowDocumentLibrary library,
+  WorkflowDocumentSection current,
+) {
+  final categories = <WorkflowDocumentCategory>[
+    ...library.libraryCategories,
+    ...library.clientJourneyCategories,
+  ];
+  for (final category in categories) {
+    for (final section in category.sections) {
+      if (_sameDocumentKey(section.id, current.id)) return section;
+    }
+  }
+  final label = current.label.trim().toLowerCase();
+  for (final category in categories) {
+    final sameCategory = _sameDocumentKey(category.id, current.categoryId) ||
+        category.label.trim().toLowerCase() ==
+            current.categoryLabel.trim().toLowerCase();
+    if (!sameCategory && current.categoryId.trim().isNotEmpty) continue;
+    for (final section in category.sections) {
+      if (section.label.trim().toLowerCase() == label) return section;
+    }
+  }
+  return null;
 }
 
 class DocumentsV1CategoryScreen extends StatefulWidget {
@@ -377,6 +451,7 @@ class _DocumentsV1CategoryScreenState extends State<DocumentsV1CategoryScreen>
     with _DebouncedSearchRebuild {
   final _searchCtrl = TextEditingController();
   String? _viewerRole;
+  WorkflowDocumentCategory? _reloaded;
 
   @override
   void initState() {
@@ -398,43 +473,75 @@ class _DocumentsV1CategoryScreenState extends State<DocumentsV1CategoryScreen>
     super.dispose();
   }
 
+  WorkflowDocumentCategory get _sourceCategory => _reloaded ?? widget.category;
+
   WorkflowDocumentCategory get _category {
     final filtered = filterDocumentCategoriesForRole(
-      [widget.category],
+      [_sourceCategory],
       _viewerRole,
       clientMode: widget.clientMode,
     );
-    return filtered.isEmpty ? widget.category.copyWithSections(const []) : filtered.first;
+    return filtered.isEmpty
+        ? _sourceCategory.copyWithSections(const [])
+        : filtered.first;
   }
 
-  /// Same Final / Revisions layout for Client and internal roles.
+  Future<void> _reload() async {
+    try {
+      final library = await reloadWorkflowDocumentLibrary();
+      final next = findReloadedCategory(library, _sourceCategory);
+      if (!mounted) return;
+      setState(() {
+        if (next != null) _reloaded = next;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(userFacingError(e))),
+      );
+    }
+  }
+
   bool get _architecturalGrouped =>
       isArchitecturalDocumentCategory(_category);
+
+  bool get _checklistCategory => usesChecklistTypeSections(_category);
 
   bool get _receiptsAndAgreements =>
       isReceiptsAndAgreementsCategory(_category);
 
+  bool get _multiFileCategory => isMultiFileDocumentCategory(_category);
+
+  bool get _siteInspectionReport => isSiteDocumentCategory(_category);
+
+  /// Architectural checklist always includes Final Area statement (office
+  /// list of 13). Other categories still strip Area Statement for clients.
+  bool get _hideArchitecturalAreaStatement => false;
+
   WorkflowDocumentUpload? _singleOpenableDocument(
     WorkflowDocumentSection section,
   ) {
-    final docs = section.documents.where((doc) {
-      if (doc.isAreaStatement) return false;
+    final docs = sectionWithMobileVisibleDocuments(section).documents.where((doc) {
+      if (doc.isAreaStatement && !_architecturalGrouped) return false;
       return documentAccessForUpload(
         catalogVisibilityRole(_viewerRole),
         doc,
       ).view;
     }).toList();
-    if (docs.isEmpty) return null;
-    final keys = docs
-        .map((doc) =>
-            doc.documentKey.trim().isEmpty ? doc.id : doc.documentKey)
-        .toSet();
-    if (keys.length != 1) return null;
-    docs.sort((a, b) {
-      if (a.isLatest != b.isLatest) return a.isLatest ? -1 : 1;
-      return (b.revision ?? 0).compareTo(a.revision ?? 0);
-    });
+    if (docs.length != 1) return null;
     return docs.first;
+  }
+
+  /// Checklist folders (Architectural 13, Structural 3, …) or real API sections.
+  List<WorkflowDocumentSection> get _substantiveSections {
+    final checklist = buildChecklistTypeSectionsForCategory(
+      _category,
+      hideAreaStatement: _hideArchitecturalAreaStatement,
+    );
+    if (checklist != null) return checklist;
+    return substantiveDocumentSections(_category)
+        .map(sectionWithMobileVisibleDocuments)
+        .toList();
   }
 
   List<WorkflowDocumentSection> get _filteredSections {
@@ -442,22 +549,38 @@ class _DocumentsV1CategoryScreenState extends State<DocumentsV1CategoryScreen>
       return clientPortalArchitecturalSections(
         _category,
         _searchCtrl.text,
+        hideAreaStatement: _hideArchitecturalAreaStatement,
       );
     }
     return filterWorkflowSectionsBySearch(
-      _category.sections,
+      _substantiveSections,
       _searchCtrl.text,
     );
+  }
+
+  /// Checklist categories always show type folders. Otherwise skip a redundant
+  /// single mirrored section.
+  bool get _skipSectionList {
+    if (_checklistCategory) return false;
+    if (_receiptsAndAgreements ||
+        _multiFileCategory ||
+        _siteInspectionReport) {
+      return true;
+    }
+    return _substantiveSections.length <= 1;
   }
 
   @override
   Widget build(BuildContext context) {
     final category = _category;
-    if (_architecturalGrouped || _receiptsAndAgreements) {
-      final section = _architecturalGrouped
-          ? buildClientPortalArchitecturalDocumentsSection(category)
+    if (_skipSectionList) {
+      final section = _substantiveSections.length == 1
+          ? _substantiveSections.first
           : buildFlatCategoryDocumentsSection(category);
-      final direct = _singleOpenableDocument(section);
+      // Multi-file folders always list files — several PDFs can share one key.
+      final direct = _multiFileCategory
+          ? null
+          : _singleOpenableDocument(section);
       if (direct != null) {
         return DocumentsV1DetailScreen(
           document: direct,
@@ -492,25 +615,42 @@ class _DocumentsV1CategoryScreenState extends State<DocumentsV1CategoryScreen>
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.search_rounded),
-            onPressed: () {},
+            tooltip: 'Reload',
+            icon: const Icon(Icons.refresh_rounded),
+            onPressed: _reload,
           ),
         ],
       ),
       body: SafeArea(
-        child: category.sections.isEmpty
-            ? Center(
-                child: Text(
-                  'No sections available yet.',
-                  style: TextStyle(color: AppTheme.getTextSecondary(context)),
-                ),
+        child: RefreshIndicator(
+          color: ClientPortalDocTheme.accentBlue,
+          onRefresh: _reload,
+          child: _substantiveSections.isEmpty
+            ? ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                children: [
+                  SizedBox(
+                    height: MediaQuery.sizeOf(context).height * 0.45,
+                    child: Center(
+                      child: Text(
+                        'No sections available yet.',
+                        style: TextStyle(
+                          color: AppTheme.getTextSecondary(context),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               )
             : ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
                 padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
                 children: [
                   ClientPortalSearchBar(
                     controller: _searchCtrl,
-                    hint: 'Search drawings…',
+                    hint: _checklistCategory
+                        ? 'Search folders…'
+                        : 'Search drawings…',
                   ),
                   const SizedBox(height: 16),
                   if (sections.isEmpty ||
@@ -545,6 +685,7 @@ class _DocumentsV1CategoryScreenState extends State<DocumentsV1CategoryScreen>
                     ),
                 ],
               ),
+        ),
       ),
     );
   }
@@ -574,6 +715,9 @@ class _DocumentsV1ListScreenState extends State<DocumentsV1ListScreen>
   ClientPortalDocumentSort _sort = ClientPortalDocumentSort.newest;
   String? _viewerRole;
   bool _mutating = false;
+  WorkflowDocumentSection? _reloadedSection;
+
+  WorkflowDocumentSection get _section => _reloadedSection ?? widget.section;
 
   bool get _isQualityCategory =>
       widget.categoryLabel.toLowerCase().contains('quality');
@@ -581,14 +725,22 @@ class _DocumentsV1ListScreenState extends State<DocumentsV1ListScreen>
   bool get _showThumbnails =>
       widget.categoryLabel.toLowerCase().contains('design') ||
       widget.categoryLabel.toLowerCase().contains('floor plan') ||
-      widget.section.clientJourneyKey?.contains('design') == true ||
-      widget.section.clientJourneyKey?.contains('floor_plan') == true;
+      _section.clientJourneyKey?.contains('design') == true ||
+      _section.clientJourneyKey?.contains('floor_plan') == true;
+
+  bool get _isArchitecturalFolder {
+    final blob =
+        '${widget.categoryLabel} ${_section.categoryLabel} ${_section.label} ${_section.clientJourneyKey ?? ''} ${_section.libraryGroupKey ?? ''}'
+            .toLowerCase();
+    return blob.contains('architectural') || blob.contains('architecture');
+  }
 
   bool get _hideAreaStatement =>
-      forMeDocRoleBucket(_viewerRole) == ForMeDocRoleBucket.client ||
-      usesClientDocumentCatalog(_viewerRole) ||
-      (widget.clientMode &&
-          forMeDocRoleBucket(_viewerRole) == ForMeDocRoleBucket.other);
+      !_isArchitecturalFolder &&
+      (forMeDocRoleBucket(_viewerRole) == ForMeDocRoleBucket.client ||
+          usesClientDocumentCatalog(_viewerRole) ||
+          (widget.clientMode &&
+              forMeDocRoleBucket(_viewerRole) == ForMeDocRoleBucket.other));
 
   @override
   void initState() {
@@ -603,6 +755,31 @@ class _DocumentsV1ListScreenState extends State<DocumentsV1ListScreen>
       });
     } else {
       _prefetchTop();
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant DocumentsV1ListScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.section != widget.section) {
+      _reloadedSection = null;
+    }
+  }
+
+  Future<void> _reload() async {
+    try {
+      final library = await reloadWorkflowDocumentLibrary();
+      final next = findReloadedSection(library, _section);
+      if (!mounted) return;
+      setState(() {
+        if (next != null) _reloadedSection = next;
+      });
+      _prefetchTop();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(userFacingError(e))),
+      );
     }
   }
 
@@ -624,18 +801,23 @@ class _DocumentsV1ListScreenState extends State<DocumentsV1ListScreen>
   }
 
   List<WorkflowDocumentUpload> _filtered() {
-    var docs = widget.section.documents;
+    var docs = sectionWithMobileVisibleDocuments(_section).documents;
     if (_hideAreaStatement) {
       docs = docs.where((doc) => !doc.isAreaStatement).toList();
     }
-    docs = docs
-        .where(
-          (doc) => documentAccessForUpload(
-            catalogVisibilityRole(_viewerRole),
-            doc,
-          ).view,
-        )
-        .toList();
+    // Null role = prefs still loading. Do not treat as "other" (no access)
+    // or every row disappears / looks empty until reload.
+    final role = _viewerRole?.trim();
+    if (role != null && role.isNotEmpty) {
+      docs = docs
+          .where(
+            (doc) => documentAccessForUpload(
+              catalogVisibilityRole(role),
+              doc,
+            ).view,
+          )
+          .toList();
+    }
 
     List<WorkflowDocumentUpload> base = docs;
 
@@ -681,7 +863,7 @@ class _DocumentsV1ListScreenState extends State<DocumentsV1ListScreen>
         foregroundColor: AppTheme.darkTextPrimary,
         elevation: 0,
         title: Text(
-          widget.section.label,
+          _section.label,
           style: TextStyle(
             color: AppTheme.darkTextPrimary,
             fontSize: 16,
@@ -689,14 +871,19 @@ class _DocumentsV1ListScreenState extends State<DocumentsV1ListScreen>
           ),
         ),
         actions: [
+          IconButton(
+            tooltip: 'Reload',
+            icon: const Icon(Icons.refresh_rounded),
+            onPressed: _mutating ? null : _reload,
+          ),
           if (documentAccessForRef(
             role: _viewerRole,
-            categoryId: widget.section.categoryId,
+            categoryId: _section.categoryId,
             categoryLabel: widget.categoryLabel,
-            sectionId: widget.section.id,
-            sectionLabel: widget.section.label,
-            journeyKey: widget.section.clientJourneyKey,
-            libraryGroupKey: widget.section.libraryGroupKey,
+            sectionId: _section.id,
+            sectionLabel: _section.label,
+            journeyKey: _section.clientJourneyKey,
+            libraryGroupKey: _section.libraryGroupKey,
           ).upload)
             IconButton(
               icon: const Icon(Icons.upload_file_outlined),
@@ -711,40 +898,51 @@ class _DocumentsV1ListScreenState extends State<DocumentsV1ListScreen>
         ],
       ),
       body: SafeArea(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-              child: ClientPortalSearchBar(
-                controller: _searchCtrl,
-                hint: 'Search documents…',
+        child: RefreshIndicator(
+          color: ClientPortalDocTheme.accentBlue,
+          onRefresh: _reload,
+          child: CustomScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            slivers: [
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+                  child: ClientPortalSearchBar(
+                    controller: _searchCtrl,
+                    hint: 'Search documents…',
+                  ),
+                ),
               ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 14, 20, 0),
-              child: ClientPortalDocumentListHeader(
-                count: docs.length,
-                sort: _sort,
-                onSortChanged: (next) => setState(() => _sort = next),
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 14, 20, 0),
+                  child: ClientPortalDocumentListHeader(
+                    count: docs.length,
+                    sort: _sort,
+                    onSortChanged: (next) => setState(() => _sort = next),
+                  ),
+                ),
               ),
-            ),
-            Expanded(
-              child: docs.isEmpty
-                  ? Center(
-                      child: Text(
-                        'No documents yet.',
-                        style: TextStyle(
-                          color: AppTheme.getTextSecondary(context),
-                        ),
+              if (docs.isEmpty)
+                SliverFillRemaining(
+                  hasScrollBody: false,
+                  child: Center(
+                    child: Text(
+                      'No documents yet.',
+                      style: TextStyle(
+                        color: AppTheme.getTextSecondary(context),
                       ),
-                    )
-                  : ListView.separated(
-                      padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
-                      itemCount: docs.length,
-                      separatorBuilder: (_, __) => const SizedBox(height: 8),
-                      itemBuilder: (context, index) {
-                        final doc = docs[index];
+                    ),
+                  ),
+                )
+              else
+                SliverPadding(
+                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
+                  sliver: SliverList(
+                    delegate: SliverChildBuilderDelegate(
+                      (context, index) {
+                        if (index.isOdd) return const SizedBox(height: 8);
+                        final doc = docs[index ~/ 2];
                         return ClientPortalDocumentRow(
                           document: doc,
                           showVerifiedBadge: _isQualityCategory,
@@ -754,9 +952,12 @@ class _DocumentsV1ListScreenState extends State<DocumentsV1ListScreen>
                           onMenuTap: () => _showDocumentMenu(doc),
                         );
                       },
+                      childCount: docs.isEmpty ? 0 : docs.length * 2 - 1,
                     ),
-            ),
-          ],
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     );
@@ -902,7 +1103,7 @@ class _DocumentsV1ListScreenState extends State<DocumentsV1ListScreen>
         action: action,
         projectId: (await SharedPreferences.getInstance()).getString('project_id'),
         document: existing,
-        section: widget.section,
+        section: _section,
         categoryLabel: widget.categoryLabel,
         filePath: kIsWeb ? null : picked?.path,
         fileBytes: picked?.bytes,
@@ -920,13 +1121,13 @@ class _DocumentsV1ListScreenState extends State<DocumentsV1ListScreen>
           ),
         ),
       );
-      await MobileDocumentsService.instance.ensureLibrary(force: true);
+      await _reload();
     } catch (e) {
       if (!mounted) return;
       messenger.showSnackBar(
         SnackBar(
           content: Text(
-            e.toString().replaceFirst('Exception: ', ''),
+            userFacingError(e),
           ),
         ),
       );
@@ -1008,7 +1209,7 @@ class _ClientJourneyDocumentsScreenState
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _error = e.toString().replaceFirst('Exception: ', '');
+        _error = userFacingError(e);
       });
     }
   }
@@ -1082,6 +1283,7 @@ class _ClientJourneyDocumentsScreenState
                 ),
               )
             : ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
                 padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
                 children: [
                   if (widget.clientMode && widget.embedded) ...[

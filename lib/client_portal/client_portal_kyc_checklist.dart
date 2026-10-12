@@ -12,12 +12,10 @@ class ClientPortalKycChecklist extends StatelessWidget {
   final List docTypes;
   final List kycDocs;
   final bool saving;
-  final TextEditingController commentCtrl;
   final Future<void> Function(String docKey) onUpload;
   final Future<bool> Function(String name) onUploadCustom;
   final Future<bool> Function(KycDocumentRecord record) onDeleteCustom;
   final void Function(String label, KycDocumentRecord record) onOpenUploaded;
-  final VoidCallback onSaveComment;
 
   const ClientPortalKycChecklist({
     super.key,
@@ -25,12 +23,10 @@ class ClientPortalKycChecklist extends StatelessWidget {
     required this.docTypes,
     required this.kycDocs,
     required this.saving,
-    required this.commentCtrl,
     required this.onUpload,
     required this.onUploadCustom,
     required this.onDeleteCustom,
     required this.onOpenUploaded,
-    required this.onSaveComment,
   });
 
   @override
@@ -97,12 +93,6 @@ class ClientPortalKycChecklist extends StatelessWidget {
           const SizedBox(height: 8),
           const KycSuccessBanner(),
         ],
-        const SizedBox(height: 20),
-        _CommentSection(
-          commentCtrl: commentCtrl,
-          saving: saving,
-          onSaveComment: onSaveComment,
-        ),
       ],
     );
   }
@@ -318,15 +308,19 @@ class _CustomDocumentsSectionState extends State<_CustomDocumentsSection> {
                 padding:
                     const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF2A2A2D),
+                  color: AppTheme.isDark
+                      ? const Color(0xFF2A2A2D)
+                      : AppTheme.lightBackgroundPrimaryLight,
                   borderRadius: BorderRadius.circular(20),
                 ),
-                child: const Text(
+                child: Text(
                   'Optional',
                   style: TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w700,
-                    color: AppTheme.mutedGrey,
+                    color: AppTheme.isDark
+                        ? AppTheme.mutedGrey
+                        : AppTheme.lightTextSecondary,
                   ),
                 ),
               ),
@@ -458,13 +452,18 @@ class _CustomUploadRow extends StatelessWidget {
                 width: 36,
                 height: 36,
                 decoration: BoxDecoration(
-                  color: const Color(0xFF2A2040),
+                  color: AppTheme.iconBoxFill(
+                    const Color(0xFF2A2040),
+                    const Color(0xFFC4B5FD),
+                  ),
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Icon(
                   Icons.insert_drive_file_outlined,
                   size: 18,
-                  color: AppTheme.darkTextPrimary,
+                  color: AppTheme.isDark
+                      ? AppTheme.darkTextPrimary
+                      : AppTheme.iconBoxInk(const Color(0xFFC4B5FD)),
                 ),
               ),
               const SizedBox(width: 10),
@@ -514,108 +513,6 @@ class _CustomUploadRow extends StatelessWidget {
             ],
           ),
         ),
-      ),
-    );
-  }
-}
-
-class _CommentSection extends StatefulWidget {
-  final TextEditingController commentCtrl;
-  final bool saving;
-  final VoidCallback onSaveComment;
-
-  const _CommentSection({
-    required this.commentCtrl,
-    required this.saving,
-    required this.onSaveComment,
-  });
-
-  @override
-  State<_CommentSection> createState() => _CommentSectionState();
-}
-
-class _CommentSectionState extends State<_CommentSection> {
-  bool _expanded = false;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: ClientPortalDocTheme.cardDecoration(),
-      child: Column(
-        children: [
-          InkWell(
-            onTap: () => setState(() => _expanded = !_expanded),
-            borderRadius: BorderRadius.circular(ClientPortalDocTheme.cardRadius),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-              child: Row(
-                children: [
-                  Icon(Icons.chat_bubble_outline_rounded,
-                      size: 20, color: AppTheme.darkTextPrimary),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      'Notes for your team',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w700,
-                        color: AppTheme.darkTextPrimary,
-                      ),
-                    ),
-                  ),
-                  Icon(
-                    _expanded
-                        ? Icons.keyboard_arrow_up_rounded
-                        : Icons.keyboard_arrow_down_rounded,
-                    color: AppTheme.mutedGrey,
-                  ),
-                ],
-              ),
-            ),
-          ),
-          if (_expanded) ...[
-            Divider(height: 1, color: AppTheme.border),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
-              child: Column(
-                children: [
-                  TextField(
-                    controller: widget.commentCtrl,
-                    maxLines: 3,
-                    decoration: InputDecoration(
-                      hintText: 'Any notes for the team…',
-                      filled: true,
-                      fillColor: AppTheme.darkBackgroundPrimary,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide(color: AppTheme.border),
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide(color: AppTheme.border),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      onPressed: widget.saving ? null : widget.onSaveComment,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppTheme.navy,
-                        foregroundColor: Colors.white,
-                        minimumSize: const Size.fromHeight(44),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      child: Text(widget.saving ? 'Saving…' : 'Save note'),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ],
       ),
     );
   }
@@ -682,10 +579,14 @@ class _KycChecklistTile extends StatelessWidget {
                 width: 44,
                 height: 44,
                 decoration: BoxDecoration(
-                  color: visual.iconBg,
+                  color: AppTheme.iconBoxFill(visual.iconBg, visual.iconFg),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: Icon(visual.icon, color: visual.iconFg, size: 22),
+                child: Icon(
+                  visual.icon,
+                  color: AppTheme.iconBoxInk(visual.iconFg),
+                  size: 22,
+                ),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -708,7 +609,9 @@ class _KycChecklistTile extends StatelessWidget {
                           fontSize: 12.5,
                           color: isUploaded
                               ? AppTheme.getTextSecondary(context)
-                              : const Color(0xFFFBBF24),
+                              : (AppTheme.isDark
+                                  ? const Color(0xFFFBBF24)
+                                  : const Color(0xFFB45309)),
                           fontWeight: FontWeight.w600,
                         ),
                       ),
@@ -717,26 +620,30 @@ class _KycChecklistTile extends StatelessWidget {
                 ),
               ),
               if (isUploaded)
-                const Padding(
-                  padding: EdgeInsets.only(right: 4),
+                Padding(
+                  padding: const EdgeInsets.only(right: 4),
                   child: Icon(
                     Icons.check_circle_rounded,
-                    color: Color(0xFF34D399),
+                    color: AppTheme.isDark
+                        ? const Color(0xFF34D399)
+                        : const Color(0xFF047857),
                     size: 22,
                   ),
                 )
               else if (item.status == _KycItemStatus.pending)
-                const Padding(
-                  padding: EdgeInsets.only(right: 4),
+                Padding(
+                  padding: const EdgeInsets.only(right: 4),
                   child: Icon(
                     Icons.upload_file_rounded,
-                    color: Color(0xFFFBBF24),
+                    color: AppTheme.isDark
+                        ? const Color(0xFFFBBF24)
+                        : const Color(0xFFB45309),
                     size: 20,
                   ),
                 ),
               Icon(
                 Icons.chevron_right_rounded,
-                color: AppTheme.getTextSecondary(context),
+                color: AppTheme.chevronColor,
               ),
             ],
           ),

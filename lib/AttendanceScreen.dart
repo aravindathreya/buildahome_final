@@ -13,6 +13,7 @@ import 'widgets/background_location_banner.dart';
 import 'widgets/employer_tracking_indicator.dart';
 import 'widgets/dashboard_chrome.dart';
 import 'widgets/themed_scaffold.dart';
+import 'user_facing_error.dart';
 
 class AttendanceScreen extends StatefulWidget {
   const AttendanceScreen({super.key});
@@ -379,7 +380,7 @@ class _AttendanceScreenState extends State<AttendanceScreen>
   }
 
   String _cleanError(Object e) =>
-      e.toString().replaceFirst(RegExp(r'^Exception:\s*'), '');
+      userFacingError(e);
 
   Future<void> _openMaps(String? link) async {
     if (link == null || link.trim().isEmpty) return;

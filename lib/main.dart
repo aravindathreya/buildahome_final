@@ -75,9 +75,12 @@ class _AppState extends State<App> with WidgetsBindingObserver {
   Widget build(BuildContext context) {
     final appTitle = 'buildAhome';
 
+    // Keep [LoginScreenNew] in `child` so theme toggles only update themeMode.
+    // Recreating `home: LoginScreenNew()` on every rebuild can re-insert login
+    // under the client home and show a bogus back arrow to a broken page.
     return ValueListenableBuilder<ThemeMode>(
       valueListenable: ThemeService.instance.modeNotifier,
-      builder: (context, themeMode, _) {
+      builder: (context, themeMode, startup) {
         return MaterialApp(
           title: appTitle,
           debugShowCheckedModeBanner: false,
@@ -96,9 +99,10 @@ class _AppState extends State<App> with WidgetsBindingObserver {
           navigatorKey: globalNavigatorKey,
           scaffoldMessengerKey: globalScaffoldMessengerKey,
           navigatorObservers: [globalNavigatorObserver],
-          home: LoginScreenNew(),
+          home: startup,
         );
       },
+      child: LoginScreenNew(),
     );
   }
 }

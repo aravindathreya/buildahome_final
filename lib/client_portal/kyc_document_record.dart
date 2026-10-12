@@ -106,7 +106,10 @@ class KycDocumentRecord {
 
     return KycDocumentRecord(
       docKey: docKey,
-      id: _string(map['id']) ?? _string(map['document_id']),
+      id: _string(map['file_id']) ??
+          _string(map['upload_id']) ??
+          _string(map['document_id']) ??
+          _string(map['id']),
       filename: _string(map['filename']) ??
           _string(map['file_name']) ??
           _string(map['original_filename']),
@@ -129,11 +132,14 @@ class KycDocumentRecord {
   }
 
   /// Prefer `section.custom_documents.uploads`, then existing KYC rows.
+  ///
+  /// A named group can hold several files. Each file keeps the group name so
+  /// delete can match the upload the server stored.
   static List<KycDocumentRecord> customUploadsFrom({
     required Map<String, dynamic> data,
     required List kycDocs,
   }) {
-    final fromSection = _recordsFromList(
+    final fromSection = _customRecords(
       data['custom_documents'] is Map
           ? (data['custom_documents'] as Map)['uploads']
           : null,
@@ -143,6 +149,84 @@ class KycDocumentRecord {
     return _recordsFromList(kycDocs)
         .where((record) => record.isCustom)
         .toList();
+  }
+
+  static List<KycDocumentRecord> _customRecords(dynamic rawUploads) {
+    final items = <KycDocumentRecord>[];
+
+    void addFile(
+      Map<String, dynamic> file, {
+      String? groupName,
+      int? index,
+    }) {
+      final map = Map<String, dynamic>.from(file);
+      map['doc_key'] ??= 'custom';
+      final existingName =
+          _string(map['custom_doc_name']) ?? _string(map['custom_label']);
+      if (existingName == null) {
+        final candidate = groupName ??
+            _string(map['name']) ??
+            _string(map['title']) ??
+            _string(map['label']) ??
+            _string(map['document_label']);
+        final filename = _string(map['filename']) ??
+            _string(map['file_name']) ??
+            _string(map['original_filename']);
+        if (candidate != null && candidate != filename) {
+          map['custom_doc_name'] = candidate;
+        }
+      }
+      map['index'] ??= index;
+      final record = fromMap(map);
+      if (record != null) items.add(record);
+    }
+
+    void addEntry(dynamic entry, {String? groupName, int? index}) {
+      if (entry is! Map) return;
+      final map = Map<String, dynamic>.from(entry);
+      final nested = map['files'] ?? map['uploads'] ?? map['documents'];
+      final name = groupName ??
+          _string(map['custom_doc_name']) ??
+          _string(map['custom_label']) ??
+          _string(map['name']) ??
+          _string(map['title']);
+      if (nested is List && nested.isNotEmpty) {
+        for (var i = 0; i < nested.length; i++) {
+          addEntry(nested[i], groupName: name, index: i);
+        }
+        return;
+      }
+      addFile(map, groupName: name, index: index);
+    }
+
+    if (rawUploads is List) {
+      for (var i = 0; i < rawUploads.length; i++) {
+        addEntry(rawUploads[i], index: i);
+      }
+    } else if (rawUploads is Map) {
+      final map = Map<String, dynamic>.from(rawUploads);
+      final looksLikeFile = map.containsKey('filename') ||
+          map.containsKey('file_name') ||
+          map.containsKey('view_url') ||
+          map.containsKey('url') ||
+          map.containsKey('download_url');
+      if (looksLikeFile) {
+        addEntry(map, index: 0);
+      } else {
+        for (final entry in map.entries) {
+          final value = entry.value;
+          final groupName = entry.key.toString();
+          if (value is List) {
+            for (var i = 0; i < value.length; i++) {
+              addEntry(value[i], groupName: groupName, index: i);
+            }
+          } else {
+            addEntry(value, groupName: groupName);
+          }
+        }
+      }
+    }
+    return items;
   }
 
   static KycDocumentRecord? findForKey(String key, List<dynamic> kycDocs) {

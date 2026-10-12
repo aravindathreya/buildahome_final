@@ -7,6 +7,7 @@ import 'package:webview_flutter/webview_flutter.dart';
 import 'app_theme.dart';
 import 'NavMenu.dart';
 import 'widgets/skeleton_loader.dart';
+import 'user_facing_error.dart';
 
 /// Base URL for sales SOP API
 const String _salesSopBaseUrl = 'http://192.168.1.11:5000';
@@ -154,7 +155,7 @@ class _ClientNoProjectScreenState extends State<ClientNoProjectScreen> {
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _error = e.toString().replaceFirst('Exception: ', '');
+        _error = userFacingError(e);
       });
     }
   }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../app_theme.dart';
 import '../services/data_provider.dart';
 import 'chat_v1_controller.dart';
 import 'chat_v1_models.dart';
@@ -187,7 +188,7 @@ class _ChatV1AppState extends State<ChatV1App> {
   @override
   Widget build(BuildContext context) {
     return Theme(
-      data: ChatV1Theme.data(dark: true),
+      data: ChatV1Theme.data(dark: AppTheme.isDark),
       child: Builder(
         builder: (context) => ChatV1HomeScreen(
           salesSopId: widget.salesSopId,

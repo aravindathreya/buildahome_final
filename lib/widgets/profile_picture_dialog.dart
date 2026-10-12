@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../app_theme.dart';
 import '../services/camera_permission.dart';
 import '../services/profile_picture_service.dart';
+import '../user_facing_error.dart';
 
 /// Shows a startup prompt if the user has no profile picture yet.
 ///
@@ -170,7 +171,7 @@ class _ProfilePictureDialogState extends State<_ProfilePictureDialog> {
       if (!mounted) return;
       setState(() {
         _uploading = false;
-        _error = e.toString().replaceFirst(RegExp(r'^Exception:\s*'), '');
+        _error = userFacingError(e);
       });
     }
   }

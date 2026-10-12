@@ -12,6 +12,7 @@ import '../chat_v1_utils.dart';
 import '../widgets/chat_v1_common.dart';
 import 'chat_v1_create_doc_sheet.dart';
 import 'chat_v1_doc_thread_screen.dart';
+import '../../user_facing_error.dart';
 
 /// Difference of Cost list — opened from "Update and Doc" channel.
 class ChatV1DocListScreen extends StatefulWidget {
@@ -95,7 +96,7 @@ class _ChatV1DocListScreenState extends State<ChatV1DocListScreen> {
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _error = e.toString().replaceFirst('Exception: ', '');
+        _error = userFacingError(e);
       });
     }
   }
@@ -168,9 +169,14 @@ class _ChatV1DocListScreenState extends State<ChatV1DocListScreen> {
     }
   }
 
+  /// App bar and floating button only after requests exist.
+  /// An empty list uses the single empty-state button.
+  bool get _showListCreate => _showCreateDoc && _docs.isNotEmpty;
+
   @override
   Widget build(BuildContext context) {
     final docs = _filtered;
+    final searchMiss = _docs.isNotEmpty && docs.isEmpty;
     return Scaffold(
       backgroundColor: ChatV1Theme.bg(context),
       appBar: AppBar(
@@ -189,7 +195,7 @@ class _ChatV1DocListScreenState extends State<ChatV1DocListScreen> {
           ],
         ),
         actions: [
-          if (_showCreateDoc)
+          if (_showListCreate)
             TextButton.icon(
               onPressed: _openCreate,
               icon: const Icon(Icons.add_rounded, size: 18),
@@ -197,7 +203,7 @@ class _ChatV1DocListScreenState extends State<ChatV1DocListScreen> {
             ),
         ],
       ),
-      floatingActionButton: _showCreateDoc
+      floatingActionButton: _showListCreate
           ? FloatingActionButton.extended(
               onPressed: _openCreate,
               backgroundColor: ChatV1Theme.accent,
@@ -231,7 +237,7 @@ class _ChatV1DocListScreenState extends State<ChatV1DocListScreen> {
             child: _loading
                 ? const Center(child: CircularProgressIndicator())
                 : docs.isEmpty
-                    ? _empty(context)
+                    ? _empty(context, searchMiss: searchMiss)
                     : RefreshIndicator(
                         onRefresh: _reload,
                         child: ListView.builder(
@@ -242,7 +248,7 @@ class _ChatV1DocListScreenState extends State<ChatV1DocListScreen> {
                             14,
                             0,
                             14,
-                            _showCreateDoc ? 88 : 16,
+                            _showListCreate ? 88 : 16,
                           ),
                           itemCount: docs.length,
                           itemBuilder: (_, i) => Padding(
@@ -257,7 +263,8 @@ class _ChatV1DocListScreenState extends State<ChatV1DocListScreen> {
     );
   }
 
-  Widget _empty(BuildContext context) {
+  Widget _empty(BuildContext context, {required bool searchMiss}) {
+    final offerCreate = _showCreateDoc && !searchMiss;
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(28),
@@ -271,9 +278,11 @@ class _ChatV1DocListScreenState extends State<ChatV1DocListScreen> {
             ),
             const SizedBox(height: 14),
             Text(
-              _showCreateDoc
-                  ? 'Submit a Difference of Cost request to start a discussion thread.'
-                  : 'No Difference of Cost requests yet.',
+              searchMiss
+                  ? 'No Difference of Cost requests match this search.'
+                  : offerCreate
+                      ? 'Submit a Difference of Cost request to start a discussion thread.'
+                      : 'No Difference of Cost requests yet.',
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: ChatV1Theme.textSecondary(context),
@@ -281,7 +290,7 @@ class _ChatV1DocListScreenState extends State<ChatV1DocListScreen> {
                 height: 1.4,
               ),
             ),
-            if (_showCreateDoc) ...[
+            if (offerCreate) ...[
               const SizedBox(height: 18),
               FilledButton.icon(
                 onPressed: _openCreate,

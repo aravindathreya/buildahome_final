@@ -10,6 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'app_theme.dart';
 import 'services/data_provider.dart';
 import 'widgets/themed_scaffold.dart';
+import 'user_facing_error.dart';
 
 class TaskWidget extends StatelessWidget {
   const TaskWidget({super.key});
@@ -115,7 +116,7 @@ class TaskScreen extends State<TaskScreenClass> {
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _errorMessage = e.toString().replaceAll('Exception: ', '');
+        _errorMessage = userFacingError(e);
         _isLoading = false;
       });
     }

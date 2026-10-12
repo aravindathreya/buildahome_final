@@ -8,6 +8,7 @@ import 'dart:async';
 import 'dart:convert';
 import "Payments.dart";
 import 'app_theme.dart';
+import 'widgets/open_shared_document.dart';
 import 'widgets/skeleton_loader.dart';
 import 'Drawings.dart';
 import 'Scheduler.dart';
@@ -75,6 +76,7 @@ import 'widgets/floating_client_chatbot.dart';
 import 'widgets/floating_glass_bottom_nav.dart';
 import 'widgets/modern_task_card.dart';
 import 'widgets/profile_picture_dialog.dart';
+import 'user_facing_error.dart';
 
 class UserDashboardLayout extends StatefulWidget {
   final bool fromAdminDashboard;
@@ -284,20 +286,19 @@ class UserDashboardLayoutState extends State<UserDashboardLayout> {
   bool _tourStartInFlight = false;
   List<String>? _lastLoggedBottomNavKeys;
   static const Color _navy = AppTheme.navy;
-  static const Color _mutedGrey = Color(0xFF8A94A6);
+  static Color get _mutedGrey => AppTheme.textSecondary;
   // Removed local navigatorKey and observer - using global ones from main.dart
 
   bool get _showBackToDashboard {
+    // Only staff opened from AdminDashboard get a back affordance.
+    // Real client logins must never see a back arrow — a dirty stack under
+    // home (e.g. after theme rebuild) would otherwise send them to a broken page.
     if (!widget.fromAdminDashboard) return false;
-    final role = (_userRole ?? '').trim();
-    if (role.isEmpty) return true;
-    return role.toLowerCase() != 'client';
+    if (_layoutIsClientUser) return false;
+    return true;
   }
 
-  bool get _showBackButton {
-    if (_showBackToDashboard) return true;
-    return !widget.fromAdminDashboard && Navigator.of(context).canPop();
-  }
+  bool get _showBackButton => _showBackToDashboard;
 
   /// AI assistant bubble on the client project home.
   /// Hidden for now; the team chat card remains the way to message the project.
@@ -490,6 +491,7 @@ class UserDashboardLayoutState extends State<UserDashboardLayout> {
   }
 
   void _goBackToDashboard() {
+    if (_layoutIsClientUser || !widget.fromAdminDashboard) return;
     final nav = Navigator.of(context);
     if (nav.canPop()) {
       // Project Home may sit above intermediate screens (e.g. My Tasks).
@@ -632,7 +634,7 @@ class UserDashboardLayoutState extends State<UserDashboardLayout> {
                     children: [
                       Text(
                         _greetingForNow(),
-                        style: const TextStyle(
+                        style: TextStyle(
                           color: _mutedGrey,
                           fontSize: 14,
                           fontWeight: FontWeight.w400,
@@ -789,10 +791,15 @@ class UserDashboardLayoutState extends State<UserDashboardLayout> {
     // pop this project route and reveal the existing dashboard underneath.
     // Do NOT pushReplacement AdminDashboard — that stacked extra routes and
     // forced users to press back multiple times.
+    //
+    // Client home: if anything is buried under this shell (e.g. old login
+    // after a theme rebuild), block system-back so we never reveal it.
+    final clientBlocksBuriedPop =
+        _layoutIsClientUser && Navigator.of(context).canPop();
     return AppTheme.withFontSizeDelta(
       context,
       PopScope(
-      canPop: !widget.fromAdminDashboard,
+      canPop: !widget.fromAdminDashboard && !clientBlocksBuriedPop,
       onPopInvokedWithResult: (didPop, _) {
         if (didPop || !widget.fromAdminDashboard) return;
         _goBackToDashboard();
@@ -914,11 +921,11 @@ class UserDashboardScreen extends StatefulWidget {
 
 class UserDashboardScreenState extends State<UserDashboardScreen> {
   static const Color _navy = AppTheme.navy;
-  static const Color _mutedGrey = Color(0xFFA8B3C7);
+  static Color get _mutedGrey => AppTheme.textSecondary;
   static Color get _cardBorder => AppTheme.border;
-  static const Color _ink = Color(0xFFF8FAFC);
-  static const Color _airbnbMuted = _mutedGrey;
-  static Color _hairline = _cardBorder;
+  static Color get _ink => AppTheme.textPrimary;
+  static Color get _airbnbMuted => _mutedGrey;
+  static Color get _hairline => _cardBorder;
 
   List dailyUpdateList = [];
   var username = ' ';
@@ -956,6 +963,7 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
   List<dynamic> _tasks = [];
   bool _isLoadingTasks = false;
   String? _tasksError;
+  Future<void>? _tasksLoad;
 
   // Client outstanding payments (tender + non-tender)
   double _totalOutstanding = 0;
@@ -1199,12 +1207,23 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
   Future<void> loadTasks({bool silent = false}) async {
     if (!mounted) return;
 
-    // Prevent multiple simultaneous calls
-    if (_isLoadingTasks) {
-      print(
-          '[UserDashboard] loadTasks already in progress, skipping duplicate call');
-      return;
+    final inFlight = _tasksLoad;
+    if (inFlight != null) {
+      await inFlight;
+      if (!mounted || silent) return;
     }
+
+    final run = _loadTasksNow(silent: silent);
+    _tasksLoad = run;
+    try {
+      await run;
+    } finally {
+      if (identical(_tasksLoad, run)) _tasksLoad = null;
+    }
+  }
+
+  Future<void> _loadTasksNow({required bool silent}) async {
+    if (!mounted) return;
 
     final showLoader = !silent && _tasks.isEmpty;
     if (showLoader) {
@@ -1263,10 +1282,11 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
 
       if (!mounted) return;
       final changed = _tasksDeltaKey(_tasks) != _tasksDeltaKey(allTasks);
-      if (changed || showLoader) {
+      if (changed || showLoader || _tasksError != null) {
         setState(() {
           _tasks = allTasks;
           _isLoadingTasks = false;
+          _tasksError = null;
         });
       } else {
         _isLoadingTasks = false;
@@ -1284,7 +1304,7 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
       }
       setState(() {
         _isLoadingTasks = false;
-        _tasksError = e.toString().replaceAll('Exception: ', '');
+        _tasksError = userFacingError(e);
         _tasks = [];
       });
     }
@@ -1354,7 +1374,7 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(e.toString().replaceAll('Exception: ', '')),
+          content: Text(userFacingError(e)),
           backgroundColor: Colors.red,
           duration: Duration(seconds: 3),
         ),
@@ -1454,7 +1474,7 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
             children: [
               Row(
                 children: [
-                  const Expanded(
+                  Expanded(
                     child: Text(
                       'Latest updates',
                       style: TextStyle(
@@ -1465,7 +1485,7 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
                       ),
                     ),
                   ),
-                  const Text(
+                  Text(
                     'View all',
                     style: TextStyle(
                       color: _ink,
@@ -1479,7 +1499,7 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
                 const SizedBox(height: 4),
                 Text(
                   dateLabel,
-                  style: const TextStyle(
+                  style: TextStyle(
                     color: _airbnbMuted,
                     fontSize: 13,
                     fontWeight: FontWeight.w400,
@@ -1488,7 +1508,7 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
               ],
               const SizedBox(height: 10),
               if (updates.isEmpty)
-                const Text(
+                Text(
                   'Stay tuned for updates about your home',
                   style: TextStyle(
                     color: _airbnbMuted,
@@ -1507,7 +1527,7 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
                         width: 6,
                         height: 6,
                         margin: const EdgeInsets.only(top: 6),
-                        decoration: const BoxDecoration(
+                        decoration: BoxDecoration(
                           color: _ink,
                           shape: BoxShape.circle,
                         ),
@@ -1516,7 +1536,7 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
                       Expanded(
                         child: Text(
                           updates[i],
-                          style: const TextStyle(
+                          style: TextStyle(
                             color: _ink,
                             fontSize: 14,
                             fontWeight: FontWeight.w500,
@@ -1573,13 +1593,7 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
       child: DecoratedBox(
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(18),
-          boxShadow: const [
-            BoxShadow(
-              color: Color(0x332563EB),
-              blurRadius: 18,
-              offset: Offset(0, 8),
-            ),
-          ],
+          boxShadow: AppTheme.liftedShadow,
         ),
         child: Material(
           color: Colors.transparent,
@@ -1752,7 +1766,7 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
                             GestureDetector(
                               onTap: _openAllDailyUpdates,
                               behavior: HitTestBehavior.opaque,
-                              child: const Padding(
+                              child: Padding(
                                 padding: EdgeInsets.symmetric(
                                   horizontal: 2,
                                   vertical: 4,
@@ -1773,7 +1787,7 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
                         Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text(
+                            Text(
                               'Daily update',
                               style: TextStyle(
                                 color: _ink,
@@ -1789,7 +1803,7 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
                                 dateLabel,
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
+                                style: TextStyle(
                                   color: _airbnbMuted,
                                   fontSize: 12,
                                   fontWeight: FontWeight.w500,
@@ -1802,7 +1816,7 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
                                 emptyMessage,
                                 maxLines: 3,
                                 overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
+                                style: TextStyle(
                                   color: _airbnbMuted,
                                   fontSize: 12.5,
                                   fontWeight: FontWeight.w400,
@@ -1830,7 +1844,7 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
                                         updates[i],
                                         maxLines: 2,
                                         overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(
+                                        style: TextStyle(
                                           color: _ink,
                                           fontSize: 12.5,
                                           fontWeight: FontWeight.w500,
@@ -1892,7 +1906,7 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
                 minimumSize: Size.zero,
                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
               ),
-              child: const Text(
+              child: Text(
                 'View all tasks',
                 style: TextStyle(
                   color: _ink,
@@ -2207,17 +2221,12 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
       return;
     }
 
-    final uri = Uri.tryParse(url);
-    final opened = uri != null &&
-        await launchUrl(uri, mode: LaunchMode.externalApplication);
-    if (!opened && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Could not open this file.'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    }
+    await openSharedDocument(
+      context,
+      url: url,
+      fileName: fallbackName,
+      forceInApp: true,
+    );
   }
 
   String? _taskFileUrl(
@@ -3879,7 +3888,7 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
       );
     }
 
-    const titleStyle = TextStyle(
+    final titleStyle = TextStyle(
       color: _ink,
       fontSize: 18,
       fontWeight: FontWeight.w700,
@@ -3904,7 +3913,7 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
         ),
         if (!hasDuration) ...[
           const SizedBox(height: 4),
-          const Text(
+          Text(
             'Handover estimate unavailable',
             style: TextStyle(color: _airbnbMuted, fontSize: 13),
           ),
@@ -3913,7 +3922,7 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
           const SizedBox(height: 4),
           Text(
             delayLabel,
-            style: const TextStyle(
+            style: TextStyle(
               color: _airbnbMuted,
               fontSize: 13,
               fontWeight: FontWeight.w600,
@@ -3925,7 +3934,7 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
           const SizedBox(height: 2),
           Text(
             plannedLabel,
-            style: const TextStyle(
+            style: TextStyle(
               color: _airbnbMuted,
               fontSize: 13,
               fontWeight: FontWeight.w500,
@@ -3939,8 +3948,8 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
           child: LinearProgressIndicator(
             value: progress,
             minHeight: 6,
-            backgroundColor: const Color(0xFF2A2A2D),
-            color: _ink,
+            backgroundColor: AppTheme.darkBackgroundPrimaryLight,
+            color: AppTheme.navy,
           ),
         ),
       ],
@@ -4428,26 +4437,25 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
                     color: AppTheme.darkBackgroundSecondary,
                     shape: BoxShape.circle,
                     border: Border.all(
-                      color: AppTheme.navy.withValues(alpha: 0.75),
-                      width: 1.2,
+                      color: AppTheme.isDark
+                          ? AppTheme.navy.withValues(alpha: 0.75)
+                          : AppTheme.border,
+                      width: 1,
                     ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: AppTheme.navy.withValues(alpha: 0.55),
-                        blurRadius: 0.5,
-                        spreadRadius: 1,
-                      ),
-                      BoxShadow(
-                        color: AppTheme.navy.withValues(alpha: 0.25),
-                        blurRadius: 6,
-                        spreadRadius: 0,
-                      ),
-                    ],
+                    boxShadow: AppTheme.isDark
+                        ? [
+                            BoxShadow(
+                              color: AppTheme.navy.withValues(alpha: 0.45),
+                              blurRadius: 0.5,
+                              spreadRadius: 1,
+                            ),
+                          ]
+                        : AppTheme.liftedShadow,
                   ),
                   child: Icon(
                     _quickActionIcon(title, item['icon'] as IconData),
                     size: iconSize,
-                    color: _ink,
+                    color: AppTheme.isDark ? _ink : AppTheme.navy,
                   ),
                 ),
                 if (comingSoon)
@@ -4460,7 +4468,7 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
                         vertical: 2,
                       ),
                       decoration: BoxDecoration(
-                        color: _ink,
+                        color: AppTheme.navy,
                         borderRadius: BorderRadius.circular(999),
                       ),
                       child: const Text(
@@ -4480,7 +4488,7 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
             Text(
               label,
               textAlign: TextAlign.center,
-              style: const TextStyle(
+              style: TextStyle(
                 color: _ink,
                 fontSize: labelSize,
                 fontWeight: FontWeight.w500,

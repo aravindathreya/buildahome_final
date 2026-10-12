@@ -13,6 +13,7 @@ import 'services/project_focus_service.dart';
 import 'services/session_manager.dart';
 import 'widgets/project_situation_switcher.dart';
 import 'widgets/skeleton_loader.dart';
+import 'user_facing_error.dart';
 
 /// Current-situation dashboard for a project.
 ///
@@ -151,7 +152,7 @@ class ProjectFocusScreenState extends State<ProjectFocusScreen>
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _error = e.toString().replaceFirst('Exception: ', '');
+        _error = userFacingError(e);
       });
     }
   }
@@ -212,7 +213,7 @@ class ProjectFocusScreenState extends State<ProjectFocusScreen>
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _error = e.toString().replaceFirst('Exception: ', '');
+        _error = userFacingError(e);
       });
     }
   }
@@ -247,7 +248,7 @@ class ProjectFocusScreenState extends State<ProjectFocusScreen>
           DataProvider().clientCriticalTimelineTasks,
         );
         _aiLoading = false;
-        _aiError = e.toString().replaceFirst('Exception: ', '');
+        _aiError = userFacingError(e);
       });
     }
   }
@@ -270,7 +271,7 @@ class ProjectFocusScreenState extends State<ProjectFocusScreen>
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _error = e.toString().replaceFirst('Exception: ', '');
+        _error = userFacingError(e);
       });
     }
   }

@@ -10,6 +10,7 @@ import 'notifcations.dart';
 import 'services/api_http.dart';
 import 'services/data_provider.dart';
 import 'services/notification_service.dart';
+import 'user_facing_error.dart';
 
 /// My Work Queue — pending + upcoming tasks for the selected sales_sop.
 /// API / auth / ordering unchanged; UI-only redesign.
@@ -144,7 +145,7 @@ class _ProjectStatusScreenState extends State<ProjectStatusScreen>
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _error = e.toString().replaceFirst('Exception: ', '');
+        _error = userFacingError(e);
       });
     }
   }
@@ -342,7 +343,7 @@ class _ProjectStatusScreenState extends State<ProjectStatusScreen>
         decoded = body;
         break;
       } catch (e) {
-        lastMessage = e.toString().replaceFirst('Exception: ', '');
+        lastMessage = userFacingError(e);
         print('[ProjectStatus] attempt failed: $e');
       }
     }
@@ -440,7 +441,7 @@ class _ProjectStatusScreenState extends State<ProjectStatusScreen>
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _error = e.toString().replaceFirst('Exception: ', '');
+        _error = userFacingError(e);
       });
     }
   }

@@ -15,6 +15,7 @@ import 'chat_v1_models.dart';
 import 'chat_v1_socket.dart';
 import 'chat_v1_theme.dart';
 import 'chat_v1_utils.dart';
+import '../user_facing_error.dart';
 
 /// Loads and buckets real chat data for a sales_sop project.
 class ChatV1Controller extends ChangeNotifier {
@@ -495,7 +496,7 @@ class ChatV1Controller extends ChangeNotifier {
         try {
           return await run();
         } catch (e) {
-          final msg = e.toString().replaceFirst('Exception: ', '');
+          final msg = userFacingError(e);
           if (optional) {
             softErrors.add('$label: $msg');
           } else if (label == 'conversations') {
@@ -517,7 +518,7 @@ class ChatV1Controller extends ChangeNotifier {
           contextId: sopId,
         );
       } catch (e) {
-        conversationsError = e.toString().replaceFirst('Exception: ', '');
+        conversationsError = userFacingError(e);
       }
 
       if (conversations.isEmpty && conversationsError != null) {
@@ -615,7 +616,7 @@ class ChatV1Controller extends ChangeNotifier {
       // ignore: unawaited_futures
       _socket.connect();
     } catch (e) {
-      error = e.toString().replaceFirst('Exception: ', '');
+      error = userFacingError(e);
       print('[ChatV1] Load failed: $error');
       if (!hadCache) {
         channels = [];

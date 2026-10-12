@@ -4,10 +4,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:pdfx/pdfx.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../app_theme.dart';
-import '../client_portal/client_portal_document_ui.dart';
 import '../models/workflow_document.dart';
 import '../services/authenticated_document_fetcher.dart';
 import '../services/document_file_download.dart';
@@ -288,17 +286,13 @@ class _WorkflowDocumentViewerScreenState
     }
   }
 
-  Future<void> _openExternal() async {
-    final uri = Uri.tryParse(widget.document.url ?? '');
-    if (uri == null) return;
-    await launchUrl(uri, mode: LaunchMode.externalApplication);
-  }
-
   @override
   Widget build(BuildContext context) {
     final title = widget.document.displayTitle;
-    final showClientFooter =
-        widget.clientMode && !_loading && _errorMessage == null;
+    final longTitle = title.length > 28;
+    final titleColor = widget.clientMode && _isImage
+        ? Colors.white
+        : AppTheme.darkTextPrimary;
 
     return Scaffold(
       backgroundColor: _result?.kind == DocumentPayloadKind.image
@@ -310,19 +304,18 @@ class _WorkflowDocumentViewerScreenState
               backgroundColor: widget.clientMode && _isImage
                   ? Colors.black
                   : AppTheme.getBackgroundSecondary(context),
-              foregroundColor: widget.clientMode && _isImage
-                  ? Colors.white
-                  : AppTheme.darkTextPrimary,
+              foregroundColor: titleColor,
               elevation: 0,
+              toolbarHeight: longTitle ? 72 : kToolbarHeight,
               title: Text(
                 title,
-                maxLines: 1,
+                maxLines: 2,
+                softWrap: true,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                  color: widget.clientMode && _isImage
-                      ? Colors.white
-                      : AppTheme.darkTextPrimary,
-                  fontSize: 16,
+                  color: titleColor,
+                  fontSize: longTitle ? 14 : 16,
+                  height: 1.25,
                   fontWeight: FontWeight.w800,
                 ),
               ),
@@ -340,24 +333,9 @@ class _WorkflowDocumentViewerScreenState
                     onPressed: _toggleFullscreen,
                     tooltip: 'Fullscreen',
                   ),
-                if (!widget.clientMode && !_loading && _errorMessage != null)
-                  IconButton(
-                    icon: const Icon(Icons.open_in_new_rounded),
-                    onPressed: _openExternal,
-                    tooltip: 'Open externally',
-                  ),
               ],
             ),
-      body: Column(
-        children: [
-          Expanded(child: _buildBody()),
-          if (showClientFooter)
-            SafeArea(
-              top: false,
-              child: ClientPortalViewerDocCard(document: widget.document),
-            ),
-        ],
-      ),
+      body: _buildBody(),
     );
   }
 
@@ -427,8 +405,6 @@ class _WorkflowDocumentViewerScreenState
       return _ErrorView(
         message: _errorMessage!,
         onRetry: _loadDocument,
-        showExternal: !widget.clientMode,
-        onExternal: _openExternal,
       );
     }
 
@@ -452,8 +428,6 @@ class _WorkflowDocumentViewerScreenState
                 errorBuilder: (_, error) => _ErrorView(
                   message: 'Unable to open this document right now.',
                   onRetry: _loadDocument,
-                  showExternal: !widget.clientMode,
-                  onExternal: _openExternal,
                 ),
               ),
             ),
@@ -504,8 +478,6 @@ class _WorkflowDocumentViewerScreenState
     return _ErrorView(
       message: 'This document format cannot be previewed.',
       onRetry: _loadDocument,
-      showExternal: !widget.clientMode,
-      onExternal: _openExternal,
     );
   }
 }
@@ -589,14 +561,10 @@ class _PdfPageControls extends StatelessWidget {
 class _ErrorView extends StatelessWidget {
   final String message;
   final VoidCallback onRetry;
-  final bool showExternal;
-  final VoidCallback? onExternal;
 
   const _ErrorView({
     required this.message,
     required this.onRetry,
-    this.showExternal = false,
-    this.onExternal,
   });
 
   @override
@@ -632,14 +600,6 @@ class _ErrorView extends StatelessWidget {
                 foregroundColor: Colors.white,
               ),
             ),
-            if (showExternal && onExternal != null) ...[
-              const SizedBox(height: 12),
-              TextButton.icon(
-                onPressed: onExternal,
-                icon: const Icon(Icons.open_in_new_rounded),
-                label: const Text('Open externally'),
-              ),
-            ],
           ],
         ),
       ),

@@ -52,7 +52,14 @@ class ClientGenerationService {
   /// Cache-first: hydrate prefs, paint immediately when a value exists for
   /// this project, then refresh in the background. Awaits the network only
   /// when there is no persisted generation for the current project.
-  Future<void> ensureLoaded({String? projectId, bool force = false}) async {
+  ///
+  /// [waitForNetwork] false never blocks on that lookup. Launch uses it so a
+  /// missing `created_from_sales_sop` response cannot hold the splash.
+  Future<void> ensureLoaded({
+    String? projectId,
+    bool force = false,
+    bool waitForNetwork = true,
+  }) async {
     final pid = projectId?.trim();
     if (!_hydrated ||
         (pid != null &&
@@ -70,7 +77,7 @@ class ClientGenerationService {
             _hydratedProjectId == null ||
             _hydratedProjectId == pid);
 
-    if (hasCacheForProject && !force) {
+    if (!waitForNetwork || (hasCacheForProject && !force)) {
       unawaited(refresh(projectId: projectId));
       return;
     }

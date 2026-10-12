@@ -29,7 +29,7 @@ void main() {
     await tester.pumpWidget(
       ValueListenableBuilder<ThemeMode>(
         valueListenable: ThemeService.instance.modeNotifier,
-        builder: (context, themeMode, _) {
+        builder: (context, themeMode, startup) {
           return MaterialApp(
             theme: AppTheme.getLightTheme(),
             darkTheme: AppTheme.getDarkTheme(),
@@ -40,9 +40,10 @@ void main() {
                 child: child ?? const SizedBox.shrink(),
               );
             },
-            home: const _ThemeProbe(),
+            home: startup,
           );
         },
+        child: const _ThemeProbe(),
       ),
     );
     await tester.pump();

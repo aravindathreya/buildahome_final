@@ -36,7 +36,6 @@ import 'services/mobile_quick_actions.dart';
 import 'services/mobile_quick_actions_service.dart';
 import 'services/session_manager.dart';
 import 'stock_report.dart';
-import 'TasksScreen.dart';
 import 'MyTasksScreen.dart';
 import 'task_display_title.dart';
 import 'indent_task_material.dart';
@@ -77,6 +76,7 @@ import 'documents_v1/documents_v1_home_screen.dart';
 import 'TechnicalSpecsScreen.dart';
 import 'VirtualTour.dart';
 import 'Dpr.dart';
+import 'user_facing_error.dart';
 
 class AdminDashboard extends StatefulWidget {
   /// Called once the staff shell has painted its first frame.
@@ -447,6 +447,7 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
   bool _isLoadingTasks = false;
   bool _hasLoadedTasksOnce = false;
   String? _tasksError;
+  Future<void>? _tasksLoad;
   Map<int, Map<String, dynamic>> _previousTasksMap =
       {}; // Track previous tasks for comparison
 
@@ -778,12 +779,23 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
   Future<void> loadTasks({bool silent = false}) async {
     if (!mounted) return;
 
-    // Prevent multiple simultaneous calls
-    if (_isLoadingTasks) {
-      print(
-          '[AdminDashboard] loadTasks already in progress, skipping duplicate call');
-      return;
+    final inFlight = _tasksLoad;
+    if (inFlight != null) {
+      await inFlight;
+      if (!mounted || silent) return;
     }
+
+    final run = _loadTasksNow(silent: silent);
+    _tasksLoad = run;
+    try {
+      await run;
+    } finally {
+      if (identical(_tasksLoad, run)) _tasksLoad = null;
+    }
+  }
+
+  Future<void> _loadTasksNow({required bool silent}) async {
+    if (!mounted) return;
 
     final showLoader = !silent && _tasks.isEmpty;
     if (showLoader) {
@@ -855,10 +867,14 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
             _isLoadingTasks = false;
             _hasLoadedTasksOnce = true;
             _previousTasksMap = currentTasksMap;
+            _tasksError = null;
           });
         } else {
           _isLoadingTasks = false;
           _hasLoadedTasksOnce = true;
+          if (_tasksError != null) {
+            setState(() => _tasksError = null);
+          }
         }
     } catch (e) {
       if (e is SessionInvalidatedException) return;
@@ -870,7 +886,7 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
         return;
       }
       setState(() {
-        _tasksError = e.toString().replaceAll('Exception: ', '');
+        _tasksError = userFacingError(e);
         _isLoadingTasks = false;
         _hasLoadedTasksOnce = true;
         _tasks = [];
@@ -941,7 +957,7 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(e.toString().replaceAll('Exception: ', '')),
+          content: Text(userFacingError(e)),
           backgroundColor: Colors.red,
           duration: Duration(seconds: 3),
         ),
@@ -1012,7 +1028,7 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
               Icon(Icons.error, color: Colors.white),
               SizedBox(width: 8),
               Expanded(
-                child: Text(e.toString().replaceAll('Exception: ', '')),
+                child: Text(userFacingError(e)),
               ),
             ],
           ),
@@ -1021,36 +1037,6 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
         ),
       );
     }
-  }
-
-  void _showCreateTaskDialog() {
-    if (_isNavigating) return;
-    _isNavigating = true;
-    if (mounted) setState(() {});
-
-    if (!NavigationDebounce.tryAcquire()) {
-      _isNavigating = false;
-      if (mounted) setState(() {});
-      return;
-    }
-    NavigationDebounce.beginPush();
-    _navigateWithAnimation(
-      context,
-      TasksLayout(
-        initialTasks: _tasks,
-        onTaskUpdated: () {
-          loadTasks();
-        },
-        loadTasksCallback: () async {
-          await loadTasks();
-          return _tasks;
-        },
-      ),
-    ).whenComplete(() {
-      NavigationDebounce.endPush();
-      _isNavigating = false;
-      if (mounted) setState(() {});
-    });
   }
 
   List<Map<String, dynamic>> getMenuItems() {
@@ -1879,8 +1865,11 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
                 child: _buildMiniStat(
                   label: 'Projects',
                   value: '$totalProjects',
-                  color: const Color(0xFF2563EB),
-                  bg: const Color(0xFF1E3A5F),
+                  color: AppTheme.iconBoxInk(const Color(0xFF2563EB)),
+                  bg: AppTheme.iconBoxFill(
+                    const Color(0xFF1E3A5F),
+                    const Color(0xFF2563EB),
+                  ),
                   icon: Icons.folder_special_rounded,
                   onTap: openProjectsPicker,
                 ),
@@ -1890,8 +1879,11 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
                 child: _buildMiniStat(
                   label: 'Pending',
                   value: '$pendingCount',
-                  color: const Color(0xFFEAB308),
-                  bg: const Color(0xFF3D3420),
+                  color: AppTheme.iconBoxInk(const Color(0xFFEAB308)),
+                  bg: AppTheme.iconBoxFill(
+                    const Color(0xFF3D3420),
+                    const Color(0xFFEAB308),
+                  ),
                   icon: Icons.pending_actions_rounded,
                   onTap: openTasksScreen,
                 ),
@@ -1957,10 +1949,10 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
                 ],
               ),
             ),
-            const Icon(
+            Icon(
               Icons.chevron_right_rounded,
               size: 20,
-              color: _mutedGrey,
+              color: AppTheme.chevronColor,
             ),
           ],
         ),
@@ -2038,10 +2030,10 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
                   ],
                 ),
               ),
-              const Icon(
+              Icon(
                 Icons.chevron_right_rounded,
                 size: 22,
-                color: _mutedGrey,
+                color: AppTheme.chevronColor,
               ),
             ],
           ),
@@ -2068,21 +2060,20 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
               color: AppTheme.darkBackgroundSecondary,
               shape: BoxShape.circle,
               border: Border.all(
-                color: AppTheme.navy.withValues(alpha: 0.75),
-                width: 1.2,
+                color: AppTheme.isDark
+                    ? AppTheme.navy.withValues(alpha: 0.75)
+                    : AppTheme.border,
+                width: 1,
               ),
-              boxShadow: [
-                BoxShadow(
-                  color: AppTheme.navy.withValues(alpha: 0.55),
-                  blurRadius: 0.5,
-                  spreadRadius: 1,
-                ),
-                BoxShadow(
-                  color: AppTheme.navy.withValues(alpha: 0.25),
-                  blurRadius: 6,
-                  spreadRadius: 0,
-                ),
-              ],
+              boxShadow: AppTheme.isDark
+                  ? [
+                      BoxShadow(
+                        color: AppTheme.navy.withValues(alpha: 0.45),
+                        blurRadius: 0.5,
+                        spreadRadius: 1,
+                      ),
+                    ]
+                  : AppTheme.liftedShadow,
             ),
             child: Stack(
               clipBehavior: Clip.none,
@@ -2091,7 +2082,9 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
                 Icon(
                   _quickActionIcon(title, item['icon'] as IconData),
                   size: 36,
-                  color: AppTheme.darkTextPrimary,
+                  color: AppTheme.isDark
+                      ? AppTheme.darkTextPrimary
+                      : AppTheme.navy,
                 ),
                 if (title == 'Chat')
                   Positioned(
@@ -2821,33 +2814,6 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
                 ),
               ),
             ),
-            const SizedBox(width: 6),
-            Material(
-              color: _navy,
-              borderRadius: BorderRadius.circular(10),
-              child: InkWell(
-                onTap: () => _showCreateTaskDialog(),
-                borderRadius: BorderRadius.circular(10),
-                child: const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.add, color: Colors.white, size: 15),
-                      SizedBox(width: 4),
-                      Text(
-                        'New task',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
           ],
         ),
         const SizedBox(height: 12),
@@ -2918,32 +2884,11 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
                 ),
                 const SizedBox(height: 4),
                 const Text(
-                  'Create your first task',
+                  'Recent tasks will appear here',
                   style: TextStyle(
                     color: _mutedGrey,
                     fontSize: 12,
                     fontWeight: FontWeight.w500,
-                  ),
-                ),
-                const SizedBox(height: 14),
-                Material(
-                  color: _navy,
-                  borderRadius: BorderRadius.circular(10),
-                  child: InkWell(
-                    onTap: () => _showCreateTaskDialog(),
-                    borderRadius: BorderRadius.circular(10),
-                    child: const Padding(
-                      padding:
-                          EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                      child: Text(
-                        'New task',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 12.5,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
                   ),
                 ),
               ],
@@ -3524,7 +3469,7 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
                 Icon(Icons.error, color: Colors.white),
                 SizedBox(width: 8),
                 Expanded(
-                  child: Text(e.toString().replaceAll('Exception: ', '')),
+                  child: Text(userFacingError(e)),
                 ),
               ],
             ),

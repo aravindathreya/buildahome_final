@@ -138,6 +138,9 @@ WorkflowDocumentCategory? _categoryForJourney(
 /// Legacy `site_inspection` steps stay hidden for Client; staff see
 /// "Site Document" separately via [isSiteDocumentCategory].
 bool isClientPortalSitePrepCategory(WorkflowDocumentCategory category) {
+  // Site inspection report folder is a document category, not site-prep.
+  if (isSiteDocumentCategory(category)) return false;
+
   final journey = (category.clientJourneyKey ?? '').trim().toLowerCase();
   if (journey == ClientJourneyKeys.sitePrep ||
       journey == ClientJourneyKeys.demolition) {
@@ -154,12 +157,6 @@ bool isClientPortalSitePrepCategory(WorkflowDocumentCategory category) {
     return true;
   }
   if (blob.contains('demolition')) return true;
-  // Old inspection journey (not the renamed Site Document category).
-  if (journey == ClientJourneyKeys.inspection ||
-      blob.contains('site_inspection') ||
-      blob.contains('site inspection')) {
-    return true;
-  }
   return false;
 }
 
@@ -184,7 +181,7 @@ bool isPlanningCommercialCategory(WorkflowDocumentCategory category) {
 }
 
 String displayTitleForDocumentCategory(WorkflowDocumentCategory category) {
-  if (isSiteDocumentCategory(category)) return 'Site Document';
+  if (isSiteDocumentCategory(category)) return 'Site inspection report';
   if (isPlanningCommercialCategory(category)) {
     return 'Planning & Commercial Documents';
   }
@@ -351,10 +348,9 @@ List<ClientPortalHubItem> buildClientPortalHubItems(
       final siteDoc = isSiteDocumentCategory(category);
       final planning = isPlanningCommercialCategory(category);
       if (isClientPortalSitePrepCategory(category) && !siteDoc) continue;
-      // Clients never see Site Document or Planning & Commercial.
-      // Staff on the client catalog use that same list.
-      // Project Coordinator and APC keep those rows when their matrix allows.
-      if ((siteDoc || planning) &&
+      // Planning & Commercial stays staff-only. Site inspection report is in
+      // For Me and Docs for Client and staff.
+      if (planning &&
           (role == null ? false : isClientRole || matchClientCatalog)) {
         continue;
       }
@@ -376,7 +372,7 @@ List<ClientPortalHubItem> buildClientPortalHubItems(
           id: category.id,
           title: title,
           subtitle: siteDoc
-              ? 'Site inspection report'
+              ? 'Open site inspection report'
               : planning
                   ? 'Final Cost Sheet'
                   : catalogCategorySubtitle(category),

@@ -9,6 +9,7 @@ import 'widgets/modern_task_card.dart';
 import 'task_display_title.dart';
 import 'indent_task_material.dart';
 import 'widgets/skeleton_loader.dart';
+import 'user_facing_error.dart';
 
 class ViewAllTasksScreen extends StatefulWidget {
   final List<dynamic> tasks;
@@ -299,7 +300,7 @@ class _ViewAllTasksScreenState extends State<ViewAllTasksScreen> {
               Icon(Icons.error, color: Colors.white),
               SizedBox(width: 8),
               Expanded(
-                child: Text(e.toString().replaceAll('Exception: ', '')),
+                child: Text(userFacingError(e)),
               ),
             ],
           ),
@@ -409,7 +410,7 @@ class _ViewAllTasksScreenState extends State<ViewAllTasksScreen> {
               Icon(Icons.error, color: Colors.white),
               SizedBox(width: 8),
               Expanded(
-                child: Text(e.toString().replaceAll('Exception: ', '')),
+                child: Text(userFacingError(e)),
               ),
             ],
           ),
@@ -487,7 +488,7 @@ class _ViewAllTasksScreenState extends State<ViewAllTasksScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: ${e.toString()}'), backgroundColor: Colors.red),
+          SnackBar(content: Text(userFacingError(e)), backgroundColor: Colors.red),
         );
       }
     }
@@ -536,7 +537,7 @@ class _ViewAllTasksScreenState extends State<ViewAllTasksScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: ${e.toString()}'), backgroundColor: Colors.red),
+          SnackBar(content: Text(userFacingError(e)), backgroundColor: Colors.red),
         );
       }
     }

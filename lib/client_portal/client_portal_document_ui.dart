@@ -414,13 +414,68 @@ ClientPortalCategoryVisual categoryVisualForCategory(
 }
 
 String catalogCategorySubtitle(WorkflowDocumentCategory category) {
-  final types = category.sections
+  final types = substantiveDocumentSections(category)
       .map((section) => section.label.trim())
       .where((label) => label.isNotEmpty)
       .take(3)
       .toList();
   if (types.isNotEmpty) return types.join(', ');
   return categoryVisualForCategory(category).subtitle;
+}
+
+String _normFolderKey(String value) {
+  return value
+      .trim()
+      .toLowerCase()
+      .replaceAll(RegExp(r'[^a-z0-9]+'), ' ')
+      .trim();
+}
+
+String _folderStem(String normalized) {
+  return normalized
+      .replaceAll(
+        RegExp(r'\b(documents?|reports?|docs?|and|the|test)\b'),
+        ' ',
+      )
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .trim();
+}
+
+/// True when two folder names are the same label with punctuation / filler
+/// words ignored (e.g. "Quality & Test Reports" ≈ "Quality and test report").
+bool folderKeysLookSame(String a, String b) {
+  final left = _normFolderKey(a);
+  final right = _normFolderKey(b);
+  if (left.isEmpty || right.isEmpty) return false;
+  if (left == right) return true;
+  if (left.replaceAll(' ', '') == right.replaceAll(' ', '')) return true;
+  final stemL = _folderStem(left);
+  final stemR = _folderStem(right);
+  return stemL.isNotEmpty && stemR.isNotEmpty && stemL == stemR;
+}
+
+/// Section that only repeats the parent category name (Quality → Quality).
+bool sectionMirrorsDocumentCategory(
+  WorkflowDocumentSection section,
+  WorkflowDocumentCategory category,
+) {
+  if (section.label.trim().isEmpty) return true;
+  return folderKeysLookSame(section.label, category.label) ||
+      folderKeysLookSame(section.id, category.id) ||
+      folderKeysLookSame(section.label, category.id) ||
+      folderKeysLookSame(section.id, category.label);
+}
+
+/// Real child folders only — drops mirrored category-named sections.
+List<WorkflowDocumentSection> substantiveDocumentSections(
+  WorkflowDocumentCategory category,
+) {
+  final sections = category.sections;
+  if (sections.length <= 1) return sections;
+  final trimmed = sections
+      .where((section) => !sectionMirrorsDocumentCategory(section, category))
+      .toList();
+  return trimmed.isEmpty ? sections : trimmed;
 }
 
 ClientPortalCategoryVisual sectionVisualFor(WorkflowDocumentSection section) {
@@ -488,10 +543,90 @@ ClientPortalCategoryVisual sectionVisualFor(WorkflowDocumentSection section) {
       iconFg: Color(0xFFFBBF24),
     );
   }
-  if (label.contains('ndt') || id.contains('ndt')) {
+  if (label.contains('soil') || id.contains('soil')) {
+    return const ClientPortalCategoryVisual(
+      icon: Icons.science_outlined,
+      subtitle: 'Soil investigation reports',
+      iconBg: Color(0xFF143028),
+      iconFg: Color(0xFF34D399),
+    );
+  }
+  if (label.contains('qc') ||
+      id.contains('qc') ||
+      label.contains('ndt') ||
+      id.contains('ndt')) {
     return const ClientPortalCategoryVisual(
       icon: Icons.biotech_outlined,
       subtitle: 'Non-destructive test reports',
+      iconBg: Color(0xFF143028),
+      iconFg: Color(0xFF34D399),
+    );
+  }
+  if (label.contains('site inspection') ||
+      id.contains('site_inspection') ||
+      id.contains('sipr') ||
+      label.contains('sipr')) {
+    return const ClientPortalCategoryVisual(
+      icon: Icons.fact_check_outlined,
+      subtitle: 'Site inspection reports',
+      iconBg: Color(0xFF2A2112),
+      iconFg: Color(0xFFFBBF24),
+    );
+  }
+  if (label == 'site document' ||
+      id == 'site_document' ||
+      (label.contains('site document') || id.contains('site_document'))) {
+    return const ClientPortalCategoryVisual(
+      icon: Icons.description_outlined,
+      subtitle: 'Site documents',
+      iconBg: Color(0xFF142830),
+      iconFg: Color(0xFF67E8F9),
+    );
+  }
+  if (label.contains('framing') || id.contains('framing')) {
+    return const ClientPortalCategoryVisual(
+      icon: Icons.account_tree_outlined,
+      subtitle: 'Framing drawings',
+      iconBg: Color(0xFF143028),
+      iconFg: Color(0xFF34D399),
+    );
+  }
+  if (label.contains('foundation') || label.contains('plinth')) {
+    return const ClientPortalCategoryVisual(
+      icon: Icons.foundation_outlined,
+      subtitle: 'Foundation drawings',
+      iconBg: Color(0xFF143028),
+      iconFg: Color(0xFF34D399),
+    );
+  }
+  if (label.contains('working drawing') || id.contains('working_drawing')) {
+    return const ClientPortalCategoryVisual(
+      icon: Icons.architecture_outlined,
+      subtitle: 'Working drawings',
+      iconBg: Color(0xFF2A2040),
+      iconFg: Color(0xFFC4B5FD),
+    );
+  }
+  if (label.contains('floor plan') || id.contains('floor_plan')) {
+    return const ClientPortalCategoryVisual(
+      icon: Icons.apartment_outlined,
+      subtitle: 'Floor plan drawings',
+      iconBg: Color(0xFF2A2040),
+      iconFg: Color(0xFFC4B5FD),
+    );
+  }
+  if (label.contains('proposal') || id.contains('proposal')) {
+    return const ClientPortalCategoryVisual(
+      icon: Icons.description_outlined,
+      subtitle: 'Project proposal',
+      iconBg: Color(0xFF2A2040),
+      iconFg: Color(0xFFC4B5FD),
+    );
+  }
+  if (label.contains('booking') || id.contains('booking')) {
+    return const ClientPortalCategoryVisual(
+      icon: Icons.bookmark_added_outlined,
+      subtitle: 'Booking forms',
       iconBg: Color(0xFF143028),
       iconFg: Color(0xFF34D399),
     );
@@ -563,7 +698,15 @@ int workflowDocCountForJourney(
 }
 
 int workflowDocCountForCategory(WorkflowDocumentCategory category) {
-  return category.documentCount;
+  // Multi-file folders / sections can have several PDFs under one key —
+  // count every row, not only "latest".
+  return category.sections.fold<int>(0, (sum, section) {
+    if (isMultiFileDocumentCategory(category) ||
+        isMultiFileDocumentSection(section)) {
+      return sum + section.documents.length;
+    }
+    return sum + section.documentCount;
+  });
 }
 
 class ClientPortalSectionHeading extends StatelessWidget {
@@ -661,15 +804,17 @@ class ClientPortalCountBadge extends StatelessWidget {
       height: 28,
       alignment: Alignment.center,
       decoration: BoxDecoration(
-        color: const Color(0xFF3A2A55),
+        color: AppTheme.isDark
+            ? const Color(0xFF3A2A55)
+            : ClientPortalDocTheme.accentBlue.withValues(alpha: 0.14),
         shape: BoxShape.circle,
       ),
       child: Text(
         count > 99 ? '99+' : '$count',
-        style: const TextStyle(
+        style: TextStyle(
           fontWeight: FontWeight.w800,
           fontSize: 11,
-          color: ClientPortalDocTheme.accentBlue,
+          color: AppTheme.isDark ? ClientPortalDocTheme.accentBlue : AppTheme.navy,
         ),
       ),
     );
@@ -683,23 +828,33 @@ class ClientPortalStatusBadge extends StatelessWidget {
 
   const ClientPortalStatusBadge({super.key, required this.kind});
 
-  static ClientPortalStatusBadgeKind fromStatus(String? status, {required bool isLatest}) {
+  static ClientPortalStatusBadgeKind fromStatus(
+    String? status, {
+    required bool isLatest,
+    bool hasUrl = false,
+  }) {
     final normalized = status?.trim().toLowerCase() ?? '';
     if (normalized == 'verified') return ClientPortalStatusBadgeKind.verified;
     if (normalized == 'superseded' || normalized == 'older') {
       return ClientPortalStatusBadgeKind.superseded;
     }
-    if (normalized == 'pending' ||
+    // Catalog rows often stay "pending"/"required" even after a file exists.
+    // If there is a URL, never show Pending — match For Me / openable state.
+    final catalogPending = normalized == 'pending' ||
         normalized == 'missing' ||
         normalized == 'inactive' ||
         normalized == 'required' ||
-        normalized == 'mandatory') {
+        normalized == 'mandatory';
+    if (catalogPending && !hasUrl) {
       return ClientPortalStatusBadgeKind.pending;
     }
-    if (normalized == 'optional') return ClientPortalStatusBadgeKind.optional;
+    if (normalized == 'optional' && !hasUrl) {
+      return ClientPortalStatusBadgeKind.optional;
+    }
     if (normalized == 'latest' ||
         normalized == 'uploaded' ||
         normalized == 'available' ||
+        hasUrl ||
         isLatest) {
       return ClientPortalStatusBadgeKind.latest;
     }
@@ -710,36 +865,40 @@ class ClientPortalStatusBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    late Color bg;
-    late Color fg;
+    late Color darkBg;
+    late Color accent;
     late String label;
     switch (kind) {
       case ClientPortalStatusBadgeKind.latest:
-        bg = const Color(0xFF143028);
-        fg = const Color(0xFF34D399);
+        darkBg = const Color(0xFF143028);
+        accent = const Color(0xFF34D399);
         label = 'Latest';
         break;
       case ClientPortalStatusBadgeKind.verified:
-        bg = const Color(0xFF143028);
-        fg = const Color(0xFF34D399);
+        darkBg = const Color(0xFF143028);
+        accent = const Color(0xFF34D399);
         label = 'Verified';
         break;
       case ClientPortalStatusBadgeKind.superseded:
-        bg = const Color(0xFF2A2A2D);
-        fg = AppTheme.mutedGrey;
+        darkBg = const Color(0xFF2A2A2D);
+        accent = AppTheme.mutedGrey;
         label = 'Superseded';
         break;
       case ClientPortalStatusBadgeKind.optional:
-        bg = const Color(0xFF2A2A2D);
-        fg = AppTheme.mutedGrey;
+        darkBg = const Color(0xFF2A2A2D);
+        accent = AppTheme.mutedGrey;
         label = 'Optional';
         break;
       case ClientPortalStatusBadgeKind.pending:
-        bg = const Color(0xFF2A2112);
-        fg = const Color(0xFFFBBF24);
+        darkBg = const Color(0xFF2A2112);
+        accent = const Color(0xFFFBBF24);
         label = 'Pending';
         break;
     }
+    final bg = AppTheme.isDark
+        ? darkBg
+        : accent.withValues(alpha: 0.16);
+    final fg = AppTheme.isDark ? accent : AppTheme.iconBoxInk(accent);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
@@ -800,13 +959,18 @@ class ClientPortalCategoryCard extends StatelessWidget {
                 width: journeyStyle ? 48 : 44,
                 height: journeyStyle ? 48 : 44,
                 decoration: BoxDecoration(
-                  color: iconBg ?? const Color(0xFF2A2040),
+                  color: AppTheme.iconBoxFill(
+                    iconBg ?? const Color(0xFF2A2040),
+                    iconFg ?? AppTheme.accentBlue,
+                  ),
                   borderRadius:
                       BorderRadius.circular(ClientPortalDocTheme.iconBoxRadius),
                 ),
                 child: Icon(
                   icon,
-                  color: iconFg ?? AppTheme.darkTextPrimary,
+                  color: iconFg == null
+                      ? AppTheme.textPrimary
+                      : AppTheme.iconBoxInk(iconFg!),
                   size: journeyStyle ? 24 : 22,
                 ),
               ),
@@ -890,15 +1054,19 @@ class ClientPortalSectionCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final visual = sectionVisualFor(section);
+    final visible = sectionWithMobileVisibleDocuments(section);
     final isRevisions = section.id.trim().toLowerCase() == 'revisions' ||
         section.label.trim().toLowerCase() == 'revisions';
+    final countAllFiles =
+        isRevisions || isMultiFileDocumentSection(section);
     return ClientPortalCategoryCard(
       icon: visual.icon,
       title: section.label,
       subtitle: visual.subtitle,
-      // Revisions are non-latest by definition; count every row.
-      badgeCount:
-          isRevisions ? section.documents.length : section.documentCount,
+      // Checked / current versions only — multi-file still counts every peer.
+      badgeCount: countAllFiles
+          ? visible.documents.length
+          : visible.documentCount,
       iconBg: visual.iconBg,
       iconFg: visual.iconFg,
       journeyStyle: true,
@@ -1022,8 +1190,9 @@ class ClientPortalDocumentRow extends StatelessWidget {
     final badgeKind = showVerifiedBadge && document.isVerifiedStatus
         ? ClientPortalStatusBadgeKind.verified
         : ClientPortalStatusBadge.fromStatus(
-            document.status,
+            document.displayStatus,
             isLatest: document.isLatest,
+            hasUrl: document.hasUrl,
           );
 
     return Material(
@@ -1141,32 +1310,30 @@ class _LeadingPreview extends StatelessWidget {
 
   Widget _iconBox(WorkflowDocumentUpload document) {
     if (document.isPdf) {
-      return Container(
-        width: 40,
-        height: 40,
-        decoration: BoxDecoration(
-          color: const Color(0xFF2C1618),
-          borderRadius: BorderRadius.circular(10),
-        ),
-        child: const Icon(
-          Icons.picture_as_pdf_rounded,
-          color: Color(0xFFF87171),
-          size: 22,
-        ),
+      return _fileTypeIcon(
+        icon: Icons.picture_as_pdf_rounded,
+        darkBg: const Color(0xFF2C1618),
+        accent: const Color(0xFFF87171),
+        size: 40,
+        iconSize: 22,
+        radius: 10,
       );
     }
-    return Container(
-      width: 40,
-      height: 40,
-      decoration: BoxDecoration(
-        color: const Color(0xFF2A2040),
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Icon(
-        document.isImage ? Icons.image_outlined : Icons.description_outlined,
-        color: AppTheme.darkTextPrimary,
-        size: 20,
-      ),
+    final accent = document.isImage
+        ? const Color(0xFF34D399)
+        : const Color(0xFFC4B5FD);
+    final darkBg = document.isImage
+        ? const Color(0xFF143028)
+        : const Color(0xFF2A2040);
+    return _fileTypeIcon(
+      icon: document.isImage
+          ? Icons.image_outlined
+          : Icons.description_outlined,
+      darkBg: darkBg,
+      accent: accent,
+      size: 40,
+      iconSize: 20,
+      radius: 10,
     );
   }
 }
@@ -1182,9 +1349,15 @@ class ClientPortalInfoBanner extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: const Color(0xFF241A33),
+        color: AppTheme.isDark
+            ? const Color(0xFF241A33)
+            : const Color(0xFFF5F3FF),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFF3A2A55)),
+        border: Border.all(
+          color: AppTheme.isDark
+              ? const Color(0xFF3A2A55)
+              : const Color(0xFFDDD6FE),
+        ),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1342,7 +1515,7 @@ List<WorkflowDocumentSection> filterWorkflowSectionsBySearch(
   }).toList();
 }
 
-/// For me / client portal: Architectural collapses to Final + Revisions.
+/// Architectural category in Docs / For Me.
 bool isArchitecturalDocumentCategory(WorkflowDocumentCategory category) {
   final blob =
       '${category.id} ${category.label} ${category.libraryGroupKey ?? ''} ${category.clientJourneyKey ?? ''}'
@@ -1364,7 +1537,203 @@ bool isClientPortalArchitecturalGroupedSection(WorkflowDocumentSection section) 
   return id == 'final' ||
       id == 'revisions' ||
       label == 'final' ||
-      label == 'revisions';
+      label == 'revisions' ||
+      _architecturalTypeDefs.any(
+        (type) => type.id == id || type.label.toLowerCase() == label,
+      );
+}
+
+class _ArchitecturalTypeDef {
+  const _ArchitecturalTypeDef({
+    required this.id,
+    required this.label,
+    required this.matches,
+  });
+
+  final String id;
+  final String label;
+  final bool Function(String blob) matches;
+}
+
+/// Canonical Architectural document types (office checklist order).
+const List<_ArchitecturalTypeDef> _architecturalTypeDefs = [
+  _ArchitecturalTypeDef(
+    id: 'final_floor_plan',
+    label: 'Final Floor plan',
+    matches: _matchFinalFloorPlan,
+  ),
+  _ArchitecturalTypeDef(
+    id: 'working_drawing',
+    label: 'Working drawing',
+    matches: _matchWorkingDrawing,
+  ),
+  _ArchitecturalTypeDef(
+    id: 'filler_slab',
+    label: 'Filler slab detail (if any)',
+    matches: _matchFillerSlab,
+  ),
+  _ArchitecturalTypeDef(
+    id: 'section',
+    label: 'Section',
+    matches: _matchSection,
+  ),
+  _ArchitecturalTypeDef(
+    id: 'final_elevation',
+    label: 'Final Elevation',
+    matches: _matchFinalElevation,
+  ),
+  _ArchitecturalTypeDef(
+    id: '2d_elevation',
+    label: '2D Elevation',
+    matches: _match2dElevation,
+  ),
+  _ArchitecturalTypeDef(
+    id: 'door_window_grill',
+    label: 'Door/Window/ grill detail',
+    matches: _matchDoorWindowGrill,
+  ),
+  _ArchitecturalTypeDef(
+    id: 'flooring_details',
+    label: 'Flooring details',
+    matches: _matchFlooring,
+  ),
+  _ArchitecturalTypeDef(
+    id: 'dado_detail',
+    label: 'Dado Detail - Kitchen/toilet',
+    matches: _matchDado,
+  ),
+  _ArchitecturalTypeDef(
+    id: 'fabrication_detail',
+    label: 'Fabrication Detail',
+    matches: _matchFabrication,
+  ),
+  _ArchitecturalTypeDef(
+    id: 'skylight_detail',
+    label: 'Skylight detail',
+    matches: _matchSkylight,
+  ),
+  _ArchitecturalTypeDef(
+    id: 'paint_shade',
+    label: 'Paint shade',
+    matches: _matchPaintShade,
+  ),
+  _ArchitecturalTypeDef(
+    id: 'final_area_statement',
+    label: 'Final Area statement',
+    matches: _matchAreaStatement,
+  ),
+];
+
+bool _matchAreaStatement(String blob) => blob.contains('area statement');
+
+bool _matchFinalFloorPlan(String blob) =>
+    blob.contains('floor plan') || blob.contains('floor_plan');
+
+bool _matchWorkingDrawing(String blob) =>
+    blob.contains('working draw') ||
+    blob.contains('working_drawing') ||
+    blob.contains('workingdrawing');
+
+bool _matchFillerSlab(String blob) =>
+    blob.contains('filler slab') || blob.contains('filler_slab');
+
+bool _matchSection(String blob) {
+  if (_matchAreaStatement(blob) ||
+      _matchFinalFloorPlan(blob) ||
+      _matchWorkingDrawing(blob) ||
+      _matchFillerSlab(blob)) {
+    return false;
+  }
+  return RegExp(r'\bsection\b').hasMatch(blob) ||
+      blob.contains('section.pdf') ||
+      blob.contains('section_');
+}
+
+bool _match2dElevation(String blob) =>
+    blob.contains('2d elevation') ||
+    blob.contains('2 d elevation') ||
+    blob.contains('2d_elevation');
+
+bool _matchFinalElevation(String blob) {
+  if (_match2dElevation(blob)) return false;
+  return blob.contains('elevation');
+}
+
+bool _matchDoorWindowGrill(String blob) =>
+    blob.contains('door') ||
+    blob.contains('window') ||
+    blob.contains('grill');
+
+bool _matchFlooring(String blob) => blob.contains('flooring');
+
+bool _matchDado(String blob) => blob.contains('dado');
+
+bool _matchFabrication(String blob) => blob.contains('fabrication');
+
+bool _matchSkylight(String blob) => blob.contains('skylight');
+
+bool _matchPaintShade(String blob) =>
+    blob.contains('paint shade') ||
+    blob.contains('paint_shade') ||
+    (blob.contains('paint') && !blob.contains('repaint'));
+
+String _architecturalDocBlob(WorkflowDocumentUpload doc) {
+  return '${doc.documentKey} ${doc.name} ${doc.sectionLabel} ${doc.taskName ?? ''} ${doc.url ?? ''}'
+      .toLowerCase();
+}
+
+_ArchitecturalTypeDef? _architecturalTypeForDoc(WorkflowDocumentUpload doc) {
+  final blob = _architecturalDocBlob(doc);
+  for (final type in _architecturalTypeDefs) {
+    if (type.matches(blob)) return type;
+  }
+  return null;
+}
+
+/// Groups Architectural uploads into the 13 checklist type folders.
+/// Multiple uploads of the same type stay together under that section name.
+List<WorkflowDocumentSection> buildArchitecturalTypeSections(
+  WorkflowDocumentCategory category, {
+  bool hideAreaStatement = false,
+}) {
+  final buckets = <String, List<WorkflowDocumentUpload>>{
+    for (final type in _architecturalTypeDefs) type.id: <WorkflowDocumentUpload>[],
+  };
+  final seen = <String>{};
+
+  for (final section in category.sections) {
+    for (final doc in section.documents) {
+      if (hideAreaStatement && doc.isAreaStatement) continue;
+      final dedupe = [
+        doc.id,
+        doc.url ?? '',
+        doc.documentKey,
+        doc.revision?.toString() ?? '',
+        doc.name,
+      ].join('|').toLowerCase();
+      if (!seen.add(dedupe)) continue;
+      final type = _architecturalTypeForDoc(doc);
+      if (type == null) continue;
+      if (hideAreaStatement && type.id == 'final_area_statement') continue;
+      buckets[type.id]!.add(doc);
+    }
+  }
+
+  return [
+    for (final type in _architecturalTypeDefs)
+      if (!(hideAreaStatement && type.id == 'final_area_statement'))
+        sectionWithMobileVisibleDocuments(
+          WorkflowDocumentSection(
+            id: type.id,
+            label: type.label,
+            categoryId: category.id,
+            categoryLabel: category.label,
+            clientJourneyKey: category.clientJourneyKey,
+            libraryGroupKey: category.libraryGroupKey,
+            documents: buckets[type.id] ?? const [],
+          ),
+        ),
+  ];
 }
 
 WorkflowDocumentSection _architecturalGroupedSection({
@@ -1378,7 +1747,6 @@ WorkflowDocumentSection _architecturalGroupedSection({
   final seen = <String>{};
   for (final section in category.sections) {
     for (final doc in section.documents) {
-      if (doc.isAreaStatement) continue;
       if (!include(doc)) continue;
       if (!seen.add(dedupeKey(doc))) continue;
       docs.add(doc);
@@ -1395,7 +1763,7 @@ WorkflowDocumentSection _architecturalGroupedSection({
   );
 }
 
-/// Aggregates latest/final Architectural docs into one client-facing section.
+/// Legacy Final aggregate (tests / older callers).
 WorkflowDocumentSection buildClientPortalArchitecturalFinalSection(
   WorkflowDocumentCategory category,
 ) {
@@ -1409,7 +1777,7 @@ WorkflowDocumentSection buildClientPortalArchitecturalFinalSection(
   );
 }
 
-/// Aggregates non-final Architectural revisions into one client-facing section.
+/// Legacy Revisions aggregate (tests / older callers).
 WorkflowDocumentSection buildClientPortalArchitecturalRevisionsSection(
   WorkflowDocumentCategory category,
 ) {
@@ -1427,12 +1795,13 @@ WorkflowDocumentSection buildClientPortalArchitecturalRevisionsSection(
 
 List<WorkflowDocumentSection> clientPortalArchitecturalSections(
   WorkflowDocumentCategory category,
-  String query,
-) {
-  final sections = [
-    buildClientPortalArchitecturalFinalSection(category),
-    buildClientPortalArchitecturalRevisionsSection(category),
-  ];
+  String query, {
+  bool hideAreaStatement = false,
+}) {
+  final sections = buildArchitecturalTypeSections(
+    category,
+    hideAreaStatement: hideAreaStatement,
+  );
   final q = query.trim();
   if (q.isEmpty) return sections;
   return sections
@@ -1441,16 +1810,457 @@ List<WorkflowDocumentSection> clientPortalArchitecturalSections(
           section.documents.where((doc) => doc.matchesSearch(q)).toList(),
         ),
       )
-      .where((section) => section.documents.isNotEmpty)
+      .where(
+        (section) =>
+            section.documents.isNotEmpty ||
+            section.label.toLowerCase().contains(q.toLowerCase()),
+      )
       .toList();
 }
 
-/// Final and Revisions documents together, shown directly under Architectural.
+/// Flat file list under Architectural (legacy). Prefer type sections.
 WorkflowDocumentSection buildClientPortalArchitecturalDocumentsSection(
   WorkflowDocumentCategory category,
 ) {
   return _flatCategoryDocumentsSection(category);
 }
+
+bool _mapTruthy(dynamic raw) {
+  if (raw == true || raw == 1 || raw == '1') return true;
+  final text = raw?.toString().trim().toLowerCase();
+  return text == 'true' || text == 'yes';
+}
+
+/// Office "versions" checkbox / share flags (checked = show in app).
+bool? documentVersionExplicitVisibility(Map<String, dynamic> raw) {
+  for (final key in const [
+    'checked',
+    'is_checked',
+    'selected',
+    'is_selected',
+    'show_in_app',
+    'show_on_app',
+    'show_in_mobile',
+    'visible_in_app',
+    'client_visible',
+    'visible_to_client',
+    'is_visible',
+    'include_in_app',
+    'share_to_client',
+    'shared_to_client',
+    'is_shared',
+    'app_visible',
+    'mobile_visible',
+    'show_to_client',
+  ]) {
+    if (!raw.containsKey(key)) continue;
+    final value = raw[key];
+    if (value is bool) return value;
+    if (value is num) return value != 0;
+    final text = value.toString().trim().toLowerCase();
+    if (text.isEmpty || text == 'null') continue;
+    if (text == 'true' || text == 'yes' || text == '1') return true;
+    if (text == 'false' || text == 'no' || text == '0') return false;
+  }
+  return null;
+}
+
+bool _documentIsCurrentVersion(WorkflowDocumentUpload doc) {
+  if (doc.isLatest) return true;
+  final raw = doc.raw;
+  if (_mapTruthy(raw['is_current']) ||
+      _mapTruthy(raw['current']) ||
+      _mapTruthy(raw['is_active_version'])) {
+    return true;
+  }
+  final status = (doc.status ?? '').trim().toLowerCase();
+  return status == 'current' || status == 'latest' || status == 'final';
+}
+
+String _versionGroupKey(WorkflowDocumentUpload doc) {
+  var key = doc.documentKey.trim().toLowerCase();
+  if (key.isEmpty) key = doc.name.trim().toLowerCase();
+  key = key
+      .replaceAll(RegExp(r'(_|-)?v(er(sion)?)?\d+$'), '')
+      .replaceAll(RegExp(r'(_|-)?rev(ision)?\d+$'), '')
+      .replaceAll(RegExp(r'\s+v(er(sion)?)?\s*\d+$'), '')
+      .trim();
+  return key.isEmpty ? doc.id : key;
+}
+
+/// Never collapse an entire folder into one version family.
+///
+/// Docs + For Me both regroup into type folders (Architectural 13, Structural
+/// 3, …). Folding the whole folder hid every extra file (filler slab, section,
+/// elevation, framing sets, …). Revisions of the *same* drawing are still
+/// collapsed via [_versionGroupKey] + checked / latest filtering below.
+bool _sectionIsSingleVersionFamily(WorkflowDocumentSection section) => false;
+
+/// Versions the office checked for mobile, plus current/latest when unchecked
+/// flags are absent. Hides superseded / unchecked rows (fixes Framing ×3).
+List<WorkflowDocumentUpload> filterDocumentsForMobileDisplay(
+  List<WorkflowDocumentUpload> documents, {
+  bool keepAllMultiFilePeers = false,
+  bool singleVersionFamily = false,
+}) {
+  if (documents.isEmpty) return const [];
+
+  final byKey = <String, List<WorkflowDocumentUpload>>{};
+  if (singleVersionFamily && !keepAllMultiFilePeers) {
+    byKey['__family__'] = List<WorkflowDocumentUpload>.from(documents);
+  } else {
+    for (final doc in documents) {
+      final key = keepAllMultiFilePeers
+          ? (doc.documentKey.isNotEmpty
+              ? doc.documentKey
+              : (doc.id.isNotEmpty ? doc.id : doc.name))
+          : _versionGroupKey(doc);
+      byKey.putIfAbsent(key, () => <WorkflowDocumentUpload>[]).add(doc);
+    }
+  }
+
+  final out = <WorkflowDocumentUpload>[];
+  final seenUrls = <String>{};
+
+  for (final group in byKey.values) {
+    final hasExplicit = group.any(
+      (doc) => documentVersionExplicitVisibility(doc.raw) != null,
+    );
+    List<WorkflowDocumentUpload> chosen;
+    if (hasExplicit) {
+      chosen = group.where((doc) {
+        final visibility = documentVersionExplicitVisibility(doc.raw);
+        if (visibility == false) return false;
+        if (visibility == true) return true;
+        return _documentIsCurrentVersion(doc);
+      }).toList();
+    } else if (keepAllMultiFilePeers) {
+      chosen = group.where((doc) {
+        final status = (doc.status ?? '').trim().toLowerCase();
+        return status != 'superseded' && status != 'older';
+      }).toList();
+      if (chosen.isEmpty) {
+        chosen = List<WorkflowDocumentUpload>.from(group);
+      }
+    } else {
+      chosen = group.where(_documentIsCurrentVersion).toList();
+      if (chosen.length > 1) {
+        final sorted = List<WorkflowDocumentUpload>.from(chosen)
+          ..sort((a, b) {
+            final ar = a.revision ?? 0;
+            final br = b.revision ?? 0;
+            if (ar != br) return br.compareTo(ar);
+            return (b.uploadedAt ?? '').compareTo(a.uploadedAt ?? '');
+          });
+        chosen = [sorted.first];
+      } else if (chosen.isEmpty) {
+        final sorted = List<WorkflowDocumentUpload>.from(group)
+          ..sort((a, b) {
+            final ar = a.revision ?? 0;
+            final br = b.revision ?? 0;
+            if (ar != br) return br.compareTo(ar);
+            return (b.uploadedAt ?? '').compareTo(a.uploadedAt ?? '');
+          });
+        chosen = [sorted.first];
+      }
+    }
+
+    for (final doc in chosen) {
+      final url = (doc.url ?? '').trim().toLowerCase();
+      if (url.isNotEmpty && !seenUrls.add(url)) continue;
+      out.add(doc);
+    }
+  }
+  return out;
+}
+
+WorkflowDocumentSection sectionWithMobileVisibleDocuments(
+  WorkflowDocumentSection section,
+) {
+  final keepPeers = isMultiFileDocumentSection(section);
+  return section.copyWithDocuments(
+    filterDocumentsForMobileDisplay(
+      section.documents,
+      keepAllMultiFilePeers: keepPeers,
+      singleVersionFamily: _sectionIsSingleVersionFamily(section),
+    ),
+  );
+}
+
+bool isStructuralDocumentCategory(WorkflowDocumentCategory category) {
+  final blob =
+      '${category.id} ${category.label} ${category.libraryGroupKey ?? ''} ${category.clientJourneyKey ?? ''}'
+          .toLowerCase();
+  return blob.contains('structural') || blob.contains('civil');
+}
+
+bool isQualityDocumentCategory(WorkflowDocumentCategory category) {
+  final blob =
+      '${category.id} ${category.label} ${category.libraryGroupKey ?? ''} ${category.clientJourneyKey ?? ''}'
+          .toLowerCase();
+  return blob.contains('quality') || blob.contains('test report');
+}
+
+bool isElectricalDocumentCategory(WorkflowDocumentCategory category) {
+  final blob =
+      '${category.id} ${category.label} ${category.libraryGroupKey ?? ''} ${category.clientJourneyKey ?? ''}'
+          .toLowerCase();
+  return blob.contains('electrical') && !blob.contains('plumb');
+}
+
+bool isPlumbingDocumentCategory(WorkflowDocumentCategory category) {
+  final blob =
+      '${category.id} ${category.label} ${category.libraryGroupKey ?? ''} ${category.clientJourneyKey ?? ''}'
+          .toLowerCase();
+  return blob.contains('plumb');
+}
+
+bool isPreConversionDocumentCategory(WorkflowDocumentCategory category) {
+  final blob =
+      '${category.id} ${category.label} ${category.libraryGroupKey ?? ''} ${category.clientJourneyKey ?? ''}'
+          .toLowerCase();
+  return blob.contains('pre_conversion') || blob.contains('pre conversion');
+}
+
+const List<_ArchitecturalTypeDef> _structuralTypeDefs = [
+  _ArchitecturalTypeDef(
+    id: 'framing_drawing',
+    label: 'Framing drawing',
+    matches: _matchFraming,
+  ),
+  _ArchitecturalTypeDef(
+    id: 'foundation_upto_plinth',
+    label: 'Foundation upto plinth',
+    matches: _matchFoundation,
+  ),
+  _ArchitecturalTypeDef(
+    id: 'floor_wise_slab',
+    label: 'Floor wise slab drawings',
+    matches: _matchFloorWiseSlab,
+  ),
+];
+
+const List<_ArchitecturalTypeDef> _qualityTypeDefs = [
+  _ArchitecturalTypeDef(
+    id: 'soil_test_report',
+    label: 'Soil test report',
+    matches: _matchSoil,
+  ),
+  _ArchitecturalTypeDef(
+    id: 'qc_reports',
+    label: 'QC Reports(NDT test reports)',
+    matches: _matchQcReports,
+  ),
+  _ArchitecturalTypeDef(
+    id: 'site_inspection_report',
+    label: 'Site inspection report',
+    matches: _matchSiteInspectionReport,
+  ),
+  _ArchitecturalTypeDef(
+    id: 'site_document',
+    label: 'Site document',
+    matches: _matchSiteDocument,
+  ),
+];
+
+const List<_ArchitecturalTypeDef> _electricalTypeDefs = [
+  _ArchitecturalTypeDef(
+    id: 'electrical_point_drawing',
+    label: 'Electrical point drawing',
+    matches: _matchElectrical,
+  ),
+];
+
+const List<_ArchitecturalTypeDef> _plumbingTypeDefs = [
+  _ArchitecturalTypeDef(
+    id: 'plumbing_drawing',
+    label: 'Plumbing drawing',
+    matches: _matchPlumbing,
+  ),
+];
+
+const List<_ArchitecturalTypeDef> _preConversionTypeDefs = [
+  _ArchitecturalTypeDef(
+    id: 'proposal',
+    label: 'Proposal',
+    matches: _matchProposal,
+  ),
+  _ArchitecturalTypeDef(
+    id: 'booking_form',
+    label: 'Booking form',
+    matches: _matchBooking,
+  ),
+];
+
+bool _matchFraming(String blob) => blob.contains('framing');
+
+bool _matchFoundation(String blob) =>
+    blob.contains('foundation') || blob.contains('plinth');
+
+bool _matchFloorWiseSlab(String blob) =>
+    blob.contains('floor wise') ||
+    blob.contains('floor_wise') ||
+    blob.contains('floor slab') ||
+    blob.contains('slab drawing') ||
+    (blob.contains('slab') && !blob.contains('filler'));
+
+bool _matchSoil(String blob) => blob.contains('soil');
+
+bool _matchQcReports(String blob) =>
+    blob.contains('qc') || blob.contains('ndt');
+
+/// SIPR → Site inspection report (separate from Site document / SD).
+bool _matchSiteInspectionReport(String blob) =>
+    blob.contains('sipr') ||
+    blob.contains('site inspection') ||
+    blob.contains('site_inspection');
+
+/// SD → Site document (not SIPR / inspection report).
+bool _matchSiteDocument(String blob) {
+  if (_matchSiteInspectionReport(blob)) return false;
+  return blob.contains('site document') ||
+      blob.contains('site_document') ||
+      RegExp(r'(^|[^a-z])sd([^a-z]|$)').hasMatch(blob);
+}
+
+bool _matchElectrical(String blob) => blob.contains('electr');
+
+bool _matchPlumbing(String blob) => blob.contains('plumb');
+
+bool _matchProposal(String blob) => blob.contains('proposal');
+
+bool _matchBooking(String blob) => blob.contains('booking');
+
+bool _sectionLooksLikeSiprSdCombo(String sectionBlob) {
+  final blob = sectionBlob.toLowerCase();
+  if (blob.contains('sipr') &&
+      (blob.contains(',sd') ||
+          blob.contains(' sd') ||
+          blob.endsWith(',sd') ||
+          blob.contains('sipr,sd') ||
+          blob.contains('sipr / sd') ||
+          blob.contains('sipr/sd'))) {
+    return true;
+  }
+  return blob.replaceAll(' ', '') == 'sipr,sd';
+}
+
+_ArchitecturalTypeDef? _typeById(
+  List<_ArchitecturalTypeDef> types,
+  String id,
+) {
+  for (final type in types) {
+    if (type.id == id) return type;
+  }
+  return null;
+}
+
+_ArchitecturalTypeDef? _matchTypeForDocInSection({
+  required WorkflowDocumentUpload doc,
+  required WorkflowDocumentSection section,
+  required List<_ArchitecturalTypeDef> types,
+}) {
+  final docBlob = _architecturalDocBlob(doc);
+  final sectionBlob = '${section.id} ${section.label}'.toLowerCase();
+
+  for (final type in types) {
+    if (type.matches(docBlob)) return type;
+  }
+
+  // Combined API folder "SIPR,SD" — route into the two separate folders.
+  if (_sectionLooksLikeSiprSdCombo(sectionBlob)) {
+    if (_matchSiteDocument(docBlob)) {
+      return _typeById(types, 'site_document');
+    }
+    return _typeById(types, 'site_inspection_report');
+  }
+
+  for (final type in types) {
+    if (type.matches(sectionBlob)) return type;
+  }
+  return null;
+}
+
+List<WorkflowDocumentSection> _buildTypeSectionsFromDefs(
+  WorkflowDocumentCategory category,
+  List<_ArchitecturalTypeDef> types, {
+  bool hideAreaStatement = false,
+}) {
+  final buckets = <String, List<WorkflowDocumentUpload>>{
+    for (final type in types) type.id: <WorkflowDocumentUpload>[],
+  };
+  final seen = <String>{};
+
+  for (final section in category.sections) {
+    for (final doc in section.documents) {
+      if (hideAreaStatement && doc.isAreaStatement) continue;
+      final dedupe = [
+        doc.id,
+        doc.url ?? '',
+        doc.documentKey,
+        doc.revision?.toString() ?? '',
+        doc.name,
+      ].join('|').toLowerCase();
+      if (!seen.add(dedupe)) continue;
+
+      final matched = _matchTypeForDocInSection(
+        doc: doc,
+        section: section,
+        types: types,
+      );
+      if (matched == null) continue;
+      buckets[matched.id]!.add(doc);
+    }
+  }
+
+  // Named checklist folders only — no vague "Other" row.
+  return [
+    for (final type in types)
+      sectionWithMobileVisibleDocuments(
+        WorkflowDocumentSection(
+          id: type.id,
+          label: type.label,
+          categoryId: category.id,
+          categoryLabel: category.label,
+          clientJourneyKey: category.clientJourneyKey,
+          libraryGroupKey: category.libraryGroupKey,
+          documents: buckets[type.id] ?? const [],
+        ),
+      ),
+  ];
+}
+
+/// Checklist folders for Architectural / Structural / Quality / MEP / Pre-conversion.
+List<WorkflowDocumentSection>? buildChecklistTypeSectionsForCategory(
+  WorkflowDocumentCategory category, {
+  bool hideAreaStatement = false,
+}) {
+  if (isArchitecturalDocumentCategory(category)) {
+    return buildArchitecturalTypeSections(
+      category,
+      hideAreaStatement: hideAreaStatement,
+    );
+  }
+  if (isStructuralDocumentCategory(category)) {
+    return _buildTypeSectionsFromDefs(category, _structuralTypeDefs);
+  }
+  if (isQualityDocumentCategory(category)) {
+    return _buildTypeSectionsFromDefs(category, _qualityTypeDefs);
+  }
+  if (isElectricalDocumentCategory(category)) {
+    return _buildTypeSectionsFromDefs(category, _electricalTypeDefs);
+  }
+  if (isPlumbingDocumentCategory(category)) {
+    return _buildTypeSectionsFromDefs(category, _plumbingTypeDefs);
+  }
+  if (isPreConversionDocumentCategory(category)) {
+    return _buildTypeSectionsFromDefs(category, _preConversionTypeDefs);
+  }
+  return null;
+}
+
+bool usesChecklistTypeSections(WorkflowDocumentCategory category) =>
+    buildChecklistTypeSectionsForCategory(category) != null;
 
 bool isReceiptsAndAgreementsCategory(WorkflowDocumentCategory category) {
   final blob =
@@ -1458,6 +2268,66 @@ bool isReceiptsAndAgreementsCategory(WorkflowDocumentCategory category) {
           .toLowerCase();
   return blob.contains('receipts_and_agreements') ||
       (blob.contains('receipt') && blob.contains('agreement'));
+}
+
+/// True when a folder can hold several peer uploads under one definition
+/// (Electrical / Plumbing points, Soil test, Booking form).
+bool isMultiFileDocumentBlob(String blob) {
+  final lower = blob.toLowerCase();
+  return lower.contains('electrical') ||
+      lower.contains('plumb') ||
+      lower.contains('soil') ||
+      lower.contains('booking');
+}
+
+bool _blobLooksLikePreConversion(String blob) {
+  final lower = blob.toLowerCase();
+  return lower.contains('pre_conversion') || lower.contains('pre conversion');
+}
+
+bool _sectionLooksLikeProposal(WorkflowDocumentSection section) {
+  final blob = '${section.id} ${section.label}'.toLowerCase();
+  return blob.contains('proposal');
+}
+
+bool _sectionLooksLikeBooking(WorkflowDocumentSection section) {
+  final blob = '${section.id} ${section.label}'.toLowerCase();
+  return blob.contains('booking');
+}
+
+/// Electrical / Plumbing / Soil / Booking: open as one file list so every
+/// uploaded PDF under a point is visible.
+///
+/// Do not flatten parents like Quality or Pre-conversion — those keep their
+/// section folders (e.g. Proposal + Booking form, Soil + NDT).
+bool isMultiFileDocumentCategory(WorkflowDocumentCategory category) {
+  final blob =
+      '${category.id} ${category.label} ${category.libraryGroupKey ?? ''} ${category.clientJourneyKey ?? ''}'
+          .toLowerCase();
+  // Pre-conversion must show Proposal / Booking form as sections.
+  if (_blobLooksLikePreConversion(blob)) return false;
+  final hasProposal = category.sections.any(_sectionLooksLikeProposal);
+  final hasBooking = category.sections.any(_sectionLooksLikeBooking);
+  if (hasProposal && hasBooking) return false;
+
+  if (isMultiFileDocumentBlob(blob)) return true;
+  // Only MEP parents flatten to a file list (Electrical / Plumbing points).
+  if (blob.contains('mep')) {
+    return category.sections.any(isMultiFileDocumentSection);
+  }
+  return false;
+}
+
+/// Section-level multi-file check (Soil / Booking under Quality / Pre-conversion).
+bool isMultiFileDocumentSection(WorkflowDocumentSection section) {
+  final blob =
+      '${section.id} ${section.label} ${section.categoryId} ${section.categoryLabel} ${section.clientJourneyKey ?? ''} ${section.libraryGroupKey ?? ''}';
+  return isMultiFileDocumentBlob(blob);
+}
+
+/// Kept for callers that still use the Electrical / Plumbing name.
+bool isElectricalOrPlumbingDocumentCategory(WorkflowDocumentCategory category) {
+  return isMultiFileDocumentCategory(category);
 }
 
 /// Every file in the folder, so opening it shows the documents themselves.
@@ -1470,14 +2340,21 @@ WorkflowDocumentSection buildFlatCategoryDocumentsSection(
 WorkflowDocumentSection _flatCategoryDocumentsSection(
   WorkflowDocumentCategory category,
 ) {
+  final keepAreaStatement = isArchitecturalDocumentCategory(category);
   final docs = <WorkflowDocumentUpload>[];
   final seen = <String>{};
   for (final section in category.sections) {
     for (final doc in section.documents) {
-      if (doc.isAreaStatement) continue;
-      final key = doc.id.isNotEmpty
-          ? doc.id
-          : '${doc.documentKey}|${doc.revision ?? ''}|${doc.url ?? ''}|${doc.name}';
+      if (doc.isAreaStatement && !keepAreaStatement) continue;
+      // Same definition can have several PDFs — never collapse on id alone.
+      final key = [
+        doc.id,
+        doc.url ?? '',
+        doc.documentKey,
+        doc.revision?.toString() ?? '',
+        doc.name,
+        doc.uploadedAt ?? '',
+      ].join('|').toLowerCase();
       if (!seen.add(key)) continue;
       docs.add(doc);
     }
@@ -1528,7 +2405,10 @@ List<Widget> buildDocumentCategoryCards({
 }) {
   final q = searchQuery?.trim().toLowerCase() ?? '';
   final categories = filterDocumentCategoriesForRole(
-    withoutAreaStatementCategories(library.documentsTabCategories),
+    library.documentsTabCategories.map((category) {
+      if (isArchitecturalDocumentCategory(category)) return category;
+      return withoutAreaStatementDocuments(category);
+    }).where((category) => category.sections.isNotEmpty).toList(),
     role,
     clientMode: true,
   ).where((category) {
@@ -1568,14 +2448,19 @@ class ClientPortalJourneyStatusBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final dark = AppTheme.isDark;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: success ? const Color(0xFF143028) : const Color(0xFF2A2112),
+        color: success
+            ? (dark ? const Color(0xFF143028) : const Color(0xFFECFDF5))
+            : (dark ? const Color(0xFF2A2112) : const Color(0xFFFFF7ED)),
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
-          color: success ? const Color(0xFF065F46) : const Color(0xFF92400E),
+          color: success
+              ? (dark ? const Color(0xFF065F46) : const Color(0xFFA7F3D0))
+              : (dark ? const Color(0xFF92400E) : const Color(0xFFFDBA74)),
         ),
       ),
       child: Row(
@@ -1593,7 +2478,9 @@ class ClientPortalJourneyStatusBanner extends StatelessWidget {
             child: Icon(
               success ? Icons.check_rounded : Icons.hourglass_bottom_rounded,
               size: 16,
-              color: success ? const Color(0xFF34D399) : const Color(0xFFFBBF24),
+              color: success
+                  ? (dark ? const Color(0xFF34D399) : const Color(0xFF047857))
+                  : (dark ? const Color(0xFFFBBF24) : const Color(0xFF9A3412)),
             ),
           ),
           const SizedBox(width: 10),
@@ -1622,8 +2509,12 @@ class ClientPortalHelpCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: const Color(0xFF241A33),
+      color: AppTheme.isDark
+          ? const Color(0xFF241A33)
+          : AppTheme.darkBackgroundSecondary,
       borderRadius: BorderRadius.circular(14),
+      elevation: 0,
+      shadowColor: Colors.transparent,
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(14),
@@ -1632,7 +2523,12 @@ class ClientPortalHelpCard extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: const Color(0xFF5B3A8C)),
+            border: Border.all(
+              color: AppTheme.isDark
+                  ? const Color(0xFF5B3A8C)
+                  : AppTheme.border,
+            ),
+            boxShadow: AppTheme.isDark ? null : AppTheme.liftedShadow,
           ),
           child: Row(
             children: [
@@ -1640,12 +2536,15 @@ class ClientPortalHelpCard extends StatelessWidget {
                 width: 40,
                 height: 40,
                 decoration: BoxDecoration(
-                  color: const Color(0xFF2A2040),
+                  color: AppTheme.iconBoxFill(
+                    const Color(0xFF2A2040),
+                    const Color(0xFFC4B5FD),
+                  ),
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: const Icon(
+                child: Icon(
                   Icons.headset_mic_outlined,
-                  color: Color(0xFFC4B5FD),
+                  color: AppTheme.iconBoxInk(const Color(0xFFC4B5FD)),
                   size: 20,
                 ),
               ),
@@ -1662,7 +2561,7 @@ class ClientPortalHelpCard extends StatelessWidget {
               ),
               Icon(
                 Icons.chevron_right_rounded,
-                color: AppTheme.getTextSecondary(context),
+                color: AppTheme.chevronColor,
               ),
             ],
           ),
@@ -1688,7 +2587,7 @@ class ClientPortalSectionHeroCard extends StatelessWidget {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            visual.iconBg,
+            AppTheme.iconBoxFill(visual.iconBg, visual.iconFg),
             AppTheme.darkBackgroundSecondary,
           ],
         ),
@@ -1724,7 +2623,11 @@ class ClientPortalSectionHeroCard extends StatelessWidget {
                     ),
                   ],
                 ),
-                child: Icon(visual.icon, color: visual.iconFg, size: 30),
+                child: Icon(
+                  visual.icon,
+                  color: AppTheme.iconBoxInk(visual.iconFg),
+                  size: 30,
+                ),
               ),
               const SizedBox(height: 10),
               Text(
@@ -1743,6 +2646,7 @@ class ClientPortalSectionHeroCard extends StatelessWidget {
   }
 }
 
+/// Same detailed row as Docs (revision, date, size, status badge).
 class ClientPortalJourneyDocumentRow extends StatelessWidget {
   final WorkflowDocumentUpload document;
   final VoidCallback onTap;
@@ -1755,79 +2659,9 @@ class ClientPortalJourneyDocumentRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final uploadedLine = document.uploadedAt != null
-        ? 'Uploaded on ${document.uploadedAt}'
-        : null;
-
-    return Material(
-      color: ClientPortalDocTheme.cardBackground,
-      borderRadius: BorderRadius.circular(14),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(14),
-        child: Container(
-          padding: const EdgeInsets.all(14),
-          decoration: ClientPortalDocTheme.cardDecoration(),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _DocTypeIcon(document: document),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      document.displayTitle,
-                      style: TextStyle(
-                        fontWeight: FontWeight.w800,
-                        fontSize: 14.5,
-                        color: AppTheme.darkTextPrimary,
-                        height: 1.25,
-                      ),
-                    ),
-                    if (uploadedLine != null) ...[
-                      const SizedBox(height: 4),
-                      Text(
-                        uploadedLine,
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: AppTheme.getTextSecondary(context),
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                    if (document.fileSize != null) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        document.fileSize!,
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: AppTheme.getTextSecondary(context),
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                    if (document.isLatest) ...[
-                      const SizedBox(height: 8),
-                      const ClientPortalStatusBadge(
-                        kind: ClientPortalStatusBadgeKind.latest,
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.only(top: 4),
-                child: Icon(
-                  Icons.chevron_right_rounded,
-                  color: AppTheme.getTextSecondary(context),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
+    return ClientPortalDocumentRow(
+      document: document,
+      onTap: onTap,
     );
   }
 }
@@ -1840,49 +2674,48 @@ class _DocTypeIcon extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (document.isPdf) {
-      return Container(
-        width: 44,
-        height: 44,
-        decoration: BoxDecoration(
-          color: const Color(0xFF2C1618),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: const Icon(
-          Icons.picture_as_pdf_rounded,
-          color: Color(0xFFF87171),
-          size: 24,
-        ),
+      return _fileTypeIcon(
+        icon: Icons.picture_as_pdf_rounded,
+        darkBg: const Color(0xFF2C1618),
+        accent: const Color(0xFFF87171),
       );
     }
     if (document.isImage) {
-      return Container(
-        width: 44,
-        height: 44,
-        decoration: BoxDecoration(
-          color: const Color(0xFF143028),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: const Icon(
-          Icons.image_outlined,
-          color: Color(0xFF34D399),
-          size: 24,
-        ),
+      return _fileTypeIcon(
+        icon: Icons.image_outlined,
+        darkBg: const Color(0xFF143028),
+        accent: const Color(0xFF34D399),
       );
     }
-    return Container(
-      width: 44,
-      height: 44,
-      decoration: BoxDecoration(
-        color: const Color(0xFF241A33),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: const Icon(
-        Icons.description_outlined,
-        color: ClientPortalDocTheme.accentBlue,
-        size: 24,
-      ),
+    return _fileTypeIcon(
+      icon: Icons.description_outlined,
+      darkBg: const Color(0xFF241A33),
+      accent: ClientPortalDocTheme.accentBlue,
     );
   }
+}
+
+Widget _fileTypeIcon({
+  required IconData icon,
+  required Color darkBg,
+  required Color accent,
+  double size = 44,
+  double iconSize = 24,
+  double radius = 12,
+}) {
+  return Container(
+    width: size,
+    height: size,
+    decoration: BoxDecoration(
+      color: AppTheme.iconBoxFill(darkBg, accent),
+      borderRadius: BorderRadius.circular(radius),
+    ),
+    child: Icon(
+      icon,
+      color: AppTheme.iconBoxInk(accent),
+      size: iconSize,
+    ),
+  );
 }
 
 /// Shared section-list body for client journey document categories.
@@ -1920,6 +2753,7 @@ class ClientPortalJourneySectionsBody extends StatelessWidget {
     );
 
     return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
       children: [
         if (leadingChildren != null) ...leadingChildren!,

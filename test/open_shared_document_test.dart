@@ -37,6 +37,14 @@ void main() {
     expect(link.url, 'https://maps.google.com/place/site');
   });
 
+  test('office files open in the app', () {
+    final sheet = planSharedDocumentOpen(
+      url: 'https://cdn.example.com/files/quote.xlsx',
+      fileName: 'quote.xlsx',
+    );
+    expect(sheet.inApp, isTrue);
+  });
+
   test('splits message links and keeps trailing punctuation', () {
     final pieces = splitPlainTextLinks(
       'See https://office.buildahome.in/files/plan.pdf, and https://example.com/info.',

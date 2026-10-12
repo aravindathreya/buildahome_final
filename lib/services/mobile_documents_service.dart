@@ -10,6 +10,7 @@ import 'api_http.dart';
 import 'mobile_documents.dart';
 import 'session_manager.dart';
 import 'workflow_document_service.dart';
+import '../user_facing_error.dart';
 
 /// Fetches `GET /API/mobile/documents?project_id=` once per project, caches
 /// in SharedPreferences, and exposes a stale-while-revalidate snapshot.
@@ -473,8 +474,10 @@ class MobileDocumentsService {
       }
     }
     throw Exception(
-      lastError?.toString().replaceFirst('Exception: ', '') ??
-          'Could not $pathAction document.',
+      userFacingError(
+        lastError,
+        fallback: 'Could not $pathAction document.',
+      ),
     );
   }
 

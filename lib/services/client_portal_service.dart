@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import '../user_facing_error.dart';
 
 class ClientPortalApiException implements Exception {
   final String message;
@@ -66,6 +67,18 @@ class ClientPortalService {
       return null;
     }
     return token;
+  }
+
+  /// Project the user currently has open, for writes that must name it.
+  Future<Map<String, String>> _selectedProjectFields() async {
+    final prefs = await SharedPreferences.getInstance();
+    final projectId = (prefs.getString('project_id') ?? '').trim();
+    final salesSopId = (prefs.getString('sales_sop_id') ?? '').trim();
+    return {
+      if (projectId.isNotEmpty) 'project_id': projectId,
+      if (salesSopId.isNotEmpty) 'sales_sop_id': salesSopId,
+      ...await _impersonationQuery(),
+    };
   }
 
   /// Project scope for staff impersonation of the selected client's portal.
@@ -182,8 +195,11 @@ class ClientPortalService {
       );
     }
     if (response.statusCode == 404) {
+      final serverMessage = json?['message']?.toString().trim();
       throw ClientPortalApiException(
-        json?['message']?.toString() ?? 'No project linked to this client',
+        (serverMessage != null && serverMessage.isNotEmpty)
+            ? serverMessage
+            : 'Not found',
         statusCode: 404,
       );
     }
@@ -212,7 +228,7 @@ class ClientPortalService {
   Never _throwLastError(Object? lastError, String fallback) {
     if (lastError is ClientPortalApiException) throw lastError;
     throw Exception(
-      lastError?.toString().replaceFirst('Exception: ', '') ?? fallback,
+      userFacingError(lastError, fallback: fallback),
     );
   }
 
@@ -351,6 +367,53 @@ class ClientPortalService {
             .timeout(const Duration(seconds: 30));
         await _persistCookieFrom(response);
         // tutorial_complete may return 204
+        if (response.statusCode == 204) {
+          return {'success': true};
+        }
+        final json = _decodeOrThrow(response);
+        await _cacheIdsFromPayload(json);
+        return json;
+      } catch (e) {
+        lastError = e;
+      }
+    }
+    _throwLastError(lastError, 'Request failed');
+  }
+
+  /// Form body. Document upload and delete on this API read form fields.
+  Future<Map<String, dynamic>> _postForm(
+    String path,
+    Map<String, String> fields,
+  ) async {
+    final token = await _apiToken();
+    if (token == null) {
+      throw ClientPortalApiException(
+        'Not authenticated. Please log in again.',
+        statusCode: 401,
+      );
+    }
+    final impersonation = await _impersonationQuery();
+    final payload = <String, String>{
+      ...fields,
+      ...impersonation,
+      'api_token': token,
+    };
+
+    Object? lastError;
+    for (final alias in _pathAliases(path)) {
+      try {
+        final response = await http
+            .post(
+              _uri(
+                alias,
+                query: impersonation.isEmpty ? null : impersonation,
+                apiToken: token,
+              ),
+              headers: await _headers(apiToken: token),
+              body: payload,
+            )
+            .timeout(const Duration(seconds: 30));
+        await _persistCookieFrom(response);
         if (response.statusCode == 204) {
           return {'success': true};
         }
@@ -707,21 +770,52 @@ class ClientPortalService {
     );
   }
 
-  /// POST /api/client_portal/documents/delete (fallback: /remove).
+  /// POST /api/client_portal/documents/delete (fallback: /remove, then DELETE).
+  ///
+  /// The open project is sent with the file. Without it the server looks up
+  /// the signed-in user as a client and answers 404 "No project linked".
+  /// The file itself is matched by name, link, or index — the same fields
+  /// the documents section returns.
   Future<Map<String, dynamic>> deleteCustomDocument({
     String? id,
     String? filename,
     String? customDocName,
+    String? index,
+    String? path,
+    String? url,
   }) async {
-    final body = <String, dynamic>{
+    final scope = await _selectedProjectFields();
+    final body = <String, String>{
       'doc_key': 'custom',
-      if (id != null && id.trim().isNotEmpty) 'id': id.trim(),
-      if (filename != null && filename.trim().isNotEmpty)
-        'filename': filename.trim(),
-      if (customDocName != null && customDocName.trim().isNotEmpty)
-        'custom_doc_name': customDocName.trim(),
+      ...scope,
     };
-    if (body.length == 1) {
+    void put(String key, String? value) {
+      final text = value?.trim() ?? '';
+      if (text.isEmpty || text.toLowerCase() == 'null') return;
+      body[key] = text;
+    }
+
+    put('id', id);
+    put('document_id', id);
+    put('filename', filename);
+    put('file_name', filename);
+    put('custom_doc_name', customDocName);
+    put('index', index);
+    put('file_index', index);
+    put('path', path);
+    put('url', url);
+    put('view_url', url);
+
+    final parsed = url == null ? null : Uri.tryParse(url.trim());
+    if (!body.containsKey('index')) {
+      put('index', parsed?.queryParameters['index']);
+      put('file_index', parsed?.queryParameters['index']);
+    }
+    if (!body.containsKey('path') && parsed != null && parsed.path.isNotEmpty) {
+      put('path', parsed.hasScheme ? parsed.path : url);
+    }
+
+    if (body.length == 1 + scope.length) {
       throw ClientPortalApiException(
         'Could not identify the document to remove',
         statusCode: 400,
@@ -729,17 +823,44 @@ class ClientPortalService {
     }
 
     Object? lastError;
-    for (final path in const [
-      '/api/client_portal/documents/delete',
-      '/api/client_portal/documents/remove',
-    ]) {
+    Future<Map<String, dynamic>?> attempt(
+      Future<Map<String, dynamic>> Function() call,
+    ) async {
       try {
-        return await _postJson(path, body);
+        return await call();
       } catch (e) {
         lastError = e;
         if (e is ClientPortalApiException && e.isUnauthorized) rethrow;
         if (!_shouldTryDeleteFallback(e)) rethrow;
+        return null;
       }
+    }
+
+    for (final path in const [
+      '/api/client_portal/documents/delete',
+      '/api/client_portal/documents/remove',
+    ]) {
+      final form = await attempt(() => _postForm(path, body));
+      if (form != null) return form;
+      final json = await attempt(() => _postJson(path, body));
+      if (json != null) return json;
+    }
+    final removed = await attempt(
+      () => _delete(
+        '/api/client_portal/documents',
+        query: body,
+      ),
+    );
+    if (removed != null) return removed;
+    final fileId = body['id'];
+    if (fileId != null && fileId.isNotEmpty) {
+      final byId = await attempt(
+        () => _delete(
+            '/api/client_portal/documents/${Uri.encodeComponent(fileId)}',
+          query: body,
+        ),
+      );
+      if (byId != null) return byId;
     }
     _throwLastError(lastError, 'Could not remove document');
   }

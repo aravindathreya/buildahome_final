@@ -16,6 +16,7 @@ import 'widgets/full_screen_message.dart';
 import 'widgets/full_screen_progress.dart';
 import 'widgets/themed_scaffold.dart';
 import 'widgets/skeleton_loader.dart';
+import 'user_facing_error.dart';
 
 class InspectionRequestLayout extends StatefulWidget {
   final String? fixedProjectId;
@@ -662,7 +663,7 @@ class _CreateInspectionRequestPageState extends State<CreateInspectionRequestPag
         MaterialPageRoute(
           builder: (context) => FullScreenMessage(
             title: 'Error',
-            message: 'Error: ${e.toString().replaceAll('Exception: ', '')}',
+            message: 'Error: ${userFacingError(e)}',
             icon: Icons.error_outline,
             iconColor: Colors.red,
             buttonText: 'OK',
@@ -1569,7 +1570,10 @@ class _ViewInspectionRequestsPageState extends State<ViewInspectionRequestsPage>
         });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error loading inspection requests: ${e.toString()}'),
+            content: Text(userFacingError(
+              e,
+              fallback: 'Could not load inspection requests.',
+            )),
             backgroundColor: Colors.red,
           ),
         );
@@ -1654,7 +1658,7 @@ class _ViewInspectionRequestsPageState extends State<ViewInspectionRequestsPage>
               Icon(Icons.error, color: Colors.white),
               SizedBox(width: 8),
               Expanded(
-                child: Text(e.toString().replaceAll('Exception: ', '')),
+                child: Text(userFacingError(e)),
               ),
             ],
           ),
@@ -1870,7 +1874,10 @@ class _ViewInspectionRequestsPageState extends State<ViewInspectionRequestsPage>
                   }
                 } catch (e) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Error picking file: $e')),
+                    SnackBar(content: Text(userFacingError(
+                      e,
+                      fallback: 'Could not pick that file.',
+                    ))),
                   );
                 }
               },
@@ -1954,7 +1961,7 @@ class _ViewInspectionRequestsPageState extends State<ViewInspectionRequestsPage>
                 Icon(Icons.error, color: Colors.white),
                 SizedBox(width: 8),
                 Expanded(
-                  child: Text(e.toString().replaceAll('Exception: ', '')),
+                  child: Text(userFacingError(e)),
                 ),
               ],
             ),

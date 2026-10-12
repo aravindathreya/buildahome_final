@@ -3,6 +3,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
+import '../VirtualTour.dart';
 import '../app_theme.dart';
 import '../services/isometric_view_service.dart';
 import '../services/session_manager.dart';
@@ -64,7 +65,8 @@ class _VirtualTourEmbedState extends State<VirtualTourEmbed> {
   }
 
   void _openPage(Uri uri) {
-    final controller = WebViewController()
+    late final WebViewController controller;
+    controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setBackgroundColor(AppTheme.darkBackgroundPrimary)
       ..setNavigationDelegate(
@@ -76,7 +78,11 @@ class _VirtualTourEmbedState extends State<VirtualTourEmbed> {
               _error = null;
             });
           },
-          onPageFinished: (_) {
+          onPageFinished: (_) async {
+            try {
+              await controller.runJavaScript(kIsometricDrawerContrastScript);
+              await controller.runJavaScript(kHideInViewerArButtonScript);
+            } catch (_) {}
             if (!mounted) return;
             setState(() => _pageLoading = false);
           },

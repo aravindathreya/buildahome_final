@@ -104,20 +104,16 @@ class KycStatusCard extends StatelessWidget {
     final progress = safeTotal == 0 ? 0.0 : safeDone / safeTotal;
     final pct = safeTotal == 0 ? 0 : (progress * 100).round().clamp(0, 100);
 
+    final dark = AppTheme.isDark;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            Color(0xFF241A33),
-            Color(0xFF241A33),
-          ],
-        ),
+        color: dark ? const Color(0xFF241A33) : const Color(0xFFF5F3FF),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFF3A2A55)),
+        border: Border.all(
+          color: dark ? const Color(0xFF3A2A55) : const Color(0xFFDDD6FE),
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -129,12 +125,15 @@ class KycStatusCard extends StatelessWidget {
                 width: 44,
                 height: 44,
                 decoration: BoxDecoration(
-                  color: const Color(0xFF2A2040),
+                  color: AppTheme.iconBoxFill(
+                    const Color(0xFF2A2040),
+                    const Color(0xFFC4B5FD),
+                  ),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(
                   complete ? Icons.verified_user_rounded : Icons.shield_outlined,
-                  color: const Color(0xFFC4B5FD),
+                  color: AppTheme.iconBoxInk(const Color(0xFFC4B5FD)),
                   size: 24,
                 ),
               ),
@@ -225,7 +224,9 @@ class _SegmentedProgress extends StatelessWidget {
             decoration: BoxDecoration(
               color: isFilled
                   ? ClientPortalDocTheme.accentBlue
-                  : const Color(0xFF3A2A55),
+                  : (AppTheme.isDark
+                      ? const Color(0xFF3A2A55)
+                      : const Color(0xFFE4E4E7)),
               borderRadius: BorderRadius.circular(4),
             ),
           ),
@@ -240,20 +241,17 @@ class KycSuccessBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final dark = AppTheme.isDark;
+    final accent = dark ? const Color(0xFF34D399) : const Color(0xFF047857);
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          begin: Alignment.centerLeft,
-          end: Alignment.centerRight,
-          colors: [
-            Color(0xFF143028),
-            Color(0xFF143028),
-          ],
-        ),
+        color: dark ? const Color(0xFF143028) : const Color(0xFFECFDF5),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFF065F46)),
+        border: Border.all(
+          color: dark ? const Color(0xFF065F46) : const Color(0xFFA7F3D0),
+        ),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -262,12 +260,12 @@ class KycSuccessBanner extends StatelessWidget {
             width: 40,
             height: 40,
             decoration: BoxDecoration(
-              color: const Color(0xFF34D399).withValues(alpha: 0.15),
+              color: accent.withValues(alpha: dark ? 0.15 : 0.12),
               borderRadius: BorderRadius.circular(10),
             ),
-            child: const Icon(
+            child: Icon(
               Icons.verified_user_rounded,
-              color: Color(0xFF34D399),
+              color: accent,
               size: 22,
             ),
           ),
@@ -297,9 +295,9 @@ class KycSuccessBanner extends StatelessWidget {
               ],
             ),
           ),
-          const Icon(
+          Icon(
             Icons.folder_open_rounded,
-            color: Color(0xFF34D399),
+            color: accent,
             size: 36,
           ),
         ],
@@ -313,22 +311,26 @@ class KycUploadedBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final dark = AppTheme.isDark;
+    final accent = dark ? const Color(0xFF34D399) : const Color(0xFF047857);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
-        color: const Color(0xFF143028),
+        color: dark ? const Color(0xFF143028) : const Color(0xFFECFDF5),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFF065F46)),
+        border: Border.all(
+          color: dark ? const Color(0xFF065F46) : const Color(0xFFA7F3D0),
+        ),
       ),
-      child: const Row(
+      child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.check_circle_rounded, size: 14, color: Color(0xFF34D399)),
-          SizedBox(width: 4),
+          Icon(Icons.check_circle_rounded, size: 14, color: accent),
+          const SizedBox(width: 4),
           Text(
             'Uploaded',
             style: TextStyle(
-              color: Color(0xFF34D399),
+              color: accent,
               fontWeight: FontWeight.w800,
               fontSize: 12,
             ),
@@ -365,10 +367,10 @@ class KycDetailRow extends StatelessWidget {
             width: 36,
             height: 36,
             decoration: BoxDecoration(
-              color: iconBg,
+              color: AppTheme.iconBoxFill(iconBg, iconFg),
               borderRadius: BorderRadius.circular(10),
             ),
-            child: Icon(icon, color: iconFg, size: 18),
+            child: Icon(icon, color: AppTheme.iconBoxInk(iconFg), size: 18),
           ),
           const SizedBox(width: 12),
           Expanded(

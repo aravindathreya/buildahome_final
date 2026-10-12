@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 
 import '../models/mobile_live_test.dart';
 import 'mobile_live_test_service.dart';
+import '../user_facing_error.dart';
 
 /// Owns Test Mode heartbeat + session polling while the dedicated screen
 /// is visible. Stopping this does not cancel the backend workflow run.
@@ -73,7 +74,7 @@ class MobileLiveTestController extends ChangeNotifier {
       _notify();
       rethrow;
     } catch (e) {
-      error = e.toString().replaceFirst('Exception: ', '');
+      error = userFacingError(e);
       enabled = await service.isEnabled();
       _notify();
       rethrow;
@@ -194,7 +195,7 @@ class MobileLiveTestController extends ChangeNotifier {
       error = e.message;
     } catch (e) {
       if (gen != _generation) return;
-      error = e.toString().replaceFirst('Exception: ', '');
+      error = userFacingError(e);
     } finally {
       if (gen == _generation) {
         _notify();
@@ -229,7 +230,7 @@ class MobileLiveTestController extends ChangeNotifier {
       error = e.message;
     } catch (e) {
       if (gen != _generation) return;
-      error = e.toString().replaceFirst('Exception: ', '');
+      error = userFacingError(e);
     } finally {
       if (gen == _generation) {
         loading = false;

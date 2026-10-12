@@ -19,7 +19,6 @@ import 'package:url_launcher/url_launcher.dart';
 import 'app_theme.dart';
 import 'FullScreenImage.dart';
 import 'NotesAndComments.dart';
-import 'TasksScreen.dart';
 import 'indents_screen.dart';
 import 'indent_proof.dart';
 import 'models/approved_po.dart';
@@ -38,6 +37,7 @@ import 'site_proof_multi/multi_material_site_proof_screen.dart';
 import 'widgets/searchable_select.dart';
 import 'services/session_manager.dart';
 import 'widgets/dashboard_chrome.dart';
+import 'widgets/open_shared_document.dart';
 import 'task_display_title.dart';
 import 'indent_task_material.dart';
 import 'widgets/indent_site_proof_summary_card.dart';
@@ -47,6 +47,7 @@ import 'widgets/skeleton_loader.dart';
 import 'Payments.dart';
 import 'SlotsScreen.dart';
 import 'UploadPaymentProofScreen.dart';
+import 'user_facing_error.dart';
 
 const String _workflowApiBaseUrl = kProductionApiBaseUrl;
 Color get _premiumBackground => AppTheme.darkBackgroundPrimary;
@@ -1678,7 +1679,6 @@ class MyTasksScreen extends StatefulWidget {
   final int initialTabIndex;
   final String? focusTaskId;
   final bool embedded;
-  final bool showCreateTask;
 
   const MyTasksScreen({
     Key? key,
@@ -1687,7 +1687,6 @@ class MyTasksScreen extends StatefulWidget {
     this.initialTabIndex = 0,
     this.focusTaskId,
     this.embedded = false,
-    this.showCreateTask = true,
   }) : super(key: key);
 
   @override
@@ -2293,23 +2292,6 @@ class _MyTasksScreenState extends State<MyTasksScreen>
     _markWorkflowTaskCompletedLocally(taskId);
   }
 
-  Future<void> _openCreateTask() async {
-    await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => TasksLayout(
-          initialTasks: _tasks,
-          initialTabIndex: 0,
-          onTaskUpdated: () {
-            _refreshTasks();
-          },
-          loadTasksCallback: widget.onRefresh,
-        ),
-      ),
-    );
-    await _refreshTasks();
-  }
-
   @override
   Widget build(BuildContext context) {
     final pendingTasks = _pendingTasks;
@@ -2333,7 +2315,6 @@ class _MyTasksScreenState extends State<MyTasksScreen>
       onWorkflowActionCompleted: _refreshTasks,
       onWorkflowTaskFinished: _onWorkflowTaskFinished,
       onClearOutstandingPaymentClosed: _reloadOutstandingPaymentTask,
-      onCreateTask: _openCreateTask,
       focusTaskId: widget.focusTaskId,
     );
     final completedList = _TaskList(
@@ -2344,7 +2325,6 @@ class _MyTasksScreenState extends State<MyTasksScreen>
       onWorkflowActionCompleted: _refreshTasks,
       onWorkflowTaskFinished: _onWorkflowTaskFinished,
       showWorkflowActions: false,
-      onCreateTask: _openCreateTask,
       focusTaskId: widget.focusTaskId,
     );
 
@@ -2603,34 +2583,6 @@ class _MyTasksScreenState extends State<MyTasksScreen>
                         ),
                       ),
                     ),
-                    if (widget.showCreateTask)
-                      Material(
-                        color: AppTheme.navy,
-                        borderRadius: BorderRadius.circular(10),
-                        child: InkWell(
-                          onTap: _openCreateTask,
-                          borderRadius: BorderRadius.circular(10),
-                          child: const Padding(
-                            padding: EdgeInsets.symmetric(
-                                horizontal: 12, vertical: 8),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(Icons.add, color: Colors.white, size: 16),
-                                SizedBox(width: 4),
-                                Text(
-                                  'New task',
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 12.5,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
                   ],
                 );
               },
@@ -2647,7 +2599,6 @@ class _MyTasksScreenState extends State<MyTasksScreen>
                   emptyIcon: Icons.pending_actions,
                   onWorkflowActionCompleted: _refreshTasks,
                   onWorkflowTaskFinished: _onWorkflowTaskFinished,
-                  onCreateTask: _openCreateTask,
                   focusTaskId: widget.focusTaskId,
                 ),
                 _TaskList(
@@ -2658,7 +2609,6 @@ class _MyTasksScreenState extends State<MyTasksScreen>
                   onWorkflowActionCompleted: _refreshTasks,
                   onWorkflowTaskFinished: _onWorkflowTaskFinished,
                   showWorkflowActions: false,
-                  onCreateTask: _openCreateTask,
                   focusTaskId: widget.focusTaskId,
                 ),
               ],
@@ -2731,7 +2681,6 @@ class _TaskList extends StatelessWidget {
   final Future<void> Function(String taskId)? onWorkflowTaskFinished;
   final Future<void> Function()? onClearOutstandingPaymentClosed;
   final bool showWorkflowActions;
-  final VoidCallback? onCreateTask;
   final String? focusTaskId;
 
   const _TaskList({
@@ -2743,7 +2692,6 @@ class _TaskList extends StatelessWidget {
     this.onWorkflowTaskFinished,
     this.onClearOutstandingPaymentClosed,
         this.showWorkflowActions = true,
-    this.onCreateTask,
     this.focusTaskId,
   });
 
@@ -2884,7 +2832,7 @@ class _TaskCardState extends State<_TaskCard> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(e.toString()),
+          content: Text(userFacingError(e)),
           backgroundColor: Colors.red,
         ),
       );
@@ -3479,7 +3427,7 @@ class _TaskCardState extends State<_TaskCard> {
       return true;
     } catch (e) {
       if (!mounted) return false;
-      final cleaned = e.toString().replaceAll('Exception: ', '');
+      final cleaned = userFacingError(e);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(cleaned),
@@ -3572,7 +3520,7 @@ class _TaskCardState extends State<_TaskCard> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(e.toString().replaceAll('Exception: ', '')),
+          content: Text(userFacingError(e)),
           backgroundColor: Colors.red,
         ),
       );
@@ -3628,7 +3576,7 @@ class _TaskCardState extends State<_TaskCard> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(e.toString().replaceAll('Exception: ', '')),
+          content: Text(userFacingError(e)),
           backgroundColor: Colors.red,
         ),
       );
@@ -3950,7 +3898,7 @@ class _WorkflowManagerApprovalSectionState
 
   Future<void> _showSnackBar(String message, {bool isError = false}) async {
     if (!mounted) return;
-    final cleaned = message.replaceAll('Exception: ', '').trim();
+    final cleaned = userFacingError(message);
     if (cleaned.isEmpty) return;
     if (cleaned == SessionManager.logoutMessage ||
         cleaned.toLowerCase().contains('invalid api token') ||
@@ -4061,7 +4009,7 @@ class _WorkflowManagerApprovalSectionState
       throw Exception('Server error: ${response.statusCode}');
     } catch (e) {
       await _showSnackBar(
-        e.toString().replaceAll('Exception: ', ''),
+        userFacingError(e),
         isError: true,
       );
       return false;
@@ -4248,45 +4196,20 @@ class _WorkflowActionsSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Icon(
-              Icons.auto_awesome_motion_outlined,
-              size: 18,
-              color: _premiumInk,
+    return Wrap(
+      spacing: 10,
+      runSpacing: 10,
+      children: actions
+          .map(
+            (action) => WorkflowActionButton(
+              task: task,
+              action: action,
+              onActionCompleted: onActionCompleted,
+              onTaskFinished: onTaskFinished,
+              onDelayExpired: onDelayExpired,
             ),
-            SizedBox(width: 8),
-            Text(
-              'Actions',
-              style: TextStyle(
-                color: _premiumInk,
-                fontSize: 15,
-                fontWeight: FontWeight.w800,
-                letterSpacing: -0.2,
-              ),
-            ),
-          ],
-        ),
-        SizedBox(height: 12),
-        Wrap(
-          spacing: 10,
-          runSpacing: 10,
-          children: actions
-              .map(
-                (action) => WorkflowActionButton(
-                  task: task,
-                  action: action,
-                  onActionCompleted: onActionCompleted,
-                  onTaskFinished: onTaskFinished,
-                  onDelayExpired: onDelayExpired,
-                ),
-              )
-              .toList(),
-        ),
-      ],
+          )
+          .toList(),
     );
   }
 }
@@ -4445,7 +4368,7 @@ class _IndentProofReviewScreenState extends State<_IndentProofReviewScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(e.toString().replaceAll('Exception: ', '')),
+          content: Text(userFacingError(e)),
           backgroundColor: Colors.red,
         ),
       );
@@ -4526,7 +4449,7 @@ class _IndentProofReviewScreenState extends State<_IndentProofReviewScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(e.toString().replaceAll('Exception: ', '')),
+          content: Text(userFacingError(e)),
           backgroundColor: Colors.red,
         ),
       );
@@ -6301,7 +6224,7 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
       }
       return true;
     } catch (e) {
-      final cleaned = e.toString().replaceAll('Exception: ', '');
+      final cleaned = userFacingError(e);
       _showSnackBar(cleaned, isError: true);
       if (_looksLikeDelayBlockedMessage(cleaned) ||
           cleaned.toLowerCase().contains('cannot be worked on yet') ||
@@ -6433,7 +6356,7 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
       _showSnackBar(message);
       return true;
     } catch (e) {
-      final cleaned = e.toString().replaceAll('Exception: ', '');
+      final cleaned = userFacingError(e);
       if (MobileLiveTestWorkflow.skipProjectGates(task) &&
           MobileLiveTestWorkflow.looksLikeSkippedProjectGate(
             message: cleaned,
@@ -6613,7 +6536,7 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
         comment: request.comment,
       ).timeout(const Duration(seconds: 12));
     } catch (e) {
-      error = e.toString().replaceAll('Exception: ', '');
+      error = userFacingError(e);
     }
 
     if (!mounted) return;
@@ -6777,7 +6700,7 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
         taskRouted: taskRouted,
       );
     } catch (e) {
-      final cleaned = e.toString().replaceAll('Exception: ', '');
+      final cleaned = userFacingError(e);
       if (MobileLiveTestWorkflow.skipProjectGates(task) &&
           MobileLiveTestWorkflow.looksLikeSkippedProjectGate(
             message: cleaned,
@@ -6976,7 +6899,7 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
       _showSnackBar(message);
       return true;
     } catch (e) {
-      _showSnackBar(e.toString().replaceAll('Exception: ', ''), isError: true);
+      _showSnackBar(userFacingError(e), isError: true);
       return false;
     }
   }
@@ -7211,7 +7134,7 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
         } catch (e) {
           return _NearSiteCheckResult(
             ok: false,
-            error: e.toString().replaceAll('Exception: ', ''),
+            error: userFacingError(e),
           );
         }
       }
@@ -7539,7 +7462,7 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
                 _popWorkflowSheet(navigator);
               } catch (e) {
                 final errorMessage =
-                    e.toString().replaceAll('Exception: ', '').trim();
+                    userFacingError(e);
                 if (errorMessage.isNotEmpty) {
                   await _showWorkflowUploadAlert(
                     context,
@@ -7877,7 +7800,7 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
         } catch (e) {
           return _NearSiteCheckResult(
             ok: false,
-            error: e.toString().replaceAll('Exception: ', ''),
+            error: userFacingError(e),
           );
         }
       }
@@ -8192,7 +8115,7 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
               } catch (e) {
                 if (!mounted) return;
                 final errorMessage =
-                    e.toString().replaceAll('Exception: ', '').trim();
+                    userFacingError(e);
                 setSheetState(() {
                   formError = errorMessage;
                 });
@@ -8337,7 +8260,7 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
               } catch (e) {
                 if (!mounted) return;
                 final errorMessage =
-                    e.toString().replaceAll('Exception: ', '').trim();
+                    userFacingError(e);
                 setSheetState(() {
                   formError = errorMessage;
                 });
@@ -8437,7 +8360,7 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
               } catch (e) {
                 if (!mounted) return;
                 final errorMessage =
-                    e.toString().replaceAll('Exception: ', '').trim();
+                    userFacingError(e);
                 setSheetState(() {
                   formError = errorMessage;
                 });
@@ -9204,7 +9127,7 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
       _showSnackBar(message);
       return true;
     } catch (e) {
-      _showSnackBar(e.toString().replaceAll('Exception: ', ''), isError: true);
+      _showSnackBar(userFacingError(e), isError: true);
       return false;
     }
   }
@@ -9840,7 +9763,7 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
       _showSnackBar(message);
       return true;
     } catch (e) {
-      _showSnackBar(e.toString().replaceAll('Exception: ', ''), isError: true);
+      _showSnackBar(userFacingError(e), isError: true);
       return false;
     }
   }
@@ -9963,7 +9886,7 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
       _showSnackBar(message);
       return true;
     } catch (e) {
-      _showSnackBar(e.toString().replaceAll('Exception: ', ''), isError: true);
+      _showSnackBar(userFacingError(e), isError: true);
       return false;
     }
   }
@@ -10059,7 +9982,7 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
 
   void _showSnackBar(String message, {bool isError = false}) {
     if (!mounted) return;
-    final cleaned = message.replaceAll('Exception: ', '').trim();
+    final cleaned = userFacingError(message);
     if (cleaned.isEmpty) return;
     if (cleaned == SessionManager.logoutMessage ||
         cleaned == SessionManager.logoutDialogTitle ||
@@ -14448,7 +14371,7 @@ class _WorkflowVideoRecorderPageState extends State<_WorkflowVideoRecorderPage> 
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _initError = e.toString().replaceAll('Exception: ', '');
+        _initError = userFacingError(e);
         _initializing = false;
       });
     }
@@ -14494,7 +14417,7 @@ class _WorkflowVideoRecorderPageState extends State<_WorkflowVideoRecorderPage> 
       if (!mounted) return;
       setState(() {
         _isRecording = false;
-        _initError = e.toString().replaceAll('Exception: ', '');
+        _initError = userFacingError(e);
       });
     }
   }
@@ -14530,8 +14453,8 @@ class _WorkflowVideoRecorderPageState extends State<_WorkflowVideoRecorderPage> 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            e.toString().replaceAll('Exception: ', '').trim().isNotEmpty
-                ? e.toString().replaceAll('Exception: ', '')
+            userFacingError(e).isNotEmpty
+                ? userFacingError(e)
                 : 'Could not start recording.',
           ),
         ),
@@ -14982,7 +14905,7 @@ Future<_NearSiteCheckResult> _checkIndentPoNearSite({
     } catch (e) {
       return _NearSiteCheckResult(
         ok: false,
-        error: e.toString().replaceAll('Exception: ', ''),
+        error: userFacingError(e),
       );
     }
   }
@@ -15303,7 +15226,7 @@ Future<_IndentPoSiteProofSubmitResult> _presentIndentPoSiteProofAction({
               if (sheetContext.mounted) Navigator.pop(sheetContext);
             } catch (e) {
               final errorMessage =
-                  e.toString().replaceAll('Exception: ', '').trim();
+                  userFacingError(e);
               if (errorMessage.isNotEmpty) {
                 await _showWorkflowUploadAlert(
                   context,
@@ -16876,15 +16799,16 @@ class _SlotSelectionSheetFrame extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final media = MediaQuery.of(context);
     return Padding(
       padding: EdgeInsets.only(
         left: 12,
         right: 12,
-        bottom: MediaQuery.of(context).viewInsets.bottom + 12,
+        bottom: media.viewInsets.bottom + media.padding.bottom + 12,
       ),
       child: Container(
         constraints: BoxConstraints(
-          maxHeight: MediaQuery.of(context).size.height * 0.92,
+          maxHeight: media.size.height * 0.92,
         ),
         decoration: BoxDecoration(
           color: AppTheme.getBackgroundSecondary(context),
@@ -18630,15 +18554,16 @@ class _BottomSheetFrame extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final media = MediaQuery.of(context);
     return Padding(
       padding: EdgeInsets.only(
         left: 12,
         right: 12,
-        bottom: MediaQuery.of(context).viewInsets.bottom + 12,
+        bottom: media.viewInsets.bottom + media.padding.bottom + 12,
       ),
       child: Container(
         constraints: BoxConstraints(
-          maxHeight: MediaQuery.of(context).size.height * 0.86,
+          maxHeight: media.size.height * 0.86,
         ),
         decoration: BoxDecoration(
           color: AppTheme.getBackgroundSecondary(context),
@@ -20791,19 +20716,20 @@ Future<void> _openWorkflowAttachment(
     return;
   }
 
-  // Android WebView cannot render PDFs — inAppWebView shows a blank screen.
-  // Open PDFs in an external app (Chrome / Drive / system viewer) instead.
-  if (_isPdfAttachment(url, contentType: contentType, name: name)) {
-    await _openExternalUrl(url, mode: LaunchMode.externalApplication);
-    return;
-  }
-
   if (_isVideoAttachment(url, contentType: contentType, name: name)) {
     await _openExternalUrl(url, mode: LaunchMode.inAppWebView);
     return;
   }
 
-  await _openExternalUrl(url);
+  // PDFs and other files open in the in-app document viewer.
+  if (!context.mounted) return;
+  await openSharedDocument(
+    context,
+    url: absoluteUrl,
+    fileName: name,
+    contentType: contentType ?? '',
+    forceInApp: true,
+  );
 }
 
 List<String> _taskUploadedPhotoUrls(Map<String, dynamic> task) {

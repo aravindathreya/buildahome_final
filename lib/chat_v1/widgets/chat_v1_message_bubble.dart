@@ -928,7 +928,9 @@ class Cv1MessageBubble extends StatelessWidget {
             message.type == ChatV1MsgType.video
                 ? Icons.play_circle_outline_rounded
                 : Icons.image_rounded,
-            color: Colors.white70,
+            color: ChatV1Theme.isDark(context)
+                ? Colors.white70
+                : const Color(0xFF157A42),
             size: 40,
           ),
         ),

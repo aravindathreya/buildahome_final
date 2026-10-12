@@ -32,27 +32,39 @@ TaskStatusStyle taskStatusStyle(String status) {
     case 'finished':
     case 'skipped':
     case 'approved':
-      return const TaskStatusStyle(
-        color: Color(0xFF34D399),
-        background: Color(0xFF14352B),
+      return TaskStatusStyle(
+        color: AppTheme.iconBoxInk(const Color(0xFF34D399)),
+        background: AppTheme.iconBoxFill(
+          const Color(0xFF14352B),
+          const Color(0xFF34D399),
+        ),
         icon: Icons.check_circle_outline_rounded,
       );
     case 'in_progress':
-      return const TaskStatusStyle(
-        color: Color(0xFFFBBF24),
-        background: Color(0xFF3A2F14),
+      return TaskStatusStyle(
+        color: AppTheme.iconBoxInk(const Color(0xFFFBBF24)),
+        background: AppTheme.iconBoxFill(
+          const Color(0xFF3A2F14),
+          const Color(0xFFFBBF24),
+        ),
         icon: Icons.timelapse_rounded,
       );
     case 'ready':
-      return const TaskStatusStyle(
-        color: Color(0xFF60A5FA),
-        background: Color(0xFF1A2A45),
+      return TaskStatusStyle(
+        color: AppTheme.iconBoxInk(const Color(0xFF60A5FA)),
+        background: AppTheme.iconBoxFill(
+          const Color(0xFF1A2A45),
+          const Color(0xFF60A5FA),
+        ),
         icon: Icons.bolt_rounded,
       );
     case 'waiting_approval':
       return TaskStatusStyle(
-        color: Color(0xFFA5B4FC),
-        background: AppTheme.darkBackgroundPrimaryLight,
+        color: AppTheme.iconBoxInk(const Color(0xFFA5B4FC)),
+        background: AppTheme.iconBoxFill(
+          AppTheme.darkBackgroundPrimaryLight,
+          const Color(0xFFA5B4FC),
+        ),
         icon: Icons.rate_review_outlined,
       );
     case 'scheduled':
@@ -63,20 +75,23 @@ TaskStatusStyle taskStatusStyle(String status) {
       );
     case 'cancelled':
     case 'rejected':
-      return const TaskStatusStyle(
-        color: Color(0xFFF87171),
-        background: Color(0xFF3F1D24),
+      return TaskStatusStyle(
+        color: AppTheme.iconBoxInk(const Color(0xFFF87171)),
+        background: AppTheme.iconBoxFill(
+          const Color(0xFF3F1D24),
+          const Color(0xFFF87171),
+        ),
         icon: Icons.cancel_outlined,
       );
     case 'not_started':
       return TaskStatusStyle(
-        color: Color(0xFFA8B3C7),
+        color: AppTheme.iconBoxInk(const Color(0xFFA8B3C7)),
         background: AppTheme.darkBackgroundPrimary,
         icon: Icons.hourglass_empty_rounded,
       );
     default:
       return TaskStatusStyle(
-        color: Color(0xFFA8B3C7),
+        color: AppTheme.iconBoxInk(const Color(0xFFA8B3C7)),
         background: AppTheme.darkBackgroundPrimaryLight,
         icon: Icons.pending_actions_outlined,
       );
@@ -999,10 +1014,14 @@ class TaskSummaryStatCard extends StatelessWidget {
             width: 36,
             height: 36,
             decoration: BoxDecoration(
-              color: iconBg,
+              color: AppTheme.iconBoxFill(iconBg, iconColor),
               borderRadius: BorderRadius.circular(10),
             ),
-            child: Icon(icon, color: iconColor, size: 18),
+            child: Icon(
+              icon,
+              color: AppTheme.iconBoxInk(iconColor),
+              size: 18,
+            ),
           ),
           const SizedBox(width: 8),
           Expanded(
@@ -1082,8 +1101,14 @@ class TaskHelpBanner extends StatelessWidget {
               errorBuilder: (_, __, ___) => Container(
                 width: 54,
                 height: 54,
-                color: const Color(0xFF1A2A45),
-                child: Icon(Icons.support_agent, color: AppTheme.darkTextPrimary),
+                color: AppTheme.iconBoxFill(
+                  const Color(0xFF1A2A45),
+                  AppTheme.accentBlue,
+                ),
+                child: Icon(
+                  Icons.support_agent,
+                  color: AppTheme.iconBoxInk(AppTheme.accentBlue),
+                ),
               ),
             ),
           ),

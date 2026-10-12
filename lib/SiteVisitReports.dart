@@ -8,13 +8,14 @@ import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
 import 'app_theme.dart';
+import 'user_facing_error.dart';
 import 'services/camera_permission.dart';
 import 'AddDailyUpdate.dart'; // For FullScreenImage
 import 'services/data_provider.dart';
+import 'widgets/open_shared_document.dart';
 import 'widgets/searchable_select.dart';
 import 'widgets/themed_scaffold.dart';
 import 'widgets/skeleton_loader.dart';
@@ -326,7 +327,7 @@ class _SiteVisitReportsScreenState extends State<SiteVisitReportsScreen> with Si
         }
       }
     } catch (e) {
-      _showSnackBar('Error picking file: $e');
+      _showSnackBar(userFacingError(e, fallback: 'Could not pick that file.'));
     }
   }
 
@@ -500,7 +501,7 @@ class _SiteVisitReportsScreenState extends State<SiteVisitReportsScreen> with Si
       _pageController.jumpToPage(0);
     } catch (e) {
       print('Error submitting report: $e');
-      _showSnackBar('Error: $e');
+      _showSnackBar(userFacingError(e));
     } finally {
       setState(() {
         _submitting = false;
@@ -644,12 +645,11 @@ class _SiteVisitReportsScreenState extends State<SiteVisitReportsScreen> with Si
   }
 
   Future<void> _launchURL(String url) async {
-    final Uri uri = Uri.parse(url);
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-    } else {
-      _showSnackBar('Could not launch $url');
-    }
+    await openSharedDocument(
+      context,
+      url: url,
+      forceInApp: true,
+    );
   }
 
   PreferredSizeWidget? _buildTabBottom() {

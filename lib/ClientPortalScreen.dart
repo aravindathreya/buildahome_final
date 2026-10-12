@@ -5,8 +5,6 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:url_launcher/url_launcher.dart';
-
 import 'app_theme.dart';
 import 'client_portal/client_portal_document_ui.dart';
 import 'client_portal/client_portal_hub.dart';
@@ -22,7 +20,9 @@ import 'services/document_role_access.dart';
 import 'services/mobile_documents.dart';
 import 'services/mobile_documents_service.dart';
 import 'services/workflow_document_service.dart';
+import 'widgets/open_shared_document.dart';
 import 'widgets/skeleton_loader.dart';
+import 'user_facing_error.dart';
 
 /// Client Portal hub — documents (post 10% payment client access).
 /// Previous payment screenshots live under Payments.
@@ -41,6 +41,7 @@ class ClientPortalScreen extends StatefulWidget {
 
 class _ClientPortalScreenState extends State<ClientPortalScreen> {
   final _portal = ClientPortalService();
+  final _searchCtrl = TextEditingController();
 
   bool _loading = true;
   String? _error;
@@ -60,11 +61,15 @@ class _ClientPortalScreenState extends State<ClientPortalScreen> {
     if (widget.impersonatingClient) {
       _portal.beginClientImpersonation();
     }
+    _searchCtrl.addListener(() {
+      if (mounted) setState(() {});
+    });
     _bootstrap();
   }
 
   @override
   void dispose() {
+    _searchCtrl.dispose();
     if (widget.impersonatingClient) {
       _portal.endClientImpersonation();
     }
@@ -197,7 +202,7 @@ class _ClientPortalScreenState extends State<ClientPortalScreen> {
         await _bootstrapImpersonationFallback(prefs: prefs, portalError: e);
         return;
       }
-      final msg = e.toString().replaceFirst('Exception: ', '');
+      final msg = userFacingError(e);
       if (msg.toLowerCase().contains('no project')) {
         setState(() {
           _loading = false;
@@ -305,7 +310,7 @@ class _ClientPortalScreenState extends State<ClientPortalScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(e.toString().replaceFirst('Exception: ', '')),
+          content: Text(userFacingError(e)),
           backgroundColor: Colors.red,
         ),
       );
@@ -350,8 +355,20 @@ class _ClientPortalScreenState extends State<ClientPortalScreen> {
     final catalog = sections.where((section) => section.isCatalog).toList();
     final steps = sections.where((section) => section.isProjectStep).toList();
     final waitingForDocuments = _docsLoading && _docLibrary == null;
+    final q = _searchCtrl.text.trim().toLowerCase();
+    final filteredCatalog = q.isEmpty
+        ? catalog
+        : catalog
+            .where(
+              (section) =>
+                  section.title.toLowerCase().contains(q) ||
+                  section.subtitle.toLowerCase().contains(q) ||
+                  (section.journeyKey ?? '').toLowerCase().contains(q),
+            )
+            .toList();
 
-    Widget hubCard(ClientPortalHubItem section, {required bool journeyStyle}) {
+    // Same card format as Docs (count badge + subtitle), including For Me.
+    Widget hubCard(ClientPortalHubItem section) {
       return Padding(
         padding: const EdgeInsets.only(bottom: 10),
         child: ClientPortalCategoryCard(
@@ -361,7 +378,6 @@ class _ClientPortalScreenState extends State<ClientPortalScreen> {
           badgeCount: section.badgeCount,
           iconBg: section.visual.iconBg,
           iconFg: section.visual.iconFg,
-          journeyStyle: journeyStyle,
           onTap: () => _openSection(section),
         ),
       );
@@ -371,13 +387,14 @@ class _ClientPortalScreenState extends State<ClientPortalScreen> {
       color: AppTheme.navy,
       onRefresh: _bootstrap,
       child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
         children: [
           if (!_tutorialDone && !widget.impersonatingClient) ...[
             _TutorialBanner(onComplete: _completeTutorial),
             const SizedBox(height: 14),
           ],
-          ...pinned.map((section) => hubCard(section, journeyStyle: true)),
+          ...pinned.map(hubCard),
           if (waitingForDocuments) ...[
             if (pinned.isNotEmpty) const SizedBox(height: 8),
             const SkeletonListLoader(
@@ -387,20 +404,37 @@ class _ClientPortalScreenState extends State<ClientPortalScreen> {
               padding: EdgeInsets.zero,
             ),
           ] else ...[
-            if (catalog.isNotEmpty) ...[
+            if (catalog.isNotEmpty || q.isNotEmpty) ...[
               if (pinned.isNotEmpty) const SizedBox(height: 6),
               const ClientPortalSectionHeading(label: 'Document Categories'),
               const SizedBox(height: 10),
-              ...catalog
-                  .map((section) => hubCard(section, journeyStyle: false)),
+              ClientPortalSearchBar(
+                controller: _searchCtrl,
+                hint: 'Search all documents…',
+              ),
+              const SizedBox(height: 14),
+              if (filteredCatalog.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 24),
+                  child: Text(
+                    q.isEmpty
+                        ? 'No workflow documents yet.'
+                        : 'No documents match your search.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: AppTheme.getTextSecondary(context),
+                    ),
+                  ),
+                )
+              else
+                ...filteredCatalog.map(hubCard),
             ],
-            if (steps.isNotEmpty) ...[
+            if (steps.isNotEmpty && q.isEmpty) ...[
               if (pinned.isNotEmpty || catalog.isNotEmpty)
                 const SizedBox(height: 6),
               const ClientPortalSectionHeading(label: 'Site'),
               const SizedBox(height: 10),
-              ...steps
-                  .map((section) => hubCard(section, journeyStyle: true)),
+              ...steps.map(hubCard),
             ],
           ],
         ],
@@ -457,6 +491,7 @@ class _ClientPortalScreenState extends State<ClientPortalScreen> {
             page = DocumentsV1CategoryScreen(
               category: section.category!,
               clientMode: true,
+              viewerRole: _viewerRole,
             );
           } else {
             page = const DocumentsV1HomeScreen(clientMode: true);
@@ -496,11 +531,13 @@ class _ClientPortalScreenState extends State<ClientPortalScreen> {
           page = DocumentsV1CategoryScreen(
             category: section.category!,
             clientMode: true,
+            viewerRole: _viewerRole,
           );
         } else {
           page = ClientJourneyDocumentsScreen(
             title: section.title,
             journeyKey: section.journeyKey ?? section.id,
+            clientMode: true,
           );
         }
         break;
@@ -510,6 +547,7 @@ class _ClientPortalScreenState extends State<ClientPortalScreen> {
         page = DocumentsV1CategoryScreen(
           category: category,
           clientMode: true,
+          viewerRole: _viewerRole,
         );
         break;
       case ClientPortalHubKind.sitePrep:
@@ -544,28 +582,32 @@ class _ErrorState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final shown = situationError(
+      message,
+      fallback: 'Could not open this section. Please try again.',
+    );
+    final offline = isOfflineUserMessage(shown);
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(28),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.wifi_off_rounded,
-                size: 56, color: AppTheme.getTextSecondary(context)),
+            Icon(
+              offline ? Icons.wifi_off_rounded : Icons.info_outline_rounded,
+              size: 56,
+              color: AppTheme.getTextSecondary(context),
+            ),
             const SizedBox(height: 16),
             Text(
-              'Something went wrong',
+              shown,
+              textAlign: TextAlign.center,
               style: TextStyle(
-                fontSize: 18,
+                fontSize: 16,
                 fontWeight: FontWeight.w800,
+                height: 1.35,
                 color: AppTheme.getTextPrimary(context),
               ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              message,
-              textAlign: TextAlign.center,
-              style: TextStyle(color: AppTheme.getTextSecondary(context)),
             ),
             const SizedBox(height: 20),
             ElevatedButton.icon(
@@ -715,7 +757,11 @@ class _PortalScaffold extends StatelessWidget {
   }
 }
 
-Future<void> _openExternal(BuildContext context, String? url) async {
+Future<void> _openDocumentInApp(
+  BuildContext context,
+  String? url, {
+  String title = 'Document',
+}) async {
   final trimmed = url?.trim() ?? '';
   if (trimmed.isEmpty) {
     ScaffoldMessenger.of(context).showSnackBar(
@@ -726,20 +772,13 @@ Future<void> _openExternal(BuildContext context, String? url) async {
   final resolved = trimmed.startsWith('http')
       ? trimmed
       : ClientPortalService().serveUrl(trimmed);
-  final uri = Uri.tryParse(resolved);
-  if (uri == null) return;
-  try {
-    await launchUrl(uri, mode: LaunchMode.externalApplication);
-  } catch (_) {
-    if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Could not open document'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    }
-  }
+  await openSharedDocument(
+    context,
+    url: resolved,
+    fileName: title,
+    clientMode: true,
+    forceInApp: true,
+  );
 }
 
 Widget _emptyDocHint(BuildContext context, String label) {
@@ -808,11 +847,13 @@ Widget _docTile(
       style: const TextStyle(fontSize: 12),
     ),
     trailing: Icon(
-      available ? Icons.open_in_new_rounded : Icons.lock_outline,
+      available ? Icons.visibility_outlined : Icons.lock_outline,
       size: 18,
       color: AppTheme.mutedGrey,
     ),
-    onTap: available ? () => _openExternal(context, url) : null,
+    onTap: available
+        ? () => _openDocumentInApp(context, url, title: title)
+        : null,
   );
 }
 
@@ -827,7 +868,6 @@ class _DocumentsKycScreen extends StatefulWidget {
 
 class _DocumentsKycScreenState extends State<_DocumentsKycScreen> {
   final _portal = ClientPortalService();
-  final _commentCtrl = TextEditingController();
 
   bool _loading = true;
   bool _saving = false;
@@ -840,12 +880,6 @@ class _DocumentsKycScreenState extends State<_DocumentsKycScreen> {
   void initState() {
     super.initState();
     _load();
-  }
-
-  @override
-  void dispose() {
-    _commentCtrl.dispose();
-    super.dispose();
   }
 
   String _labelForDocKey(String key) {
@@ -950,10 +984,6 @@ class _DocumentsKycScreenState extends State<_DocumentsKycScreen> {
           .toList();
     }
 
-    if (resolved['client_kyc_comment'] != null) {
-      _commentCtrl.text = resolved['client_kyc_comment'].toString();
-    }
-
     setState(() {
       if (stopLoading) _loading = false;
       _error = null;
@@ -980,7 +1010,7 @@ class _DocumentsKycScreenState extends State<_DocumentsKycScreen> {
       setState(() {
         _loading = false;
         if (showLoader || _data.isEmpty) {
-          _error = e.toString().replaceFirst('Exception: ', '');
+          _error = userFacingError(e);
         }
       });
     }
@@ -1024,7 +1054,7 @@ class _DocumentsKycScreenState extends State<_DocumentsKycScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(e.toString().replaceFirst('Exception: ', '')),
+          content: Text(userFacingError(e)),
           backgroundColor: Colors.red,
         ),
       );
@@ -1114,7 +1144,7 @@ class _DocumentsKycScreenState extends State<_DocumentsKycScreen> {
       if (!mounted) return false;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(e.toString().replaceFirst('Exception: ', '')),
+          content: Text(userFacingError(e)),
           backgroundColor: Colors.red,
         ),
       );
@@ -1127,10 +1157,18 @@ class _DocumentsKycScreenState extends State<_DocumentsKycScreen> {
   Future<bool> _deleteCustom(KycDocumentRecord record) async {
     setState(() => _saving = true);
     try {
+      final raw = record.raw;
       final result = await _portal.deleteCustomDocument(
         id: record.id,
         filename: record.filename,
-        customDocName: record.customLabel ?? record.displayLabel,
+        customDocName: record.customLabel,
+        index: (raw['index'] ?? raw['file_index'])?.toString(),
+        path: (raw['path'] ?? raw['storage_path'] ?? raw['file'])?.toString(),
+        url: (raw['view_url'] ??
+                raw['download_url'] ??
+                raw['url'] ??
+                raw['file_url'])
+            ?.toString(),
       );
       if (!mounted) return false;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1146,32 +1184,11 @@ class _DocumentsKycScreenState extends State<_DocumentsKycScreen> {
       if (!mounted) return false;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(e.toString().replaceFirst('Exception: ', '')),
+          content: Text(userFacingError(e)),
           backgroundColor: Colors.red,
         ),
       );
       return false;
-    } finally {
-      if (mounted) setState(() => _saving = false);
-    }
-  }
-
-  Future<void> _saveComment() async {
-    setState(() => _saving = true);
-    try {
-      await _portal.saveComment(_commentCtrl.text.trim());
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Comment saved')),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(e.toString().replaceFirst('Exception: ', '')),
-          backgroundColor: Colors.red,
-        ),
-      );
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -1188,12 +1205,10 @@ class _DocumentsKycScreenState extends State<_DocumentsKycScreen> {
                 docTypes: _docTypes,
                 kycDocs: _kycDocs,
                 saving: _saving,
-                commentCtrl: _commentCtrl,
                 onUpload: _upload,
                 onUploadCustom: _uploadCustom,
                 onDeleteCustom: _deleteCustom,
                 onOpenUploaded: _openUploaded,
-                onSaveComment: _saveComment,
               );
 
     return _PortalScaffold(
@@ -1241,7 +1256,7 @@ class _FloorPlanElevationScreenState extends State<_FloorPlanElevationScreen> {
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _error = e.toString().replaceFirst('Exception: ', '');
+        _error = userFacingError(e);
       });
     }
   }
@@ -1351,7 +1366,7 @@ class _DesignElementScreenState extends State<_DesignElementScreen> {
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _error = e.toString().replaceFirst('Exception: ', '');
+        _error = userFacingError(e);
       });
     }
   }
@@ -1477,7 +1492,7 @@ class _SitePreparationScreenState extends State<_SitePreparationScreen> {
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _error = e.toString().replaceFirst('Exception: ', '');
+        _error = userFacingError(e);
       });
     }
   }
@@ -1517,7 +1532,7 @@ class _SitePreparationScreenState extends State<_SitePreparationScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(e.toString().replaceFirst('Exception: ', '')),
+          content: Text(userFacingError(e)),
           backgroundColor: Colors.red,
         ),
       );
@@ -1539,7 +1554,7 @@ class _SitePreparationScreenState extends State<_SitePreparationScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(e.toString().replaceFirst('Exception: ', '')),
+          content: Text(userFacingError(e)),
           backgroundColor: Colors.red,
         ),
       );
@@ -1710,7 +1725,7 @@ class _DemolitionScreenState extends State<_DemolitionScreen> {
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _error = e.toString().replaceFirst('Exception: ', '');
+        _error = userFacingError(e);
       });
     }
   }
@@ -1744,7 +1759,7 @@ class _DemolitionScreenState extends State<_DemolitionScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(e.toString().replaceFirst('Exception: ', '')),
+          content: Text(userFacingError(e)),
           backgroundColor: Colors.red,
         ),
       );
@@ -1883,7 +1898,7 @@ class _SiteInspectionScreenState extends State<_SiteInspectionScreen> {
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _error = e.toString().replaceFirst('Exception: ', '');
+        _error = userFacingError(e);
       });
     }
   }
@@ -1991,7 +2006,7 @@ class _SiteInspectionScreenState extends State<_SiteInspectionScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(e.toString().replaceFirst('Exception: ', '')),
+          content: Text(userFacingError(e)),
           backgroundColor: Colors.red,
         ),
       );
@@ -2378,7 +2393,7 @@ class _AllDocumentsScreenState extends State<_AllDocumentsScreen> {
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _error = e.toString().replaceFirst('Exception: ', '');
+        _error = userFacingError(e);
       });
     }
   }

@@ -62,7 +62,7 @@ class ChatV1DocStore {
         bytes: pdfBytes,
         fileName: pdfName,
       );
-      pdfUrl = (upload?['url'] ?? upload?['storage_path'] ?? '').toString();
+      pdfUrl = discussionUploadUrl(upload) ?? '';
       if (pdfUrl.isEmpty) {
         throw ChatV1ApiException('PDF upload failed');
       }

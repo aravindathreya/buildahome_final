@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 
 import 'services/camera_permission.dart';
+import 'user_facing_error.dart';
 
 /// Selected file for Mobile Live Test multipart uploads.
 class MobileLiveTestSelectedFile {
@@ -128,7 +129,7 @@ class _MobileLiveTestVideoRecorderPageState
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _initError = e.toString().replaceFirst('Exception: ', '');
+        _initError = userFacingError(e);
         _initializing = false;
       });
     }
@@ -188,7 +189,7 @@ class _MobileLiveTestVideoRecorderPageState
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+        SnackBar(content: Text(userFacingError(e))),
       );
     }
   }

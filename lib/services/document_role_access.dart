@@ -371,7 +371,9 @@ ForMeDocKind classifyForMeDocument({
     return ForMeDocKind.architecturalFinalAreaStatement;
   }
   if (blob.contains('floor plan')) return ForMeDocKind.architecturalFloorPlan;
-  if (blob.contains('working drawing') || blob.contains('working draw')) {
+  if (blob.contains('working drawing') ||
+      blob.contains('working draw') ||
+      blob.contains('workingdrawing')) {
     return ForMeDocKind.architecturalWorkingDrawing;
   }
   if (blob.contains('filler slab')) {
@@ -632,6 +634,7 @@ DocumentAccessRights _matrixAccess(ForMeDocRoleBucket bucket, ForMeDocKind kind)
 
     case ForMeDocKind.architecturalFinalAreaStatement:
       return pick(
+        client: v,
         architect: evu,
         siteEngineer: v,
         pcApc: v,
@@ -737,8 +740,9 @@ DocumentAccessRights _matrixAccess(ForMeDocRoleBucket bucket, ForMeDocKind kind)
       );
 
     case ForMeDocKind.siteDocument:
-      // Internal Docs only — not shown to Client.
+      // Site inspection report — shown in For Me and Docs for Client + staff.
       return pick(
+        client: v,
         architect: v,
         structural: v,
         mepDesigner: v,
@@ -805,6 +809,13 @@ List<WorkflowDocumentCategory> filterDocumentCategoriesForRole(
       usesClientDocumentCatalog(role) ||
       (clientMode && forMeDocRoleBucket(role) == ForMeDocRoleBucket.other);
 
+  bool keepAreaStatement(WorkflowDocumentCategory category) {
+    final blob =
+        '${category.id} ${category.label} ${category.libraryGroupKey ?? ''} ${category.clientJourneyKey ?? ''}'
+            .toLowerCase();
+    return blob.contains('architectural') || blob.contains('architecture');
+  }
+
   var next = categories.where((category) {
     if (isUncategorizedDocumentCategory(category)) return false;
     if (isContractsDocumentCategory(category)) return false;
@@ -826,6 +837,7 @@ List<WorkflowDocumentCategory> filterDocumentCategoriesForRole(
       libraryGroupKey: category.libraryGroupKey,
     );
   }).map((category) {
+    final showAreaStatement = keepAreaStatement(category);
     final isPlanningCommercial = classifyForMeDocument(
           categoryId: category.id,
           categoryLabel: category.label,
@@ -871,12 +883,14 @@ List<WorkflowDocumentCategory> filterDocumentCategoriesForRole(
         })
         .map((section) {
       var docs = section.documents;
-      if (hideAreaStatement || isPlanningCommercial) {
+      if (!showAreaStatement &&
+          (hideAreaStatement || isPlanningCommercial)) {
         docs = docs.where((doc) => !doc.isAreaStatement).toList();
       }
       return section.copyWithDocuments(docs);
     }).where((section) {
-      if (hideAreaStatement || isPlanningCommercial) {
+      if (!showAreaStatement &&
+          (hideAreaStatement || isPlanningCommercial)) {
         return section.documents.isNotEmpty;
       }
       return true;
@@ -886,7 +900,14 @@ List<WorkflowDocumentCategory> filterDocumentCategoriesForRole(
   }).where((category) => category.sections.isNotEmpty).toList();
 
   if (hideAreaStatement) {
-    next = withoutAreaStatementCategories(next);
+    next = next
+        .map(
+          (category) => keepAreaStatement(category)
+              ? category
+              : withoutAreaStatementDocuments(category),
+        )
+        .where((category) => category.sections.isNotEmpty)
+        .toList();
   }
   return next;
 }

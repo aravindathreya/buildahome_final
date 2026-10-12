@@ -4,11 +4,11 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:url_launcher/url_launcher.dart';
-
 import 'app_theme.dart';
 import 'services/data_provider.dart';
+import 'widgets/open_shared_document.dart';
 import 'widgets/themed_scaffold.dart';
+import 'user_facing_error.dart';
 
 class Documents extends StatefulWidget {
   @override
@@ -38,8 +38,13 @@ class DocumentObjectState extends State<DocumentObject> {
 
   DocumentObjectState(this.parent, this.children, this.drawing_id);
 
-  _launchURL(url) async {
-    await launch(url);
+  Future<void> _openDrawing(BuildContext context, String url, String name) async {
+    await openSharedDocument(
+      context,
+      url: url,
+      fileName: name,
+      forceInApp: true,
+    );
   }
 
   @override
@@ -131,13 +136,16 @@ class DocumentObjectState extends State<DocumentObject> {
                                   color: Colors.transparent,
                                   child: InkWell(
                                     onTap: () {
-                                      showDialog(
-                                          context: context,
-                                          builder: (BuildContext context) {
-                                            return const AlertDialog(content: Text("Loading..."));
-                                          });
-                                      Navigator.of(context, rootNavigator: true).pop();
-                                      _launchURL("https://office.buildahome.in/files/${children[x]['link']}");
+                                      final name =
+                                          children[x]['name'].toString() ==
+                                                  'null'
+                                              ? children[x]['link'].toString()
+                                              : children[x]['name'].toString();
+                                      _openDrawing(
+                                        context,
+                                        "https://office.buildahome.in/files/${children[x]['link']}",
+                                        name,
+                                      );
                                     },
                                     child: Container(
                                       padding: const EdgeInsets.all(14),
@@ -166,7 +174,7 @@ class DocumentObjectState extends State<DocumentObject> {
                                             ),
                                           ),
                                           const Icon(
-                                            Icons.open_in_new_rounded,
+                                            Icons.visibility_outlined,
                                             size: 18,
                                             color: AppTheme.mutedGrey,
                                           ),
@@ -250,7 +258,7 @@ class DocumentsState extends State<Documents> {
       if (_shouldIgnoreLoad(requestId)) return;
       if (!mounted) return;
       setState(() {
-        _errorMessage = e.toString().replaceAll('Exception: ', '');
+        _errorMessage = userFacingError(e);
       });
     } finally {
       if (_shouldIgnoreLoad(requestId)) return;

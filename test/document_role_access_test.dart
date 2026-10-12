@@ -87,12 +87,12 @@ void main() {
       expect(seAgreement.view, isFalse);
     });
 
-    test('Client cannot see Final Area Statement', () {
+    test('Client can view Final Area Statement in Architectural', () {
       final client = documentAccessForRole(
         role: 'Client',
         kind: ForMeDocKind.architecturalFinalAreaStatement,
       );
-      expect(client.view, isFalse);
+      expect(client.view, isTrue);
 
       final pm = documentAccessForRole(
         role: 'Project Manager',
@@ -101,7 +101,7 @@ void main() {
       expect(pm.view, isTrue);
     });
 
-    test('Site Document and Planning & Commercial are staff-only view', () {
+    test('Site inspection report is visible to Client and staff', () {
       expect(
         documentAccessForRole(
           role: 'Site Engineer',
@@ -114,7 +114,7 @@ void main() {
           role: 'Client',
           kind: ForMeDocKind.siteDocument,
         ).view,
-        isFalse,
+        isTrue,
       );
       expect(
         documentAccessForRole(
@@ -206,9 +206,10 @@ void main() {
 
       expect(client, contains('KYC & Documents'));
       expect(client, containsAll(['Structural & Civil', 'Designs and details']));
-      expect(client, isNot(contains('Site Document')));
+      expect(client, contains('Site Document'));
 
       expect(staff, isNot(contains('KYC & Documents')));
+      expect(staff, contains('Site Document'));
       expect(
         staff,
         client.where((label) => label != 'KYC & Documents').toList(),

@@ -65,14 +65,15 @@ class _HomeState extends State<Home> {
     final prefs = await SharedPreferences.getInstance();
     final role = prefs.getString('role');
     final isClient = (role ?? '').trim().toLowerCase() == 'client';
-    var projectId = prefs.getString('project_id')?.trim();
+    final projectId = prefs.getString('project_id')?.trim();
+    final hasProject = projectId != null && projectId.isNotEmpty;
 
-    if (isClient && (projectId == null || projectId.isEmpty)) {
-      projectId = await DataProvider().ensureClientProjectSelected();
-    }
-
-    // Cache-first: paints the right shell immediately when generation is known.
-    await ClientGenerationService.instance.ensureLoaded(projectId: projectId);
+    // Paint from what is already saved. A missing project id or generation
+    // response is filled in after the shell is visible.
+    await ClientGenerationService.instance.ensureLoaded(
+      projectId: hasProject ? projectId : null,
+      waitForNetwork: false,
+    );
     if (!mounted) return;
     setState(() {
       _isClientUser = isClient;
@@ -87,6 +88,21 @@ class _HomeState extends State<Home> {
     });
     unawaited(AppDeepLinkService.instance.onAppReady());
     unawaited(PushNotificationService.instance.markAppReady());
+
+    if (isClient && !hasProject) {
+      unawaited(_resolveMissingProject());
+    }
+  }
+
+  Future<void> _resolveMissingProject() async {
+    final projectId = await DataProvider().ensureClientProjectSelected();
+    if (!mounted) return;
+    await ClientGenerationService.instance.ensureLoaded(projectId: projectId);
+    if (!mounted) return;
+    final next = ClientGenerationService.instance.shouldUseLegacyProjectUi;
+    if (next != _useLegacyProjectUi) {
+      setState(() => _useLegacyProjectUi = next);
+    }
   }
 
   @override

@@ -9,6 +9,7 @@ import '../models/multi_material_site_proof.dart';
 import 'api_base.dart';
 import 'api_http.dart';
 import 'session_manager.dart';
+import '../user_facing_error.dart';
 
 /// Client for the multi-material site-proof APIs.
 class MultiMaterialSiteProofService {
@@ -205,7 +206,7 @@ class MultiMaterialSiteProofService {
       } on MultiMaterialSiteProofException {
         rethrow;
       } catch (e) {
-        lastMessage = e.toString().replaceFirst('Exception: ', '');
+        lastMessage = userFacingError(e);
       }
     }
 
@@ -273,7 +274,7 @@ class MultiMaterialSiteProofService {
       } on MultiMaterialSiteProofException {
         rethrow;
       } catch (e) {
-        lastMessage = e.toString().replaceFirst('Exception: ', '');
+        lastMessage = userFacingError(e);
       }
     }
 
@@ -370,7 +371,7 @@ class MultiMaterialSiteProofService {
       } on MultiMaterialSiteProofException {
         rethrow;
       } catch (e) {
-        lastMessage = e.toString().replaceFirst('Exception: ', '');
+        lastMessage = userFacingError(e);
       }
     }
 

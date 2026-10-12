@@ -1,36 +1,71 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
+import '../app_theme.dart';
 import '../models/sales_sop_slot.dart';
 
 const visitPurple = Color(0xFF9670FF);
 const visitGreen = Color(0xFF99F5C5);
-const visitBg = Color(0xFF0D1013);
-const visitCard = Color(0xFF191C22);
-const visitMuted = Color(0xFFB0B5C2);
-ThemeData visitsTheme() => ThemeData.dark().copyWith(
-      textTheme: ThemeData.dark().textTheme.apply(fontFamily: 'Mulish-Regular'),
-      scaffoldBackgroundColor: visitBg,
-      colorScheme: const ColorScheme.dark(
-          primary: visitPurple, secondary: visitGreen, surface: visitCard),
-      appBarTheme: const AppBarTheme(
-          backgroundColor: visitBg, foregroundColor: Colors.white),
-      filledButtonTheme: FilledButtonThemeData(
-          style: FilledButton.styleFrom(
-              backgroundColor: visitPurple,
-              foregroundColor: Colors.black,
-              minimumSize: const Size(double.infinity, 52),
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14)),
-              textStyle: const TextStyle(
-                  fontFamily: 'Mulish-Regular',
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700))),
+Color get visitBg =>
+    AppTheme.isDark ? const Color(0xFF0D1013) : const Color(0xFFF7F8FB);
+Color get visitCard =>
+    AppTheme.isDark ? const Color(0xFF191C22) : Colors.white;
+Color get visitMuted =>
+    AppTheme.isDark ? const Color(0xFFB0B5C2) : const Color(0xFF5C6578);
+Color get visitInk =>
+    AppTheme.isDark ? Colors.white : const Color(0xFF1B254B);
+Color get visitLine =>
+    AppTheme.isDark ? const Color(0xFF2A2D35) : const Color(0xFFE4E4E7);
+
+ThemeData visitsTheme() {
+  final dark = AppTheme.isDark;
+  final base = dark ? ThemeData.dark() : ThemeData.light();
+  return base.copyWith(
+    textTheme: base.textTheme.apply(
+      fontFamily: 'Mulish-Regular',
+      bodyColor: visitInk,
+      displayColor: visitInk,
+    ),
+    scaffoldBackgroundColor: visitBg,
+    colorScheme: ColorScheme(
+      brightness: dark ? Brightness.dark : Brightness.light,
+      primary: visitPurple,
+      onPrimary: Colors.white,
+      secondary: visitGreen,
+      onSecondary: Colors.black,
+      error: const Color(0xFFEF4444),
+      onError: Colors.white,
+      surface: visitCard,
+      onSurface: visitInk,
+    ),
+    appBarTheme: AppBarTheme(
+      backgroundColor: visitBg,
+      foregroundColor: visitInk,
+      elevation: 0,
+      systemOverlayStyle:
+          dark ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark,
+    ),
+    filledButtonTheme: FilledButtonThemeData(
+      style: FilledButton.styleFrom(
+        backgroundColor: visitPurple,
+        foregroundColor: Colors.white,
+        minimumSize: const Size(double.infinity, 52),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        textStyle: const TextStyle(
+          fontFamily: 'Mulish-Regular',
+          fontSize: 16,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    ),
+  );
+}
+
+BoxDecoration visitDecoration({Color? color, Color? border}) => BoxDecoration(
+      color: color ?? visitCard,
+      borderRadius: BorderRadius.circular(16),
+      border: Border.all(color: border ?? visitLine),
     );
-BoxDecoration visitDecoration({Color color = visitCard, Color? border}) =>
-    BoxDecoration(
-        color: color,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: border ?? const Color(0xFF2A2D35)));
 
 bool visitIsCompleted(SalesSopSlot s) =>
     const {'completed', 'done', 'finished'}.contains(s.statusKey);
@@ -85,8 +120,8 @@ class _OverviewState extends State<SiteVisitsOverview> {
                         Expanded(
                             child: Text(
                                 widget.showInlineTitle ? 'Slots' : '',
-                                style: const TextStyle(
-                                    color: Colors.white,
+                                style: TextStyle(
+                                    color: visitInk,
                                     fontSize: 25,
                                     fontWeight: FontWeight.w700))),
                         TextButton.icon(
@@ -100,7 +135,7 @@ class _OverviewState extends State<SiteVisitsOverview> {
                                     visitPurple.withValues(alpha: .12)))
                       ]),
                       const SizedBox(height: 8),
-                      const Text('Track and confirm your upcoming site visits.',
+                      Text('Track and confirm your upcoming site visits.',
                           style: TextStyle(
                               color: visitMuted, fontSize: 16, height: 1.5)),
                       const SizedBox(height: 20),
@@ -122,12 +157,11 @@ class _OverviewState extends State<SiteVisitsOverview> {
                                                       slots.length,
                                               strokeWidth: 7,
                                               color: visitGreen,
-                                              backgroundColor:
-                                                  const Color(0xFF303440))),
+                                              backgroundColor: visitLine)),
                                       Text(
                                           '${accepted + completed}/${slots.length}',
-                                          style: const TextStyle(
-                                              color: Colors.white,
+                                          style: TextStyle(
+                                              color: visitInk,
                                               fontWeight: FontWeight.w600)),
                                     ])),
                             const SizedBox(width: 18),
@@ -137,13 +171,13 @@ class _OverviewState extends State<SiteVisitsOverview> {
                                         CrossAxisAlignment.start,
                                     children: [
                                   Text('$accepted confirmed · $pending pending',
-                                      style: const TextStyle(
-                                          color: Colors.white,
+                                      style: TextStyle(
+                                          color: visitInk,
                                           fontWeight: FontWeight.w600)),
                                   const SizedBox(height: 7),
                                   Text(
                                       '${slots.length - completed} upcoming · $completed completed',
-                                      style: const TextStyle(
+                                      style: TextStyle(
                                           color: visitMuted, fontSize: 13)),
                                 ])),
                           ])),
@@ -178,8 +212,10 @@ class _OverviewState extends State<SiteVisitsOverview> {
                       if (widget.error != null)
                         Text(widget.error!,
                             style: const TextStyle(color: Color(0xFFFFB4AB))),
-                      if (visible.isEmpty && !widget.loading)
-                        const Padding(
+                      if (visible.isEmpty &&
+                          !widget.loading &&
+                          widget.error == null)
+                        Padding(
                             padding: EdgeInsets.all(32),
                             child: Text('No visits to show.',
                                 textAlign: TextAlign.center,
@@ -196,7 +232,9 @@ class _OverviewState extends State<SiteVisitsOverview> {
                                         padding: const EdgeInsets.all(15),
                                         decoration: visitDecoration(
                                             color: slot.isAccepted
-                                                ? const Color(0xFF0C2924)
+                                                ? (AppTheme.isDark
+                                                    ? const Color(0xFF0C2924)
+                                                    : const Color(0xFFE7F8EF))
                                                 : visitCard),
                                         child: Row(
                                             crossAxisAlignment:
@@ -225,8 +263,8 @@ class _OverviewState extends State<SiteVisitsOverview> {
                                                               .start,
                                                       children: [
                                                     Text(slot.title,
-                                                        style: const TextStyle(
-                                                            color: Colors.white,
+                                                        style: TextStyle(
+                                                            color: visitInk,
                                                             fontSize: 16,
                                                             fontWeight:
                                                                 FontWeight
@@ -239,7 +277,7 @@ class _OverviewState extends State<SiteVisitsOverview> {
                                                                     ?.parsedDateTime !=
                                                                 null
                                                             ? DateFormat(
-                                                                    'EEE, d MMM yyyy')
+                                                                    'EEEE, d MMMM yyyy')
                                                                 .format(slot
                                                                     .acceptedSlot!
                                                                     .parsedDateTime!)
@@ -274,8 +312,8 @@ class _OverviewState extends State<SiteVisitsOverview> {
                                               const SizedBox(width: 6),
                                               _status(slot),
                                               const SizedBox(width: 4),
-                                              const Icon(Icons.chevron_right,
-                                                  color: visitMuted, size: 16),
+                                              Icon(Icons.chevron_right,
+                                                  color: visitInk, size: 16),
                                             ]))))),
                     ]))));
   }
@@ -355,10 +393,10 @@ class VisitDetail extends StatelessWidget {
                   children: [
                 if (label != null)
                   Text(label!,
-                      style: const TextStyle(color: visitMuted, fontSize: 12)),
+                      style: TextStyle(color: visitMuted, fontSize: 12)),
                 Text(text,
                     style: TextStyle(
-                        color: emphasize ? Colors.white : visitMuted,
+                        color: emphasize ? visitInk : visitMuted,
                         fontSize: emphasize ? 15 : 13,
                         fontWeight:
                             emphasize ? FontWeight.w600 : FontWeight.w500,

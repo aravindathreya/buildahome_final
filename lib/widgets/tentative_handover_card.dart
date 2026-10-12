@@ -248,8 +248,8 @@ class _TentativeHandoverCardState extends State<TentativeHandoverCard> {
                   child: LinearProgressIndicator(
                     value: progress,
                     minHeight: 6,
-                    backgroundColor: const Color(0xFF2A2A2D),
-                    color: AppTheme.darkTextPrimary,
+                    backgroundColor: AppTheme.darkBackgroundPrimaryLight,
+                    color: AppTheme.navy,
                   ),
                 ),
               ),
@@ -289,6 +289,7 @@ class _TentativeHandoverCardState extends State<TentativeHandoverCard> {
     required int seconds,
     required bool dueNow,
   }) {
+    final dark = AppTheme.isDark;
     return Container(
       margin: widget.margin,
       padding: EdgeInsets.symmetric(
@@ -296,9 +297,11 @@ class _TentativeHandoverCardState extends State<TentativeHandoverCard> {
         vertical: widget.compact ? 12 : 14,
       ),
       decoration: BoxDecoration(
-        color: const Color(0xFF14261C),
+        color: dark ? const Color(0xFF14261C) : const Color(0xFFF0FDF4),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFF14532D)),
+        border: Border.all(
+          color: dark ? const Color(0xFF14532D) : const Color(0xFF86EFAC),
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -323,10 +326,12 @@ class _TentativeHandoverCardState extends State<TentativeHandoverCard> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
+                    Text(
                       'Tentative handover',
                       style: TextStyle(
-                        color: Color(0xFF86EFAC),
+                        color: dark
+                            ? const Color(0xFF86EFAC)
+                            : const Color(0xFF047857),
                         fontSize: 11,
                         fontWeight: FontWeight.w700,
                         letterSpacing: 0.2,
@@ -412,25 +417,28 @@ class _LivePulseBadgeState extends State<_LivePulseBadge>
         final t = _pulse.value;
         final glow = 0.25 + (0.45 * t);
         final scale = 0.92 + (0.08 * t);
+        final dark = AppTheme.isDark;
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
           decoration: BoxDecoration(
-            color: const Color(0xFF14261C),
+            color: dark ? const Color(0xFF14261C) : const Color(0xFFD1FAE5),
             borderRadius: BorderRadius.circular(999),
             border: Border.all(
               color: Color.lerp(
-                const Color(0xFF14532D),
+                dark ? const Color(0xFF14532D) : const Color(0xFF6EE7B7),
                 const Color(0xFF34D399),
                 t * 0.55,
               )!,
             ),
-            boxShadow: [
-              BoxShadow(
-                color: const Color(0xFF34D399).withValues(alpha: glow * 0.35),
-                blurRadius: 8 + (4 * t),
-                spreadRadius: 0,
-              ),
-            ],
+            boxShadow: AppTheme.isDark
+                ? [
+                    BoxShadow(
+                      color: const Color(0xFF34D399)
+                          .withValues(alpha: glow * 0.35),
+                      blurRadius: 8 + (4 * t),
+                    ),
+                  ]
+                : null,
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
@@ -461,11 +469,13 @@ class _LivePulseBadgeState extends State<_LivePulseBadge>
               Text(
                 'LIVE',
                 style: TextStyle(
-                  color: Color.lerp(
-                    const Color(0xFF86EFAC),
-                    const Color(0xFFD1FAE5),
-                    t * 0.4,
-                  ),
+                  color: dark
+                      ? Color.lerp(
+                          const Color(0xFF86EFAC),
+                          const Color(0xFFD1FAE5),
+                          t * 0.4,
+                        )
+                      : const Color(0xFF047857),
                   fontSize: 10,
                   fontWeight: FontWeight.w800,
                   letterSpacing: 0.6,
@@ -490,22 +500,25 @@ class _CounterCell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final dark = AppTheme.isDark;
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
       decoration: BoxDecoration(
-        color: const Color(0xFF0B1A12),
+        color: dark ? const Color(0xFF0B1A12) : Colors.white,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: const Color(0xFF1B4332)),
+        border: Border.all(
+          color: dark ? const Color(0xFF1B4332) : const Color(0xFF86EFAC),
+        ),
       ),
       child: Column(
         children: [
           Text(
             value.toString().padLeft(2, '0'),
-            style: const TextStyle(
-              color: Color(0xFF6EE7B7),
+            style: TextStyle(
+              color: dark ? const Color(0xFF6EE7B7) : const Color(0xFF047857),
               fontSize: 18,
               fontWeight: FontWeight.w800,
-              fontFeatures: [FontFeature.tabularFigures()],
+              fontFeatures: const [FontFeature.tabularFigures()],
               height: 1.1,
             ),
           ),

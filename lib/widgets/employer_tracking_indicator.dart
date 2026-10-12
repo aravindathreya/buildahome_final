@@ -15,10 +15,23 @@ class EmployerTrackingIndicator extends StatelessWidget {
       valueListenable: StaffLocationTracker.instance.tracking,
       builder: (context, tracking, _) {
         if (!tracking) return const SizedBox.shrink();
+        // onDark means the chip sits on the navy dashboard card.
+        // Otherwise follow the app theme so dark mode does not paint
+        // near-white text on the pale mint chip.
+        final themeDark = !onDark && AppTheme.isDark;
         final background = onDark
             ? Colors.white.withValues(alpha: 0.16)
-            : const Color(0xFFECFDF5);
-        final foreground = onDark ? Colors.white : const Color(0xFF047857);
+            : themeDark
+                ? const Color(0xFF064E3B)
+                : const Color(0xFFECFDF5);
+        final foreground = onDark
+            ? Colors.white
+            : themeDark
+                ? const Color(0xFFA7F3D0)
+                : const Color(0xFF047857);
+        final borderColor = themeDark
+            ? const Color(0xFF047857)
+            : const Color(0xFFA7F3D0);
         return Padding(
           padding: const EdgeInsets.only(top: 10),
           child: Container(
@@ -26,9 +39,7 @@ class EmployerTrackingIndicator extends StatelessWidget {
             decoration: BoxDecoration(
               color: background,
               borderRadius: BorderRadius.circular(999),
-              border: onDark
-                  ? null
-                  : Border.all(color: const Color(0xFFA7F3D0)),
+              border: onDark ? null : Border.all(color: borderColor),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
@@ -39,7 +50,7 @@ class EmployerTrackingIndicator extends StatelessWidget {
                   child: Text(
                     'Location tracked by employer',
                     style: TextStyle(
-                      color: onDark ? foreground : AppTheme.darkTextPrimary,
+                      color: foreground,
                       fontSize: 12,
                       fontWeight: FontWeight.w700,
                       height: 1.2,

@@ -8,6 +8,7 @@ import 'client_generation_service.dart';
 import 'mobile_documents_service.dart';
 import 'session_manager.dart';
 import 'project_completion_days.dart';
+import '../user_facing_error.dart';
 
 class DataProvider {
   static final DataProvider _instance = DataProvider._internal();
@@ -620,8 +621,10 @@ class DataProvider {
       );
     }
     throw Exception(
-      lastError?.toString().replaceFirst('Exception: ', '') ??
-          'Unable to load project timeline right now.',
+      userFacingError(
+        lastError,
+        fallback: 'Unable to load project timeline right now.',
+      ),
     );
   }
 
@@ -862,8 +865,10 @@ class DataProvider {
       );
     }
     throw Exception(
-      lastError?.toString().replaceFirst('Exception: ', '') ??
-          'Unable to load $logLabel right now.',
+      userFacingError(
+        lastError,
+        fallback: 'Unable to load $logLabel right now.',
+      ),
     );
   }
 
@@ -952,8 +957,10 @@ class DataProvider {
       );
     }
     throw Exception(
-      lastError?.toString().replaceFirst('Exception: ', '') ??
-          'Unable to load $cardKey right now.',
+      userFacingError(
+        lastError,
+        fallback: 'Unable to load $cardKey right now.',
+      ),
     );
   }
 
@@ -1705,7 +1712,8 @@ class DataProvider {
     try {
       var locationUrl =
           'https://office.buildahome.in/API/get_project_location?id=${projectId}';
-      var locResponse = await ApiHttp.get(Uri.parse(locationUrl));
+      var locResponse = await ApiHttp.get(Uri.parse(locationUrl))
+          .timeout(const Duration(seconds: 15));
       if (locResponse.statusCode == 200 && locResponse.body.trim().isNotEmpty) {
         clientProjectLocation = locResponse.body.trim();
       }
@@ -1838,7 +1846,8 @@ class DataProvider {
     if (id.isEmpty) return null;
     final percUrl =
         'https://office.buildahome.in/API/get_project_percentage?id=$id&detail=1';
-    final percResponse = await ApiHttp.get(Uri.parse(percUrl));
+    final percResponse = await ApiHttp.get(Uri.parse(percUrl))
+        .timeout(const Duration(seconds: 15));
     print('percentage response ($id): ${percResponse.body}');
     if (percResponse.statusCode != 200) return null;
     final body = percResponse.body.trim();
@@ -1883,7 +1892,7 @@ class DataProvider {
       final uri = Uri.parse(
         'https://office.buildahome.in/API/project_created_from_sales_sop/${Uri.encodeComponent(projectId)}',
       );
-      final response = await ApiHttp.get(uri);
+      final response = await ApiHttp.get(uri).timeout(const Duration(seconds: 15));
       if (response.statusCode != 200) return cached;
       final decoded = jsonDecode(response.body);
       if (decoded is! Map) return cached;
@@ -2020,7 +2029,8 @@ class DataProvider {
     try {
       var statusUrl =
           'https://office.buildahome.in/API/get_project_block_status?project_id=${projectId}';
-      var statusResponse = await ApiHttp.get(Uri.parse(statusUrl));
+      var statusResponse = await ApiHttp.get(Uri.parse(statusUrl))
+          .timeout(const Duration(seconds: 15));
       if (statusResponse.statusCode == 200) {
         var statusResponseBody = jsonDecode(statusResponse.body);
         if (statusResponseBody['status'] == 'blocked') {

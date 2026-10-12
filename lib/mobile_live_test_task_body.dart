@@ -9,6 +9,7 @@ import 'models/mobile_live_test.dart';
 import 'services/mobile_live_test_controller.dart';
 import 'services/mobile_live_test_service.dart';
 import 'widgets/modern_task_card.dart';
+import 'user_facing_error.dart';
 
 /// Shared My Tasks-style task card body (list + detail screen).
 class MobileLiveTestTaskBody extends StatefulWidget {
@@ -88,7 +89,7 @@ class _MobileLiveTestTaskBodyState extends State<MobileLiveTestTaskBody> {
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _error = e.toString().replaceFirst('Exception: ', '');
+        _error = userFacingError(e);
         _loading = false;
       });
     }
@@ -181,7 +182,7 @@ class _MobileLiveTestTaskBodyState extends State<MobileLiveTestTaskBody> {
       if (!mounted) return false;
       setState(() {
         _submitting = false;
-        _error = e.toString().replaceFirst('Exception: ', '');
+        _error = userFacingError(e);
       });
       return false;
     }

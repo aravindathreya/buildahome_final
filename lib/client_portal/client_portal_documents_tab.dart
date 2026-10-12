@@ -11,6 +11,7 @@ import '../services/mobile_documents_service.dart';
 import '../services/workflow_document_service.dart';
 import '../widgets/skeleton_loader.dart';
 import 'client_portal_document_ui.dart';
+import '../user_facing_error.dart';
 
 /// Documents tab inside KYC & Documents — searchable category list with badges.
 class ClientPortalDocumentsTab extends StatefulWidget {
@@ -80,7 +81,7 @@ class _ClientPortalDocumentsTabState extends State<ClientPortalDocumentsTab> {
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _error = e.toString().replaceFirst('Exception: ', '');
+        _error = userFacingError(e);
       });
     }
   }
@@ -156,6 +157,7 @@ class _ClientPortalDocumentsTabState extends State<ClientPortalDocumentsTab> {
       color: ClientPortalDocTheme.accentBlue,
       onRefresh: _load,
       child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
         children: [
           ClientPortalSearchBar(

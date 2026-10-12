@@ -14,6 +14,7 @@ import 'widgets/themed_scaffold.dart';
 import 'site_proof_multi/multi_material_site_proof_flow.dart';
 import 'widgets/indent_site_proof_summary_card.dart';
 import 'widgets/workflow_document_viewer.dart';
+import 'user_facing_error.dart';
 
 class ApprovedPosScreenLayout extends StatelessWidget {
   final String? initialProjectId;
@@ -126,7 +127,7 @@ class _ApprovedPosScreenState extends State<ApprovedPosScreen> {
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _error = e.toString().replaceFirst('Exception: ', '');
+        _error = userFacingError(e);
       });
     }
   }
@@ -828,7 +829,7 @@ class _ApprovedPoDetailScreenState extends State<ApprovedPoDetailScreen> {
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _error = e.toString().replaceFirst('Exception: ', '');
+        _error = userFacingError(e);
       });
     }
   }

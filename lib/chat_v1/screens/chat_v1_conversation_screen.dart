@@ -24,6 +24,7 @@ import '../widgets/chat_v1_composer.dart';
 import '../widgets/chat_v1_message_bubble.dart';
 import 'chat_v1_group_info_screen.dart';
 import 'chat_v1_task_details_sheet.dart';
+import '../../user_facing_error.dart';
 
 /// The visible conversation must retain the same confirmed metadata as its cache.
 /// Partial socket/upload events can omit mentions without revoking existing tags.
@@ -145,6 +146,14 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
     if (names.length == 1) return '${names.first} is typing…';
     if (names.length == 2) return '${names[0]} and ${names[1]} are typing…';
     return '${names.length} people are typing…';
+  }
+
+  ScaffoldMessengerState? _messenger;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _messenger = ScaffoldMessenger.maybeOf(context);
   }
 
   @override
@@ -310,7 +319,7 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
       } else {
         setState(() {
           _loading = false;
-          _error = e.toString().replaceFirst('Exception: ', '');
+          _error = userFacingError(e);
         });
       }
     }
@@ -946,12 +955,13 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
     } catch (e) {
       // Roll back optimistic change.
       _applyReaction(latest.id, emoji, add: alreadyMine, mine: true);
-      _toast(e.toString().replaceFirst('Exception: ', ''));
+      _toast(userFacingError(e));
     }
   }
 
   @override
   void dispose() {
+    _messenger?.hideCurrentSnackBar();
     _scroll.removeListener(_onScroll);
     _stopMyTyping();
     _typingDebounce?.cancel();
@@ -1093,7 +1103,7 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
           fileName: fileName,
         );
         final url = ChatV1Utils.resolveMediaUrl(
-          _extractUploadUrl(upload) ?? '',
+          discussionUploadUrl(upload) ?? '',
         );
         final name = (upload?['filename'] ?? upload?['file_name'] ?? fileName)
             .toString();
@@ -1168,32 +1178,9 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
       if (!mounted) return;
       setState(() => _sending = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+        SnackBar(content: Text(userFacingError(e))),
       );
     }
-  }
-
-  String? _extractUploadUrl(Map<String, dynamic>? upload) {
-    if (upload == null) return null;
-    final direct = upload['url'] ?? upload['storage_path'] ?? upload['path'];
-    if (direct != null && direct.toString().trim().isNotEmpty) {
-      return direct.toString();
-    }
-    final data = upload['data'];
-    if (data is Map) {
-      final nested = data['url'] ?? data['storage_path'] ?? data['path'];
-      if (nested != null && nested.toString().trim().isNotEmpty) {
-        return nested.toString();
-      }
-    }
-    final file = upload['file'];
-    if (file is Map) {
-      final nested = file['url'] ?? file['storage_path'] ?? file['path'];
-      if (nested != null && nested.toString().trim().isNotEmpty) {
-        return nested.toString();
-      }
-    }
-    return null;
   }
 
   String _guessContentType(String name) {
@@ -1679,8 +1666,18 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
 
   void _toast(String text, {SnackBarAction? action}) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(text), action: action),
+    final messenger = ScaffoldMessenger.of(context);
+    _messenger = messenger;
+    messenger.hideCurrentSnackBar();
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(text),
+        action: action,
+        // An action otherwise keeps this bar up until it is tapped,
+        // including after leaving the chat and coming back.
+        persist: false,
+        duration: const Duration(seconds: 3),
+      ),
     );
   }
 
@@ -1795,7 +1792,7 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
         _toast('Pinned');
       }
     } catch (e) {
-      _toast(e.toString().replaceFirst('Exception: ', ''));
+      _toast(userFacingError(e));
     }
   }
 
@@ -1867,55 +1864,57 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
       _persistMessagesCache();
       _toast('Unpinned');
     } catch (e) {
-      _toast(e.toString().replaceFirst('Exception: ', ''));
+      _toast(userFacingError(e));
     }
   }
 
   Future<void> _editMessage(ChatV1Message msg) async {
-    final visible = ChatV1Importance.parse(msg.body).body;
-    final controller = TextEditingController(text: visible);
-    final next = await showDialog<String>(
+    final parsed = ChatV1Importance.parse(msg.body);
+    final visible = parsed.body;
+    final nextVisible = await showDialog<String>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Edit message'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          maxLines: 5,
-          minLines: 2,
-          decoration: const InputDecoration(
-            hintText: 'Message',
-            border: OutlineInputBorder(),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
-            child: const Text('Save'),
-          ),
-        ],
-      ),
+      builder: (ctx) => _EditMessageDialog(initialText: visible),
     );
-    controller.dispose();
-    if (next == null || next.isEmpty || next == visible) return;
+    if (!mounted) return;
+    if (nextVisible == null ||
+        nextVisible.isEmpty ||
+        nextVisible == visible) {
+      return;
+    }
+    final next = _editedMessageBody(msg.body, parsed, nextVisible);
     try {
       final updated = await _api.editMessage(msg.id, body: next);
-      final mapped =
-          ChatV1Mapper.messageFromJson(updated, currentUserId: _userId);
+      var body = next;
+      if (updated.isNotEmpty) {
+        final mapped =
+            ChatV1Mapper.messageFromJson(updated, currentUserId: _userId);
+        if (mapped.body.isNotEmpty) body = mapped.body;
+      }
+      if (!mounted) return;
       _upsertMessage(
         msg.copyWith(
-          body: mapped.body.isNotEmpty ? mapped.body : next,
+          body: body,
           edited: true,
         ),
       );
       _toast('Message updated');
     } catch (e) {
-      _toast(e.toString().replaceFirst('Exception: ', ''));
+      if (!mounted) return;
+      _toast(userFacingError(e));
     }
+  }
+
+  /// The edit field shows only the message text. Keep a "marked as important"
+  /// caption line so saving does not strip it.
+  String _editedMessageBody(
+    String original,
+    ChatV1Importance parsed,
+    String visible,
+  ) {
+    if (parsed.kind.isEmpty) return visible;
+    final split = original.indexOf('\n');
+    if (split == -1) return visible;
+    return '${original.substring(0, split)}\n$visible';
   }
 
   Future<void> _deleteMessage(ChatV1Message msg) async {
@@ -1952,7 +1951,7 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
       );
       _toast('Message deleted');
     } catch (e) {
-      _toast(e.toString().replaceFirst('Exception: ', ''));
+      _toast(userFacingError(e));
     }
   }
 
@@ -1988,7 +1987,7 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
               ),
       );
     } catch (e) {
-      _toast(e.toString().replaceFirst('Exception: ', ''));
+      _toast(userFacingError(e));
     }
   }
 
@@ -2032,6 +2031,16 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
         ),
       ),
     );
+  }
+
+  /// The action sheet must finish closing before another route opens.
+  /// Opening the edit dialog in the same gesture locks the navigator and
+  /// throws while the sheet is still disposing its focus.
+  void _afterActionSheet(VoidCallback action) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      action();
+    });
   }
 
   void _messageActions(BuildContext context, ChatV1Message msg) {
@@ -2123,7 +2132,7 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
                     title: const Text('Edit'),
                     onTap: () {
                       Navigator.pop(sheetContext);
-                      _editMessage(msg);
+                      _afterActionSheet(() => _editMessage(msg));
                     },
                   ),
                   ListTile(
@@ -2133,7 +2142,7 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
                         style: TextStyle(color: ChatV1Theme.rejected)),
                     onTap: () {
                       Navigator.pop(sheetContext);
-                      _deleteMessage(msg);
+                      _afterActionSheet(() => _deleteMessage(msg));
                     },
                   ),
                 ],
@@ -2142,6 +2151,54 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Owns the field so it is disposed only after the dialog route is gone.
+class _EditMessageDialog extends StatefulWidget {
+  final String initialText;
+
+  const _EditMessageDialog({required this.initialText});
+
+  @override
+  State<_EditMessageDialog> createState() => _EditMessageDialogState();
+}
+
+class _EditMessageDialogState extends State<_EditMessageDialog> {
+  late final TextEditingController _controller =
+      TextEditingController(text: widget.initialText);
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Edit message'),
+      content: TextField(
+        controller: _controller,
+        autofocus: true,
+        maxLines: 5,
+        minLines: 2,
+        decoration: const InputDecoration(
+          hintText: 'Message',
+          border: OutlineInputBorder(),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        ElevatedButton(
+          onPressed: () => Navigator.pop(context, _controller.text.trim()),
+          child: const Text('Save'),
+        ),
+      ],
     );
   }
 }

@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/work_order.dart';
 import 'api_http.dart';
 import 'session_manager.dart';
+import '../user_facing_error.dart';
 
 /// Loads project work orders from `GET /API/work_orders`.
 class WorkOrderService {
@@ -173,7 +174,7 @@ class WorkOrderService {
         } on WorkOrderException {
           rethrow;
         } catch (e) {
-          lastMessage = e.toString().replaceFirst('Exception: ', '');
+          lastMessage = userFacingError(e);
         }
       }
     }

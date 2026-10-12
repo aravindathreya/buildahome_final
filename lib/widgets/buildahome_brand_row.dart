@@ -2,6 +2,32 @@ import 'package:flutter/material.dart';
 
 import '../app_theme.dart';
 
+/// Hands-and-home mark. The asset is white, so light mode tints it navy.
+class BuildAhomeLogo extends StatelessWidget {
+  final double height;
+
+  const BuildAhomeLogo({super.key, required this.height});
+
+  @override
+  Widget build(BuildContext context) {
+    final mark = AppTheme.isDark ? Colors.white : AppTheme.navy;
+    return ColorFiltered(
+      colorFilter: ColorFilter.mode(mark, BlendMode.srcIn),
+      child: Image.asset(
+        'assets/images/Logos/Hands Sheltering a Home Icon.png',
+        height: height,
+        fit: BoxFit.contain,
+        filterQuality: FilterQuality.high,
+        errorBuilder: (_, __, ___) => Icon(
+          Icons.home_rounded,
+          color: mark,
+          size: height * 0.9,
+        ),
+      ),
+    );
+  }
+}
+
 /// Compact logo + wordmark used on dashboard surfaces.
 class BuildAhomeBrandRow extends StatefulWidget {
   final double logoHeight;
@@ -53,17 +79,7 @@ class _BuildAhomeBrandRowState extends State<BuildAhomeBrandRow>
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        Image.asset(
-          'assets/images/Logos/Hands Sheltering a Home Icon.png',
-          height: widget.logoHeight,
-          fit: BoxFit.contain,
-          filterQuality: FilterQuality.high,
-          errorBuilder: (_, __, ___) => Icon(
-            Icons.home_rounded,
-            color: color,
-            size: widget.logoHeight * 0.9,
-          ),
-        ),
+        BuildAhomeLogo(height: widget.logoHeight),
         const SizedBox(width: 10),
         Text(
           'buildAhome',

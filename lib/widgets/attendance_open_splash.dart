@@ -8,9 +8,14 @@ import 'dashboard_chrome.dart';
 
 /// Full-screen check-in splash, then the attendance page.
 class AttendanceOpenSplash extends StatefulWidget {
-  const AttendanceOpenSplash({super.key});
+  final bool checkingOut;
 
-  static Future<void> push(BuildContext context) async {
+  const AttendanceOpenSplash({super.key, this.checkingOut = false});
+
+  static Future<void> push(
+    BuildContext context, {
+    bool checkingOut = false,
+  }) async {
     if (!NavigationDebounce.tryAcquire()) return;
     NavigationDebounce.beginPush();
     try {
@@ -19,7 +24,7 @@ class AttendanceOpenSplash extends StatefulWidget {
           transitionDuration: const Duration(milliseconds: 280),
           reverseTransitionDuration: const Duration(milliseconds: 220),
           pageBuilder: (context, animation, secondaryAnimation) {
-            return const AttendanceOpenSplash();
+            return AttendanceOpenSplash(checkingOut: checkingOut);
           },
           transitionsBuilder: (context, animation, secondaryAnimation, child) {
             return FadeTransition(opacity: animation, child: child);
@@ -90,7 +95,10 @@ class _AttendanceOpenSplashState extends State<AttendanceOpenSplash>
             return IgnorePointer(
               child: Opacity(
                 opacity: _splashOpacity.value,
-                child: _DoorCheckInScene(progress: _controller.value),
+                child: _DoorCheckInScene(
+                  progress: _controller.value,
+                  checkingOut: widget.checkingOut,
+                ),
               ),
             );
           },
@@ -124,8 +132,12 @@ class _CheckInSplashScene extends StatelessWidget {
 
 class _DoorCheckInScene extends StatelessWidget {
   final double progress;
+  final bool checkingOut;
 
-  const _DoorCheckInScene({required this.progress});
+  const _DoorCheckInScene({
+    required this.progress,
+    required this.checkingOut,
+  });
 
   double _span(double start, double end) {
     if (progress <= start) return 0;
@@ -217,9 +229,9 @@ class _DoorCheckInScene extends StatelessWidget {
           const SizedBox(height: 8),
           Opacity(
             opacity: caption.clamp(0, 1),
-            child: const Text(
-              'Checking in',
-              style: TextStyle(
+            child: Text(
+              checkingOut ? 'Checking out' : 'Checking in',
+              style: const TextStyle(
                 color: Colors.white,
                 fontSize: 26,
                 fontWeight: FontWeight.w800,

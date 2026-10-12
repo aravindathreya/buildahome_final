@@ -107,7 +107,12 @@ class ChatV1GroupInfoScreen extends StatelessWidget {
                         ],
                       ),
                     ),
-                    child: const Icon(Icons.image_rounded, color: Colors.white70),
+                    child: Icon(
+                      Icons.image_rounded,
+                      color: ChatV1Theme.isDark(context)
+                          ? Colors.white70
+                          : const Color(0xFF157A42),
+                    ),
                   ),
                 ),
               ),

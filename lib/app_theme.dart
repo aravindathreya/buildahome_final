@@ -56,6 +56,38 @@ class AppTheme {
   static Color get textPrimary => darkTextPrimary;
   static Color get textSecondary => darkTextSecondary;
 
+  /// Dark icon tiles with a pastel glyph. Light mode uses a soft tint
+  /// and a darker glyph so the box does not look like leftover dark mode.
+  static Color iconBoxFill(Color darkFill, Color accent) {
+    if (isDark) return darkFill;
+    return accent.withValues(alpha: 0.18);
+  }
+
+  static Color iconBoxInk(Color accent) {
+    if (isDark) return accent;
+    return Color.lerp(accent, lightTextPrimary, 0.45)!;
+  }
+
+  /// Chevrons and idle icons. The shared grey is too faint on white.
+  static Color get chevronColor =>
+      isDark ? const Color(0xFFA1A1AA) : const Color(0xFF3E4A63);
+
+  static List<BoxShadow> get liftedShadow => isDark
+      ? const [
+          BoxShadow(
+            color: Color(0x59000000),
+            blurRadius: 18,
+            offset: Offset(0, 8),
+          ),
+        ]
+      : const [
+          BoxShadow(
+            color: Color(0x12000000),
+            blurRadius: 14,
+            offset: Offset(0, 4),
+          ),
+        ];
+
   static ThemeData getLightTheme() {
     final colorScheme = ColorScheme.light(
       primary: primaryColorConst,

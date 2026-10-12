@@ -15,6 +15,7 @@ import 'services/mobile_live_test_access.dart';
 import 'services/mobile_live_test_service.dart';
 
 import 'widgets/modern_task_card.dart';
+import 'user_facing_error.dart';
 
 typedef LiveTestRefreshCallback = Future<void> Function();
 typedef LiveTestCompleteCallback = Future<void> Function({
@@ -238,7 +239,7 @@ class _MobileLiveTestActionSheetBodyState
       if (!mounted) return;
       setState(() => _loading = false);
       widget.onError(
-        e.toString().replaceFirst('Exception: ', ''),
+        userFacingError(e),
       );
     }
   }
@@ -346,7 +347,7 @@ class _MobileLiveTestActionCardState extends State<MobileLiveTestActionCard> {
         'Upload timed out. Check your connection and try a smaller file.',
       );
     } catch (e) {
-      widget.onError(e.toString().replaceFirst('Exception: ', ''));
+      widget.onError(userFacingError(e));
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
@@ -1335,7 +1336,7 @@ class _MobileLiveTestCommentsSectionState
     } on MobileLiveTestException catch (e) {
       widget.onError(e.message);
     } catch (e) {
-      widget.onError(e.toString().replaceFirst('Exception: ', ''));
+      widget.onError(userFacingError(e));
     } finally {
       if (mounted) setState(() => _submitting = false);
     }

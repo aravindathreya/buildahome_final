@@ -12,6 +12,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'dart:async';
 import 'app_theme.dart';
+import 'user_facing_error.dart';
 import 'widgets/searchable_select.dart';
 import 'widgets/full_screen_message.dart';
 import 'widgets/full_screen_progress.dart';
@@ -616,7 +617,7 @@ class CreateIndentTabState extends State<CreateIndentTab> {
           MaterialPageRoute(
             builder: (context) => FullScreenMessage(
               title: 'Error',
-              message: 'Failed to pick file: ${e.toString()}',
+              message: userFacingError(e, fallback: 'Failed to pick file.'),
               icon: Icons.error_outline,
               iconColor: Colors.red,
               buttonText: 'OK',
@@ -1276,7 +1277,7 @@ class CreateIndentTabState extends State<CreateIndentTab> {
         MaterialPageRoute(
           builder: (context) => FullScreenMessage(
             title: 'Error',
-            message: 'An error occurred: ${e.toString()}',
+            message: userFacingError(e, fallback: 'An error occurred.'),
             icon: Icons.error_outline,
             iconColor: Colors.red,
             buttonText: 'OK',
@@ -1470,7 +1471,7 @@ class CreateIndentTabState extends State<CreateIndentTab> {
                 hintText: 'Add an optional comment',
                 hintStyle: TextStyle(color: AppTheme.getTextSecondary(context)),
                 border: InputBorder.none,
-                contentPadding: EdgeInsets.symmetric(horizontal: 0, vertical: 0),
+                contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 14),
               ),
             ),
           ),
@@ -1610,7 +1611,7 @@ class CreateIndentTabState extends State<CreateIndentTab> {
                       hintText: 'Quantity',
                       hintStyle: TextStyle(color: AppTheme.getTextSecondary(context)),
                       border: InputBorder.none,
-                      contentPadding: EdgeInsets.symmetric(horizontal: 0, vertical: 0),
+                      contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                     ),
                   ),
                 ),
@@ -1744,7 +1745,7 @@ class CreateIndentTabState extends State<CreateIndentTab> {
                     hintText: 'Difference cost',
                     hintStyle: TextStyle(color: AppTheme.getTextSecondary(context)),
                     border: InputBorder.none,
-                    contentPadding: EdgeInsets.symmetric(horizontal: 0, vertical: 0),
+                    contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                   ),
                 ),
               ],
@@ -1831,7 +1832,7 @@ class CreateIndentTabState extends State<CreateIndentTab> {
                 hintText: 'Purpose for indent',
                 hintStyle: TextStyle(color: AppTheme.getTextSecondary(context)),
                 border: InputBorder.none,
-                contentPadding: EdgeInsets.symmetric(horizontal: 0, vertical: 0),
+                contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 14),
               ),
             ),
           ),

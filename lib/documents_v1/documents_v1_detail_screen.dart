@@ -31,8 +31,9 @@ class DocumentsV1DetailScreen extends StatelessWidget {
                 : 'File');
 
     final badgeKind = ClientPortalStatusBadge.fromStatus(
-      document.status,
+      document.displayStatus,
       isLatest: document.isLatest,
+      hasUrl: document.hasUrl,
     );
 
     return Scaffold(
@@ -156,32 +157,31 @@ class _DocIcon extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (document.isPdf) {
-      return Container(
-        width: size,
-        height: size,
-        decoration: BoxDecoration(
-          color: const Color(0xFF2C1618),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Icon(
-          Icons.picture_as_pdf_rounded,
-          color: const Color(0xFFF87171),
-          size: size * 0.5,
-        ),
-      );
-    }
+    final darkBg = document.isPdf
+        ? const Color(0xFF2C1618)
+        : document.isImage
+            ? const Color(0xFF143028)
+            : const Color(0xFF2A2040);
+    final accent = document.isPdf
+        ? const Color(0xFFF87171)
+        : document.isImage
+            ? const Color(0xFF34D399)
+            : const Color(0xFFC4B5FD);
     return Container(
       width: size,
       height: size,
       decoration: BoxDecoration(
-        color: const Color(0xFF2A2040),
+        color: AppTheme.iconBoxFill(darkBg, accent),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Icon(
-        document.isImage ? Icons.image_outlined : Icons.description_outlined,
-        color: AppTheme.darkTextPrimary,
-        size: size * 0.45,
+        document.isPdf
+            ? Icons.picture_as_pdf_rounded
+            : document.isImage
+                ? Icons.image_outlined
+                : Icons.description_outlined,
+        color: AppTheme.iconBoxInk(accent),
+        size: size * (document.isPdf ? 0.5 : 0.45),
       ),
     );
   }

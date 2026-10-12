@@ -11,6 +11,7 @@ import 'app_theme.dart';
 import 'services/camera_permission.dart';
 import 'projects.dart';
 import 'widgets/skeleton_loader.dart';
+import 'user_facing_error.dart';
 
 class RequestDrawingLayout extends StatefulWidget {
   @override
@@ -1618,7 +1619,7 @@ class _ViewRequestsPageState extends State<ViewRequestsPage> {
     } catch (e) {
       if (!mounted || requestId != _loadRequestId) return;
       setState(() {
-        _errorMessage = e.toString().replaceAll('Exception: ', '');
+        _errorMessage = userFacingError(e);
         _isLoading = false;
         _isRefreshing = false;
       });
@@ -2425,7 +2426,10 @@ class _ViewRequestsPageState extends State<ViewRequestsPage> {
                   }
                 } catch (e) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Error picking file: $e')),
+                    SnackBar(content: Text(userFacingError(
+                      e,
+                      fallback: 'Could not pick that file.',
+                    ))),
                   );
                 }
               },
@@ -2512,7 +2516,7 @@ class _ViewRequestsPageState extends State<ViewRequestsPage> {
                 Icon(Icons.error, color: Colors.white),
                 SizedBox(width: 8),
                 Expanded(
-                  child: Text(e.toString().replaceAll('Exception: ', '')),
+                  child: Text(userFacingError(e)),
                 ),
               ],
             ),

@@ -10,6 +10,7 @@ import 'dart:async';
 import 'dart:io';
 import 'package:image_picker/image_picker.dart';
 import 'app_theme.dart';
+import 'user_facing_error.dart';
 import 'services/camera_permission.dart';
 import 'services/daily_update_prompt_service.dart';
 import 'services/data_provider.dart';
@@ -501,7 +502,10 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
         MaterialPageRoute(
           builder: (context) => FullScreenMessage(
             title: 'Error',
-            message: 'An error occurred while taking the photo: ${e.toString()}',
+            message: userFacingError(
+              e,
+              fallback: 'An error occurred while taking the photo.',
+            ),
             icon: Icons.error_outline,
             iconColor: Colors.red,
             buttonText: 'OK',
@@ -602,7 +606,10 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
         MaterialPageRoute(
           builder: (context) => FullScreenMessage(
             title: 'Error',
-            message: 'An error occurred while selecting images: ${e.toString()}',
+            message: userFacingError(
+              e,
+              fallback: 'An error occurred while selecting images.',
+            ),
             icon: Icons.error_outline,
             iconColor: Colors.red,
             buttonText: 'OK',
@@ -1243,7 +1250,7 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
           print('[AddDailyUpdate] Upload error: $e');
           _dismissUploadDialog();
           failedUploads.add(selectedPictureFilenames[x]);
-          failedReasons.add("Exception: ${e.toString()}");
+          failedReasons.add(userFacingError(e));
           
           if (x == selectedPictures.length - 1) {
             if (mounted) {
@@ -1284,7 +1291,7 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
                 style: TextStyle(color: Colors.red),
               ),
               content: Text(
-                "An error occurred: ${e.toString()}",
+                userFacingError(e, fallback: 'An error occurred.'),
                 style: TextStyle(color: AppTheme.getTextPrimary(context)),
               ),
               actions: [

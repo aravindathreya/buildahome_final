@@ -9,6 +9,7 @@ import 'FullScreenImage.dart';
 import 'app_theme.dart';
 import 'indent_list_helpers.dart';
 import 'services/api_http.dart';
+import 'user_facing_error.dart';
 
 const String _indentProofApiBase = 'https://office.buildahome.in';
 
@@ -375,7 +376,7 @@ class IndentProofTabState extends State<IndentProofTab> {
       setState(() {
         _loading = false;
         _pager.loadingMore = false;
-        _error = e.toString().replaceAll('Exception: ', '');
+        _error = userFacingError(e);
       });
     }
   }
@@ -630,7 +631,7 @@ class _IndentProofDetailScreenState extends State<IndentProofDetailScreen> {
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _error = e.toString().replaceAll('Exception: ', '');
+        _error = userFacingError(e);
       });
     }
   }
@@ -836,7 +837,7 @@ class _IndentProofDetailScreenState extends State<IndentProofDetailScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(e.toString().replaceAll('Exception: ', '')),
+          content: Text(userFacingError(e)),
           backgroundColor: Colors.red,
         ),
       );

@@ -7,6 +7,7 @@ import '../app_theme.dart';
 import '../services/attendance_service.dart';
 import 'attendance_open_splash.dart';
 import 'employer_tracking_indicator.dart';
+import '../user_facing_error.dart';
 
 /// Staff home attendance card. Opens the attendance page.
 class StaffCheckInCard extends StatefulWidget {
@@ -69,7 +70,7 @@ class _StaffCheckInCardState extends State<StaffCheckInCard>
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _error = e.toString().replaceFirst(RegExp(r'^Exception:\s*'), '');
+        _error = userFacingError(e);
       });
     }
   }
@@ -78,7 +79,10 @@ class _StaffCheckInCardState extends State<StaffCheckInCard>
     if (_opening) return;
     setState(() => _opening = true);
     try {
-      await AttendanceOpenSplash.push(context);
+      await AttendanceOpenSplash.push(
+        context,
+        checkingOut: _status?.canCheckOut == true,
+      );
       if (mounted) await _load();
     } finally {
       if (mounted) setState(() => _opening = false);
@@ -126,13 +130,7 @@ class _StaffCheckInCardState extends State<StaffCheckInCard>
     return DecoratedBox(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(18),
-        boxShadow: [
-          BoxShadow(
-            color: AppTheme.navy.withValues(alpha: 0.45),
-            blurRadius: 18,
-            offset: const Offset(0, 8),
-          ),
-        ],
+        boxShadow: AppTheme.liftedShadow,
       ),
       child: Material(
         color: Colors.transparent,

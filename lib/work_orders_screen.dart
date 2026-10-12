@@ -11,6 +11,7 @@ import 'services/work_order_service.dart';
 import 'widgets/skeleton_loader.dart';
 import 'widgets/themed_scaffold.dart';
 import 'widgets/workflow_document_viewer.dart';
+import 'user_facing_error.dart';
 
 class WorkOrdersScreenLayout extends StatelessWidget {
   final String? salesSopId;
@@ -121,7 +122,7 @@ class _WorkOrdersScreenState extends State<WorkOrdersScreen> {
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _error = e.toString().replaceFirst('Exception: ', '');
+        _error = userFacingError(e);
       });
     }
   }
@@ -622,7 +623,7 @@ class _WorkOrderDetailScreenState extends State<WorkOrderDetailScreen> {
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _error = e.toString().replaceFirst('Exception: ', '');
+        _error = userFacingError(e);
       });
     }
   }

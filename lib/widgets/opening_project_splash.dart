@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../app_navigator.dart';
+import 'buildahome_brand_row.dart';
 import '../services/project_open_timing.dart';
 
 /// Full-screen gate shown while a project workspace is being opened.
@@ -348,17 +349,7 @@ class _BrandMark extends StatelessWidget {
                 ),
               ),
             ),
-            Image.asset(
-              'assets/images/Logos/Hands Sheltering a Home Icon.png',
-              height: 80,
-              fit: BoxFit.contain,
-              filterQuality: FilterQuality.high,
-              errorBuilder: (_, __, ___) => Icon(
-                Icons.home_rounded,
-                color: AppTheme.darkTextPrimary,
-                size: 64,
-              ),
-            ),
+            const BuildAhomeLogo(height: 80),
           ],
         ),
       ),

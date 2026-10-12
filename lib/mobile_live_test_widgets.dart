@@ -486,15 +486,16 @@ class MobileLiveTestBottomSheetFrame extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final media = MediaQuery.of(context);
     return Padding(
       padding: EdgeInsets.only(
         left: 12,
         right: 12,
-        bottom: MediaQuery.of(context).viewInsets.bottom + 12,
+        bottom: media.viewInsets.bottom + media.padding.bottom + 12,
       ),
       child: Container(
         constraints: BoxConstraints(
-          maxHeight: MediaQuery.of(context).size.height * 0.86,
+          maxHeight: media.size.height * 0.86,
         ),
         decoration: BoxDecoration(
           color: AppTheme.getBackgroundSecondary(context),

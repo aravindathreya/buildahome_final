@@ -11,21 +11,43 @@ const Color _isometricBackground = Color(0xFF3A3A3A);
 
 /// The isometric page is hosted on the server. Force its page and WebGL
 /// clear color to dark grey after it loads.
-const String _isometricBackgroundScript = r'''
+///
+/// Only paints the page shell + canvas / 3D hosts — never side drawers or
+/// menus (painting those made AR menu labels unreadable).
+const String kIsometricViewerScript = r'''
 (function () {
   var css = '#3A3A3A';
   var hex = 0x3A3A3A;
+  function classNameOf(el) {
+    if (!el || !el.className) return '';
+    if (typeof el.className === 'string') return el.className.toLowerCase();
+    if (el.className.baseVal) return String(el.className.baseVal).toLowerCase();
+    return '';
+  }
+  function isUiChrome(el) {
+    if (!el || el === document.body || el === document.documentElement) return false;
+    var tag = (el.tagName || '').toLowerCase();
+    if (tag === 'aside' || tag === 'nav' || tag === 'button' || tag === 'a' ||
+        tag === 'li' || tag === 'ul' || tag === 'ol' || tag === 'label' ||
+        tag === 'input' || tag === 'select' || tag === 'textarea') {
+      return true;
+    }
+    var id = (el.id || '').toLowerCase();
+    var role = '';
+    try { role = (el.getAttribute && (el.getAttribute('role') || '') || '').toLowerCase(); } catch (e) {}
+    var hay = classNameOf(el) + ' ' + id + ' ' + role;
+    return /drawer|sidebar|side-bar|sidepanel|side-panel|menu|toolbar|overlay|modal|dialog|panel|settings|controls|hud|ui-|vrs[-_]?drawer|vrs[-_]?menu|vrs[-_]?sidebar/.test(hay);
+  }
   function paintElement(el) {
-    if (!el || !el.style) return;
+    if (!el || !el.style || isUiChrome(el)) return;
     el.style.background = css;
     el.style.backgroundColor = css;
   }
   paintElement(document.documentElement);
   paintElement(document.body);
-  var nodes = document.querySelectorAll('body, #app, #root, canvas, .viewer, .scene');
+  var nodes = document.querySelectorAll('canvas, .viewer, .scene, model-viewer');
   for (var i = 0; i < nodes.length; i++) {
     paintElement(nodes[i]);
-    if (nodes[i].parentElement) paintElement(nodes[i].parentElement);
   }
   var THREE = window.THREE;
   function paintObject(obj) {
@@ -45,6 +67,182 @@ const String _isometricBackgroundScript = r'''
   for (var k = 0; k < keys.length; k++) {
     try { paintObject(window[keys[k]]); } catch (e) {}
   }
+})();
+''';
+
+/// Makes AR / VR side-drawer and menu labels high-contrast inside the viewer.
+const String kIsometricDrawerContrastScript = r'''
+(function () {
+  var STYLE_ID = 'bah-isometric-drawer-contrast';
+  var TEXT = '#F8FAFC';
+  var MUTED = '#E2E8F0';
+  var PANEL = '#1F2937';
+  function ensureStyle() {
+    var s = document.getElementById(STYLE_ID);
+    if (!s) {
+      s = document.createElement('style');
+      s.id = STYLE_ID;
+      (document.head || document.documentElement).appendChild(s);
+    }
+    s.textContent = [
+      'aside, nav,',
+      '[class*="drawer"], [class*="Drawer"],',
+      '[class*="sidebar"], [class*="Sidebar"],',
+      '[class*="side-bar"], [class*="sidepanel"], [class*="side-panel"],',
+      '[class*="menu-panel"], [class*="MenuPanel"],',
+      '[class*="vrs-drawer"], [class*="vrsDrawer"], [class*="vrs_menu"],',
+      '[class*="vrs-menu"], [class*="vrsMenu"], [class*="vrs-sidebar"],',
+      '[id*="drawer"], [id*="sidebar"], [id*="side-bar"],',
+      '[id*="vrs-drawer"], [id*="vrs-menu"],',
+      '[role="menu"], [role="navigation"], [role="dialog"], [role="complementary"] {',
+      '  background-color: ' + PANEL + ' !important;',
+      '  background: ' + PANEL + ' !important;',
+      '  color: ' + TEXT + ' !important;',
+      '  -webkit-text-fill-color: ' + TEXT + ' !important;',
+      '  text-shadow: none !important;',
+      '  opacity: 1 !important;',
+      '}',
+      'aside *, nav *,',
+      '[class*="drawer"] *, [class*="Drawer"] *,',
+      '[class*="sidebar"] *, [class*="Sidebar"] *,',
+      '[class*="side-bar"] *, [class*="sidepanel"] *, [class*="side-panel"] *,',
+      '[class*="menu-panel"] *, [class*="MenuPanel"] *,',
+      '[class*="vrs-drawer"] *, [class*="vrsDrawer"] *, [class*="vrs-menu"] *,',
+      '[class*="vrsMenu"] *, [class*="vrs-sidebar"] *,',
+      '[id*="drawer"] *, [id*="sidebar"] *, [id*="side-bar"] *,',
+      '[id*="vrs-drawer"] *, [id*="vrs-menu"] *,',
+      '[role="menu"] *, [role="navigation"] *, [role="dialog"] *, [role="complementary"] * {',
+      '  color: ' + TEXT + ' !important;',
+      '  -webkit-text-fill-color: ' + TEXT + ' !important;',
+      '  fill: ' + TEXT + ' !important;',
+      '  opacity: 1 !important;',
+      '}',
+      'aside span, nav span,',
+      '[class*="drawer"] span, [class*="sidebar"] span,',
+      '[class*="drawer"] label, [class*="sidebar"] label,',
+      '[class*="drawer"] p, [class*="sidebar"] p,',
+      '[class*="drawer"] a, [class*="sidebar"] a,',
+      '[class*="drawer"] button, [class*="sidebar"] button,',
+      '[role="menu"] span, [role="menuitem"], [role="menuitem"] * {',
+      '  color: ' + TEXT + ' !important;',
+      '  -webkit-text-fill-color: ' + TEXT + ' !important;',
+      '  font-weight: 600 !important;',
+      '}',
+      'aside small, nav small, [class*="drawer"] small, [class*="sidebar"] small,',
+      '[class*="drawer"] .subtitle, [class*="sidebar"] .muted {',
+      '  color: ' + MUTED + ' !important;',
+      '  -webkit-text-fill-color: ' + MUTED + ' !important;',
+      '}'
+    ].join("\n");
+  }
+  function classNameOf(el) {
+    if (!el || !el.className) return '';
+    if (typeof el.className === 'string') return el.className;
+    if (el.className.baseVal) return String(el.className.baseVal);
+    return '';
+  }
+  function looksLikeDrawer(el) {
+    if (!el || !el.tagName) return false;
+    var tag = el.tagName.toLowerCase();
+    if (tag === 'aside' || tag === 'nav') return true;
+    var role = '';
+    try { role = (el.getAttribute && (el.getAttribute('role') || '') || '').toLowerCase(); } catch (e) {}
+    if (role === 'menu' || role === 'navigation' || role === 'dialog' || role === 'complementary') {
+      return true;
+    }
+    var hay = (classNameOf(el) + ' ' + (el.id || '')).toLowerCase();
+    return /drawer|sidebar|side-bar|sidepanel|side-panel|menu-panel|main-menu|ar-menu|vr-menu|vrs[-_]?drawer|vrs[-_]?menu|vrs[-_]?sidebar/.test(hay);
+  }
+  function paintDrawer(el) {
+    if (!el || !el.style) return;
+    el.style.setProperty('background-color', PANEL, 'important');
+    el.style.setProperty('background', PANEL, 'important');
+    el.style.setProperty('color', TEXT, 'important');
+    el.style.setProperty('-webkit-text-fill-color', TEXT, 'important');
+    el.style.setProperty('opacity', '1', 'important');
+    var nodes = el.querySelectorAll('a, button, span, p, label, li, div, h1, h2, h3, h4, h5, h6, small, svg, path');
+    for (var i = 0; i < nodes.length; i++) {
+      var n = nodes[i];
+      if (!n.style) continue;
+      n.style.setProperty('color', TEXT, 'important');
+      n.style.setProperty('-webkit-text-fill-color', TEXT, 'important');
+      n.style.setProperty('opacity', '1', 'important');
+      if (n.tagName && (n.tagName.toLowerCase() === 'svg' || n.tagName.toLowerCase() === 'path')) {
+        n.style.setProperty('fill', TEXT, 'important');
+      }
+    }
+  }
+  function walk(root) {
+    if (!root) return;
+    if (root.querySelectorAll) {
+      var all = root.querySelectorAll('*');
+      for (var i = 0; i < all.length; i++) {
+        if (looksLikeDrawer(all[i])) paintDrawer(all[i]);
+        if (all[i].shadowRoot) walk(all[i].shadowRoot);
+      }
+    }
+    if (root.shadowRoot) walk(root.shadowRoot);
+  }
+  function sweep() {
+    try {
+      ensureStyle();
+      walk(document);
+    } catch (e) {}
+  }
+  sweep();
+  setTimeout(sweep, 400);
+  setTimeout(sweep, 1200);
+  setTimeout(sweep, 2400);
+})();
+''';
+
+/// Hides only the in-viewer "View in AR" button. Does not touch the model.
+const String kHideInViewerArButtonScript = r'''
+(function () {
+  function ownLabel(el) {
+    var aria = '';
+    if (el.getAttribute) {
+      aria = (el.getAttribute('aria-label') || '') + ' ' + (el.getAttribute('title') || '');
+    }
+    var text = '';
+    var nodes = el.childNodes || [];
+    for (var i = 0; i < nodes.length; i++) {
+      if (nodes[i].nodeType === 3) text += nodes[i].textContent || '';
+    }
+    return (aria + ' ' + text).toLowerCase();
+  }
+  function classNameOf(el) {
+    if (!el.className) return '';
+    if (typeof el.className === 'string') return el.className.toLowerCase();
+    if (el.className.baseVal) return String(el.className.baseVal).toLowerCase();
+    return '';
+  }
+  function hide(root) {
+    if (!root || !root.querySelectorAll) return;
+    var nodes = root.querySelectorAll('button, a, [role="button"]');
+    for (var i = 0; i < nodes.length; i++) {
+      var el = nodes[i];
+      var slot = el.getAttribute ? (el.getAttribute('slot') || '') : '';
+      var cls = classNameOf(el);
+      var label = ownLabel(el);
+      if (slot === 'ar-button' ||
+          cls === 'ar-button' ||
+          cls.indexOf('default-ar-button') !== -1 ||
+          label.indexOf('view in ar') !== -1 ||
+          label.indexOf('view in your space') !== -1) {
+        el.style.setProperty('display', 'none', 'important');
+      }
+      if (el.shadowRoot) hide(el.shadowRoot);
+    }
+    var viewers = root.querySelectorAll('model-viewer');
+    for (var j = 0; j < viewers.length; j++) {
+      if (viewers[j].shadowRoot) hide(viewers[j].shadowRoot);
+    }
+  }
+  function sweep() { try { hide(document); } catch (e) {} }
+  sweep();
+  setTimeout(sweep, 600);
+  setTimeout(sweep, 1600);
 })();
 ''';
 
@@ -118,7 +316,9 @@ class _VirtualTourScreenState extends State<VirtualTourScreen> {
           },
           onPageFinished: (_) async {
             try {
-              await controller.runJavaScript(_isometricBackgroundScript);
+              await controller.runJavaScript(kIsometricViewerScript);
+              await controller.runJavaScript(kIsometricDrawerContrastScript);
+              await controller.runJavaScript(kHideInViewerArButtonScript);
             } catch (_) {}
             if (!mounted) return;
             setState(() => _pageLoading = false);

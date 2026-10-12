@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import '../chat_v1_doc_store.dart';
 import '../chat_v1_theme.dart';
 import '../chat_v1_utils.dart';
+import '../../user_facing_error.dart';
 
 class ChatV1CreateDocSheet extends StatefulWidget {
   final String salesSopId;
@@ -121,7 +122,7 @@ class _ChatV1CreateDocSheetState extends State<ChatV1CreateDocSheet> {
       setState(() {
         _loadingActivities = false;
         _activities = const [];
-        _error = e.toString().replaceFirst('Exception: ', '');
+        _error = userFacingError(e);
       });
     }
   }
@@ -186,7 +187,7 @@ class _ChatV1CreateDocSheetState extends State<ChatV1CreateDocSheet> {
       if (!mounted) return;
       setState(() {
         _saving = false;
-        _error = e.toString().replaceFirst('Exception: ', '');
+        _error = userFacingError(e);
       });
     }
   }
@@ -204,7 +205,8 @@ class _ChatV1CreateDocSheetState extends State<ChatV1CreateDocSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final bottom = MediaQuery.of(context).viewInsets.bottom;
+    final media = MediaQuery.of(context);
+    final bottom = media.viewInsets.bottom + media.padding.bottom;
     return Padding(
       padding: EdgeInsets.fromLTRB(16, 12, 16, 16 + bottom),
       child: SingleChildScrollView(

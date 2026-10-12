@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/workflow_document.dart';
 import 'api_http.dart';
+import 'mobile_documents.dart';
 
 /// Loads workflow dashboard documents from `sales_sop_details`.
 ///
@@ -324,11 +325,15 @@ class WorkflowDocumentService {
       if (inlineItems is List) {
         for (final item in inlineItems) {
           if (item is! Map) continue;
-          final upload = _uploadFromMap(
-            Map<String, dynamic>.from(item),
-            inherited: sectionMap,
-          );
-          if (upload != null) addUpload(upload);
+          final itemMap = Map<String, dynamic>.from(item);
+          // Plumbing / Electrical points can nest several PDFs under one row.
+          for (final fileMap in expandMobileDocumentFileMaps(itemMap)) {
+            final upload = _uploadFromMap(
+              fileMap,
+              inherited: sectionMap,
+            );
+            if (upload != null) addUpload(upload);
+          }
         }
       }
     }
@@ -726,9 +731,9 @@ class WorkflowDocumentService {
         maps.add({
           ...Map<String, dynamic>.from(report),
           'section_id': 'dsec_site_inspection_report',
-          'section_label': 'Site Inspection Report',
+          'section_label': 'Site inspection report',
           'category_id': ClientJourneyKeys.siteDocument,
-          'category_label': 'Site Document',
+          'category_label': 'Site inspection report',
           'client_journey_key': ClientJourneyKeys.siteDocument,
           'library_group_key': ClientJourneyKeys.siteDocument,
           'is_latest': true,
@@ -739,12 +744,12 @@ class WorkflowDocumentService {
         if (url.isNotEmpty && url.toLowerCase() != 'null') {
           maps.add({
             'url': url,
-            'document_name': 'Site Inspection Report',
-            'filename': 'Site Inspection Report',
+            'document_name': 'Site inspection report',
+            'filename': 'Site inspection report',
             'section_id': 'dsec_site_inspection_report',
-            'section_label': 'Site Inspection Report',
+            'section_label': 'Site inspection report',
             'category_id': ClientJourneyKeys.siteDocument,
-            'category_label': 'Site Document',
+            'category_label': 'Site inspection report',
             'client_journey_key': ClientJourneyKeys.siteDocument,
             'library_group_key': ClientJourneyKeys.siteDocument,
             'is_latest': true,
@@ -1121,19 +1126,72 @@ class WorkflowDocumentService {
     );
   }
 
-  String? _resolveDocumentUrl(Map<String, dynamic> map) {
+  String? _resolveDocumentUrl(Map<String, dynamic> map, [int depth = 0]) {
+    if (depth > 4) return null;
     final direct = _stringValue(map['url']) ??
         _stringValue(map['file_url']) ??
         _stringValue(map['download_url']) ??
         _stringValue(map['signed_url']) ??
         _stringValue(map['public_url']) ??
         _stringValue(map['view_url']) ??
+        _stringValue(map['document_url']) ??
+        _stringValue(map['pdf_url']) ??
+        _stringValue(map['s3_url']) ??
+        _stringValue(map['media_url']) ??
         _stringValue(map['file_path']) ??
         _stringValue(map['path']) ??
         _stringValue(map['attachment_url']) ??
-        _stringValue(map['storage_path']);
-    if (direct == null) return null;
-    return _absoluteUrl(direct);
+        _stringValue(map['storage_path']) ??
+        _stringValue(map['link']);
+    if (direct != null) return _absoluteUrl(direct);
+
+    for (final key in const [
+      'file',
+      'attachment',
+      'uploaded_file',
+      'latest_file',
+      'latest_upload',
+      'current_file',
+      'primary_file',
+      'upload',
+      'document',
+    ]) {
+      final nested = map[key];
+      if (nested is Map) {
+        final url =
+            _resolveDocumentUrl(Map<String, dynamic>.from(nested), depth + 1);
+        if (url != null) return url;
+      } else if (nested != null) {
+        final text = nested.toString().trim();
+        if (text.isNotEmpty && text.toLowerCase() != 'null') {
+          return _absoluteUrl(text);
+        }
+      }
+    }
+
+    for (final key in const [
+      'files',
+      'uploads',
+      'attachments',
+      'uploaded_files',
+      'versions',
+    ]) {
+      final list = map[key];
+      if (list is! List) continue;
+      for (final item in list) {
+        if (item is Map) {
+          final url =
+              _resolveDocumentUrl(Map<String, dynamic>.from(item), depth + 1);
+          if (url != null) return url;
+        } else if (item != null) {
+          final text = item.toString().trim();
+          if (text.isNotEmpty && text.toLowerCase() != 'null') {
+            return _absoluteUrl(text);
+          }
+        }
+      }
+    }
+    return null;
   }
 
   String _absoluteUrl(String value) {

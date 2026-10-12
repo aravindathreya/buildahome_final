@@ -14,6 +14,7 @@ import 'FullScreenImage.dart';
 import 'app_theme.dart';
 import 'services/data_provider.dart';
 import 'task_display_title.dart';
+import 'user_facing_error.dart';
 
 const String _galleryApiBaseUrl = 'https://office.buildahome.in';
 
@@ -386,7 +387,7 @@ class _GalleryState extends State<Gallery> {
       if (_shouldIgnoreLoad(requestId)) return;
       if (!mounted) return;
       setState(() {
-        _errorMessage = e.toString().replaceAll('Exception: ', '');
+        _errorMessage = userFacingError(e);
       });
     } finally {
       if (_shouldIgnoreLoad(requestId)) return;
@@ -889,7 +890,7 @@ class _TimelineGalleryState extends State<TimelineGallery> {
       if (!mounted) return;
       if (_sections.isNotEmpty) return;
       setState(() {
-        _errorMessage = e.toString().replaceAll('Exception: ', '');
+        _errorMessage = userFacingError(e);
       });
     } finally {
       if (_shouldIgnoreLoad(requestId)) return;

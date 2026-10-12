@@ -8,6 +8,7 @@ import 'api_http.dart';
 import 'client_portal_service.dart';
 import 'data_provider.dart';
 import 'session_manager.dart';
+import '../user_facing_error.dart';
 
 /// Loads and acts on unified sales SOP slots.
 ///
@@ -146,7 +147,7 @@ class SalesSopSlotsService {
         if (e is SalesSopSlotsException) rethrow;
         if (fallbacks.isEmpty && slot.selectUrl.isEmpty) {
           throw SalesSopSlotsException(
-            e.toString().replaceFirst('Exception: ', ''),
+            userFacingError(e),
           );
         }
       }
@@ -218,7 +219,7 @@ class SalesSopSlotsService {
         if (e is SalesSopSlotsException) rethrow;
         if (fallbacks.isEmpty && slot.confirmUrl.isEmpty) {
           throw SalesSopSlotsException(
-            e.toString().replaceFirst('Exception: ', ''),
+            userFacingError(e),
           );
         }
       }
@@ -338,7 +339,7 @@ class SalesSopSlotsService {
         } on SalesSopSlotsException {
           rethrow;
         } catch (e) {
-          lastMessage = e.toString().replaceFirst('Exception: ', '');
+          lastMessage = userFacingError(e);
         }
       }
     }
@@ -411,7 +412,7 @@ class SalesSopSlotsService {
       } on SalesSopSlotsException {
         rethrow;
       } catch (e) {
-        lastMessage = e.toString().replaceFirst('Exception: ', '');
+        lastMessage = userFacingError(e);
       }
     }
 

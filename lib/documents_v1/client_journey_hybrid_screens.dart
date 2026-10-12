@@ -10,6 +10,7 @@ import '../services/mobile_documents_service.dart';
 import '../services/workflow_document_service.dart';
 import '../widgets/skeleton_loader.dart';
 import 'documents_v1_home_screen.dart';
+import '../user_facing_error.dart';
 
 /// Floor Plan & Elevation — merges workflow library, SOP cards, and portal API.
 class ClientFloorPlanElevationScreen extends StatefulWidget {
@@ -79,7 +80,7 @@ class _ClientFloorPlanElevationScreenState
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _error = e.toString().replaceFirst('Exception: ', '');
+        _error = userFacingError(e);
       });
     }
   }
@@ -287,7 +288,7 @@ class _ClientDesignElementsScreenState
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _error = e.toString().replaceFirst('Exception: ', '');
+        _error = userFacingError(e);
       });
     }
   }

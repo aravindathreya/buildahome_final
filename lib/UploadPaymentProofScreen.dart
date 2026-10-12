@@ -9,15 +9,15 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:url_launcher/url_launcher.dart';
-
 import 'FullScreenImage.dart';
 import 'Payments.dart';
 import 'models/payment_proof_item.dart';
 import 'services/camera_permission.dart';
 import 'services/client_portal_service.dart';
 import 'services/session_manager.dart';
+import 'widgets/open_shared_document.dart';
 import 'widgets/skeleton_loader.dart';
+import 'user_facing_error.dart';
 
 class UploadPaymentProofScreen extends StatefulWidget {
   /// When true, loads tender + non-tender payments and lists pending rows.
@@ -145,7 +145,7 @@ class _UploadPaymentProofScreenState extends State<UploadPaymentProofScreen>
       setState(() {
         _pendingLoading = false;
         _pendingError =
-            e.toString().replaceFirst('Exception: ', '').trim();
+            userFacingError(e);
       });
     }
   }
@@ -307,7 +307,7 @@ class _UploadPaymentProofScreenState extends State<UploadPaymentProofScreen>
   }
 
   String _messageOf(Object e) =>
-      e.toString().replaceFirst('Exception: ', '').trim();
+      userFacingError(e);
 
   /// Staff are not bound to a client portal of their own. Scope the proof
   /// request to the project they already have open, then drop that scope.
@@ -556,13 +556,13 @@ class _UploadPaymentProofScreenState extends State<UploadPaymentProofScreen>
 
   Future<void> _openItem(PaymentProofItem item) async {
     if (item.isPdf) {
-      final uri = Uri.tryParse(item.url);
-      if (uri == null) return;
-      try {
-        await launchUrl(uri, mode: LaunchMode.externalApplication);
-      } catch (_) {
-        _showError('Could not open PDF');
-      }
+      await openSharedDocument(
+        context,
+        url: item.url,
+        fileName: item.filename.isNotEmpty ? item.filename : item.label,
+        contentType: 'application/pdf',
+        forceInApp: true,
+      );
       if (mounted) await _refreshQuietly();
       return;
     }
@@ -1472,7 +1472,7 @@ class _ProofStageDetailScreenState extends State<_ProofStageDetailScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('$e'.replaceFirst('Exception: ', '')),
+          content: Text(userFacingError(e)),
           backgroundColor: const Color(0xFFDC2626),
           behavior: SnackBarBehavior.floating,
         ),
@@ -1531,7 +1531,7 @@ class _ProofStageDetailScreenState extends State<_ProofStageDetailScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('$e'.replaceFirst('Exception: ', '')),
+          content: Text(userFacingError(e)),
           backgroundColor: const Color(0xFFDC2626),
           behavior: SnackBarBehavior.floating,
         ),

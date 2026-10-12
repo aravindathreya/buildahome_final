@@ -18,6 +18,7 @@ import 'services/camera_permission.dart';
 import 'services/data_provider.dart';
 import 'widgets/themed_scaffold.dart';
 import 'AddDailyUpdate.dart'; // For FullScreenImage if needed, or I can implement it here
+import 'user_facing_error.dart';
 
 class NotesAndComments extends StatefulWidget {
   const NotesAndComments({super.key});
@@ -103,7 +104,7 @@ class NotesAndCommentsState extends State<NotesAndComments> {
       if (_shouldIgnoreLoad(requestId)) return;
       if (!mounted) return;
       setState(() {
-        _errorMessage = e.toString().replaceAll('Exception: ', '');
+        _errorMessage = userFacingError(e);
       });
     } finally {
       if (_shouldIgnoreLoad(requestId)) return;

@@ -115,6 +115,15 @@ class ChatV1Api {
 
   Future<dynamic> _decode(http.Response response) async {
     await persistCookieFrom(response);
+    if (response.body.trim().isEmpty) {
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        return null;
+      }
+      throw ChatV1ApiException(
+        'Invalid response (${response.statusCode})',
+        statusCode: response.statusCode,
+      );
+    }
     Map<String, dynamic>? json;
     try {
       final decoded = jsonDecode(response.body);
@@ -713,9 +722,12 @@ class ChatV1Api {
     if (data is Map) {
       final msg = data['message'];
       if (msg is Map) return Map<String, dynamic>.from(msg);
-      return Map<String, dynamic>.from(data);
+      if (data['id'] != null || data['body'] != null) {
+        return Map<String, dynamic>.from(data);
+      }
     }
-    throw ChatV1ApiException('Unexpected edit message response');
+    // A successful save often returns only an acknowledgement, not the message.
+    return const <String, dynamic>{};
   }
 
   Future<void> deleteMessage(String messageId) async {
@@ -780,10 +792,13 @@ class ChatV1Api {
     required String fileName,
   }) async {
     final token = await getApiToken();
+    // Legacy /API/ routes authenticate from the query string. A bare POST is
+    // redirected to the HTML login page, which is not JSON.
     final request = http.MultipartRequest(
       'POST',
-      Uri.parse('$baseUrl/API/upload_discussion_attachment'),
+      await _uri('/API/upload_discussion_attachment'),
     );
+    request.followRedirects = false;
     final headers = await _headers();
     request.headers.addAll(headers);
     if (token != null) request.fields['api_token'] = token;
@@ -797,9 +812,7 @@ class ChatV1Api {
     );
     final response = await http.Response.fromStream(streamed);
     await persistCookieFrom(response);
-    final decoded = jsonDecode(response.body);
-    if (decoded is Map) return Map<String, dynamic>.from(decoded);
-    return null;
+    return decodeDiscussionUpload(response.statusCode, response.body);
   }
 
   Future<void> attachMessageFiles(
@@ -1099,6 +1112,70 @@ class ChatProjectUnread {
     return DateTime.tryParse(raw?.toString() ?? '') ??
         DateTime.fromMillisecondsSinceEpoch(0);
   }
+}
+
+/// Storage URL returned by `/API/upload_discussion_attachment`.
+String? discussionUploadUrl(Map<String, dynamic>? upload) {
+  if (upload == null) return null;
+  final direct = upload['url'] ?? upload['storage_path'] ?? upload['path'];
+  if (direct != null && direct.toString().trim().isNotEmpty) {
+    return direct.toString();
+  }
+  for (final key in const ['data', 'file']) {
+    final nested = upload[key];
+    if (nested is Map) {
+      final url = nested['url'] ?? nested['storage_path'] ?? nested['path'];
+      if (url != null && url.toString().trim().isNotEmpty) {
+        return url.toString();
+      }
+    }
+  }
+  return null;
+}
+
+/// Parses an upload response.
+///
+/// A missing session is a Werkzeug redirect (`302` + HTML 3.2), not JSON.
+/// Callers must not run [jsonDecode] on that body.
+Map<String, dynamic>? decodeDiscussionUpload(int statusCode, String body) {
+  if (statusCode == 301 ||
+      statusCode == 302 ||
+      statusCode == 303 ||
+      statusCode == 307 ||
+      statusCode == 401 ||
+      statusCode == 403) {
+    throw ChatV1ApiException(
+      'Please sign in again to upload the file.',
+      statusCode: statusCode,
+    );
+  }
+
+  final trimmed = body.trim();
+  if (trimmed.isEmpty || trimmed.startsWith('<')) {
+    throw ChatV1ApiException(
+      'File upload failed ($statusCode).',
+      statusCode: statusCode,
+    );
+  }
+
+  dynamic decoded;
+  try {
+    decoded = jsonDecode(body);
+  } on FormatException {
+    throw ChatV1ApiException(
+      'File upload failed ($statusCode).',
+      statusCode: statusCode,
+    );
+  }
+  if (decoded is! Map) return null;
+  final map = Map<String, dynamic>.from(decoded);
+  if (map['success'] == false || statusCode >= 400) {
+    throw ChatV1ApiException(
+      map['message']?.toString() ?? 'File upload failed',
+      statusCode: statusCode,
+    );
+  }
+  return map;
 }
 
 class ChatV1ApiException implements Exception {

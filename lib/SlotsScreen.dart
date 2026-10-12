@@ -16,6 +16,7 @@ import 'services/sales_sop_slots_service.dart';
 import 'services/session_manager.dart';
 import 'widgets/skeleton_loader.dart';
 import 'widgets/themed_scaffold.dart';
+import 'user_facing_error.dart';
 
 class SlotsScreen extends StatelessWidget {
   final bool embedded;
@@ -112,7 +113,10 @@ class SlotsViewState extends State<SlotsView> {
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _error = e.toString().replaceFirst('Exception: ', '');
+        _error = situationError(
+          e,
+          fallback: 'Could not load slots. Please try again.',
+        );
       });
     }
   }
@@ -566,7 +570,7 @@ class SlotsViewState extends State<SlotsView> {
       if (!mounted) return false;
       setState(() {
         _submittingSelectId = null;
-        _errors[id] = e.toString().replaceFirst('Exception: ', '');
+        _errors[id] = userFacingError(e);
       });
       return false;
     }
@@ -640,7 +644,7 @@ class SlotsViewState extends State<SlotsView> {
       } on SessionInvalidatedException {
         return;
       } catch (e) {
-        lastError = e.toString().replaceFirst('Exception: ', '');
+        lastError = userFacingError(e);
         setState(() => _errors[_idFor(slot)] = lastError ?? 'Could not confirm');
       }
     }
@@ -758,7 +762,13 @@ class SlotsViewState extends State<SlotsView> {
         Expanded(child: _buildVisitDetails(context)),
       ]);
     }
-    return SiteVisitsOverview(slots: _slots, showInlineTitle: widget.showInlineTitle, loading: _loading, error: _error,
+    final slotsError = _error == null
+        ? null
+        : situationError(
+            _error,
+            fallback: 'Could not load slots. Please try again.',
+          );
+    return SiteVisitsOverview(slots: _slots, showInlineTitle: widget.showInlineTitle, loading: _loading, error: slotsError,
       onRefresh: reload, onHelp: _showHowItWorks,
       onDetails: () => setState(() => _showVisitDetails = true),
       onOpen: _openVisitBooking);
@@ -774,10 +784,15 @@ class SlotsViewState extends State<SlotsView> {
     }
 
     if (_error != null && _slots.isEmpty) {
+      final message = situationError(
+        _error,
+        fallback: 'Could not load slots. Please try again.',
+      );
+      final offline = isOfflineUserMessage(message);
       return _SlotsMessage(
-        icon: Icons.error_outline_rounded,
-        title: 'Could not load visits',
-        message: _error!,
+        icon: offline ? Icons.wifi_off_rounded : Icons.info_outline_rounded,
+        title: message,
+        message: '',
         actionLabel: 'Retry',
         onAction: reload,
       );
@@ -1629,13 +1644,11 @@ class _VisitCard extends StatelessWidget {
                       children: [
                         Text(
                           slot.title,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
                           style: TextStyle(
                             color: AppTheme.darkTextPrimary,
-                            fontSize: 14.5,
+                            fontSize: 13.5,
                             fontWeight: FontWeight.w800,
-                            height: 1.2,
+                            height: 1.25,
                           ),
                         ),
                         if (location.isNotEmpty) ...[
@@ -2323,12 +2336,10 @@ class _SlotRadioCard extends StatelessWidget {
                   const SizedBox(height: 6),
                   Text(
                     parts.dateLine,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       color: AppTheme.darkTextPrimary,
-                      fontSize: 11.5,
-                      height: 1.2,
+                      fontSize: 10.5,
+                      height: 1.25,
                       fontWeight: selected ? FontWeight.w800 : FontWeight.w700,
                     ),
                   ),
@@ -2336,11 +2347,9 @@ class _SlotRadioCard extends StatelessWidget {
                     const SizedBox(height: 3),
                     Text(
                       parts.timeLine,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                         color: AppTheme.mutedGrey,
-                        fontSize: 10,
+                        fontSize: 9.5,
                         height: 1.25,
                         fontWeight: FontWeight.w600,
                       ),
@@ -2441,11 +2450,9 @@ class _SelectedFooter extends StatelessWidget {
           Expanded(
             child: Text(
               'Selected: $summary',
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
               style: TextStyle(
                 color: AppTheme.darkTextPrimary,
-                fontSize: 11.5,
+                fontSize: 11,
                 height: 1.3,
                 fontWeight: FontWeight.w700,
               ),
@@ -2928,19 +2935,22 @@ class _SlotsMessage extends StatelessWidget {
                 fontSize: 16,
                 fontWeight: FontWeight.w800,
                 color: AppTheme.darkTextPrimary,
+                height: 1.35,
               ),
             ),
-            const SizedBox(height: 8),
-            Text(
-              message,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontSize: 13,
-                height: 1.4,
-                color: AppTheme.mutedGrey,
-                fontWeight: FontWeight.w600,
+            if (message.trim().isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text(
+                message,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 13,
+                  height: 1.4,
+                  color: AppTheme.mutedGrey,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
-            ),
+            ],
             const SizedBox(height: 16),
             TextButton(onPressed: onAction, child: Text(actionLabel)),
           ],
@@ -3134,7 +3144,7 @@ _SlotParts _slotDisplay(SalesSopSlotOption option) {
   ].join(' · ');
   if (option.parsedDateTime != null) {
     return _SlotParts(
-      dateLine: DateFormat('EEE, d MMM').format(option.parsedDateTime!),
+      dateLine: DateFormat('EEEE, d MMMM yyyy').format(option.parsedDateTime!),
       timeLine: timeLine,
     );
   }
@@ -3172,14 +3182,9 @@ String _compactDate(String raw) {
   if (cleaned.isEmpty) return cleaned;
   final parsed = DateTime.tryParse(cleaned) ?? _parseLooseDate(cleaned);
   if (parsed != null) {
-    return DateFormat('EEE, d MMM').format(parsed);
+    return DateFormat('EEEE, d MMMM yyyy').format(parsed);
   }
-  return cleaned
-      .replaceAll(RegExp(r'\b20\d{2}\b'), '')
-      .replaceAll(RegExp(r'\s+,'), ',')
-      .replaceAll(RegExp(r',\s*$'), '')
-      .replaceAll(RegExp(r'\s{2,}'), ' ')
-      .trim();
+  return cleaned;
 }
 
 DateTime? _parseLooseDate(String raw) {

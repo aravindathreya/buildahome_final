@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'api_base.dart';
 import 'api_http.dart';
 import 'session_manager.dart';
+import '../user_facing_error.dart';
 
 /// `GET /API/mobile/isometric-view` on [kProductionApiBaseUrl].
 const String kIsometricViewEndpoint = '/API/mobile/isometric-view';
@@ -130,7 +131,7 @@ class IsometricViewService {
       rethrow;
     } catch (e) {
       throw IsometricViewException(
-        e.toString().replaceFirst('Exception: ', ''),
+        userFacingError(e),
       );
     }
   }

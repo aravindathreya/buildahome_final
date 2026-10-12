@@ -6,6 +6,7 @@ import 'app_theme.dart';
 import 'SlotsScreen.dart';
 import 'services/data_provider.dart';
 import 'widgets/skeleton_loader.dart';
+import 'user_facing_error.dart';
 
 /// Known sales SOP card keys from Mobile Dashboard Project Details APIs.
 /// Non-clients get every card; clients keep only shared cards (not nonClientOnly).
@@ -305,7 +306,7 @@ class _SalesSopCardsScreenState extends State<SalesSopCardsScreen>
       if (!mounted) return;
       setState(() {
         _cardErrors[cardKey] =
-            e.toString().replaceFirst('Exception: ', '');
+            userFacingError(e);
         _loadingKeys.remove(cardKey);
       });
     }

@@ -8,6 +8,7 @@ import '../services/attendance_service.dart';
 import '../services/location_service.dart';
 import '../services/staff_location_tracker.dart';
 import '../widgets/attendance_note_sheet.dart';
+import '../user_facing_error.dart';
 
 /// Once per IST day, prompts staff who still need to check in.
 Future<void> maybePromptForAttendance(BuildContext context) async {
@@ -94,7 +95,7 @@ class _AttendancePromptDialogState extends State<_AttendancePromptDialog> {
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _error = e.toString().replaceFirst(RegExp(r'^Exception:\s*'), '');
+        _error = userFacingError(e);
       });
     }
   }
@@ -196,7 +197,7 @@ class _AttendancePromptDialogState extends State<_AttendancePromptDialog> {
       if (!mounted) return;
       setState(() {
         _submitting = false;
-        _error = e.toString().replaceFirst(RegExp(r'^Exception:\s*'), '');
+        _error = userFacingError(e);
       });
     }
   }

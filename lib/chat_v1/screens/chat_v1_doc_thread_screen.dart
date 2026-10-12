@@ -14,6 +14,7 @@ import '../chat_v1_models.dart';
 import '../chat_v1_theme.dart';
 import '../chat_v1_utils.dart';
 import '../widgets/chat_v1_common.dart';
+import '../../user_facing_error.dart';
 
 class ChatV1DocThreadScreen extends StatefulWidget {
   final String salesSopId;
@@ -98,7 +99,7 @@ class _ChatV1DocThreadScreenState extends State<ChatV1DocThreadScreen> {
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _error = e.toString().replaceFirst('Exception: ', '');
+        _error = userFacingError(e);
       });
     }
   }
@@ -139,7 +140,7 @@ class _ChatV1DocThreadScreenState extends State<ChatV1DocThreadScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+        SnackBar(content: Text(userFacingError(e))),
       );
     }
   }
@@ -221,7 +222,7 @@ class _ChatV1DocThreadScreenState extends State<ChatV1DocThreadScreen> {
       if (!mounted) return;
       setState(() => _asking = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+        SnackBar(content: Text(userFacingError(e))),
       );
     }
   }
@@ -242,8 +243,7 @@ class _ChatV1DocThreadScreenState extends State<ChatV1DocThreadScreen> {
           bytes: fileBytes,
           fileName: fileName,
         );
-        final url =
-            (upload?['url'] ?? upload?['storage_path'] ?? '').toString();
+        final url = discussionUploadUrl(upload) ?? '';
         final name =
             (upload?['filename'] ?? upload?['file_name'] ?? fileName).toString();
         if (url.isEmpty) throw ChatV1ApiException('File upload failed');
@@ -298,7 +298,7 @@ class _ChatV1DocThreadScreenState extends State<ChatV1DocThreadScreen> {
       if (!mounted) return;
       setState(() => _sending = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+        SnackBar(content: Text(userFacingError(e))),
       );
     }
   }

@@ -11,6 +11,7 @@ import 'task_display_title.dart';
 import 'indent_task_material.dart';
 import 'widgets/modern_task_card.dart';
 import 'widgets/searchable_select.dart';
+import 'user_facing_error.dart';
 
 class TasksLayout extends StatefulWidget {
   final List<dynamic> initialTasks;
@@ -357,7 +358,7 @@ class _CreateTaskPageState extends State<CreateTaskPage> {
                 Icon(Icons.error, color: Colors.white),
                 SizedBox(width: 8),
                 Expanded(
-                  child: Text(e.toString().replaceAll('Exception: ', '')),
+                  child: Text(userFacingError(e)),
                 ),
               ],
             ),
@@ -1643,7 +1644,7 @@ class _ViewTasksPageState extends State<ViewTasksPage> {
               Icon(Icons.error, color: Colors.white),
               SizedBox(width: 8),
               Expanded(
-                child: Text(e.toString().replaceAll('Exception: ', '')),
+                child: Text(userFacingError(e)),
               ),
             ],
           ),
@@ -1737,7 +1738,7 @@ class _ViewTasksPageState extends State<ViewTasksPage> {
               Icon(Icons.error, color: Colors.white),
               SizedBox(width: 8),
               Expanded(
-                child: Text(e.toString().replaceAll('Exception: ', '')),
+                child: Text(userFacingError(e)),
               ),
             ],
           ),

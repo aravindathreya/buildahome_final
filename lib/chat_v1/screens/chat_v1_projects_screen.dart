@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../app_theme.dart';
 import '../../project_picker.dart';
 import '../../services/data_provider.dart';
 import '../chat_v1_app.dart';
@@ -21,7 +22,7 @@ class ChatV1ProjectsScreen extends StatefulWidget {
   static Widget openQuick() {
     return ChatV1OpenSplash(
       child: Theme(
-        data: ChatV1Theme.data(dark: true),
+        data: ChatV1Theme.data(dark: AppTheme.isDark),
         child: const ChatV1ProjectsScreen(),
       ),
     );

@@ -34,9 +34,13 @@ class LoginScreenNew extends StatefulWidget {
 class LoginScreenNewState extends State<LoginScreenNew>
     with TickerProviderStateMixin {
   static const Color _navy = AppTheme.navy;
-  static const Color _muted = Color(0xFFA8B3C7);
-  static const Color _border = Color(0xFF334155);
-  static const Color _formText = Color(0xFFF8FAFC);
+  static Color get _muted => AppTheme.isDark
+      ? const Color(0xFFA8B3C7)
+      : const Color(0xFF4B5870);
+  static Color get _border =>
+      AppTheme.isDark ? const Color(0xFF334155) : AppTheme.lightBorder;
+  static Color get _formText =>
+      AppTheme.isDark ? const Color(0xFFF8FAFC) : AppTheme.lightTextPrimary;
   static const String _authBase = 'https://office1.buildahome.in';
 
   static const int _otpLength = 6;
@@ -56,8 +60,7 @@ class LoginScreenNewState extends State<LoginScreenNew>
   final phoneTextController = TextEditingController();
   final List<TextEditingController> _otpControllers =
       List.generate(_otpLength, (_) => TextEditingController());
-  final List<FocusNode> _otpFocusNodes =
-      List.generate(_otpLength, (_) => FocusNode());
+  late final List<FocusNode> _otpFocusNodes;
 
   String? _normalizedPhone;
   Timer? _resendTimer;
@@ -82,6 +85,13 @@ class LoginScreenNewState extends State<LoginScreenNew>
   void initState() {
     super.initState();
     _minSplashFuture = Future<void>.delayed(_minSplashDuration);
+
+    _otpFocusNodes = List.generate(
+      _otpLength,
+      (index) => FocusNode(
+        onKeyEvent: (_, event) => _onOtpKeyEvent(index, event),
+      ),
+    );
 
     _formFadeController = AnimationController(
       vsync: this,
@@ -222,15 +232,14 @@ class LoginScreenNewState extends State<LoginScreenNew>
         });
       }
 
-      // A failed timeline or offline lookup must not keep the splash up.
-      // Future.wait would otherwise throw and skip the handoff.
+      // Missing project, sales SOP, timeline, or generation data must not
+      // hold the splash. Those calls keep running after the handoff.
+      // A dead session that fails before the handoff still returns to login.
       Object? prepError;
-      try {
-        await prepFuture;
-      } catch (e) {
+      unawaited(prepFuture.then<void>((_) {}, onError: (Object e, StackTrace _) {
         prepError = e;
-        print('[Login] Home prep failed, continuing past splash: $e');
-      }
+        debugPrint('[Login] Home prep failed, continuing past splash: $e');
+      }));
       await Future.wait<void>([
         _minSplashFuture,
         _waitForDestinationReady(),
@@ -703,11 +712,20 @@ class LoginScreenNewState extends State<LoginScreenNew>
         showOtpError = true;
         errorMessage = message;
       });
+      // Keep keyboard/focus on OTP so backspace can correct without re-tapping.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !showOtpField) return;
+        _focusOtpBox(_otpLength - 1);
+      });
     } catch (e) {
       setState(() {
         formBeingSubmitted = false;
         showOtpError = true;
         errorMessage = 'Network error. Please try again.';
+      });
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !showOtpField) return;
+        _focusOtpBox(_otpLength - 1);
       });
     }
   }
@@ -739,7 +757,7 @@ class LoginScreenNewState extends State<LoginScreenNew>
         padding: const EdgeInsets.only(bottom: 14),
         child: Row(
           children: [
-            const Icon(
+            Icon(
               Icons.arrow_back_ios_new_rounded,
               size: 14,
               color: _formText,
@@ -747,7 +765,7 @@ class LoginScreenNewState extends State<LoginScreenNew>
             const SizedBox(width: 6),
             Text(
               label,
-              style: const TextStyle(
+              style: TextStyle(
                 color: _formText,
                 fontSize: 13,
                 fontWeight: FontWeight.w700,
@@ -862,6 +880,42 @@ class LoginScreenNewState extends State<LoginScreenNew>
     }
   }
 
+  void _clearOtpErrorState() {
+    if (!showOtpError && errorMessage == null) return;
+    setState(() {
+      showOtpError = false;
+      errorMessage = null;
+    });
+  }
+
+  void _focusOtpBox(int index) {
+    final i = index.clamp(0, _otpLength - 1);
+    final node = _otpFocusNodes[i];
+    node.requestFocus();
+    final text = _otpControllers[i].text;
+    _otpControllers[i].selection = TextSelection(
+      baseOffset: 0,
+      extentOffset: text.length,
+    );
+  }
+
+  /// Backspace on an empty box clears the previous digit and moves focus.
+  KeyEventResult _onOtpKeyEvent(int index, KeyEvent event) {
+    if (event is! KeyDownEvent) return KeyEventResult.ignored;
+    if (event.logicalKey != LogicalKeyboardKey.backspace) {
+      return KeyEventResult.ignored;
+    }
+    if (_otpControllers[index].text.isNotEmpty) {
+      return KeyEventResult.ignored;
+    }
+    if (index <= 0) return KeyEventResult.ignored;
+
+    _otpControllers[index - 1].clear();
+    _focusOtpBox(index - 1);
+    _clearOtpErrorState();
+    return KeyEventResult.handled;
+  }
+
   void _onOtpChanged(int index, String value) {
     if (value.length > 1) {
       // Paste support
@@ -872,24 +926,27 @@ class LoginScreenNewState extends State<LoginScreenNew>
       }
       final focusIndex =
           digits.length >= _otpLength ? _otpLength - 1 : digits.length;
-      _otpFocusNodes[focusIndex.clamp(0, _otpLength - 1)].requestFocus();
-      setState(() {
-        showOtpError = false;
-        errorMessage = null;
-      });
+      _focusOtpBox(focusIndex);
+      _clearOtpErrorState();
       if (digits.length >= _otpLength) {
         verifyOtpAndLogin();
       }
       return;
     }
 
-    if (value.isNotEmpty && index < _otpLength - 1) {
-      _otpFocusNodes[index + 1].requestFocus();
+    if (value.isEmpty) {
+      // Digit cleared — step back so the next backspace edits the previous box.
+      if (index > 0) {
+        _focusOtpBox(index - 1);
+      }
+      _clearOtpErrorState();
+      return;
     }
-    setState(() {
-      showOtpError = false;
-      errorMessage = null;
-    });
+
+    if (index < _otpLength - 1) {
+      _focusOtpBox(index + 1);
+    }
+    _clearOtpErrorState();
     if (_currentOtp().length == _otpLength) {
       verifyOtpAndLogin();
     }
@@ -903,13 +960,13 @@ class LoginScreenNewState extends State<LoginScreenNew>
   }) {
     return InputDecoration(
       hintText: hint,
-      hintStyle: const TextStyle(
+      hintStyle: TextStyle(
         color: _muted,
         fontWeight: FontWeight.w500,
       ),
       prefixIcon: Icon(icon, color: _formText),
       prefixText: prefixText,
-      prefixStyle: const TextStyle(
+      prefixStyle: TextStyle(
         color: _formText,
         fontSize: 15,
         fontWeight: FontWeight.w700,
@@ -919,11 +976,11 @@ class LoginScreenNewState extends State<LoginScreenNew>
       fillColor: AppTheme.darkBackgroundPrimaryLight,
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(14),
-        borderSide: const BorderSide(color: _border),
+        borderSide: BorderSide(color: _border),
       ),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(14),
-        borderSide: const BorderSide(color: _border),
+        borderSide: BorderSide(color: _border),
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(14),
@@ -969,7 +1026,7 @@ class LoginScreenNewState extends State<LoginScreenNew>
             keyboardType: TextInputType.number,
             textInputAction: TextInputAction.done,
             textAlign: TextAlign.center,
-            style: const TextStyle(
+            style: TextStyle(
               color: _formText,
               fontSize: 20,
               fontWeight: FontWeight.w800,
@@ -984,7 +1041,7 @@ class LoginScreenNewState extends State<LoginScreenNew>
               contentPadding: EdgeInsets.zero,
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
-                borderSide: const BorderSide(color: _border),
+                borderSide: BorderSide(color: _border),
               ),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
@@ -1172,7 +1229,7 @@ class LoginScreenNewState extends State<LoginScreenNew>
                                 : showPhoneField
                                     ? 'Phone number'
                                     : 'Kick off',
-                            style: const TextStyle(
+                            style: TextStyle(
                               color: _formText,
                               fontSize: 18,
                               fontWeight: FontWeight.w800,
@@ -1185,7 +1242,7 @@ class LoginScreenNewState extends State<LoginScreenNew>
                                 : showPhoneField
                                     ? 'Use the mobile number linked to your account'
                                     : 'Verify your number to access your workspace',
-                            style: const TextStyle(
+                            style: TextStyle(
                               color: _muted,
                               fontSize: 13,
                               fontWeight: FontWeight.w500,
@@ -1219,7 +1276,7 @@ class LoginScreenNewState extends State<LoginScreenNew>
                                           ),
                                           LengthLimitingTextInputFormatter(15),
                                         ],
-                                        style: const TextStyle(
+                                        style: TextStyle(
                                           color: _formText,
                                           fontSize: 15,
                                           fontWeight: FontWeight.w600,
@@ -1268,7 +1325,7 @@ class LoginScreenNewState extends State<LoginScreenNew>
                                                 color: Color(0xFF25D366),
                                               ),
                                               const SizedBox(width: 6),
-                                              const Expanded(
+                                              Expanded(
                                                 child: Text(
                                                   'OTP sent via WhatsApp',
                                                   style: TextStyle(
@@ -1366,7 +1423,7 @@ class LoginScreenNewState extends State<LoginScreenNew>
                       ),
                     ),
                     const SizedBox(height: 20),
-                    const Center(
+                    Center(
                       child: Text(
                         'Need help? Contact your project coordinator.',
                         style: TextStyle(
@@ -1389,20 +1446,30 @@ class LoginScreenNewState extends State<LoginScreenNew>
                   fit: StackFit.expand,
                   children: [
                     // Static, centered — matches Android launch_background gravity.
+                    // Slight overscale + clip hides residual JPEG edge seams that
+                    // otherwise read as a faint rectangle against the gray field.
                     Center(
-                      child: Image.asset(
-                        _splashAsset,
-                        width: MediaQuery.sizeOf(context).width,
-                        height: MediaQuery.sizeOf(context).height * 0.72,
-                        fit: BoxFit.contain,
-                        alignment: Alignment.center,
-                        filterQuality: FilterQuality.high,
-                        errorBuilder: (_, __, ___) => const Text(
-                          'buildAhome',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 28,
-                            fontWeight: FontWeight.w800,
+                      child: ClipRect(
+                        child: SizedBox(
+                          width: MediaQuery.sizeOf(context).width,
+                          height: MediaQuery.sizeOf(context).height * 0.72,
+                          child: Transform.scale(
+                            scale: 1.02,
+                            child: Image.asset(
+                              _splashAsset,
+                              fit: BoxFit.contain,
+                              alignment: Alignment.center,
+                              filterQuality: FilterQuality.high,
+                              gaplessPlayback: true,
+                              errorBuilder: (_, __, ___) => const Text(
+                                'buildAhome',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 28,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                            ),
                           ),
                         ),
                       ),

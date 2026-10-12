@@ -6,6 +6,7 @@ import '../models/approved_po.dart';
 import 'api_base.dart';
 import 'api_http.dart';
 import 'session_manager.dart';
+import '../user_facing_error.dart';
 
 /// Loads approved POs from `GET /API/approved_pos`.
 class ApprovedPoService {
@@ -163,7 +164,7 @@ class ApprovedPoService {
       } on ApprovedPoException {
         rethrow;
       } catch (e) {
-        lastMessage = e.toString().replaceFirst('Exception: ', '');
+        lastMessage = userFacingError(e);
       }
     }
 

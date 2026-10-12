@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/project_focus.dart';
 import 'api_http.dart';
 import 'session_manager.dart';
+import '../user_facing_error.dart';
 
 /// Fetches the Project Focus dashboard for a sales SOP.
 ///
@@ -111,7 +112,7 @@ class ProjectFocusService {
       } on SessionInvalidatedException {
         rethrow;
       } catch (e) {
-        lastMessage = e.toString().replaceFirst('Exception: ', '');
+        lastMessage = userFacingError(e);
         print('[ProjectFocus] attempt failed: $e');
       }
     }

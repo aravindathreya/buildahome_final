@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/mobile_chatbot.dart';
 import 'api_http.dart';
 import 'session_manager.dart';
+import '../user_facing_error.dart';
 
 /// Client project Q&A bot — `/API/mobile/chatbot` and `/ask`.
 ///
@@ -127,7 +128,7 @@ class MobileChatbotService {
       } on SessionInvalidatedException {
         rethrow;
       } catch (e) {
-        lastMessage = e.toString().replaceFirst('Exception: ', '');
+        lastMessage = userFacingError(e);
         print('[MobileChatbot] ask $uri failed: $e');
       }
     }
