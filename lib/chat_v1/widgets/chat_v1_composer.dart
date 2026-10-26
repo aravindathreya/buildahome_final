@@ -100,6 +100,7 @@ class ChatComposer extends StatefulWidget {
   final VoidCallback onCamera;
   final VoidCallback onGallery;
   final VoidCallback onDocument;
+  final VoidCallback? onVideo;
   final ValueChanged<String>? onChanged;
   final bool enabled;
   final List<AttachmentOption> extraAttachmentOptions;
@@ -115,6 +116,7 @@ class ChatComposer extends StatefulWidget {
     required this.onCamera,
     required this.onGallery,
     required this.onDocument,
+    this.onVideo,
     this.onChanged,
     this.enabled = true,
     this.extraAttachmentOptions = const [],
@@ -227,6 +229,14 @@ class _ChatComposerState extends State<ChatComposer> {
           color: const Color(0xFF8B5CF6),
           onTap: widget.onGallery,
         ),
+        if (widget.onVideo != null)
+          AttachmentOption(
+            id: 'video',
+            label: 'Video',
+            icon: Icons.videocam_rounded,
+            color: const Color(0xFF10B981),
+            onTap: widget.onVideo!,
+          ),
         AttachmentOption(
           id: 'document',
           label: 'Document',

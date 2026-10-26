@@ -10,6 +10,7 @@ import 'dart:convert';
 import 'app_theme.dart';
 import 'user_facing_error.dart';
 import 'services/data_provider.dart';
+import 'services/indent_units.dart';
 import 'widgets/searchable_select.dart';
 import 'widgets/full_screen_message.dart';
 import 'widgets/full_screen_progress.dart';
@@ -88,17 +89,7 @@ class CreateIndentState extends State<CreateIndent> {
   final int _totalSteps = 6;
 
   // Material units list
-  final materialUnits = [
-    'Bags',
-    'CFT',
-    'CUM',
-    'Load',
-    'Kg',
-    'MT',
-    'Nos',
-    'Box',
-    'Others',
-  ];
+  List<String> materialUnits = IndentUnits.units;
 
   @override
   void initState() {
@@ -107,6 +98,9 @@ class CreateIndentState extends State<CreateIndent> {
     call();
     loadProjects();
     loadMaterials();
+    IndentUnits.load().then((u) {
+      if (mounted) setState(() => materialUnits = u);
+    });
   }
 
   @override

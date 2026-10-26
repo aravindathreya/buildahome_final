@@ -344,6 +344,13 @@ class NavMenuWidgetState extends State<NavMenuWidget> {
     MobileMoreMenuService.instance.revision.addListener(_onMoreMenuChanged);
     _loadProfile();
     unawaited(_primeMoreMenu());
+    unawaited(_refreshRbac());
+  }
+
+  /// Cache then server RBAC overrides; rebuild the drawer when done.
+  Future<void> _refreshRbac() async {
+    await RBACService().refreshFromServer();
+    if (mounted) setState(() {});
   }
 
   @override

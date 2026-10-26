@@ -327,6 +327,12 @@ class ChatV1Mapper {
     if (lower.endsWith('.gif')) return 'image/gif';
     if (lower.endsWith('.pdf')) return 'application/pdf';
     if (lower.endsWith('.mp4')) return 'video/mp4';
+    if (lower.endsWith('.mov')) return 'video/quicktime';
+    if (lower.endsWith('.m4v')) return 'video/x-m4v';
+    if (lower.endsWith('.webm')) return 'video/webm';
+    if (lower.endsWith('.3gp')) return 'video/3gpp';
+    if (lower.endsWith('.mkv')) return 'video/x-matroska';
+    if (lower.endsWith('.avi')) return 'video/x-msvideo';
     if (lower.endsWith('.doc')) return 'application/msword';
     if (lower.endsWith('.docx')) {
       return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';

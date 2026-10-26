@@ -4,6 +4,9 @@ import 'package:url_launcher/url_launcher.dart';
 import '../chat_v1/chat_v1_utils.dart';
 import '../models/workflow_document.dart';
 import '../services/authenticated_document_fetcher.dart';
+import '../services/document_file_share_stub.dart'
+    if (dart.library.io) '../services/document_file_share_io.dart';
+import 'in_app_video_player.dart';
 import 'workflow_document_viewer.dart';
 
 /// A slice of message text, either plain copy or a tappable URL.
@@ -78,12 +81,18 @@ SharedDocumentOpenPlan planSharedDocumentOpen({
   final pdf = _looksLikePdf(resolved, name, mime);
   final image = _looksLikeImage(resolved, name, mime);
   final office = _looksLikeOffice(resolved, name, mime);
+  final video = looksLikeVideoFile(url: resolved, name: name, contentType: mime);
+  final audio = looksLikeAudioFile(url: resolved, name: name, contentType: mime);
+  final text = _looksLikePlainText(resolved, name, mime);
+  final svg = _looksLikeSvg(resolved, name, mime);
   final private = AuthenticatedDocumentFetcher.classifyUrl(resolved) ==
       DocumentUrlProfile.buildahomePrivate;
-  final inApp = pdf || image || office || private;
+  final inApp = !svg && (pdf || image || office || text || private);
 
   var resolvedType = contentType.trim();
-  if (pdf || (private && !image && !office)) {
+  if (svg) {
+    resolvedType = 'image/svg+xml';
+  } else if (pdf || (private && !image && !office && !video && !audio && !text)) {
     resolvedType = 'application/pdf';
   } else if (image) {
     resolvedType = mime.startsWith('image/') ? contentType.trim() : 'image/jpeg';
@@ -123,6 +132,37 @@ Future<void> openSharedDocument(
     return;
   }
 
+  if (looksLikeAudioFile(
+      url: plan.url, name: plan.displayName, contentType: contentType)) {
+    await openInAppAudio(context, url: plan.url, title: plan.displayName);
+    return;
+  }
+
+  if (looksLikeVideoFile(
+      url: plan.url, name: plan.displayName, contentType: contentType)) {
+    await openInAppVideo(context, url: plan.url, title: plan.displayName);
+    return;
+  }
+
+  // SVG cannot be drawn by the in-app image viewer: hand it to another app.
+  if (_looksLikeSvg(plan.url, plan.displayName, contentType.toLowerCase())) {
+    final prepared =
+        await AuthenticatedDocumentFetcher.instance.fetch(url: plan.url);
+    final bytes = prepared.bytes;
+    if (bytes != null && bytes.isNotEmpty) {
+      try {
+        await shareDocumentBytes(
+          bytes: bytes,
+          fileName: plan.displayName.toLowerCase().endsWith('.svg')
+              ? plan.displayName
+              : '${plan.displayName}.svg',
+          mimeType: 'image/svg+xml',
+        );
+        return;
+      } catch (_) {}
+    }
+  }
+
   final useInApp = plan.inApp || forceInApp;
   if (useInApp) {
     final document = WorkflowDocumentUpload(
@@ -159,7 +199,29 @@ bool _looksLikePdf(String url, String name, String mime) {
   return blob.contains('.pdf');
 }
 
+bool _looksLikeSvg(String url, String name, String mime) {
+  if (mime.contains('svg')) return true;
+  return _pathOnly(url).toLowerCase().endsWith('.svg') ||
+      name.toLowerCase().endsWith('.svg');
+}
+
+bool _looksLikePlainText(String url, String name, String mime) {
+  if (mime.startsWith('text/plain') ||
+      mime.startsWith('text/csv') ||
+      mime.contains('json') ||
+      mime.startsWith('text/markdown')) {
+    return true;
+  }
+  final path = _pathOnly(url).toLowerCase();
+  final lowerName = name.toLowerCase();
+  const exts = [
+    '.txt', '.csv', '.tsv', '.json', '.xml', '.log', '.md', '.yaml', '.yml',
+  ];
+  return exts.any((e) => path.endsWith(e) || lowerName.endsWith(e));
+}
+
 bool _looksLikeImage(String url, String name, String mime) {
+  if (_looksLikeSvg(url, name, mime)) return false;
   if (mime.startsWith('image/')) return true;
   return _hasImageExtension(_pathOnly(url)) || _hasImageExtension(name);
 }
@@ -177,12 +239,18 @@ bool _looksLikeOffice(String url, String name, String mime) {
   bool has(String ext) => path.endsWith(ext) || lowerName.endsWith(ext);
   return has('.doc') ||
       has('.docx') ||
+      has('.docm') ||
       has('.xls') ||
       has('.xlsx') ||
+      has('.xlsm') ||
       has('.ppt') ||
       has('.pptx') ||
+      has('.pptm') ||
+      has('.pps') ||
+      has('.ppsx') ||
       has('.odt') ||
       has('.ods') ||
+      has('.odp') ||
       has('.rtf') ||
       has('.txt') ||
       has('.csv');

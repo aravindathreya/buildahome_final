@@ -9,6 +9,7 @@ import 'app_theme.dart';
 import 'services/app_logout.dart';
 import 'services/data_provider.dart';
 import 'services/location_service.dart';
+import 'services/push/notification_permission_controller.dart';
 import 'services/profile_picture_service.dart';
 import 'services/theme_service.dart';
 import 'widgets/profile_picture_dialog.dart';
@@ -49,6 +50,7 @@ class _ProfileScreenState extends State<ProfileScreen>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     unawaited(_load());
+    unawaited(NotificationPermissionController.instance.refresh());
   }
 
   @override
@@ -61,6 +63,7 @@ class _ProfileScreenState extends State<ProfileScreen>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       unawaited(_refreshLocationPermission());
+      unawaited(NotificationPermissionController.instance.refresh());
     }
   }
 
@@ -324,6 +327,8 @@ class _ProfileScreenState extends State<ProfileScreen>
                                 const SizedBox(height: 16),
                                 _buildLocationCard(),
                               ],
+                              const SizedBox(height: 16),
+                              _buildNotificationsCard(),
                               const SizedBox(height: 16),
                               _buildAppearanceCard(isDark),
                               const SizedBox(height: 16),
@@ -629,6 +634,114 @@ class _ProfileScreenState extends State<ProfileScreen>
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildNotificationsCard() {
+    final controller = NotificationPermissionController.instance;
+    return ValueListenableBuilder<bool>(
+      valueListenable: controller.bannerVisible,
+      builder: (context, off, _) {
+        final isOn = !off;
+        final statusColor =
+            isOn ? const Color(0xFF34D399) : const Color(0xFFFBBF24);
+        final statusBg = isOn
+            ? (AppTheme.isDark
+                ? const Color(0xFF14352B)
+                : const Color(0xFFD1FAE5))
+            : (AppTheme.isDark
+                ? const Color(0xFF3A2F14)
+                : const Color(0xFFFEF3C7));
+        return Container(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+          decoration: BoxDecoration(
+            color: AppTheme.backgroundSecondary,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: AppTheme.borderColor),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 42,
+                    height: 42,
+                    decoration: BoxDecoration(
+                      color: statusBg,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(
+                      isOn
+                          ? Icons.notifications_active_rounded
+                          : Icons.notifications_off_rounded,
+                      color: statusColor,
+                      size: 22,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Notifications',
+                          style: TextStyle(
+                            color: AppTheme.textPrimary,
+                            fontSize: 15,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          isOn ? 'On' : 'Off',
+                          style: TextStyle(
+                            color: statusColor,
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Text(
+                isOn
+                    ? 'You will get project, task and payment updates. You can change this in system settings.'
+                    : 'Turn on notifications in settings to get project, task and payment updates.',
+                style: TextStyle(
+                  color: AppTheme.textSecondary,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                  height: 1.35,
+                ),
+              ),
+              const SizedBox(height: 14),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () => controller.openSettings(),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppTheme.primaryColorConstLight,
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: Text(
+                    isOn ? 'Manage in settings' : 'Allow in settings',
+                    style: const TextStyle(fontWeight: FontWeight.w800),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 

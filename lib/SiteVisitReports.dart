@@ -425,13 +425,21 @@ class _SiteVisitReportsScreenState extends State<SiteVisitReportsScreen> with Si
       firstDate: DateTime.now(),
       lastDate: DateTime.now().add(const Duration(days: 365 * 2)), // 2 years out
       builder: (context, child) {
+        final isDarkMode = Theme.of(context).brightness == Brightness.dark;
         return Theme(
           data: Theme.of(context).copyWith(
-            colorScheme: ColorScheme.light(
-              primary: AppTheme.darkTextPrimary,
-              onPrimary: Colors.white,
-              onSurface: AppTheme.darkTextPrimary,
-            ),
+            colorScheme: isDarkMode
+                ? ColorScheme.dark(
+                    primary: AppTheme.accentBlue,
+                    onPrimary: Colors.white,
+                    surface: AppTheme.getBackgroundSecondary(context),
+                    onSurface: AppTheme.darkTextPrimary,
+                  )
+                : ColorScheme.light(
+                    primary: AppTheme.darkTextPrimary,
+                    onPrimary: Colors.white,
+                    onSurface: AppTheme.darkTextPrimary,
+                  ),
           ),
           child: child!,
         );

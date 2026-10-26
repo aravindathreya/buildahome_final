@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../FullScreenImage.dart';
+import '../../widgets/in_app_video_player.dart';
 import '../../widgets/open_shared_document.dart';
 import '../chat_v1_controller.dart';
 import '../chat_v1_importance.dart';
@@ -22,6 +24,10 @@ class Cv1MessageBubble extends StatelessWidget {
   final ValueChanged<String>? onReactionTap;
   final GlobalKey? messageKey;
 
+  /// Every image URL in the conversation (oldest first). When provided, the
+  /// full-screen viewer can page through all of them.
+  final List<String>? galleryImageUrls;
+
   const Cv1MessageBubble({
     super.key,
     required this.message,
@@ -31,6 +37,7 @@ class Cv1MessageBubble extends StatelessWidget {
     this.onReplyTap,
     this.onReactionTap,
     this.messageKey,
+    this.galleryImageUrls,
   });
 
   @override
@@ -357,11 +364,108 @@ class Cv1MessageBubble extends StatelessWidget {
             child: _imageAttachment(context, att),
           );
         }
+        if (att.storagePath.isNotEmpty &&
+            looksLikeAudioFile(
+                url: att.storagePath,
+                name: att.fileName,
+                contentType: att.contentType)) {
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: _audioAttachment(context, att),
+          );
+        }
+        if (att.storagePath.isNotEmpty &&
+            looksLikeVideoFile(
+                url: att.storagePath,
+                name: att.fileName,
+                contentType: att.contentType)) {
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: _videoAttachment(context, att),
+          );
+        }
         return Padding(
           padding: const EdgeInsets.only(bottom: 6),
           child: _documentCard(context, att),
         );
       }).toList(),
+    );
+  }
+
+  Widget _audioAttachment(BuildContext context, ChatV1Attachment att) {
+    final url = ChatV1Utils.resolveMediaUrl(att.storagePath);
+    final dark = ChatV1Theme.isDark(context);
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () => openInAppAudio(context, url: url, title: att.fileName),
+        child: Container(
+          width: 240,
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+          decoration: BoxDecoration(
+            color: dark ? Colors.black : const Color(0xFF1F2A24),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.play_circle_fill_rounded,
+                  color: Colors.white, size: 36),
+              const SizedBox(width: 8),
+              const Icon(Icons.audiotrack_rounded,
+                  color: Colors.white54, size: 18),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  att.fileName,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: Colors.white70, fontSize: 12),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _videoAttachment(BuildContext context, ChatV1Attachment att) {
+    final url = ChatV1Utils.resolveMediaUrl(att.storagePath);
+    final dark = ChatV1Theme.isDark(context);
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () => openInAppVideo(context, url: url, title: att.fileName),
+        child: Container(
+          width: 220,
+          height: 140,
+          decoration: BoxDecoration(
+            color: dark ? Colors.black : const Color(0xFF1F2A24),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Stack(
+            children: [
+              const Center(
+                child: Icon(Icons.play_circle_fill_rounded,
+                    color: Colors.white, size: 48),
+              ),
+              Positioned(
+                left: 10,
+                right: 10,
+                bottom: 8,
+                child: Text(
+                  att.fileName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: Colors.white70, fontSize: 12),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -400,7 +504,11 @@ class Cv1MessageBubble extends StatelessWidget {
                 name: att.fileName,
                 meta: att.contentType,
                 icon: Icons.broken_image_outlined,
-                onTap: () => _openUrl(url),
+                onTap: () => openSharedDocument(context,
+                    url: url,
+                    fileName: att.fileName,
+                    contentType: att.contentType,
+                    forceInApp: true),
               ),
             ),
             placeholder: (context, _) => Container(
@@ -431,6 +539,27 @@ class Cv1MessageBubble extends StatelessWidget {
   void _showImageViewer(BuildContext context, ChatV1Attachment att) {
     final url = ChatV1Utils.resolveMediaUrl(att.storagePath);
     final bytes = att.previewBytes;
+    if (att.storagePath.isNotEmpty && url.isNotEmpty) {
+      // Prefer the conversation gallery; fall back to this message's images.
+      var urls = galleryImageUrls ?? const <String>[];
+      if (!urls.contains(url)) {
+        urls = message.attachments
+            .where((a) => a.isImage && a.storagePath.isNotEmpty)
+            .map((a) => ChatV1Utils.resolveMediaUrl(a.storagePath))
+            .toList();
+      }
+      final index = urls.indexOf(url);
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => FullScreenImage(
+            url,
+            imageUrls: urls,
+            initialIndex: index < 0 ? 0 : index,
+          ),
+        ),
+      );
+      return;
+    }
     Navigator.of(context).push(
       PageRouteBuilder(
         opaque: false,
@@ -454,7 +583,11 @@ class Cv1MessageBubble extends StatelessWidget {
                     IconButton(
                       tooltip: 'Open',
                       icon: const Icon(Icons.open_in_new_rounded),
-                      onPressed: () => _openUrl(url),
+                      onPressed: () => openSharedDocument(context,
+                          url: url,
+                          fileName: att.fileName,
+                          contentType: att.contentType,
+                          forceInApp: true),
                     ),
                 ],
               ),
@@ -503,6 +636,7 @@ class Cv1MessageBubble extends StatelessWidget {
           url: url,
           fileName: att.fileName,
           contentType: att.contentType,
+          forceInApp: true,
         ),
         child: Padding(
           padding: const EdgeInsets.fromLTRB(10, 10, 8, 8),
@@ -575,6 +709,7 @@ class Cv1MessageBubble extends StatelessWidget {
                                 url: url,
                                 fileName: att.fileName,
                                 contentType: att.contentType,
+                                forceInApp: true,
                               ),
                       icon: Icon(
                         plan.inApp
@@ -582,7 +717,7 @@ class Cv1MessageBubble extends StatelessWidget {
                             : Icons.open_in_new_rounded,
                         size: 16,
                       ),
-                      label: Text(plan.inApp ? 'Open' : 'Open link'),
+                      label: const Text('Open'),
                       style: TextButton.styleFrom(
                         foregroundColor: ChatV1Theme.accent,
                         padding: const EdgeInsets.symmetric(vertical: 6),
@@ -686,10 +821,8 @@ class Cv1MessageBubble extends StatelessWidget {
                         ? Icons.visibility_rounded
                         : Icons.open_in_new_rounded,
                   ),
-                  title: Text(plan.inApp ? 'Open' : 'Open link'),
-                  subtitle: Text(
-                    plan.inApp ? 'View in the app' : 'Open this link',
-                  ),
+                  title: const Text('Open'),
+                  subtitle: const Text('View in the app'),
                   enabled: url.isNotEmpty,
                   onTap: () {
                     Navigator.pop(sheetContext);
@@ -698,6 +831,7 @@ class Cv1MessageBubble extends StatelessWidget {
                       url: url,
                       fileName: att.fileName,
                       contentType: att.contentType,
+                      forceInApp: true,
                     );
                   },
                 ),
@@ -909,7 +1043,11 @@ class Cv1MessageBubble extends StatelessWidget {
   }
 
   Widget _media(BuildContext context) {
-    return Column(
+    final link = message.type == ChatV1MsgType.video
+        ? (_firstHttpLink(message.body) ??
+            _firstHttpLink(message.fileName ?? ''))
+        : null;
+    final tile = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Container(
@@ -941,6 +1079,13 @@ class Cv1MessageBubble extends StatelessWidget {
                 fontWeight: FontWeight.w600,
                 fontSize: 13)),
       ],
+    );
+    if (link == null) return tile;
+    return InkWell(
+      onTap: () => openInAppVideo(context,
+          url: ChatV1Utils.resolveMediaUrl(link),
+          title: message.fileName ?? 'Video'),
+      child: tile,
     );
   }
 

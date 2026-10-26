@@ -203,14 +203,34 @@ class ChatV1Utils {
     return '$h:$m ${dt.hour >= 12 ? 'PM' : 'AM'}';
   }
 
+  static const _monthsShort = [
+    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+  ];
+
+  /// True when both timestamps fall on the same local calendar day.
+  static bool isSameLocalDay(DateTime a, DateTime b) {
+    final x = a.toLocal();
+    final y = b.toLocal();
+    return x.year == y.year && x.month == y.month && x.day == y.day;
+  }
+
+  /// 'Today' / 'Yesterday' / '24 Oct 2026' (local time).
   static String dateLabel(DateTime dt) {
+    final local = dt.toLocal();
     final today = DateTime.now();
-    final a = DateTime(dt.year, dt.month, dt.day);
+    final a = DateTime(local.year, local.month, local.day);
     final b = DateTime(today.year, today.month, today.day);
     final diff = b.difference(a).inDays;
     if (diff == 0) return 'Today';
     if (diff == 1) return 'Yesterday';
-    return '${dt.day}/${dt.month}/${dt.year}';
+    return '${local.day} ${_monthsShort[local.month - 1]} ${local.year}';
+  }
+
+  /// 'Today 4:05 PM' / 'Yesterday 4:05 PM' / '24 Oct 2026 4:05 PM'.
+  static String dateTimeLabel(DateTime dt) {
+    final local = dt.toLocal();
+    return '${dateLabel(local)} ${clock(local)}';
   }
 
   static DateTime? parseDate(dynamic value) {

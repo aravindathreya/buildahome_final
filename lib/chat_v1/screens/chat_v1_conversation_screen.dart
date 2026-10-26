@@ -1162,9 +1162,11 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
             attachments: atts,
             type: atts.every((a) => a.isImage)
                 ? ChatV1MsgType.image
-                : (atts.any((a) => a.isPdf)
-                    ? ChatV1MsgType.pdf
-                    : ChatV1MsgType.document),
+                : (atts.every((a) => a.isVideo)
+                    ? ChatV1MsgType.video
+                    : (atts.any((a) => a.isPdf)
+                        ? ChatV1MsgType.pdf
+                        : ChatV1MsgType.document)),
             fileName: atts.first.fileName,
             fileMeta: atts.first.contentType,
             body: text.isNotEmpty ? text : '',
@@ -1191,6 +1193,12 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
     if (lower.endsWith('.gif')) return 'image/gif';
     if (lower.endsWith('.pdf')) return 'application/pdf';
     if (lower.endsWith('.mp4')) return 'video/mp4';
+    if (lower.endsWith('.mov')) return 'video/quicktime';
+    if (lower.endsWith('.m4v')) return 'video/x-m4v';
+    if (lower.endsWith('.webm')) return 'video/webm';
+    if (lower.endsWith('.3gp')) return 'video/3gpp';
+    if (lower.endsWith('.mkv')) return 'video/x-matroska';
+    if (lower.endsWith('.avi')) return 'video/x-msvideo';
     return 'application/octet-stream';
   }
 
@@ -1212,6 +1220,61 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
   Future<void> _pickCamera() => _pickImage(ImageSource.camera);
 
   Future<void> _pickGallery() => _pickImage(ImageSource.gallery);
+
+  /// Max chat video size; keep in sync with the server's MAX_CONTENT_LENGTH.
+  static const int _maxVideoBytes = 100 * 1024 * 1024;
+
+  Future<void> _pickVideo() async {
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.videocam_rounded),
+              title: const Text('Record video'),
+              onTap: () => Navigator.of(ctx).pop(ImageSource.camera),
+            ),
+            ListTile(
+              leading: const Icon(Icons.video_library_rounded),
+              title: const Text('Choose from gallery'),
+              onTap: () => Navigator.of(ctx).pop(ImageSource.gallery),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (source == null || !mounted) return;
+    if (source == ImageSource.camera) {
+      final allowed = await ensureCameraPermission(context);
+      if (!allowed || !mounted) return;
+    }
+    final file = await ImagePicker().pickVideo(source: source);
+    if (file == null || !mounted) return;
+    final size = await file.length();
+    if (size > _maxVideoBytes) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Video is too large (${(size / (1024 * 1024)).toStringAsFixed(1)} MB). '
+            'Maximum is 100 MB.',
+          ),
+        ),
+      );
+      return;
+    }
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Uploading video...')),
+      );
+    }
+    final bytes = await file.readAsBytes();
+    var name = file.name;
+    if (!name.contains('.')) name = '$name.mp4';
+    await _send(fileBytes: bytes, fileName: name);
+  }
 
   Future<void> _pickFile() async {
     final result = await FilePicker.platform.pickFiles(withData: true);
@@ -1372,6 +1435,7 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
                 onSend: () => _send(),
                 onCamera: _pickCamera,
                 onGallery: _pickGallery,
+                onVideo: _pickVideo,
                 onDocument: _pickFile,
                 onChanged: _onComposerChanged,
                 enabled: !_sending,
@@ -1504,10 +1568,11 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
             index -= 1;
           }
           if (index == 0) {
-            final label = _messages.isEmpty
-                ? 'Start of conversation'
-                : ChatV1Utils.dateLabel(_messages.first.sentAt);
-            return _dateChip(context, label);
+            // The first loaded message's day chip is rendered with the
+            // message itself below; only show this for empty chats.
+            return _messages.isEmpty
+                ? _dateChip(context, 'Start of conversation')
+                : const SizedBox.shrink();
           }
           final msgIndex = index - 1;
           if (_othersTyping && msgIndex == _messages.length) {
@@ -1515,12 +1580,17 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
           }
           if (msgIndex >= _messages.length) return const SizedBox.shrink();
           final msg = _messages[msgIndex];
-          final showAuthor =
-              msgIndex == 0 || _messages[msgIndex - 1].authorId != msg.authorId;
-          return RepaintBoundary(
+          final newDay = msgIndex == 0 ||
+              !ChatV1Utils.isSameLocalDay(
+                  _messages[msgIndex - 1].sentAt, msg.sentAt);
+          final showAuthor = newDay ||
+              msgIndex == 0 ||
+              _messages[msgIndex - 1].authorId != msg.authorId;
+          final bubble = RepaintBoundary(
             child: Cv1MessageBubble(
               message: msg,
               showAuthor: showAuthor,
+              galleryImageUrls: _conversationImageUrls(),
               highlighted: _highlightMessageId == msg.id,
               messageKey: _keyForMessage(msg.id),
               onLongPress: () => _messageActions(context, msg),
@@ -1532,9 +1602,45 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
                   msg.isDeleted ? null : (emoji) => _reactToMessage(msg, emoji),
             ),
           );
+          if (!newDay) return bubble;
+          return Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _dateChip(context, ChatV1Utils.dateLabel(msg.sentAt)),
+              bubble,
+            ],
+          );
         },
       ),
     );
+  }
+
+  List<String>? _galleryCache;
+  List<ChatV1Message>? _galleryCacheSource;
+  int _galleryCacheLength = -1;
+
+  /// All network image attachments in the loaded conversation, oldest first,
+  /// so the full-screen viewer can page through them with arrows.
+  List<String> _conversationImageUrls() {
+    if (_galleryCache != null &&
+        identical(_galleryCacheSource, _messages) &&
+        _galleryCacheLength == _messages.length) {
+      return _galleryCache!;
+    }
+    final urls = <String>[];
+    for (final m in _messages) {
+      if (m.isDeleted) continue;
+      for (final att in m.attachments) {
+        if (att.isImage && att.storagePath.isNotEmpty) {
+          urls.add(ChatV1Utils.resolveMediaUrl(att.storagePath));
+        }
+      }
+    }
+    _galleryCache = urls;
+    _galleryCacheSource = _messages;
+    _galleryCacheLength = _messages.length;
+    return urls;
   }
 
   Widget _dateChip(BuildContext context, String label) {
@@ -1991,6 +2097,33 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
     }
   }
 
+  Future<void> _unmarkImportant(ChatV1Message msg) async {
+    try {
+      final result = await _api.unmarkMessageImportant(msg.id);
+      final source = result['source_message'];
+      final removed = <String>{
+        for (final id in (result['removed_message_ids'] as List? ?? const []))
+          id.toString(),
+      };
+      if (mounted) {
+        final newBody = source is Map
+            ? (source['body'] ?? '').toString()
+            : ChatV1Importance.parse(msg.body).body;
+        setState(() {
+          _messages = [
+            for (final m in _messages)
+              if (!removed.contains(m.id))
+                if (m.id == msg.id) m.copyWith(body: newBody) else m,
+          ];
+        });
+        _persistMessagesCache();
+      }
+      _toast('Removed from important');
+    } catch (e) {
+      _toast(userFacingError(e));
+    }
+  }
+
   Future<void> _openConversationById(
     String conversationId, {
     String titleFallback = 'Chat',
@@ -2046,6 +2179,8 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
   void _messageActions(BuildContext context, ChatV1Message msg) {
     if (msg.isDeleted) return;
     final canShareGeneral = !_isImportantChannel;
+    final isMarkedImportant =
+        ChatV1Importance.parse(msg.body).kind == 'marked';
     showModalBottomSheet(
       context: context,
       backgroundColor: ChatV1Theme.secondary(context),
@@ -2097,7 +2232,16 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
                     _startReply(msg);
                   },
                 ),
-                if (canShareGeneral)
+                if (canShareGeneral && isMarkedImportant)
+                  ListTile(
+                    leading: const Icon(Icons.campaign_outlined),
+                    title: const Text('Unmark important'),
+                    onTap: () {
+                      Navigator.pop(sheetContext);
+                      _unmarkImportant(msg);
+                    },
+                  )
+                else if (canShareGeneral)
                   ListTile(
                     leading: const Icon(Icons.campaign_outlined),
                     title: const Text('Mark as important'),

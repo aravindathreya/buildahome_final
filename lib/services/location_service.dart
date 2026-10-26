@@ -146,6 +146,18 @@ class LocationService {
 
   static Future<void> openAppSettings() => Geolocator.openAppSettings();
 
+  /// Opens the right settings page: device Location (GPS) settings when
+  /// location services are off, otherwise this app's permission settings.
+  static Future<void> openRelevantLocationSettings() async {
+    try {
+      if (!await Geolocator.isLocationServiceEnabled()) {
+        final opened = await Geolocator.openLocationSettings();
+        if (opened) return;
+      }
+    } catch (_) {}
+    await Geolocator.openAppSettings();
+  }
+
   static Future<void> openLocationSettings() =>
       Geolocator.openLocationSettings();
 

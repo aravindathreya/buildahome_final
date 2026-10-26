@@ -13,6 +13,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'FullScreenImage.dart';
 import 'app_theme.dart';
 import 'services/data_provider.dart';
+import 'services/legacy_api_auth.dart';
 import 'task_display_title.dart';
 import 'user_facing_error.dart';
 
@@ -407,7 +408,7 @@ class _GalleryState extends State<Gallery> {
     try {
       final response = await http
           .get(Uri.parse(
-              'https://office.buildahome.in/API/get_gallery_data?id=$projectId'))
+              'https://office.buildahome.in/API/get_gallery_data?id=$projectId${await legacyApiTokenQuery()}'))
           .timeout(_requestTimeout);
 
       if (response.statusCode != 200) {
@@ -941,7 +942,7 @@ class _TimelineGalleryState extends State<TimelineGallery> {
   Future<dynamic> _fetchOldGallery(String projectId) async {
     try {
       final response = await http
-          .get(Uri.parse('$_galleryApiBaseUrl/API/get_gallery_data?id=$projectId'))
+          .get(Uri.parse('$_galleryApiBaseUrl/API/get_gallery_data?id=$projectId${await legacyApiTokenQuery()}'))
           .timeout(_requestTimeout);
       if (response.statusCode == 200) {
         return jsonDecode(response.body);

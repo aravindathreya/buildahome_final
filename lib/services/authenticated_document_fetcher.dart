@@ -481,7 +481,7 @@ class AuthenticatedDocumentFetcher {
     DocumentUrlProfile profile,
     String url,
   ) async {
-    final cacheKey = profile.name;
+    final cacheKey = '${profile.name}|${Uri.tryParse(url)?.host ?? ''}';
     final cachedAt = _authCacheAt;
     if (_authCache != null &&
         _authCacheKey == cacheKey &&
@@ -512,7 +512,9 @@ class AuthenticatedDocumentFetcher {
 
     final methods = <String>[];
 
-    if (hasToken) {
+    // Only our own server understands the app token. Other hosts (e.g. S3)
+    // read `Authorization` as an AWS signature and answer 403.
+    if (hasToken && url.contains('buildahome.in')) {
       headers['X-Api-Token'] = apiToken;
       headers['Authorization'] = 'Bearer $apiToken';
       methods.add('X-Api-Token');

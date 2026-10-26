@@ -123,6 +123,7 @@ class _ChatV1DocThreadScreenState extends State<ChatV1DocThreadScreen> {
       url: path,
       fileName: _doc?.pdfName ?? 'Document.pdf',
       contentType: 'application/pdf',
+      forceInApp: true,
     );
   }
 
@@ -658,6 +659,7 @@ class _ChatV1DocThreadScreenState extends State<ChatV1DocThreadScreen> {
                           url: att.storagePath,
                           fileName: att.fileName,
                           contentType: att.contentType,
+                          forceInApp: true,
                         ),
                         child: SizeChangedLayoutNotifier(
                           child: Image.network(
@@ -681,6 +683,7 @@ class _ChatV1DocThreadScreenState extends State<ChatV1DocThreadScreen> {
                       url: att.storagePath,
                       fileName: att.fileName,
                       contentType: att.contentType,
+                      forceInApp: true,
                     );
                   },
                   child: Padding(
@@ -707,7 +710,7 @@ class _ChatV1DocThreadScreenState extends State<ChatV1DocThreadScreen> {
             ],
             const SizedBox(height: 4),
             Text(
-              ChatV1Utils.clock(msg.createdAt),
+              ChatV1Utils.dateTimeLabel(msg.createdAt),
               style: TextStyle(
                 color: ChatV1Theme.textMuted(context),
                 fontSize: 11,

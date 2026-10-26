@@ -166,10 +166,16 @@ class LoginScreenNewState extends State<LoginScreenNew>
 
   Future<void> _promotePreloadedDestination() async {
     final destination = _preloadedDestination;
-    if (!mounted || destination == null) return;
+    if (!mounted || destination == null) {
+      ProfilePictureService.startupHandoffInProgress = false;
+      return;
+    }
 
     await _exitSplash();
-    if (!mounted) return;
+    if (!mounted) {
+      ProfilePictureService.startupHandoffInProgress = false;
+      return;
+    }
 
     // Same GlobalKey widget moves from under-splash into the route, keeping State.
     await Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
@@ -180,6 +186,7 @@ class LoginScreenNewState extends State<LoginScreenNew>
       ),
       (route) => false,
     );
+    ProfilePictureService.startupHandoffInProgress = false;
     await AppDeepLinkService.instance.onAppReady();
     await PushNotificationService.instance.markAppReady();
   }
@@ -211,6 +218,7 @@ class LoginScreenNewState extends State<LoginScreenNew>
         });
       }
       ProfilePictureService.onLoggedIn();
+      ProfilePictureService.startupHandoffInProgress = true;
       unawaited(ProfilePictureService.getStoredPath());
 
       final isClient = (role ?? '').trim().toLowerCase() == 'client';
@@ -244,8 +252,12 @@ class LoginScreenNewState extends State<LoginScreenNew>
         _minSplashFuture,
         _waitForDestinationReady(),
       ]);
-      if (!mounted) return;
+      if (!mounted) {
+        ProfilePictureService.startupHandoffInProgress = false;
+        return;
+      }
       if (_startupSessionExpired(prepError)) {
+        ProfilePictureService.startupHandoffInProgress = false;
         if (mounted) {
           setState(() => _preloadedDestination = null);
         }
@@ -299,6 +311,7 @@ class LoginScreenNewState extends State<LoginScreenNew>
       ),
       (route) => false,
     );
+    ProfilePictureService.startupHandoffInProgress = false;
     await AppDeepLinkService.instance.onAppReady();
     await PushNotificationService.instance.markAppReady();
   }
@@ -1453,11 +1466,22 @@ class LoginScreenNewState extends State<LoginScreenNew>
                         child: SizedBox(
                           width: MediaQuery.sizeOf(context).width,
                           height: MediaQuery.sizeOf(context).height * 0.72,
-                          child: Transform.scale(
-                            scale: 1.02,
+                          child: Center(
+                            child: AspectRatio(
+                            aspectRatio: 1,
+                            // Feather the JPEG edges into the gray field: the art's
+                            // border pixels drift (205-214) from #D1D1D1, which reads
+                            // as a faint rectangle.
+                            child: ShaderMask(
+                            blendMode: BlendMode.dstIn,
+                            shaderCallback: (r) => const RadialGradient(
+                              radius: 0.5,
+                              colors: [Colors.white, Colors.white, Colors.transparent],
+                              stops: [0, 0.86, 1],
+                            ).createShader(r),
                             child: Image.asset(
                               _splashAsset,
-                              fit: BoxFit.contain,
+                              fit: BoxFit.fill,
                               alignment: Alignment.center,
                               filterQuality: FilterQuality.high,
                               gaplessPlayback: true,
@@ -1469,6 +1493,8 @@ class LoginScreenNewState extends State<LoginScreenNew>
                                   fontWeight: FontWeight.w800,
                                 ),
                               ),
+                            ),
+                            ),
                             ),
                           ),
                         ),

@@ -60,6 +60,30 @@ class _FullScreenImageState extends State<FullScreenImage> {
     return CachedNetworkImageProvider(url);
   }
 
+  void _goTo(int index) {
+    final target = index.clamp(0, widget.urls.length - 1);
+    _pageController.animateToPage(
+      target,
+      duration: const Duration(milliseconds: 250),
+      curve: Curves.easeOut,
+    );
+  }
+
+  Widget _navArrow(IconData icon, VoidCallback onTap) {
+    return Material(
+      color: Colors.black.withValues(alpha: 0.45),
+      shape: const CircleBorder(),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(8),
+          child: Icon(icon, color: Colors.white, size: 30),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final urls = widget.urls;
@@ -75,7 +99,7 @@ class _FullScreenImageState extends State<FullScreenImage> {
           iconTheme: const IconThemeData(color: Colors.white),
           title: Text(
             hasMultiple
-                ? 'Photo ${_currentIndex + 1} of ${urls.length}'
+                ? '${_currentIndex + 1} / ${urls.length}'
                 : 'Image preview',
             style: const TextStyle(
               color: Colors.white,
@@ -88,7 +112,10 @@ class _FullScreenImageState extends State<FullScreenImage> {
           child: Column(
             children: [
               Expanded(
-                child: PageView.builder(
+                child: Stack(
+                  children: [
+                    Positioned.fill(
+                      child: PageView.builder(
                   controller: _pageController,
                   itemCount: urls.length,
                   onPageChanged: (index) {
@@ -129,6 +156,33 @@ class _FullScreenImageState extends State<FullScreenImage> {
                       ),
                     );
                   },
+                ),
+                    ),
+                    if (hasMultiple && _currentIndex > 0)
+                      Positioned(
+                        left: 8,
+                        top: 0,
+                        bottom: 0,
+                        child: Center(
+                          child: _navArrow(
+                            Icons.chevron_left_rounded,
+                            () => _goTo(_currentIndex - 1),
+                          ),
+                        ),
+                      ),
+                    if (hasMultiple && _currentIndex < urls.length - 1)
+                      Positioned(
+                        right: 8,
+                        top: 0,
+                        bottom: 0,
+                        child: Center(
+                          child: _navArrow(
+                            Icons.chevron_right_rounded,
+                            () => _goTo(_currentIndex + 1),
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
               ),
               if (hasMultiple) ...[

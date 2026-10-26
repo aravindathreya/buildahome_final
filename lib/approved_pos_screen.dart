@@ -231,35 +231,51 @@ class _ApprovedPosScreenState extends State<ApprovedPosScreen> {
                     padding: const EdgeInsets.only(bottom: 10),
                     child: Row(
                       children: [
-                        Container(
+                        Flexible(
+                          child: Container(
                           padding: const EdgeInsets.symmetric(
                             horizontal: 10,
                             vertical: 6,
                           ),
                           decoration: BoxDecoration(
-                            color: const Color(0xFFEEF2FF),
+                            color: AppTheme.isDark
+                                ? const Color(0xFF1E1B4B)
+                                : const Color(0xFFEEF2FF),
                             borderRadius: BorderRadius.circular(999),
-                            border: Border.all(color: const Color(0xFFC7D2FE)),
+                            border: Border.all(
+                              color: AppTheme.isDark
+                                  ? const Color(0xFF3730A3)
+                                  : const Color(0xFFC7D2FE),
+                            ),
                           ),
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              const Icon(
+                              Icon(
                                 Icons.folder_outlined,
                                 size: 14,
-                                color: Color(0xFF4338CA),
+                                color: AppTheme.isDark
+                                    ? const Color(0xFFA5B4FC)
+                                    : const Color(0xFF4338CA),
                               ),
                               const SizedBox(width: 6),
-                              Text(
+                              Flexible(
+                                child: Text(
                                 widget.initialProjectName!.trim(),
-                                style: const TextStyle(
-                                  color: Color(0xFF4338CA),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: AppTheme.isDark
+                                      ? const Color(0xFFC7D2FE)
+                                      : const Color(0xFF4338CA),
                                   fontSize: 12.5,
                                   fontWeight: FontWeight.w700,
                                 ),
                               ),
+                              ),
                             ],
                           ),
+                        ),
                         ),
                       ],
                     ),
@@ -591,10 +607,12 @@ class _ApprovedPoListCard extends StatelessWidget {
                         const SizedBox(height: 4),
                         Text(
                           'Material ID: ',
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 12.5,
                             fontWeight: FontWeight.w800,
-                            color: Color(0xFF4338CA),
+                            color: AppTheme.isDark
+                                ? const Color(0xFFA5B4FC)
+                                : const Color(0xFF4338CA),
                             letterSpacing: 0.2,
                             height: 1.3,
                           ),
@@ -734,13 +752,17 @@ class _ApprovedPoChip extends StatelessWidget {
             Icon(icon, size: 12, color: fg),
             const SizedBox(width: 4),
           ],
-          Text(
+          Flexible(
+            child: Text(
             label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
             style: TextStyle(
               color: fg,
               fontSize: 10.5,
               fontWeight: FontWeight.w800,
             ),
+          ),
           ),
         ],
       ),
@@ -960,6 +982,8 @@ class _ApprovedPoDetailScreenState extends State<ApprovedPoDetailScreen> {
         elevation: 0,
         title: Text(
           title,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
           style: const TextStyle(
             fontWeight: FontWeight.w800,
             fontSize: 17,
@@ -1125,6 +1149,8 @@ class _ApprovedPoHeroCard extends StatelessWidget {
                   const SizedBox(height: 4),
                   Text(
                     item.projectName,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       color: AppTheme.getTextSecondary(context),
                       fontSize: 12.5,
@@ -1145,7 +1171,9 @@ class _ApprovedPoHeroCard extends StatelessWidget {
               ],
             ),
           ),
-          Column(
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 120),
+            child: Column(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               if (item.statusLabel.isNotEmpty)
@@ -1227,6 +1255,7 @@ class _ApprovedPoHeroCard extends StatelessWidget {
                 ),
               ],
             ],
+          ),
           ),
         ],
       ),

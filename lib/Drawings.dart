@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'app_theme.dart';
 import 'services/data_provider.dart';
+import 'services/legacy_api_auth.dart';
 import 'widgets/open_shared_document.dart';
 import 'widgets/themed_scaffold.dart';
 import 'user_facing_error.dart';
@@ -272,7 +273,7 @@ class DocumentsState extends State<Documents> {
 
   Future<void> _fetchDocumentsFromApi(String projectId, DataProvider dataProvider, String? userRole, int requestId) async {
     try {
-      final response = await http.get(Uri.parse('https://office1.buildahome.in/API/view_all_documents?id=$projectId'))
+      final response = await http.get(Uri.parse('https://office1.buildahome.in/API/view_all_documents?id=$projectId${await legacyApiTokenQuery()}'))
           .timeout(_requestTimeout);
       
       if (response.statusCode != 200) {

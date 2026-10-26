@@ -3665,7 +3665,13 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
         onRefresh: () => reloadData(force: true),
         child: ListView(
           controller: _scrollController,
-          padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
+          // extendBody: true -> padding.bottom includes the floating nav.
+          padding: EdgeInsets.fromLTRB(
+            24,
+            16,
+            24,
+            16 + MediaQuery.of(context).padding.bottom,
+          ),
           children: <Widget>[
             if (blocked == true) ...[
               Container(

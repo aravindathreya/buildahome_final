@@ -11,6 +11,7 @@ import 'app_theme.dart';
 import 'models/payment_proof_item.dart';
 import 'services/client_portal_service.dart';
 import 'services/data_provider.dart';
+import 'services/legacy_api_auth.dart';
 import 'widgets/dashboard_chrome.dart';
 import 'widgets/themed_scaffold.dart';
 import 'user_facing_error.dart';
@@ -467,7 +468,7 @@ Future<ProjectPaymentsSnapshot> fetchProjectPaymentsSnapshot(
   Duration timeout = const Duration(seconds: 20),
 }) async {
   final paymentUrl =
-      'https://office1.buildahome.in/API/get_payment?project_id=$projectId';
+      'https://office1.buildahome.in/API/get_payment?project_id=$projectId${await legacyApiTokenQuery()}';
   final tenderUrl =
       'https://office1.buildahome.in/API/get_all_tasks?project_id=$projectId&nt_toggle=0';
   final nonTenderUrl =
@@ -519,12 +520,14 @@ Future<ProjectPaymentsSnapshot> fetchProjectPaymentsSnapshot(
     value: (summary['value'] ?? '0').toString(),
     totalPaid: (summary['total_paid'] ?? '0').toString(),
     outstanding: (summary['outstanding'] ?? '0').toString(),
+    signedOutstanding: _paymentDisplayFlag(summary, 'show_negative_outstanding'),
   );
 
   final nonTenderSummary = PaymentSummary(
     value: (summary['nt_value'] ?? summary['value'] ?? '0').toString(),
     totalPaid: (summary['nt_total_paid'] ?? '0').toString(),
     outstanding: (summary['nt_outstanding'] ?? '0').toString(),
+    signedOutstanding: _paymentDisplayFlag(summary, 'show_negative_outstanding'),
   );
 
   final tenderItems = tenderData
@@ -733,7 +736,7 @@ class _PaymentsDashboardState extends State<PaymentsDashboard> {
 
   Future<void> _fetchPaymentsFromApi(String projectId, DataProvider dataProvider, String? userRole, int requestId) async {
     try {
-      final paymentUrl = 'https://office1.buildahome.in/API/get_payment?project_id=$projectId';
+      final paymentUrl = 'https://office1.buildahome.in/API/get_payment?project_id=$projectId${await legacyApiTokenQuery()}';
       final tenderUrl = 'https://office1.buildahome.in/API/get_all_tasks?project_id=$projectId&nt_toggle=0';
       final nonTenderUrl = 'https://office1.buildahome.in/API/get_all_non_tender?project_id=$projectId';
 
@@ -820,16 +823,19 @@ class _PaymentsDashboardState extends State<PaymentsDashboard> {
     if (_shouldIgnoreLoad(requestId)) return;
 
     _safeSetState(() {
+      _showScheduledStages = _paymentDisplayFlag(summary, 'show_scheduled_stages');
       tenderSummary = PaymentSummary(
         value: (summary['value'] ?? '0').toString(),
         totalPaid: (summary['total_paid'] ?? '0').toString(),
         outstanding: (summary['outstanding'] ?? '0').toString(),
+        signedOutstanding: _paymentDisplayFlag(summary, 'show_negative_outstanding'),
       );
 
       nonTenderSummary = PaymentSummary(
         value: (summary['nt_value'] ?? summary['value'] ?? '0').toString(),
         totalPaid: (summary['nt_total_paid'] ?? '0').toString(),
         outstanding: (summary['nt_outstanding'] ?? '0').toString(),
+        signedOutstanding: _paymentDisplayFlag(summary, 'show_negative_outstanding'),
       );
 
       tenderItems = tenderData
@@ -1862,7 +1868,11 @@ class _PaymentsDashboardState extends State<PaymentsDashboard> {
 
   bool get _isSearching => _searchQuery.trim().isNotEmpty;
 
+  /// Server flag display_flags.show_scheduled_stages (default on).
+  bool _showScheduledStages = true;
+
   List<PaymentItem> get _visibleItems {
+    if (_showScheduledStages) return List.of(_currentItems);
     return _currentItems.where((item) => !item.isScheduled).toList();
   }
 
@@ -1950,7 +1960,11 @@ class PaymentSummary {
     required this.value,
     required this.totalPaid,
     required this.outstanding,
+    this.signedOutstanding = true,
   });
+
+  /// Server flag display_flags.show_negative_outstanding (default on).
+  final bool signedOutstanding;
 
   static PaymentSummary empty() => PaymentSummary(value: '0', totalPaid: '0', outstanding: '0');
 
@@ -1958,11 +1972,26 @@ class PaymentSummary {
 
   double get totalPaidNumeric => _parse(totalPaid);
 
-  double get outstandingNumeric => _parse(outstanding);
+  double get outstandingNumeric => signedOutstanding ? _parseSigned(outstanding) : _parse(outstanding);
 
   static double _parse(String input) {
     return double.tryParse(input.replaceAll(RegExp('[^0-9\\.]'), '')) ?? 0;
   }
+
+  /// Like _parse but keeps a leading minus (e.g. advances exceed pending).
+  static double _parseSigned(String input) {
+    final trimmed = input.trim();
+    final value = _parse(trimmed);
+    return trimmed.startsWith('-') ? -value : value;
+  }
+}
+
+/// Reads get_payment's display_flags[key]; only an explicit false turns it off.
+bool _paymentDisplayFlag(Map<String, dynamic> summary, String key) {
+  final flags = summary['display_flags'];
+  if (flags is! Map) return true;
+  final v = flags[key];
+  return !(v == false || v == 0 || v?.toString().toLowerCase() == 'false');
 }
 
 class PaymentItem {
@@ -2581,7 +2610,7 @@ class PaymentTasks extends State<PaymentTasksClass> {
     var response = await http.get(Uri.parse(url));
     body = jsonDecode(response.body);
 
-    var url1 = 'https://office1.buildahome.in/API/get_payment?project_id=$id';
+    var url1 = 'https://office1.buildahome.in/API/get_payment?project_id=$id${await legacyApiTokenQuery()}';
     var response1 = await http.get(Uri.parse(url1));
     var details = jsonDecode(response1.body);
     outstanding = details[0]['outstanding'];

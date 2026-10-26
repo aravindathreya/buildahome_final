@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'AddDailyUpdate.dart';
+import 'FullScreenImage.dart' as gallery_viewer;
 import 'app_theme.dart';
 import 'services/rbac_service.dart';
 import 'widgets/themed_scaffold.dart';
@@ -15,10 +16,14 @@ class DprScreen extends StatefulWidget {
   final String title;
   final bool embedded;
 
+  /// View-only: hides Add and Delete regardless of role.
+  final bool readOnly;
+
   const DprScreen({
     super.key,
     this.title = 'All Updates',
     this.embedded = false,
+    this.readOnly = false,
   });
 
   @override
@@ -226,8 +231,8 @@ class DprState extends State<DprScreen> {
         normalized == 'super admin' || normalized == 'admin';
     if (!mounted) return;
     setState(() {
-      _canAddDailyUpdate = canAdd;
-      _canDeleteUpdate = canDelete;
+      _canAddDailyUpdate = canAdd && !widget.readOnly;
+      _canDeleteUpdate = canDelete && !widget.readOnly;
       _projectId = prefs.getString('project_id');
       _projectName =
           prefs.getString('client_name') ?? prefs.getString('project_name');
@@ -311,10 +316,14 @@ class DprState extends State<DprScreen> {
     }
   }
 
-  void _openImage(String imageUrl) {
+  void _openImage(List<String> images, int index) {
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => FullScreenImage(NetworkImage(imageUrl)),
+        builder: (_) => gallery_viewer.FullScreenImage(
+          images[index],
+          imageUrls: images,
+          initialIndex: index,
+        ),
       ),
     );
   }
@@ -494,46 +503,19 @@ class DprState extends State<DprScreen> {
 
   Widget _buildUpdateImageHero(List<String> images) {
     if (images.length == 1) {
-      return _buildHeroImage(imageUrl: images.first);
+      return _buildHeroImage(images: images, index: 0);
     }
 
-    return SizedBox(
-      height: 210,
-      child: Stack(
-        children: [
-          PageView.builder(
-            itemCount: images.length,
-            itemBuilder: (context, index) {
-              return _buildHeroImage(imageUrl: images[index]);
-            },
-          ),
-          Positioned(
-            right: 12,
-            bottom: 12,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-              decoration: BoxDecoration(
-                color: Colors.black.withValues(alpha: 0.55),
-                borderRadius: BorderRadius.circular(999),
-              ),
-              child: Text(
-                '${images.length} photos',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
+    return _UpdateImageCarousel(
+      images: images,
+      itemBuilder: (index) => _buildHeroImage(images: images, index: index),
     );
   }
 
-  Widget _buildHeroImage({required String imageUrl}) {
+  Widget _buildHeroImage({required List<String> images, required int index}) {
+    final imageUrl = images[index];
     return GestureDetector(
-      onTap: () => _openImage(imageUrl),
+      onTap: () => _openImage(images, index),
       child: SizedBox(
         height: 210,
         width: double.infinity,
@@ -653,6 +635,107 @@ class DprState extends State<DprScreen> {
           ),
         ],
       ],
+    );
+  }
+}
+
+/// Swipeable update photo carousel with prev/next arrows and an "n / total" badge.
+class _UpdateImageCarousel extends StatefulWidget {
+  final List<String> images;
+  final Widget Function(int index) itemBuilder;
+
+  const _UpdateImageCarousel({required this.images, required this.itemBuilder});
+
+  @override
+  State<_UpdateImageCarousel> createState() => _UpdateImageCarouselState();
+}
+
+class _UpdateImageCarouselState extends State<_UpdateImageCarousel> {
+  final PageController _controller = PageController();
+  int _index = 0;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _go(int delta) {
+    final target = (_index + delta).clamp(0, widget.images.length - 1);
+    _controller.animateToPage(
+      target,
+      duration: const Duration(milliseconds: 250),
+      curve: Curves.easeOut,
+    );
+  }
+
+  Widget _arrow(IconData icon, VoidCallback onTap) {
+    return Material(
+      color: Colors.black.withValues(alpha: 0.45),
+      shape: const CircleBorder(),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(6),
+          child: Icon(icon, color: Colors.white, size: 26),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final total = widget.images.length;
+    return SizedBox(
+      height: 210,
+      child: Stack(
+        children: [
+          PageView.builder(
+            controller: _controller,
+            itemCount: total,
+            onPageChanged: (i) => setState(() => _index = i),
+            itemBuilder: (context, index) => widget.itemBuilder(index),
+          ),
+          if (_index > 0)
+            Positioned(
+              left: 8,
+              top: 0,
+              bottom: 0,
+              child: Center(
+                child: _arrow(Icons.chevron_left_rounded, () => _go(-1)),
+              ),
+            ),
+          if (_index < total - 1)
+            Positioned(
+              right: 8,
+              top: 0,
+              bottom: 0,
+              child: Center(
+                child: _arrow(Icons.chevron_right_rounded, () => _go(1)),
+              ),
+            ),
+          Positioned(
+            right: 12,
+            bottom: 12,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.55),
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: Text(
+                '${_index + 1} / $total',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

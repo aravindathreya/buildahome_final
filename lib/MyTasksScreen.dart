@@ -23,6 +23,7 @@ import 'indents_screen.dart';
 import 'indent_proof.dart';
 import 'models/approved_po.dart';
 import 'services/api_base.dart';
+import 'services/location_service.dart';
 import 'services/client_portal_service.dart';
 import 'services/api_http.dart';
 import 'services/approved_po_service.dart';
@@ -2297,7 +2298,12 @@ class _MyTasksScreenState extends State<MyTasksScreen>
     final pendingTasks = _pendingTasks;
     final completedTasks = _completedTasks;
 
-    final appBarFg = Colors.white;
+    // Match ThemedScaffold: white only on the dark admin chrome; otherwise the
+    // app bar is the (light in light mode) surface, so use the primary text.
+    final appBarFg =
+        DashboardChrome.of(context) == DashboardChromeStyle.admin
+            ? Colors.white
+            : AppTheme.darkTextPrimary;
 
     final hasSearchQuery = _searchController.text.trim().isNotEmpty;
     final emptyPendingMessage = hasSearchQuery || _hasActiveFilters
@@ -5109,7 +5115,7 @@ class _IndentSiteProofScreenState extends State<_IndentSiteProofScreen> {
                     onRecheck: _checkingLocation ? null : _refreshLocation,
                     onOpenSettings: _openSettingsHint
                         ? () async {
-                            await Geolocator.openAppSettings();
+                            await LocationService.openRelevantLocationSettings();
                           }
                         : null,
                   ),
@@ -7546,7 +7552,7 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
                       onRecheck: isSubmitting ? null : refreshLocation,
                       onOpenSettings: openSettingsHint
                           ? () async {
-                              await Geolocator.openAppSettings();
+                              await LocationService.openRelevantLocationSettings();
                             }
                           : null,
                     ),
@@ -8567,7 +8573,7 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
                       onRecheck: isBusy ? null : refreshLocation,
                       onOpenSettings: openSettingsHint == true
                           ? () async {
-                              await Geolocator.openAppSettings();
+                              await LocationService.openRelevantLocationSettings();
                             }
                           : null,
                     ),
@@ -15288,7 +15294,7 @@ Future<_IndentPoSiteProofSubmitResult> _presentIndentPoSiteProofAction({
                   onRecheck: isSubmitting ? null : refreshLocation,
                   onOpenSettings: openSettingsHint
                       ? () async {
-                          await Geolocator.openAppSettings();
+                          await LocationService.openRelevantLocationSettings();
                         }
                       : null,
                 ),

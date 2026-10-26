@@ -712,7 +712,7 @@ class _AttendanceScreenState extends State<AttendanceScreen>
                   _actionError!.toLowerCase().contains('turned off') ||
                   _actionError!.toLowerCase().contains('settings')))
             TextButton(
-              onPressed: () => LocationService.openAppSettings(),
+              onPressed: () => LocationService.openRelevantLocationSettings(),
               child: const Text('Settings'),
             ),
         ],

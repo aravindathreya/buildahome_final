@@ -21,6 +21,28 @@ class ProfilePictureService {
   /// True while the startup dialog is being decided or is on screen.
   static bool startupPromptInFlight = false;
 
+  /// True while the cold-start splash still hosts the preloaded dashboard.
+  /// Dialogs opened then are wiped by the splash handoff (the reopen flash).
+  static bool startupHandoffInProgress = false;
+
+  static const String dismissDatePrefix = 'profile_pic_dismissed_on_';
+
+  static String _today() {
+    final now = DateTime.now();
+    return '${now.year}-${now.month}-${now.day}';
+  }
+
+  /// True if the startup prompt was already shown/dismissed today.
+  static Future<bool> dismissedToday() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString('$dismissDatePrefix${await _scopeId()}') == _today();
+  }
+
+  static Future<void> markDismissedToday() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('$dismissDatePrefix${await _scopeId()}', _today());
+  }
+
   /// Call at the start of logout, before navigation.
   static void onLoggedOut() {
     promptsSuppressed = true;

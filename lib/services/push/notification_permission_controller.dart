@@ -1,12 +1,14 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter/widgets.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:permission_handler/permission_handler.dart';
 
+import '../../app_navigator.dart';
 import 'notification_permission_policy.dart';
 import 'push_notification_service.dart';
 
@@ -28,29 +30,55 @@ class NotificationPermissionController {
       bannerVisible.value = false;
       return;
     }
+    _listenForResume();
+    // Only the newest check may update the banner, so a slow check started
+    // while Settings was open cannot overwrite the fresh result.
+    final generation = ++_refreshGeneration;
+    bool enabled;
     try {
-      final enabled = await _notificationsEnabled();
-      bannerVisible.value = NotificationPermissionPolicy.bannerVisible(
-        permissionEnabled: enabled,
-      );
-      if (enabled) {
-        await PushNotificationService.instance.syncTokenForCurrentUser();
-      }
+      enabled = await _notificationsEnabled();
     } catch (_) {
-      bannerVisible.value = true;
+      enabled = false;
     }
+    if (generation != _refreshGeneration) return;
+    bannerVisible.value = NotificationPermissionPolicy.bannerVisible(
+      permissionEnabled: enabled,
+    );
+    if (enabled) {
+      // A token sync failure must not bring the banner back.
+      try {
+        await PushNotificationService.instance.syncTokenForCurrentUser();
+      } catch (_) {}
+    }
+  }
+
+  int _refreshGeneration = 0;
+  _ResumeRefresher? _resumeRefresher;
+
+  /// Re-checks the real system setting every time the app comes back to the
+  /// foreground (e.g. after the user flips the switch in Settings).
+  void _listenForResume() {
+    if (_resumeRefresher != null) return;
+    _resumeRefresher = _ResumeRefresher(this);
+    WidgetsBinding.instance.addObserver(_resumeRefresher!);
   }
 
   /// Asks for permission, then opens this app's notification settings if
   /// they are still off.
+  /// After a denial the OS will not show its dialog again (or showing it
+  /// again just annoys the user), so go straight to settings.
   Future<void> enable() async {
     try {
-      await Permission.notification.request();
-      await FirebaseMessaging.instance.requestPermission(
-        alert: true,
-        badge: true,
-        sound: true,
-      );
+      final status = await Permission.notification.status;
+      final canAsk = !askedThisSession &&
+          NotificationPermissionPolicy.shouldRequestSystemDialog(
+            permissionStatusName: status.name,
+          ) &&
+          !(Platform.isIOS && status.isDenied);
+      if (canAsk) {
+        askedThisSession = true;
+        await _requestSystemDialog();
+      }
     } catch (_) {}
     final enabled = await _notificationsEnabled();
     if (!enabled) {
@@ -82,6 +110,14 @@ class NotificationPermissionController {
       )) {
         askedThisSession = true;
         await refresh();
+        if (bannerVisible.value) unawaited(_showSettingsPromptOnce());
+        return;
+      }
+      // iOS never shows the system dialog again after a denial.
+      if (Platform.isIOS && status.isDenied) {
+        askedThisSession = true;
+        await refresh();
+        if (bannerVisible.value) unawaited(_showSettingsPromptOnce());
         return;
       }
 
@@ -118,19 +154,21 @@ class NotificationPermissionController {
     var granted = false;
     try {
       debugPrint('[Notifications] requesting permission');
-      final androidGranted = await PushNotificationService.instance
-          .requestAndroidNotificationPermission();
-      if (androidGranted == true) granted = true;
-      final status = await Permission.notification.request();
-      if (status.isGranted || status.isLimited) granted = true;
-      final settings = await FirebaseMessaging.instance.requestPermission(
-        alert: true,
-        badge: true,
-        sound: true,
-      );
-      if (settings.authorizationStatus == AuthorizationStatus.authorized ||
-          settings.authorizationStatus == AuthorizationStatus.provisional) {
-        granted = true;
+      // Exactly one system request. Calling several plugins in a row made
+      // Android show the dialog twice (a second ask is allowed after one deny).
+      if (Platform.isAndroid) {
+        final status = await Permission.notification.request();
+        if (status.isGranted || status.isLimited) granted = true;
+      } else {
+        final settings = await FirebaseMessaging.instance.requestPermission(
+          alert: true,
+          badge: true,
+          sound: true,
+        );
+        if (settings.authorizationStatus == AuthorizationStatus.authorized ||
+            settings.authorizationStatus == AuthorizationStatus.provisional) {
+          granted = true;
+        }
       }
     } catch (e) {
       debugPrint('[Notifications] request failed: $e');
@@ -197,6 +235,41 @@ class NotificationPermissionController {
     }
   }
 
+  static bool _settingsPromptShown = false;
+
+  /// Once per session, after a denial: explain and offer to open settings.
+  /// Never awaited by login, so it cannot block sign-in.
+  Future<void> _showSettingsPromptOnce() async {
+    if (_settingsPromptShown) return;
+    final context = globalNavigatorKey.currentContext;
+    if (context == null) return;
+    _settingsPromptShown = true;
+    final open = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Notifications are off'),
+        content: const Text(
+          'Turn on notifications in Settings to get project, task and '
+          'payment updates.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Not now'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Open Settings'),
+          ),
+        ],
+      ),
+    );
+    if (open == true) {
+      await openSettings();
+      await refresh();
+    }
+  }
+
   /// Opens this app's notification settings.
   Future<void> openSettings() async {
     try {
@@ -206,5 +279,17 @@ class NotificationPermissionController {
     try {
       await openAppSettings();
     } catch (_) {}
+  }
+}
+
+class _ResumeRefresher with WidgetsBindingObserver {
+  _ResumeRefresher(this.controller);
+  final NotificationPermissionController controller;
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      unawaited(controller.refresh());
+    }
   }
 }

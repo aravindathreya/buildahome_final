@@ -232,7 +232,10 @@ class _OpeningProjectGateState extends State<OpeningProjectGate>
                         child: const _BrandMark(),
                       ),
                       const Spacer(),
-                      AnimatedBuilder(
+                      Flexible(
+                        child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: AnimatedBuilder(
                         animation: Listenable.merge([_rise, _driftController]),
                         builder: (context, _) {
                           final rise = _rise.value.clamp(0.0, 1.2);
@@ -250,6 +253,8 @@ class _OpeningProjectGateState extends State<OpeningProjectGate>
                             ),
                           );
                         },
+                      ),
+                        ),
                       ),
                       const SizedBox(height: 8),
                       AnimatedBuilder(
@@ -332,7 +337,7 @@ class _BrandMark extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(top: 8),
       child: SizedBox(
-        height: 88,
+        height: 96,
         child: Stack(
           alignment: Alignment.center,
           children: [

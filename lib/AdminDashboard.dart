@@ -175,6 +175,14 @@ class _AdminDashboardState extends State<AdminDashboard>
         ProfilePictureService.promptsSuppressed;
 
     await Future<void>.delayed(const Duration(milliseconds: 800));
+    // Cold start: wait until the splash hands this dashboard to its own route,
+    // otherwise dialogs open under the splash and get wiped (the flash).
+    for (var i = 0;
+        i < 40 && ProfilePictureService.startupHandoffInProgress;
+        i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+      if (aborted()) return;
+    }
     if (aborted()) return;
 
     try {
@@ -203,7 +211,8 @@ class _AdminDashboardState extends State<AdminDashboard>
       debugPrint('[Startup] daily update prompt error: $e');
     }
 
-    await Future<void>.delayed(const Duration(milliseconds: 350));
+    // Give the location / attendance flow time to settle so popups don't stack.
+    await Future<void>.delayed(const Duration(milliseconds: 1200));
     if (aborted()) return;
     final role =
         ((await SharedPreferences.getInstance()).getString('role') ?? '')
@@ -1236,6 +1245,15 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
             ? const DprScreen(title: 'Updates')
             : AddDailyUpdate(returnToAdminDashboard: true),
       ),
+      // View-only; shown only when the server staff_home list includes
+      // `daily_updates_view` (roles chosen in Web Mobile Access).
+      _quickActionTile(
+        title: 'View Updates',
+        icon: Icons.article_outlined,
+        route: () => _routeForCurrentProject(
+          () => const DprScreen(title: 'View Updates', readOnly: true),
+        ),
+      ),
       _quickActionTile(
         title: 'Indents',
         icon: Icons.request_quote,
@@ -1470,24 +1488,6 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
 
   Widget _openStaffChatPicker() => ChatV1ProjectsScreen.openQuick();
 
-  List<Map<String, dynamic>> _visibleQuickActions(
-      List<Map<String, dynamic>> items,
-      {int max = 8}) {
-    final visible = items.take(max).toList();
-    final statusInVisible = visible.any((e) => e['title'] == 'Project Status');
-    final statusIndex = items.indexWhere((e) => e['title'] == 'Project Status');
-    if (!statusInVisible && statusIndex >= 0) {
-      visible.insert(
-        visible.length.clamp(0, max > 0 ? max - 1 : 0),
-        items[statusIndex],
-      );
-      if (visible.length > max) {
-        visible.removeLast();
-      }
-    }
-    return visible;
-  }
-
   Widget build(BuildContext context) {
     currentWidgetContext = context;
     final fallbackItems = getMenuItems();
@@ -1506,14 +1506,7 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
         : _ensureStaffChatQuickAction(
             _ensureDailyUpdateQuickAction(fallbackItems, catalogItems),
           );
-    final visibleActions = usingBackend
-        ? resolvedActions.take(8).toList()
-        : _ensureStaffChatQuickAction(
-            _ensureDailyUpdateQuickAction(
-              _visibleQuickActions(fallbackItems),
-              catalogItems,
-            ),
-          );
+    final visibleActions = allQuickActions;
     final totalProjects = projects.length;
     final pendingCount = countHomePendingTasks(
       _tasks,
@@ -1541,7 +1534,10 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
         child: ListView(
           controller: _scrollController,
           physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.only(bottom: 28),
+          // extendBody: true -> padding.bottom includes the floating nav.
+          padding: EdgeInsets.only(
+            bottom: 28 + MediaQuery.of(context).padding.bottom,
+          ),
           children: [
             _buildUserHeader(),
             const NotificationPermissionBanner(),
@@ -1614,23 +1610,6 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
                       );
                     },
                   ),
-                  if (allQuickActions.length > visibleActions.length) ...[
-                    const SizedBox(height: 4),
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: GestureDetector(
-                        onTap: () => _showAllQuickActions(allQuickActions),
-                        child: const Text(
-                          'View all',
-                          style: TextStyle(
-                            fontSize: 13.5,
-                            fontWeight: FontWeight.w700,
-                            color: Color(0xFF2563EB),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
                   ],
                 ],
               ),
@@ -2238,61 +2217,6 @@ class AdminHomeState extends State<AdminHome> with WidgetsBindingObserver {
       default:
         return fallback;
     }
-  }
-
-  Future<void> _showAllQuickActions(List<Map<String, dynamic>> items) async {
-    await showModalBottomSheet(
-      context: context,
-      backgroundColor: AppTheme.darkBackgroundSecondary,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) {
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'All Actions',
-                  style: TextStyle(
-                    color: AppTheme.darkTextPrimary,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Flexible(
-                  child: GridView.builder(
-                    shrinkWrap: true,
-                    gridDelegate:
-                        const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 3,
-                      crossAxisSpacing: 12,
-                      mainAxisSpacing: 8,
-                      childAspectRatio: 0.9,
-                    ),
-                    itemCount: items.length,
-                    itemBuilder: (_, index) {
-                      final item = items[index];
-                      return _buildQuickActionTile(
-                        item,
-                        onTap: () {
-                          Navigator.pop(ctx);
-                          _handleMenuTap(context, item);
-                        },
-                      );
-                    },
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
   }
 
   Widget _buildSearchResultsSection([String? queryValue]) {

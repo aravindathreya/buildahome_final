@@ -676,6 +676,13 @@ class ChatV1Api {
     throw ChatV1ApiException('Unexpected share-to-general response');
   }
 
+  /// Undo "Mark as important": strips the caption and removes Important copies.
+  Future<Map<String, dynamic>> unmarkMessageImportant(String messageId) async {
+    final data = await post('$chatPrefix/messages/$messageId/unmark-important');
+    if (data is Map) return Map<String, dynamic>.from(data);
+    throw ChatV1ApiException('Unexpected unmark-important response');
+  }
+
   Future<Map<String, dynamic>> pinMessage(String messageId) async {
     final data = await post('$chatPrefix/messages/$messageId/pin');
     if (data is Map) return Map<String, dynamic>.from(data);
@@ -808,7 +815,8 @@ class ChatV1Api {
       filename: fileName,
     ));
     final streamed = await ApiHttp.send(request).timeout(
-      const Duration(seconds: 60),
+      // Videos can be large; allow more time than for photos/documents.
+      Duration(seconds: bytes.length > 10 * 1024 * 1024 ? 300 : 60),
     );
     final response = await http.Response.fromStream(streamed);
     await persistCookieFrom(response);

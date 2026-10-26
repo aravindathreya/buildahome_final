@@ -18,6 +18,7 @@ import 'widgets/full_screen_message.dart';
 import 'widgets/full_screen_progress.dart';
 import 'widgets/themed_scaffold.dart';
 import 'services/data_provider.dart';
+import 'services/indent_units.dart';
 import 'indent_proof.dart';
 import 'indent_list_helpers.dart';
 
@@ -420,17 +421,7 @@ class CreateIndentTabState extends State<CreateIndentTab> {
   final int _totalSteps = 6;
 
   // Material units list
-  final materialUnits = [
-    'Bags',
-    'CFT',
-    'CUM',
-    'Load',
-    'Kg',
-    'MT',
-    'Nos',
-    'Box',
-    'Others',
-  ];
+  List<String> materialUnits = IndentUnits.units;
 
   @override
   void initState() {
@@ -439,6 +430,9 @@ class CreateIndentTabState extends State<CreateIndentTab> {
     call();
     loadProjects();
     loadMaterials();
+    IndentUnits.load().then((u) {
+      if (mounted) setState(() => materialUnits = u);
+    });
   }
 
   @override

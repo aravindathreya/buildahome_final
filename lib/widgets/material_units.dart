@@ -1,20 +1,12 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import '../services/indent_units.dart';
 
 class MaterialUnits extends StatelessWidget {
-  final materialUnits = [
-    'Bags',
-    'CFT',
-    'CUM',
-    'Load',
-    'Kg',
-    'MT',
-    'Nos',
-    'Box',
-    'Others',
-  ];
+  List<String> get materialUnits => IndentUnits.units;
 
   Widget build(BuildContext context) {
+    IndentUnits.load();
     return AlertDialog(
         contentPadding: EdgeInsets.all(0),
         content: Column(children: [

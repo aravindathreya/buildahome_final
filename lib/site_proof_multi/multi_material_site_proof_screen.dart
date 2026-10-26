@@ -14,6 +14,7 @@ import '../models/multi_material_site_proof.dart';
 import '../services/camera_permission.dart';
 import '../services/location_service.dart';
 import '../services/capture_time.dart';
+import '../services/vehicle_types.dart';
 import '../services/multi_material_site_proof_service.dart';
 import '../widgets/themed_scaffold.dart';
 import '../user_facing_error.dart';
@@ -112,13 +113,14 @@ class _MultiMaterialSiteProofScreenState
 
   MultiMaterialSubmitResult? _submitResult;
 
-  static const _vehicleTypes = [
-    'Truck',
-    'Tempo',
-    'Tractor',
-    'Pickup',
-    'Other',
-  ];
+  List<String> _vehicleTypes = List<String>.from(VehicleTypes.types);
+
+  /// Loaded list plus the current value if it isn't in it (never drop a saved value).
+  List<String> get _vehicleTypeOptions {
+    final v = _vehicleType.trim();
+    if (v.isEmpty || _vehicleTypes.contains(v)) return _vehicleTypes;
+    return [..._vehicleTypes, v];
+  }
 
   /// Unit under Measurement is always Sqft and is not user-editable.
   static const _fixedMeasurementUnit = 'Sqft';
@@ -126,6 +128,9 @@ class _MultiMaterialSiteProofScreenState
   @override
   void initState() {
     super.initState();
+    VehicleTypes.load().then((list) {
+      if (mounted) setState(() => _vehicleTypes = List<String>.from(list));
+    });
     _measurementController.addListener(_scheduleCommonAutosave);
     _measurementUnitController.addListener(_scheduleCommonAutosave);
     _vehicleNumberController.addListener(_scheduleCommonAutosave);
@@ -997,7 +1002,7 @@ class _MultiMaterialSiteProofScreenState
                 showOpenSettings: _openSettingsHint,
                 onRecheck: _checkingLocation ? null : _refreshLocation,
                 onOpenSettings: _openSettingsHint
-                    ? () => Geolocator.openAppSettings()
+                    ? () => LocationService.openRelevantLocationSettings()
                     : null,
               ),
               const SizedBox(height: 16),
@@ -1371,10 +1376,10 @@ class _MultiMaterialSiteProofScreenState
               ),
               const SizedBox(height: 10),
               DropdownButtonFormField<String>(
-                value: _vehicleTypes.contains(_vehicleType)
+                value: _vehicleTypeOptions.contains(_vehicleType)
                     ? _vehicleType
-                    : _vehicleTypes.first,
-                items: _vehicleTypes
+                    : _vehicleTypeOptions.first,
+                items: _vehicleTypeOptions
                     .map((t) => DropdownMenuItem(value: t, child: Text(t)))
                     .toList(),
                 onChanged: (v) {

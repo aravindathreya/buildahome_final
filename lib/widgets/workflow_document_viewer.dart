@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -10,7 +11,10 @@ import '../models/workflow_document.dart';
 import '../services/authenticated_document_fetcher.dart';
 import '../services/document_file_download.dart';
 import '../services/document_byte_cache.dart';
+import '../services/document_file_share_stub.dart'
+    if (dart.library.io) '../services/document_file_share_io.dart';
 import 'native_pdf_view.dart';
+import 'office_fallback_preview.dart';
 
 /// Downloads a file ahead of the tap on platforms that render from bytes.
 void warmWorkflowDocument(WorkflowDocumentUpload document) {
@@ -87,6 +91,10 @@ class _WorkflowDocumentViewerScreenState
   Uint8List? _cachedPdfBytes;
   String? _networkImageUrl;
   int _loadGen = 0;
+  bool _preparingPreview = false;
+
+  /// Original Office file kept for Open with when a PDF preview is shown.
+  DocumentFetchResult? _originalOffice;
 
   @override
   void initState() {
@@ -112,6 +120,8 @@ class _WorkflowDocumentViewerScreenState
       _nativePdfUrl = null;
       _cachedPdfBytes = null;
       _networkImageUrl = null;
+      _originalOffice = null;
+      _preparingPreview = false;
     });
 
     _pdfController?.dispose();
@@ -213,8 +223,52 @@ class _WorkflowDocumentViewerScreenState
     });
   }
 
+  static const _officeExtensions = {
+    '.doc', '.docx', '.docm', '.xls', '.xlsx', '.xlsm', '.ppt', '.pptx',
+    '.pptm', '.pps', '.ppsx', '.odt', '.ods', '.odp', '.rtf',
+  };
+
+  String _fileExtension() {
+    String extOf(String value) {
+      final v = value.split('?').first.toLowerCase().trim();
+      final slash = v.lastIndexOf('/');
+      final dot = v.lastIndexOf('.');
+      return dot > slash && dot >= 0 ? v.substring(dot) : '';
+    }
+
+    final fromName = extOf(widget.document.displayTitle);
+    if (_officeExtensions.contains(fromName)) return fromName;
+    final fromUrl = extOf(widget.document.url ?? '');
+    return fromUrl.isNotEmpty ? fromUrl : fromName;
+  }
+
+  bool _isOfficeDocument() => _officeExtensions.contains(_fileExtension());
+
+  /// Asks our server for a PDF rendering of an Office file (`?as=pdf`).
+  Future<DocumentFetchResult?> _fetchOfficePdf() async {
+    try {
+      final url = widget.document.url!.trim();
+      final uri = Uri.parse(url);
+      final pdfUrl = uri.replace(
+        queryParameters: {...uri.queryParameters, 'as': 'pdf'},
+      ).toString();
+      final result = await AuthenticatedDocumentFetcher.instance.fetch(
+        url: pdfUrl,
+        documentId: widget.document.id,
+        contentTypeHint: 'application/pdf',
+        isPdfHint: true,
+      );
+      if (result.kind == DocumentPayloadKind.pdf && result.bytes != null) {
+        return result;
+      }
+    } catch (e) {
+      debugPrint('[DocumentViewer] Office PDF preview failed: $e');
+    }
+    return null;
+  }
+
   Future<void> _loadBytes(int gen) async {
-    final fetch = await AuthenticatedDocumentFetcher.instance.fetch(
+    var fetch = await AuthenticatedDocumentFetcher.instance.fetch(
       url: widget.document.url!,
       documentId: widget.document.id,
       contentTypeHint: widget.document.contentType,
@@ -223,6 +277,17 @@ class _WorkflowDocumentViewerScreenState
     );
 
     if (!mounted || gen != _loadGen) return;
+
+    if (fetch.kind == DocumentPayloadKind.unsupported &&
+        fetch.bytes != null &&
+        _isOfficeDocument()) {
+      _originalOffice = fetch;
+      setState(() => _preparingPreview = true);
+      final converted = await _fetchOfficePdf();
+      if (!mounted || gen != _loadGen) return;
+      _preparingPreview = false;
+      if (converted != null) fetch = converted;
+    }
 
     if (!fetch.isSuccess || fetch.bytes == null) {
       setState(() {
@@ -277,6 +342,154 @@ class _WorkflowDocumentViewerScreenState
     });
   }
 
+  static const _textExtensions = {
+    '.txt', '.csv', '.tsv', '.json', '.xml', '.log', '.md', '.html', '.htm',
+    '.yaml', '.yml', '.ini', '.conf', '.sql',
+  };
+
+  /// No NUL bytes and almost no control characters in the first 4 KB.
+  bool _bytesLookLikeText(Uint8List bytes) {
+    if (bytes.isEmpty) return false;
+    final n = bytes.length < 4096 ? bytes.length : 4096;
+    var control = 0;
+    for (var i = 0; i < n; i++) {
+      final b = bytes[i];
+      if (b == 0) return false;
+      if (b < 0x09 || (b > 0x0D && b < 0x20)) control++;
+    }
+    return control * 50 < n;
+  }
+
+  String _decodeText(Uint8List bytes) {
+    try {
+      return utf8.decode(bytes);
+    } catch (_) {
+      return latin1.decode(bytes, allowInvalid: true);
+    }
+  }
+
+  bool _looksLikeText(Uint8List bytes) {
+    final name = widget.document.displayTitle.toLowerCase();
+    final path = (widget.document.url ?? '').split('?').first.toLowerCase();
+    final mime = (_result?.contentType ?? widget.document.contentType ?? '')
+        .toLowerCase();
+    if (mime.startsWith('text/') || mime.contains('json') || mime.contains('csv')) {
+      return true;
+    }
+    if (_textExtensions.any((e) => name.endsWith(e) || path.endsWith(e))) {
+      return true;
+    }
+    if (_isOfficeDocument()) return false;
+    final zipOrOle = bytes.length >= 4 &&
+        ((bytes[0] == 0x50 && bytes[1] == 0x4B) ||
+            (bytes[0] == 0xD0 && bytes[1] == 0xCF));
+    return !zipOrOle && _bytesLookLikeText(bytes);
+  }
+
+  /// Files without a built-in renderer: text shows here; office, zip and
+  /// other formats are downloaded with the app's login and handed to
+  /// another app on the phone.
+  Widget _buildOtherFile(Uint8List bytes) {
+    if (_looksLikeText(bytes)) {
+      final text = _decodeText(bytes);
+      return ColoredBox(
+        color: Colors.white,
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(16),
+          child: SelectableText(
+            text,
+            style: const TextStyle(
+              color: Colors.black87,
+              fontFamily: 'monospace',
+              fontSize: 13,
+            ),
+          ),
+        ),
+      );
+    }
+    final officePreview = buildOfficeFallbackPreview(bytes, _fileExtension());
+    if (officePreview != null) {
+      return Stack(
+        children: [
+          Positioned.fill(child: officePreview),
+          Positioned(
+            right: 16,
+            bottom: 16,
+            child: SafeArea(
+              child: ElevatedButton.icon(
+                onPressed: () => shareDocumentBytes(
+                  bytes: bytes,
+                  fileName: _downloadName(),
+                  mimeType: _result?.contentType.isNotEmpty == true
+                      ? _result!.contentType
+                      : widget.document.contentType,
+                ),
+                icon: const Icon(Icons.open_in_new_rounded),
+                label: const Text('Open with\u2026'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.navy,
+                  foregroundColor: Colors.white,
+                ),
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(28),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.insert_drive_file_outlined,
+              size: 56,
+              color: AppTheme.getTextSecondary(context),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'This file type has no preview in the app. Open it with an app on your phone.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: AppTheme.getTextSecondary(context),
+                fontWeight: FontWeight.w600,
+                fontSize: 15,
+              ),
+            ),
+            const SizedBox(height: 20),
+            ElevatedButton.icon(
+              onPressed: () => shareDocumentBytes(
+                bytes: bytes,
+                fileName: _downloadName(),
+                mimeType: _result?.contentType.isNotEmpty == true
+                    ? _result!.contentType
+                    : widget.document.contentType,
+              ),
+              icon: const Icon(Icons.open_in_new_rounded),
+              label: const Text('Open with…'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.navy,
+                foregroundColor: Colors.white,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _downloadName() {
+    final path = (widget.document.url ?? '').split('?').first;
+    final slash = path.lastIndexOf('/');
+    final fromUrl = slash >= 0 ? Uri.decodeComponent(path.substring(slash + 1)) : '';
+    final title = widget.document.displayTitle.trim();
+    if (title.contains('.')) return title;
+    final dot = fromUrl.lastIndexOf('.');
+    final ext = dot >= 0 ? fromUrl.substring(dot) : '';
+    return title.isEmpty ? (fromUrl.isEmpty ? 'document' : fromUrl) : '$title$ext';
+  }
+
   void _toggleFullscreen() {
     setState(() => _fullscreen = !_fullscreen);
     if (_fullscreen) {
@@ -320,6 +533,19 @@ class _WorkflowDocumentViewerScreenState
                 ),
               ),
               actions: [
+                if (_originalOffice?.bytes != null &&
+                    _result?.kind == DocumentPayloadKind.pdf)
+                  IconButton(
+                    icon: const Icon(Icons.open_in_new_rounded),
+                    onPressed: () => shareDocumentBytes(
+                      bytes: _originalOffice!.bytes!,
+                      fileName: _downloadName(),
+                      mimeType: _originalOffice!.contentType.isNotEmpty
+                          ? _originalOffice!.contentType
+                          : widget.document.contentType,
+                    ),
+                    tooltip: 'Open with\u2026',
+                  ),
                 if (widget.document.canDownload && widget.document.hasUrl)
                   IconButton(
                     icon: const Icon(Icons.download_rounded),
@@ -345,6 +571,24 @@ class _WorkflowDocumentViewerScreenState
 
   Widget _buildBody() {
     if (_loading) {
+      if (_preparingPreview) {
+        return Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const CircularProgressIndicator(color: Colors.white),
+              const SizedBox(height: 16),
+              Text(
+                'Preparing preview\u2026',
+                style: TextStyle(
+                  color: AppTheme.getTextSecondary(context),
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        );
+      }
       return const Center(
         child: CircularProgressIndicator(color: Colors.white),
       );
@@ -399,6 +643,11 @@ class _WorkflowDocumentViewerScreenState
           },
         ),
       );
+    }
+
+    if (_result?.kind == DocumentPayloadKind.unsupported &&
+        _result?.bytes != null) {
+      return _buildOtherFile(_result!.bytes!);
     }
 
     if (_errorMessage != null) {

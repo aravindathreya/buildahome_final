@@ -1,4 +1,9 @@
+import 'dart:async';
+import 'dart:convert';
+
 import 'package:shared_preferences/shared_preferences.dart';
+
+import 'api_http.dart';
 
 /// Role-Based Access Control Service
 /// Manages permissions for different user roles based on the permissions table
@@ -96,6 +101,15 @@ class RBACService {
     'Billing': 'Billing',
     'billing': 'Billing',
     'BILLING': 'Billing',
+    'Finance Head': 'Finance Head',
+    'finance head': 'Finance Head',
+    'FINANCE HEAD': 'Finance Head',
+    'Finance Executive': 'Finance Executive',
+    'finance executive': 'Finance Executive',
+    'FINANCE EXECUTIVE': 'Finance Executive',
+    'Finance': 'Finance',
+    'finance': 'Finance',
+    'FINANCE': 'Finance',
     'QS Head': 'QS Head',
     'qs head': 'QS Head',
     'QS HEAD': 'QS Head',
@@ -267,6 +281,18 @@ class RBACService {
       addReportRemarks: [],
       inspectionRequest: [], // No access
     },
+    // Finance Head - view previous payments only (mirrors Billing payments)
+    'Finance Head': {
+      payments: [view],
+    },
+    // Finance Executive - view previous payments only (mirrors Billing payments)
+    'Finance Executive': {
+      payments: [view],
+    },
+    // Finance - view previous payments only (mirrors Billing payments)
+    'Finance': {
+      payments: [view],
+    },
     // Project Head - C/V/E/D of their team
     'Project Head': {
       dailyUpdate: [upload, edit, view],
@@ -395,6 +421,114 @@ class RBACService {
     },
   };
 
+  // ---------------------------------------------------------------------------
+  // Server overrides: GET /API/mobile/role-permissions returns
+  // {"role": ..., "permissions": {feature: [perms]}} for the logged-in user.
+  // Each listed feature REPLACES the hardcoded list above for that role;
+  // unlisted features keep the hardcoded value. Offline / failure => cache,
+  // then hardcoded map only (identical to previous behaviour).
+  // ---------------------------------------------------------------------------
+  static const String _serverCacheKey = 'rbac_server_permissions_v1';
+  static const List<String> _serverBaseUrls = [
+    'https://office.buildahome.in',
+    'https://app.buildahome.in',
+  ];
+  static const Duration _serverTimeout = Duration(seconds: 10);
+
+  /// Normalized role -> feature -> permissions (only the current user's role).
+  static final Map<String, Map<String, List<String>>> _serverOverrides = {};
+  static Future<void>? _serverRefreshInFlight;
+
+  /// Override list for (role, feature) or null when the server said nothing.
+  List<String>? _serverPermissionsFor(String role, String feature) {
+    final byFeature = _serverOverrides[_normalizeRoleString(role)];
+    if (byFeature == null) return null;
+    return byFeature[feature];
+  }
+
+  void _applyServerPayload(Object? decoded) {
+    if (decoded is! Map) return;
+    final role = (decoded['role'] ?? '').toString();
+    final perms = decoded['permissions'];
+    if (role.trim().isEmpty || perms is! Map) return;
+    final parsed = <String, List<String>>{};
+    perms.forEach((feature, values) {
+      if (values is List) {
+        parsed[feature.toString()] =
+            values.map((v) => v.toString()).toList(growable: false);
+      }
+    });
+    _serverOverrides
+      ..clear()
+      ..[_normalizeRoleString(role)] = parsed;
+  }
+
+  /// Load the last server snapshot from SharedPreferences (no network).
+  Future<void> loadCachedServerPermissions() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_serverCacheKey);
+      if (raw == null || raw.isEmpty) return;
+      final decoded = jsonDecode(raw);
+      if (decoded is Map &&
+          _normalizeRoleString((decoded['role'] ?? '').toString()) ==
+              _normalizeRoleString(prefs.getString('role') ?? '')) {
+        _applyServerPayload(decoded);
+      }
+    } catch (e) {
+      print('[RBAC] server cache read failed: $e');
+    }
+  }
+
+  /// Hydrate from cache, then fetch overrides from the server. Never throws.
+  Future<void> refreshFromServer() {
+    return _serverRefreshInFlight ??=
+        _refreshFromServerInternal().whenComplete(() {
+      _serverRefreshInFlight = null;
+    });
+  }
+
+  Future<void> _refreshFromServerInternal() async {
+    await loadCachedServerPermissions();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = (prefs.getString('api_token') ?? '').trim();
+      if (token.isEmpty || token.toLowerCase() == 'null') return;
+      final userId =
+          (prefs.getString('userId') ?? prefs.getString('user_id') ?? '')
+              .trim();
+      final query = <String, String>{
+        'api_token': token,
+        if (userId.isNotEmpty) 'user_id': userId,
+      };
+      final headers = <String, String>{
+        'Accept': 'application/json',
+        'X-Api-Token': token,
+        'Authorization': 'Bearer $token',
+      };
+      for (final base in _serverBaseUrls) {
+        final uri = Uri.parse('$base/API/mobile/role-permissions')
+            .replace(queryParameters: query);
+        try {
+          final response =
+              await ApiHttp.get(uri, headers: headers).timeout(_serverTimeout);
+          if (response.statusCode < 200 || response.statusCode >= 300) {
+            continue;
+          }
+          final decoded = jsonDecode(response.body);
+          if (decoded is! Map || decoded['permissions'] is! Map) continue;
+          _applyServerPayload(decoded);
+          await prefs.setString(_serverCacheKey, jsonEncode(decoded));
+          return;
+        } catch (e) {
+          print('[RBAC] server permissions fetch failed ($base): $e');
+        }
+      }
+    } catch (e) {
+      print('[RBAC] server permissions error: $e');
+    }
+  }
+
   /// Normalize a role string for comparison (lowercase, trim spaces, collapse multiple spaces)
   String _normalizeRoleString(String role) {
     return role.toLowerCase().trim().replaceAll(RegExp(r'\s+'), ' ');
@@ -458,6 +592,9 @@ class RBACService {
     // Admin has all permissions (case-insensitive check)
     if (_normalizeRoleString(role) == _normalizeRoleString('Admin')) return true;
 
+    final serverPerms = _serverPermissionsFor(role, feature);
+    if (serverPerms != null) return serverPerms.contains(permission);
+
     final roleKey = _findRoleKey(role);
     if (roleKey == null) return false;
 
@@ -510,6 +647,9 @@ class RBACService {
       return [upload, edit, view, delete, completeTask];
     }
 
+    final serverPerms = _serverPermissionsFor(role, feature);
+    if (serverPerms != null) return serverPerms;
+
     final roleKey = _findRoleKey(role);
     if (roleKey == null) return [];
 
@@ -534,6 +674,9 @@ class RBACService {
 
     // Admin has all permissions (case-insensitive check)
     if (_normalizeRoleString(normalizedRole) == _normalizeRoleString('Admin')) return true;
+
+    final serverPerms = _serverPermissionsFor(normalizedRole, feature);
+    if (serverPerms != null) return serverPerms.contains(permission);
 
     final roleKey = _findRoleKey(normalizedRole);
     if (roleKey == null) return false;

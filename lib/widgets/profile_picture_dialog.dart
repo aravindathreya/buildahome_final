@@ -51,6 +51,10 @@ Future<void> maybePromptForProfilePicture(BuildContext context) async {
 
     final remaining = await ProfilePictureService.remainingSkips();
     final requirePhoto = remaining <= 0;
+    if (!requirePhoto && await ProfilePictureService.dismissedToday()) {
+      debugPrint('[ProfilePic] skip - already dismissed today');
+      return;
+    }
 
     // Re-check after every await. Logout clears the session and the root
     // navigator context stays mounted, which used to present this dialog
@@ -73,6 +77,9 @@ Future<void> maybePromptForProfilePicture(BuildContext context) async {
       remainingSkips: remaining,
       requirePhoto: requirePhoto,
     );
+    if (await ProfilePictureService.getStoredPath() == null) {
+      await ProfilePictureService.markDismissedToday();
+    }
   } catch (e) {
     if (!ProfilePictureService.promptsSuppressed) {
       ProfilePictureService.promptShownThisSession = false;
@@ -86,7 +93,11 @@ Future<void> maybePromptForProfilePicture(BuildContext context) async {
 bool _canShowStartupPrompt(BuildContext context) {
   if (ProfilePictureService.promptsSuppressed) return false;
   if (ProfilePictureService.promptShownThisSession) return false;
-  return context.mounted;
+  // Never while the splash still hosts the dashboard (cold-start flash).
+  if (ProfilePictureService.startupHandoffInProgress) return false;
+  if (!context.mounted) return false;
+  // Only when the dashboard route is on top (no transition / other dialog).
+  return ModalRoute.of(context)?.isCurrent ?? true;
 }
 
 /// Profile picture picker + upload dialog.
