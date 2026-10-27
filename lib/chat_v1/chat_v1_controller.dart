@@ -459,7 +459,28 @@ class ChatV1Controller extends ChangeNotifier {
     _api.tryLeaveConversation(id);
   }
 
+  int _projectLoadSeq = 0;
+
+  void _clearProjectLists() {
+    channels = [];
+    customGroups = [];
+    taskConversations = [];
+    workflowConversations = [];
+    docTasks = [];
+    members = [];
+  }
+
   Future<void> loadProjectChat({String? salesSopIdOverride}) async {
+    final loadSeq = ++_projectLoadSeq;
+    final previousSopId = salesSopId;
+    final override = (salesSopIdOverride ?? '').trim();
+    if (override.isNotEmpty &&
+        override != 'null' &&
+        previousSopId != null &&
+        previousSopId != override) {
+      // Switching project: never show the previous project's groups.
+      _clearProjectLists();
+    }
     final hadCache = channels.isNotEmpty ||
         customGroups.isNotEmpty ||
         dms.isNotEmpty ||
@@ -482,6 +503,10 @@ class ChatV1Controller extends ChangeNotifier {
         throw ChatV1ApiException(
           'Select a project first so chat can load sales_sop conversations.',
         );
+      }
+      if (previousSopId != null && previousSopId != sopId) {
+        _clearProjectLists();
+        notifyListeners();
       }
       print('[ChatV1] Loading project chat for sales_sop_id=$sopId');
 
@@ -521,6 +546,10 @@ class ChatV1Controller extends ChangeNotifier {
         conversationsError = userFacingError(e);
       }
 
+      if (loadSeq != _projectLoadSeq || salesSopId != sopId) {
+        // A newer load (another project) started; drop this stale response.
+        return;
+      }
       if (conversations.isEmpty && conversationsError != null) {
         throw ChatV1ApiException(conversationsError);
       }
@@ -592,6 +621,7 @@ class ChatV1Controller extends ChangeNotifier {
       if (softErrors.isNotEmpty) {
         print('[ChatV1] Optional endpoint errors (ignored): $softErrors');
       }
+      if (loadSeq != _projectLoadSeq || salesSopId != sopId) return;
 
       _applySecondaryLists(
         tasks: settled[0],

@@ -993,6 +993,11 @@ class DataProvider {
       if (role == 'Client' &&
           cachedSopId != null &&
           cachedSopId.isNotEmpty &&
+          (erpProjectId == null ||
+              erpProjectId.isEmpty ||
+              cachedErpId == null ||
+              cachedErpId.isEmpty ||
+              cachedErpId == erpProjectId) &&
           _isValidSalesSopId(cachedSopId, null)) {
         clientSalesSopId = cachedSopId;
         return cachedSopId;
@@ -1006,7 +1011,11 @@ class DataProvider {
       }
     }
 
+    // Only reuse the in-memory id when it was cached for this same project.
     if (clientSalesSopId != null &&
+        (erpProjectId == null ||
+            erpProjectId.isEmpty ||
+            prefs.getString('sales_sop_erp_project_id') == erpProjectId) &&
         _isValidSalesSopId(clientSalesSopId, erpProjectId)) {
       return clientSalesSopId;
     }
@@ -1289,6 +1298,9 @@ class DataProvider {
     await prefs.setString('sales_sop_id', salesSopId);
     if (erpProjectId != null && erpProjectId.isNotEmpty) {
       await prefs.setString('sales_sop_erp_project_id', erpProjectId);
+    } else {
+      // Do not leave the previous project's pairing on a new sales_sop id.
+      await prefs.remove('sales_sop_erp_project_id');
     }
   }
 
@@ -2218,6 +2230,10 @@ class DataProvider {
       // Avoid showing another project's number after a project switch.
       await prefs.remove('project_number');
       await prefs.remove('project_code');
+      // ...and another project's chat (sales_sop_id is per project).
+      await prefs.remove('sales_sop_id');
+      await prefs.remove('sales_sop_erp_project_id');
+      clientSalesSopId = null;
     }
     await prefs.setString('project_id', projectId);
     clientProjectId = projectId;

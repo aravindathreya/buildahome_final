@@ -4278,7 +4278,12 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
     if (!_isClientUser) {
       final prefs = await SharedPreferences.getInstance();
       final projectId = (prefs.getString('project_id') ?? '').trim();
-      final salesSopId = (prefs.getString('sales_sop_id') ?? '').trim();
+      // Only trust the cached sales_sop_id when it belongs to this project.
+      final cachedErp =
+          (prefs.getString('sales_sop_erp_project_id') ?? '').trim();
+      final salesSopId = (projectId.isNotEmpty && cachedErp != projectId)
+          ? ''
+          : (prefs.getString('sales_sop_id') ?? '').trim();
       if (!mounted) return;
       await _navigateToWidget(
         ChatV1App.openQuick(

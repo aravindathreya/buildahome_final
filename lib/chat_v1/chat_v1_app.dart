@@ -75,7 +75,11 @@ class ChatV1App extends StatefulWidget {
       }
     }
 
-    sopId ??= ChatV1Controller.instance.salesSopId ?? dp.clientSalesSopId;
+    // Last chat session's project only when no project was given; otherwise
+    // the home screen resolves this project's id (never another project's).
+    if (erpProjectId == null || erpProjectId.isEmpty) {
+      sopId ??= ChatV1Controller.instance.salesSopId ?? dp.clientSalesSopId;
+    }
 
     if ((sopId == null || sopId.isEmpty) && tasksHint != null) {
       for (final task in tasksHint) {
