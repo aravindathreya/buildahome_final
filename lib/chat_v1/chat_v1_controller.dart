@@ -461,6 +461,9 @@ class ChatV1Controller extends ChangeNotifier {
 
   int _projectLoadSeq = 0;
 
+  /// ERP project the loaded channel / group lists belong to.
+  String? _listsErpProjectId;
+
   void _clearProjectLists() {
     channels = [];
     customGroups = [];
@@ -479,6 +482,17 @@ class ChatV1Controller extends ChangeNotifier {
         previousSopId != null &&
         previousSopId != override) {
       // Switching project: never show the previous project's groups.
+      _clearProjectLists();
+    }
+    // Entries without a sales_sop id (e.g. the Chat quick action project
+    // list) resolve it later; never leave another project's groups tappable
+    // meanwhile.
+    final selectedErp =
+        ((await SharedPreferences.getInstance()).getString('project_id') ?? '')
+            .trim();
+    if (_listsErpProjectId != null &&
+        selectedErp.isNotEmpty &&
+        _listsErpProjectId != selectedErp) {
       _clearProjectLists();
     }
     final hadCache = channels.isNotEmpty ||
@@ -560,6 +574,7 @@ class ChatV1Controller extends ChangeNotifier {
       }
 
       _applyConversations(conversations);
+      _listsErpProjectId = selectedErp.isEmpty ? null : selectedErp;
       _applyLocalFlags();
       loading = false;
       notifyListeners();
