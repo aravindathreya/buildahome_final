@@ -43,6 +43,7 @@ class LoginScreenNewState extends State<LoginScreenNew>
       AppTheme.isDark ? const Color(0xFFF8FAFC) : AppTheme.lightTextPrimary;
   static const String _authBase = 'https://office1.buildahome.in';
 
+  static const bool kTestOtp = bool.fromEnvironment('TEST_OTP');
   static const int _otpLength = 6;
   static const int _resendCooldownSeconds = 30;
 
@@ -439,7 +440,7 @@ class LoginScreenNewState extends State<LoginScreenNew>
     try {
       final Map<String, dynamic> payload = {
         'phone_number': normalized,
-        'debugger': kDebugMode,
+        'debugger': kDebugMode || kTestOtp,
       };
 
       final response = await http
@@ -550,6 +551,7 @@ class LoginScreenNewState extends State<LoginScreenNew>
             body: jsonEncode({
               'phone_number': phone,
               'otp': otp,
+              if (kTestOtp) 'debugger': true,
             }),
           )
           .timeout(const Duration(seconds: 25));

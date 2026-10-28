@@ -3199,9 +3199,13 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
     // tasksAndNotes RBAC entry (APM, QC Head, Contracts).
     const chatOnlyRoles = [
       'assistant purchase manager',
+      'purchase assistant manager',
       'qc head',
       'qa/qc head',
       'contracts head',
+      'contract head',
+      'senior contracts head',
+      'junior contracts head',
       'senior contracts engineer',
       'junior contracts engineer',
     ];
