@@ -529,6 +529,14 @@ class RBACService {
     }
   }
 
+  /// Admin, or Super Admin (WhatsApp OTP login sends the raw DB role
+  /// 'Super Admin'; /API/login sends 'Admin'). Both get every permission.
+  bool _isAdminLike(String role) {
+    final n = _normalizeRoleString(role);
+    if (n == 'admin') return true;
+    return n.replaceAll(RegExp(r'[^a-z0-9]'), '') == 'superadmin';
+  }
+
   /// Normalize a role string for comparison (lowercase, trim spaces, collapse multiple spaces)
   String _normalizeRoleString(String role) {
     return role.toLowerCase().trim().replaceAll(RegExp(r'\s+'), ' ');
@@ -590,7 +598,7 @@ class RBACService {
     if (role == null) return false;
 
     // Admin has all permissions (case-insensitive check)
-    if (_normalizeRoleString(role) == _normalizeRoleString('Admin')) return true;
+    if (_isAdminLike(role)) return true;
 
     final serverPerms = _serverPermissionsFor(role, feature);
     if (serverPerms != null) return serverPerms.contains(permission);
@@ -643,7 +651,7 @@ class RBACService {
     if (role == null) return [];
 
     // Admin has all permissions (case-insensitive check)
-    if (_normalizeRoleString(role) == _normalizeRoleString('Admin')) {
+    if (_isAdminLike(role)) {
       return [upload, edit, view, delete, completeTask];
     }
 
@@ -673,7 +681,7 @@ class RBACService {
     if (normalizedRole == null) return false;
 
     // Admin has all permissions (case-insensitive check)
-    if (_normalizeRoleString(normalizedRole) == _normalizeRoleString('Admin')) return true;
+    if (_isAdminLike(normalizedRole)) return true;
 
     final serverPerms = _serverPermissionsFor(normalizedRole, feature);
     if (serverPerms != null) return serverPerms.contains(permission);
