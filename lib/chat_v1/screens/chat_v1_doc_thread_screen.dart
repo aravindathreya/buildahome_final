@@ -233,6 +233,7 @@ class _ChatV1DocThreadScreenState extends State<ChatV1DocThreadScreen> {
     final doc = _doc;
     final hasFile = fileBytes != null && fileName != null;
     if ((text.isEmpty && !hasFile) || doc == null || _sending) return;
+    if (ChatV1Controller.instance.docReadOnly) return;
     setState(() => _sending = true);
     try {
       final body = text.isNotEmpty
@@ -419,7 +420,8 @@ class _ChatV1DocThreadScreenState extends State<ChatV1DocThreadScreen> {
                             ),
                           ),
                         ),
-                        _composerBar(context),
+                        if (!ChatV1Controller.instance.docReadOnly)
+                          _composerBar(context),
                       ],
                     ),
     );

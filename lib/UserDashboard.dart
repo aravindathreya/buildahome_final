@@ -3195,7 +3195,18 @@ class UserDashboardScreenState extends State<UserDashboardScreen> {
       });
     }
     // Chat V1 — Client always allowed (General channel + DOC approve).
+    // Company/team-wide roles with project chat channels but no
+    // tasksAndNotes RBAC entry (APM, QC Head, Contracts).
+    const chatOnlyRoles = [
+      'assistant purchase manager',
+      'qc head',
+      'qa/qc head',
+      'contracts head',
+      'senior contracts engineer',
+      'junior contracts engineer',
+    ];
     if (_currentRole == 'Client' ||
+        chatOnlyRoles.contains((_currentRole ?? '').trim().toLowerCase()) ||
         rbac.canViewSync(_currentRole, RBACService.tasksAndNotes)) {
       menuItems.add({
         'title': 'Chat',

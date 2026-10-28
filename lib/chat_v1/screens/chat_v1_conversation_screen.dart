@@ -126,6 +126,7 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
   String get _conversationId => widget.meta.id;
   String get _userId => ChatV1Controller.instance.currentUserId ?? '';
   bool get _isErpTask => widget.meta.contextType == 'erp_task';
+  bool get _readOnly => widget.meta.readOnly;
   bool get _othersTyping => _typingUserIds.isNotEmpty;
 
   /// Same rule as web: hide Mark as important when already in Important.
@@ -936,6 +937,7 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
   }
 
   Future<void> _reactToMessage(ChatV1Message msg, String emoji) async {
+    if (_readOnly) return;
     final latest = _messages.cast<ChatV1Message?>().firstWhere(
               (m) => m?.id == msg.id,
               orElse: () => msg,
@@ -1430,6 +1432,7 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
               if (_pinnedMessageId != null && _pinnedMessageId!.isNotEmpty)
                 _pinnedBanner(context),
               Expanded(child: _body(context)),
+              if (!_readOnly)
               ChatComposer(
                 controller: _composer,
                 onSend: () => _send(),
@@ -1598,8 +1601,9 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
                   msg.parentMessageId == null || msg.parentMessageId!.isEmpty
                       ? null
                       : () => _scrollToMessage(msg.parentMessageId!),
-              onReactionTap:
-                  msg.isDeleted ? null : (emoji) => _reactToMessage(msg, emoji),
+              onReactionTap: msg.isDeleted || _readOnly
+                  ? null
+                  : (emoji) => _reactToMessage(msg, emoji),
             ),
           );
           if (!newDay) return bubble;
@@ -1866,6 +1870,7 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
   }
 
   Future<void> _pinMessage(ChatV1Message msg) async {
+    if (_readOnly) return;
     final already = msg.isPinned ||
         (_pinnedMessageId != null &&
             _pinnedMessageId!.isNotEmpty &&
@@ -2178,7 +2183,7 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
 
   void _messageActions(BuildContext context, ChatV1Message msg) {
     if (msg.isDeleted) return;
-    final canShareGeneral = !_isImportantChannel;
+    final canShareGeneral = !_isImportantChannel && !_readOnly;
     final isMarkedImportant =
         ChatV1Importance.parse(msg.body).kind == 'marked';
     showModalBottomSheet(
@@ -2204,6 +2209,7 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
                   ),
                 ),
                 const SizedBox(height: 12),
+                if (!_readOnly)
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceAround,
                   children: ['👍', '❤️', '😂', '😮', '😢', '🔥']
@@ -2224,6 +2230,7 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
                       .toList(),
                 ),
                 const Divider(height: 16),
+                if (!_readOnly)
                 ListTile(
                   leading: const Icon(Icons.reply_rounded),
                   title: const Text('Reply'),
@@ -2258,6 +2265,7 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
                     _copyMessage(msg);
                   },
                 ),
+                if (!_readOnly)
                 ListTile(
                   leading: Icon(
                     msg.isPinned
@@ -2270,7 +2278,7 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
                     _pinMessage(msg);
                   },
                 ),
-                if (msg.isMine) ...[
+                if (msg.isMine && !_readOnly) ...[
                   ListTile(
                     leading: const Icon(Icons.edit_rounded),
                     title: const Text('Edit'),

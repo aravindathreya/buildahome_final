@@ -810,6 +810,9 @@ class ChatV1Controller extends ChangeNotifier {
         ChatV1Utils.isUpdateAndDocChannel(item.title);
   }
 
+  /// True when the server made Upgrades & Additions view-only for this user.
+  bool get docReadOnly => _findLoadedDocChannel()?.readOnly == true;
+
   ChatV1ChatItem? _findLoadedDocChannel() {
     for (final item in channels) {
       if (_isDocChannel(item)) return item;

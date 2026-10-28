@@ -34,7 +34,8 @@ class _ChatV1DocListScreenState extends State<ChatV1DocListScreen> {
   bool _roleReady = false;
   bool _isClient = false;
 
-  bool get _showCreateDoc => _roleReady && !_isClient;
+  bool get _showCreateDoc =>
+      _roleReady && !_isClient && !ChatV1Controller.instance.docReadOnly;
 
   String? get _sopId =>
       widget.salesSopId ?? ChatV1Controller.instance.salesSopId;

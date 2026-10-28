@@ -119,6 +119,7 @@ class ChatV1Mapper {
       contextId: contextId,
       participantCount: participantCount,
       myRole: raw['my_role']?.toString(),
+      readOnly: raw['read_only'] == true,
     );
   }
 
@@ -614,6 +615,7 @@ class ChatV1Mapper {
       conversationType: item.conversationType,
       contextType: item.contextType,
       contextId: item.contextId,
+      readOnly: item.readOnly,
       focusMessageId: item.mentions > 0 ? item.unreadMentionMessageId : null,
     );
   }

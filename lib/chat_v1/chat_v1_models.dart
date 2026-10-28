@@ -52,6 +52,8 @@ class ChatV1ChatItem {
   final int participantCount;
   final String? myRole;
   final String? hubKind; // 'tasks' | 'workflows'
+  /// Server: view-only channel for this role (e.g. Billing in Upgrades & Additions).
+  final bool readOnly;
 
   const ChatV1ChatItem({
     required this.id,
@@ -79,6 +81,7 @@ class ChatV1ChatItem {
     this.participantCount = 0,
     this.myRole,
     this.hubKind,
+    this.readOnly = false,
   });
 
   ChatV1ChatItem copyWith({
@@ -120,6 +123,7 @@ class ChatV1ChatItem {
       participantCount: participantCount,
       myRole: myRole,
       hubKind: hubKind,
+      readOnly: readOnly,
     );
   }
 }
@@ -522,6 +526,7 @@ class ChatV1ConvMeta {
   final String? contextType;
   final String? contextId;
   final String? focusMessageId;
+  final bool readOnly;
 
   const ChatV1ConvMeta({
     required this.id,
@@ -538,6 +543,7 @@ class ChatV1ConvMeta {
     this.contextType,
     this.contextId,
     this.focusMessageId,
+    this.readOnly = false,
   });
 }
 
