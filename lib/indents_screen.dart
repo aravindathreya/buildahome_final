@@ -19,6 +19,7 @@ import 'widgets/full_screen_progress.dart';
 import 'widgets/themed_scaffold.dart';
 import 'services/data_provider.dart';
 import 'services/indent_units.dart';
+import 'services/indent_dimensions.dart';
 import 'indent_proof.dart';
 import 'indent_list_helpers.dart';
 
@@ -423,6 +424,73 @@ class CreateIndentTabState extends State<CreateIndentTab> {
   // Material units list
   List<String> materialUnits = IndentUnits.units;
 
+  // Server-controlled dimensions (e.g. Steel -> 8mm Dia TMT Bar). Empty = plain quantity.
+  List<IndentDimension> dimensionOptions = [];
+  final List<String?> dimRowLabels = [];
+  final List<TextEditingController> dimRowQty = [];
+  int _dimRequestId = 0;
+
+  bool get _useDims => dimensionOptions.isNotEmpty;
+
+  bool get _dimRowsValid =>
+      dimRowLabels.isNotEmpty &&
+      List.generate(dimRowLabels.length, (i) => i).every((i) =>
+          dimRowLabels[i] != null &&
+          (double.tryParse(dimRowQty[i].text.trim()) ?? 0) > 0);
+
+  void _clearDimRows() {
+    for (final c in dimRowQty) {
+      c.dispose();
+    }
+    dimRowQty.clear();
+    dimRowLabels.clear();
+  }
+
+  void _addDimRow() {
+    dimRowLabels.add(null);
+    dimRowQty.add(TextEditingController());
+  }
+
+  void _removeDimRow(int i) {
+    dimRowQty[i].dispose();
+    dimRowQty.removeAt(i);
+    dimRowLabels.removeAt(i);
+    if (dimRowLabels.isEmpty) _addDimRow();
+    _syncDimTotal();
+  }
+
+  /// Keeps the existing quantity field = total of all rows (used by submit/preview).
+  void _syncDimTotal() {
+    if (!_useDims) return;
+    final t = IndentDimensions.total(dimRowQty.map((c) => c.text).toList());
+    quantityTextController.text = t > 0 ? IndentDimensions.formatNumber(t) : '';
+  }
+
+  Future<void> _loadDimensions(String material) async {
+    final reqId = ++_dimRequestId;
+    setState(() {
+      dimensionOptions = [];
+      _clearDimRows();
+    });
+    final dims = await IndentDimensions.forMaterial(material);
+    if (!mounted || reqId != _dimRequestId || selectedMaterial != material) return;
+    setState(() {
+      dimensionOptions = dims;
+      _clearDimRows();
+      if (dims.isNotEmpty) {
+        _addDimRow();
+        quantityTextController.text = '';
+      }
+    });
+  }
+
+  String _dimShort(String label) {
+    for (final d in dimensionOptions) {
+      if (d.label == label) return d.shortLabel;
+    }
+    return label;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -439,6 +507,7 @@ class CreateIndentTabState extends State<CreateIndentTab> {
   void dispose() {
     _pageController.dispose();
     quantityTextController.dispose();
+    _clearDimRows();
     purposeTextController.dispose();
     reasonCommentTextController.dispose();
     diffCostTextController.dispose();
@@ -446,6 +515,12 @@ class CreateIndentTabState extends State<CreateIndentTab> {
   }
 
   void _nextStep() {
+    if (_currentStep == 2 && _useDims && !_dimRowsValid) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Select a dimension and enter a quantity in every row'),
+      ));
+      return;
+    }
     if (_currentStep == 0 && selectedProject == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Select a project')),
@@ -811,6 +886,10 @@ class CreateIndentTabState extends State<CreateIndentTab> {
               setState(() {
                 _currentStep = index;
               });
+              // Retry dimensions on entering Quantity & Unit if none loaded yet.
+              if (index == 2 && !_useDims && selectedMaterial != null && selectedMaterial.toString().isNotEmpty) {
+                _loadDimensions(selectedMaterial.toString());
+              }
             },
             children: [
               _buildStep2Comment(),
@@ -1145,7 +1224,7 @@ class CreateIndentTabState extends State<CreateIndentTab> {
         'quantity': quantityTextController.text.trim(),
         'unit': unit.toString(),
         'differenceCost': diffCostTextController.text.trim(),
-        'purpose': purposeTextController.text.trim(),
+        'purpose': _purposeWithDims(),
         'approvalTaken': approvalTaken ? '1' : '0',
         'user_id': user_id?.toString() ?? '',
         'timestamp': formattedDate,
@@ -1224,6 +1303,8 @@ class CreateIndentTabState extends State<CreateIndentTab> {
         selectedProject = null;
         projectId = null;
         selectedMaterial = null;
+        dimensionOptions = [];
+        _clearDimRows();
         unit = 'Unit';
         quantityTextController.text = '';
         purposeTextController.text = '';
@@ -1496,9 +1577,11 @@ class CreateIndentTabState extends State<CreateIndentTab> {
                 selectedItem: selectedMaterial,
               );
               if (result != null) {
+                final changed = result.toString() != selectedMaterial;
                 setState(() {
                   selectedMaterial = result.toString();
                 });
+                if (changed) _loadDimensions(result.toString());
               }
             },
             borderRadius: BorderRadius.circular(16),
@@ -1554,6 +1637,123 @@ class CreateIndentTabState extends State<CreateIndentTab> {
     );
   }
 
+
+  /// Purpose sent to the server; with dimensions the breakdown is prefixed so it
+  /// is stored on the indent (no schema change) and shown wherever purpose is.
+  String _purposeWithDims() {
+    final purpose = purposeTextController.text.trim();
+    if (!_useDims || !_dimRowsValid) return purpose;
+    final b = IndentDimensions.breakdown(
+      dimRowLabels.map((e) => e ?? '').toList(),
+      dimRowQty.map((c) => c.text).toList(),
+      unit,
+    );
+    return 'Dimensions: $b (Total ${quantityTextController.text.trim()} $unit)\n$purpose';
+  }
+
+  BoxDecoration _cardDecoration() {
+    return BoxDecoration(
+      gradient: LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [
+          AppTheme.getBackgroundSecondary(context),
+          AppTheme.getBackgroundPrimaryLight(context),
+        ],
+      ),
+      borderRadius: BorderRadius.circular(16),
+      boxShadow: [
+        BoxShadow(
+          color: Colors.black.withOpacity(0.2),
+          blurRadius: 8,
+          offset: Offset(0, 4),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDimensionRows() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (var i = 0; i < dimRowLabels.length; i++)
+          Padding(
+            padding: EdgeInsets.only(bottom: 12),
+            child: Row(
+              children: [
+                Expanded(
+                  flex: 3,
+                  child: Container(
+                    padding: EdgeInsets.symmetric(horizontal: 12),
+                    decoration: _cardDecoration(),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<String>(
+                        isExpanded: true,
+                        value: dimRowLabels[i],
+                        dropdownColor: AppTheme.getBackgroundSecondary(context),
+                        hint: Text('Dimension',
+                            style: TextStyle(color: AppTheme.getTextSecondary(context))),
+                        selectedItemBuilder: (context) => dimensionOptions
+                            .map((d) => Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: Text(d.shortLabel,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                          color: AppTheme.getTextPrimary(context),
+                                          fontSize: 15)),
+                                ))
+                            .toList(),
+                        items: dimensionOptions
+                            .map((d) => DropdownMenuItem<String>(
+                                  value: d.label,
+                                  child: Text(d.label,
+                                      style: TextStyle(
+                                          color: AppTheme.getTextPrimary(context))),
+                                ))
+                            .toList(),
+                        onChanged: (v) => setState(() => dimRowLabels[i] = v),
+                      ),
+                    ),
+                  ),
+                ),
+                SizedBox(width: 10),
+                Expanded(
+                  flex: 2,
+                  child: Container(
+                    decoration: _cardDecoration(),
+                    child: TextFormField(
+                      controller: dimRowQty[i],
+                      keyboardType: TextInputType.numberWithOptions(decimal: true),
+                      style: TextStyle(fontSize: 15, color: AppTheme.getTextPrimary(context)),
+                      onChanged: (_) => setState(_syncDimTotal),
+                      decoration: InputDecoration(
+                        hintText: 'Qty',
+                        hintStyle: TextStyle(color: AppTheme.getTextSecondary(context)),
+                        border: InputBorder.none,
+                        contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                      ),
+                    ),
+                  ),
+                ),
+                IconButton(
+                  icon: Icon(Icons.remove_circle_outline, color: Colors.red.shade300),
+                  tooltip: 'Remove',
+                  onPressed: () => setState(() => _removeDimRow(i)),
+                ),
+              ],
+            ),
+          ),
+        TextButton.icon(
+          onPressed: () => setState(_addDimRow),
+          icon: Icon(Icons.add, color: AppTheme.getPrimaryColor(context)),
+          label: Text('Add',
+              style: TextStyle(color: AppTheme.getPrimaryColor(context), fontWeight: FontWeight.w600)),
+        ),
+        SizedBox(height: 8),
+      ],
+    );
+  }
+
   Widget _buildStep4QuantityUnit() {
     return SingleChildScrollView(
       padding: EdgeInsets.all(20),
@@ -1564,9 +1764,12 @@ class CreateIndentTabState extends State<CreateIndentTab> {
             'Quantity & Unit',
             Icons.scale,
             isCompleted: quantityTextController.text.trim().isNotEmpty && unit != 'Unit',
-            instruction: 'Enter the quantity and select the unit of measurement',
+            instruction: _useDims
+                ? 'Choose a dimension and quantity for each row, then select the unit'
+                : 'Enter the quantity and select the unit of measurement',
           ),
           SizedBox(height: 20),
+          if (_useDims) _buildDimensionRows(),
           Row(
             children: [
               Expanded(
@@ -1593,6 +1796,7 @@ class CreateIndentTabState extends State<CreateIndentTab> {
                   ),
                   child: TextFormField(
                     controller: quantityTextController,
+                    readOnly: _useDims,
                     keyboardType: TextInputType.numberWithOptions(decimal: true),
                     style: TextStyle(
                       fontSize: 16,
@@ -1602,7 +1806,7 @@ class CreateIndentTabState extends State<CreateIndentTab> {
                       setState(() {});
                     },
                     decoration: InputDecoration(
-                      hintText: 'Quantity',
+                      hintText: _useDims ? 'Total' : 'Quantity',
                       hintStyle: TextStyle(color: AppTheme.getTextSecondary(context)),
                       border: InputBorder.none,
                       contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 14),
