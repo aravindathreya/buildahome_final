@@ -1,13 +1,17 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../services/camera_permission.dart';
 import '../chat_v1_api.dart';
 import '../chat_v1_controller.dart';
+import '../chat_v1_dlr_dpr_badge.dart';
 import '../chat_v1_importance.dart';
 import '../chat_v1_mapper.dart';
 import '../chat_v1_mentions.dart';
@@ -69,6 +73,11 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
   final _personalMentionEvents = ChatV1PersonalMentionEvents();
   final _scroll = ScrollController();
   final _stickKey = GlobalKey<Cv1StickToBottomState>();
+  // DLR / DPR pill badge: today's updates not yet opened via the pill.
+  int _dlrDprUnseen = 0;
+  int _dlrDprLatestToday = 0;
+  bool _dlrDprLoading = false;
+  AppLifecycleListener? _dlrDprLifecycle;
   late final _api = widget._apiOverride ?? ChatV1Api.instance;
   late final _socket = widget._socketOverride ?? ChatV1Socket.instance;
 
@@ -173,6 +182,8 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
     _bindSocket();
     if (_isErpTask) _loadErpDetails();
     ChatPushInbox.conversationOpened(_conversationId);
+    _refreshDlrDprBadge();
+    _dlrDprLifecycle = AppLifecycleListener(onResume: _refreshDlrDprBadge);
   }
 
   void _onScroll() {
@@ -976,6 +987,7 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
 
   @override
   void dispose() {
+    _dlrDprLifecycle?.dispose();
     _messenger?.hideCurrentSnackBar();
     _scroll.removeListener(_onScroll);
     _stopMyTyping();
@@ -1318,16 +1330,59 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
         (ctrl.erpProjectId ?? '').isNotEmpty;
   }
 
-  void _openDlrDpr() {
+  /// Counts today's DLR / DPR updates not yet seen. Failures show no badge.
+  Future<void> _refreshDlrDprBadge() async {
+    if (_dlrDprLoading || !_showDlrDpr) return;
+    final projectId = ChatV1Controller.instance.erpProjectId ?? '';
+    if (projectId.isEmpty) return;
+    _dlrDprLoading = true;
+    try {
+      final res = await http
+          .get(Uri.parse(
+              'https://office.buildahome.in/API/view_all_dpr?id=$projectId'))
+          .timeout(const Duration(seconds: 15));
+      if (res.statusCode != 200) return;
+      final decoded = jsonDecode(res.body);
+      if (decoded is! List) return;
+      final prefs = await SharedPreferences.getInstance();
+      final seen = prefs.getInt(dlrDprSeenKey(projectId)) ?? 0;
+      final now = DateTime.now();
+      if (!mounted) return;
+      setState(() {
+        _dlrDprLatestToday = latestTodayDlrDprId(decoded, now);
+        _dlrDprUnseen = unseenTodayDlrDprCount(decoded, now, seen);
+      });
+    } catch (_) {
+      // No badge on errors.
+    } finally {
+      _dlrDprLoading = false;
+    }
+  }
+
+  Future<void> _markDlrDprSeen(String projectId) async {
+    if (mounted && _dlrDprUnseen != 0) setState(() => _dlrDprUnseen = 0);
+    if (_dlrDprLatestToday <= 0) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final key = dlrDprSeenKey(projectId);
+      if ((prefs.getInt(key) ?? 0) < _dlrDprLatestToday) {
+        await prefs.setInt(key, _dlrDprLatestToday);
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _openDlrDpr() async {
     final projectId = ChatV1Controller.instance.erpProjectId;
     if (projectId == null || projectId.isEmpty) return;
-    Navigator.of(context).push(MaterialPageRoute(
+    unawaited(_markDlrDprSeen(projectId));
+    await Navigator.of(context).push(MaterialPageRoute(
       builder: (_) => DprScreen(
         title: 'DLR / DPR',
         readOnly: true,
         projectId: projectId,
       ),
     ));
+    if (mounted) _refreshDlrDprBadge();
   }
 
   @override
@@ -1502,7 +1557,10 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
                   MediaQuery.of(context).padding.bottom,
               child: Tooltip(
                 message: 'DLR / DPR',
-                child: FloatingActionButton.extended(
+                child: Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                FloatingActionButton.extended(
                   heroTag: 'dlr_dpr',
                   backgroundColor: ChatV1Theme.accent,
                   foregroundColor: Colors.white,
@@ -1515,6 +1573,34 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
                     style: TextStyle(
                         fontWeight: FontWeight.w700, fontSize: 13),
                   ),
+                ),
+                if (_dlrDprUnseen > 0)
+                  Positioned(
+                    top: -4,
+                    right: -4,
+                    child: IgnorePointer(
+                      child: Container(
+                        constraints:
+                            const BoxConstraints(minWidth: 20, minHeight: 20),
+                        padding: const EdgeInsets.symmetric(horizontal: 5),
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF25D366),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: Colors.white, width: 1.5),
+                        ),
+                        child: Text(
+                          dlrDprBadgeLabel(_dlrDprUnseen),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  ],
                 ),
               ),
             ),
