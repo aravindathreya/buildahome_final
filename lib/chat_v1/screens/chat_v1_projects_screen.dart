@@ -275,7 +275,11 @@ class _ChatV1ProjectsScreenState extends State<ChatV1ProjectsScreen> {
         ? preview
         : row.client.isNotEmpty
             ? row.client
-            : 'No messages yet';
+            // Only claim "no messages" when summaries loaded and this project
+            // has no chat activity at all; otherwise leave the line blank.
+            : (row.summary == null && _store.byKey.value.isNotEmpty)
+                ? 'No messages yet'
+                : '';
     final accent = _accents[row.name.hashCode.abs() % _accents.length];
     final initial = row.name.trim().isEmpty ? '?' : row.name.trim()[0];
 

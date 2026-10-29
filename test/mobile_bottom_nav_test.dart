@@ -211,7 +211,7 @@ void main() {
       ]);
     });
 
-    test('configured empty still keeps home and more', () {
+    test('configured empty falls back to Home only', () {
       final keys = resolveMobileBottomNavActionKeys(
         surface: MobileBottomNavSurface.staff,
         fallbackKeys: kMobileBottomNavStaffFallback,
@@ -221,7 +221,55 @@ void main() {
           actionKeys: [],
         ),
       );
-      expect(keys, ['home', 'more']);
+      expect(keys, ['home']);
+    });
+
+    test('saved config without Home or More shows neither', () {
+      final keys = resolveMobileBottomNavActionKeys(
+        surface: MobileBottomNavSurface.projectNew,
+        fallbackKeys: kMobileBottomNavProjectFallback,
+        snapshot: const MobileBottomNavSnapshot(
+          surface: MobileBottomNavSurface.projectNew,
+          configured: true,
+          actionKeys: ['my_tasks', 'updates', 'chatbox'],
+        ),
+      );
+      expect(keys, ['my_tasks', 'updates', 'chatbox']);
+    });
+
+    test('saved config can drop only More and keep Home', () {
+      final keys = resolveMobileBottomNavActionKeys(
+        surface: MobileBottomNavSurface.staff,
+        fallbackKeys: kMobileBottomNavStaffFallback,
+        snapshot: const MobileBottomNavSnapshot(
+          surface: MobileBottomNavSurface.staff,
+          configured: true,
+          actionKeys: ['home', 'my_tasks', 'projects'],
+        ),
+      );
+      expect(keys, ['home', 'my_tasks', 'projects']);
+    });
+
+    test('saved config can drop only Home and keep More', () {
+      final keys = resolveMobileBottomNavActionKeys(
+        surface: MobileBottomNavSurface.staff,
+        fallbackKeys: kMobileBottomNavStaffFallback,
+        snapshot: const MobileBottomNavSnapshot(
+          surface: MobileBottomNavSurface.staff,
+          configured: true,
+          actionKeys: ['my_tasks', 'projects', 'more'],
+        ),
+      );
+      expect(keys, ['my_tasks', 'projects', 'more']);
+    });
+
+    test('unconfigured role keeps default Home and More', () {
+      final keys = resolveMobileBottomNavActionKeys(
+        surface: MobileBottomNavSurface.staff,
+        fallbackKeys: kMobileBottomNavStaffFallback,
+      );
+      expect(keys.first, 'home');
+      expect(keys.last, 'more');
     });
 
     test('saved project bar keeps Daily Updates and Chat without adding Payments', () {

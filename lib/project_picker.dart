@@ -6,7 +6,9 @@ import 'chat_v1/chat_v1_api.dart';
 import 'chat_v1/chat_v1_app.dart';
 import 'chat_v1/chat_v1_mapper.dart';
 import 'chat_v1/chat_v1_utils.dart';
+import 'ProjectStatusScreen.dart';
 import 'services/data_provider.dart';
+import 'services/upcoming_sop_projects.dart';
 import 'services/project_open_timing.dart';
 import 'widgets/opening_project_splash.dart';
 import 'widgets/searchable_select.dart';
@@ -80,7 +82,13 @@ class ProjectPickerScreen {
     try {
       final provider = DataProvider();
       // Open immediately with whatever is already cached from app startup.
-      List<dynamic> projects = List<dynamic>.from(provider.projects);
+      // Upcoming (unconverted) SOP rows only in the normal open-project picker.
+      final showUpcoming = openHomeOnSelect && !forChat;
+      List<dynamic> withUpcoming() => [
+            ...provider.projects,
+            if (showUpcoming) ...provider.upcomingSopProjects,
+          ];
+      List<dynamic> projects = withUpcoming();
       bool loading = projects.isEmpty;
       Map<String, ChatProjectUnread> unreadByKey = const {};
 
@@ -94,7 +102,7 @@ class ProjectPickerScreen {
                 provider.lastProjectsLoad == null,
           );
         } catch (_) {}
-        return List<dynamic>.from(provider.projects);
+        return withUpcoming();
       }();
 
       refreshFuture.then((loaded) {
@@ -339,6 +347,8 @@ class ProjectPickerScreen {
                                       final projectName =
                                           project['name']?.toString() ??
                                               'Unnamed Project';
+                                      final isUpcoming =
+                                          isUpcomingSopRow(project);
                                       final clientName =
                                           project['client_name']?.toString();
                                       final accents = const [
@@ -386,6 +396,31 @@ class ProjectPickerScreen {
                                           color: Colors.transparent,
                                           child: InkWell(
                                             onTap: () async {
+                                              if (isUpcoming) {
+                                                final sopId = project[
+                                                        'sales_sop_id']
+                                                    ?.toString();
+                                                isClosing = true;
+                                                FocusManager
+                                                    .instance.primaryFocus
+                                                    ?.unfocus();
+                                                searchController.clear();
+                                                Navigator.pop(sheetContext);
+                                                if (!parentContext.mounted) {
+                                                  return;
+                                                }
+                                                // Read-only SOP view; never set project_id.
+                                                await Navigator.of(
+                                                        parentContext)
+                                                    .push(MaterialPageRoute(
+                                                  builder: (_) =>
+                                                      ProjectStatusScreen(
+                                                    salesSopId: sopId,
+                                                    ignoreStoredProjectId: true,
+                                                  ),
+                                                ));
+                                                return;
+                                              }
                                               if (projectId == null) return;
 
                                               isClosing = true;
@@ -529,6 +564,11 @@ class ProjectPickerScreen {
                                                                         TextOverflow
                                                                             .ellipsis,
                                                                   ),
+                                                                  if (isUpcoming) ...[
+                                                                    const SizedBox(
+                                                                        height: 4),
+                                                                    const _UpcomingBadge(),
+                                                                  ],
                                                                   if (clientName !=
                                                                           null &&
                                                                       clientName
@@ -803,4 +843,28 @@ ChatProjectUnread _projectUnread(
     conversation: newest.conversation,
     lastActivity: newest.lastActivity,
   );
+}
+
+class _UpcomingBadge extends StatelessWidget {
+  const _UpcomingBadge();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF97316).withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: const Color(0xFFF97316)),
+      ),
+      child: const Text(
+        'Upcoming',
+        style: TextStyle(
+          color: Color(0xFFF97316),
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
 }

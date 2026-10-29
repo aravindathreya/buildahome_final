@@ -393,13 +393,18 @@ class UserDashboardLayoutState extends State<UserDashboardLayout> {
       // Docs is not on the project home bottom bar (use quick actions).
       keys = withoutProjectHomeDocsTabs(keys);
     }
-    // "For me" stays on project home for every role (clients + staff).
-    keys = ensureProjectHomeForMeTab(keys);
+    // "For me" / Docs is added only when no saved config exists. A saved
+    // Mobile Bottom Nav config is authoritative, so admins can remove it.
+    if (snapshot?.configured != true) {
+      keys = ensureProjectHomeForMeTab(keys);
+    }
     // Clients have no side drawer, so the More tab is not shown even when a
     // saved bottom-nav config includes it.
     if (_layoutIsClientUser) {
       keys = keys.where((key) => key != kMobileBottomNavMoreKey).toList();
     }
+    // Never paint an empty bar (e.g. a client whose saved bar was only More).
+    if (keys.isEmpty) keys = [kMobileBottomNavHomeKey];
     final previous = _lastLoggedBottomNavKeys;
     if (previous == null ||
         previous.length != keys.length ||

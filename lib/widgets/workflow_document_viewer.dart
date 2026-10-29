@@ -11,6 +11,7 @@ import '../models/workflow_document.dart';
 import '../services/authenticated_document_fetcher.dart';
 import '../services/document_file_download.dart';
 import '../services/document_byte_cache.dart';
+import '../services/document_file_type.dart';
 import '../services/document_file_share_stub.dart'
     if (dart.library.io) '../services/document_file_share_io.dart';
 import 'native_pdf_view.dart';
@@ -436,44 +437,101 @@ class _WorkflowDocumentViewerScreenState
         ],
       );
     }
+    return _buildFileCard(bytes);
+  }
+
+  /// Card for files the app cannot render (e.g. .dwg): name, type and
+  /// actions that hand the real file (with its extension) to other apps.
+  Widget _buildFileCard(Uint8List bytes) {
+    final fileName = _downloadName();
+    final ext = detectDocumentExtension(
+      name: fileName,
+      url: widget.document.url,
+    );
+    final mime = _result?.contentType.isNotEmpty == true
+        ? _result!.contentType
+        : widget.document.contentType;
+    void share() {
+      final box = context.findRenderObject();
+      final origin = box is RenderBox && box.hasSize
+          ? box.localToGlobal(Offset.zero) & box.size
+          : null;
+      shareDocumentBytes(
+        bytes: bytes,
+        fileName: fileName,
+        mimeType: mime,
+        sharePositionOrigin: origin,
+      );
+    }
+
+    final secondary = AppTheme.getTextSecondary(context);
     return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(28),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.insert_drive_file_outlined,
-              size: 56,
-              color: AppTheme.getTextSecondary(context),
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(24),
+        child: Card(
+          elevation: 2,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  ext == 'dwg' || ext == 'dxf'
+                      ? Icons.architecture_rounded
+                      : Icons.insert_drive_file_outlined,
+                  size: 56,
+                  color: AppTheme.navy,
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  fileName,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 16,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  documentTypeLabel(ext),
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: secondary, fontSize: 14),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'This file opens in another app on your phone '
+                  '(for example an AutoCAD/DWG viewer for drawings).',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: secondary, fontSize: 13),
+                ),
+                const SizedBox(height: 20),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: share,
+                    icon: const Icon(Icons.open_in_new_rounded),
+                    label: const Text('Open in another app'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppTheme.navy,
+                      foregroundColor: Colors.white,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: share,
+                    icon: const Icon(Icons.ios_share_rounded),
+                    label: const Text('Share / Save'),
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 16),
-            Text(
-              'This file type has no preview in the app. Open it with an app on your phone.',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: AppTheme.getTextSecondary(context),
-                fontWeight: FontWeight.w600,
-                fontSize: 15,
-              ),
-            ),
-            const SizedBox(height: 20),
-            ElevatedButton.icon(
-              onPressed: () => shareDocumentBytes(
-                bytes: bytes,
-                fileName: _downloadName(),
-                mimeType: _result?.contentType.isNotEmpty == true
-                    ? _result!.contentType
-                    : widget.document.contentType,
-              ),
-              icon: const Icon(Icons.open_in_new_rounded),
-              label: const Text('Open with…'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.navy,
-                foregroundColor: Colors.white,
-              ),
-            ),
-          ],
+          ),
         ),
       ),
     );
@@ -483,11 +541,18 @@ class _WorkflowDocumentViewerScreenState
     final path = (widget.document.url ?? '').split('?').first;
     final slash = path.lastIndexOf('/');
     final fromUrl = slash >= 0 ? Uri.decodeComponent(path.substring(slash + 1)) : '';
-    final title = widget.document.displayTitle.trim();
-    if (title.contains('.')) return title;
-    final dot = fromUrl.lastIndexOf('.');
-    final ext = dot >= 0 ? fromUrl.substring(dot) : '';
-    return title.isEmpty ? (fromUrl.isEmpty ? 'document' : fromUrl) : '$title$ext';
+    final title = widget.document.displayTitle
+        .trim()
+        .replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
+    if (knownExtensionOf(title).isNotEmpty) return title;
+    final ext = detectDocumentExtension(
+      name: widget.document.name,
+      url: widget.document.url,
+    );
+    if (title.isEmpty) {
+      return fromUrl.isEmpty ? ensureFileExtension('document', ext) : fromUrl;
+    }
+    return ensureFileExtension(title, ext);
   }
 
   void _toggleFullscreen() {

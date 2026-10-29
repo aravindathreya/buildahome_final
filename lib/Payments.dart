@@ -21,6 +21,30 @@ enum PaymentCategory {
   nonTender,
 }
 
+/// Pending total after netting off an advance: never below 0; a zero or
+/// negative advance leaves the due total unchanged.
+double pendingAfterAdvance(double dueTotal, double advance) {
+  if (advance <= 0) return dueTotal;
+  final left = dueTotal - advance;
+  return left > 0 ? left : 0;
+}
+
+/// Advance left over once every due bill is covered; 0 unless advance > due.
+double extraPaidAfterAdvance(double dueTotal, double advance) {
+  if (advance <= 0) return 0;
+  final extra = advance - (dueTotal > 0 ? dueTotal : 0);
+  return extra > 0 ? extra : 0;
+}
+
+/// Parses get_payment's advance fields; absent / non-numeric / negative = 0.
+double parsePaymentAdvance(dynamic raw) {
+  if (raw == null) return 0;
+  final v = raw is num
+      ? raw.toDouble()
+      : double.tryParse(raw.toString().replaceAll(RegExp('[^0-9\\.\\-]'), '')) ?? 0;
+  return v.isFinite && v > 0 ? v : 0;
+}
+
 /// Snapshot of tender + non-tender payment data for a project.
 class ProjectPaymentsSnapshot {
   final PaymentSummary tenderSummary;
@@ -520,6 +544,7 @@ Future<ProjectPaymentsSnapshot> fetchProjectPaymentsSnapshot(
     value: (summary['value'] ?? '0').toString(),
     totalPaid: (summary['total_paid'] ?? '0').toString(),
     outstanding: (summary['outstanding'] ?? '0').toString(),
+    advance: parsePaymentAdvance(summary['advance_payment']),
     signedOutstanding: _paymentDisplayFlag(summary, 'show_negative_outstanding'),
   );
 
@@ -527,6 +552,7 @@ Future<ProjectPaymentsSnapshot> fetchProjectPaymentsSnapshot(
     value: (summary['nt_value'] ?? summary['value'] ?? '0').toString(),
     totalPaid: (summary['nt_total_paid'] ?? '0').toString(),
     outstanding: (summary['nt_outstanding'] ?? '0').toString(),
+    advance: parsePaymentAdvance(summary['nt_advance_payment']),
     signedOutstanding: _paymentDisplayFlag(summary, 'show_negative_outstanding'),
   );
 
@@ -828,6 +854,7 @@ class _PaymentsDashboardState extends State<PaymentsDashboard> {
         value: (summary['value'] ?? '0').toString(),
         totalPaid: (summary['total_paid'] ?? '0').toString(),
         outstanding: (summary['outstanding'] ?? '0').toString(),
+        advance: parsePaymentAdvance(summary['advance_payment']),
         signedOutstanding: _paymentDisplayFlag(summary, 'show_negative_outstanding'),
       );
 
@@ -835,6 +862,7 @@ class _PaymentsDashboardState extends State<PaymentsDashboard> {
         value: (summary['nt_value'] ?? summary['value'] ?? '0').toString(),
         totalPaid: (summary['nt_total_paid'] ?? '0').toString(),
         outstanding: (summary['nt_outstanding'] ?? '0').toString(),
+        advance: parsePaymentAdvance(summary['nt_advance_payment']),
         signedOutstanding: _paymentDisplayFlag(summary, 'show_negative_outstanding'),
       );
 
@@ -1063,10 +1091,14 @@ class _PaymentsDashboardState extends State<PaymentsDashboard> {
     for (var i = 0; i < sections.length; i++) {
       final section = sections[i];
       final isLast = i == sections.length - 1;
-      final amount = section.items.fold<double>(
+      final itemsTotal = section.items.fold<double>(
         0,
         (sum, item) => sum + item.resolvedAmount(summary),
       );
+      // Pending heading nets off the NT advance, like the Pending card.
+      final amount = section.title == 'Pending'
+          ? pendingAfterAdvance(itemsTotal, summary.advance)
+          : itemsTotal;
 
       slivers.add(
         SliverPadding(
@@ -1311,10 +1343,13 @@ class _PaymentsDashboardState extends State<PaymentsDashboard> {
 
     if (isNonTender) {
       final pendingItems = _currentItems.where((item) => item.isPending).toList();
-      final pendingAmount = pendingItems.fold<double>(
+      final dueTotal = pendingItems.fold<double>(
         0,
         (sum, item) => sum + item.resolvedAmount(summary),
       );
+      // Bill rows keep their real amounts; only the total nets off the advance.
+      final pendingAmount = pendingAfterAdvance(dueTotal, summary.advance);
+      final extraPaid = extraPaidAfterAdvance(dueTotal, summary.advance);
 
       return Wrap(
         spacing: 16,
@@ -1347,6 +1382,8 @@ class _PaymentsDashboardState extends State<PaymentsDashboard> {
                 ? 'No items due'
                 : '${pendingItems.length} item${pendingItems.length == 1 ? '' : 's'} due now',
             value: _formatCurrency(pendingAmount),
+            note: extraPaid > 0.5 ? 'Extra paid ${_formatCurrency(extraPaid)}' : null,
+            noteColor: Colors.green[700],
             icon: Icons.pending_actions,
             valueColor: Colors.red[700],
             gradient: const [
@@ -1961,7 +1998,11 @@ class PaymentSummary {
     required this.totalPaid,
     required this.outstanding,
     this.signedOutstanding = true,
+    this.advance = 0,
   });
+
+  /// Advance already received (get_payment advance_payment / nt_advance_payment).
+  final double advance;
 
   /// Server flag display_flags.show_negative_outstanding (default on).
   final bool signedOutstanding;
@@ -2080,6 +2121,20 @@ Color _iconOnChip(Color background) {
       : Colors.white;
 }
 
+/// Test hook: the NT Pending summary card exactly as the Payments page builds it.
+@visibleForTesting
+Widget debugNtPendingSummaryCard({required String value, String? note}) =>
+    _SummaryCard(
+      title: 'Pending',
+      subtitle: '4 items due now',
+      value: value,
+      note: note,
+      noteColor: Colors.green[700],
+      icon: Icons.pending_actions,
+      valueColor: Colors.red[700],
+      gradient: const [Color(0xFF3F1D24), Color(0xFF7F1D1D)],
+    );
+
 class _SummaryCard extends StatelessWidget {
   final String title;
   final String subtitle;
@@ -2087,6 +2142,8 @@ class _SummaryCard extends StatelessWidget {
   final IconData icon;
   final List<Color> gradient;
   final Color? valueColor;
+  final String? note;
+  final Color? noteColor;
 
   const _SummaryCard({
     required this.title,
@@ -2095,12 +2152,15 @@ class _SummaryCard extends StatelessWidget {
     required this.icon,
     required this.gradient,
     this.valueColor,
+    this.note,
+    this.noteColor,
   });
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: 150,
+      // Min height keeps cards aligned; grows for large text or the extra note.
+      constraints: const BoxConstraints(minHeight: 150),
       width: (MediaQuery.of(context).size.width - 60) / 2,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -2161,6 +2221,15 @@ class _SummaryCard extends StatelessWidget {
               color: valueColor ?? AppTheme.getTextPrimary(context),
             ),
           ),
+          if (note != null)
+            Text(
+              note!,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: noteColor ?? AppTheme.getTextSecondary(context),
+              ),
+            ),
           SizedBox(height: 4),
           Text(
             subtitle,

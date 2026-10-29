@@ -739,12 +739,18 @@ class _CreateRequestPageState extends State<CreateRequestPage> {
     }
   }
 
+  static const String _otherDrawingChoice = '__other_drawing__';
+
   Future<void> _openDrawingSelector(BuildContext context) async {
     final drawings = widget.drawingsSet[widget.category] ?? [];
-    final selectedDrawing = await _openDrawingSelectionDialog(
+    var selectedDrawing = await _openDrawingSelectionDialog(
       context,
       drawings: drawings,
     );
+    if (selectedDrawing == _otherDrawingChoice) {
+      if (!mounted) return;
+      selectedDrawing = await _showOtherDrawingDialog(context);
+    }
 
     if (selectedDrawing != null && selectedDrawing.isNotEmpty) {
       widget.onDrawingChanged(selectedDrawing);
@@ -905,37 +911,8 @@ class _CreateRequestPageState extends State<CreateRequestPage> {
                         constraints: BoxConstraints(
                           maxHeight: MediaQuery.of(context).size.height * 0.4,
                         ),
-                        child: filteredDrawings.isEmpty
-                            ? Padding(
-                                padding: EdgeInsets.all(40),
-                                child: Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(
-                                      Icons.search_off,
-                                      size: 48,
-                                      color: AppTheme.textSecondary,
-                                    ),
-                                    SizedBox(height: 16),
-                                    Text(
-                                      'No drawings found',
-                                      style: TextStyle(
-                                        color: AppTheme.textPrimary,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                    SizedBox(height: 8),
-                                    Text(
-                                      'Try a different search term',
-                                      style: TextStyle(
-                                        color: AppTheme.textSecondary,
-                                        fontSize: 13,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              )
-                            : ListView.separated(
+                        // Keep "Other" reachable even when the search matches nothing.
+                        child: ListView.separated(
                                 shrinkWrap: true,
                                 padding: EdgeInsets.symmetric(horizontal: 20),
                                 itemCount: filteredDrawings.length + 1,
@@ -945,15 +922,9 @@ class _CreateRequestPageState extends State<CreateRequestPage> {
                                     return Material(
                                       color: Colors.transparent,
                                       child: InkWell(
-                                        onTap: () async {
-                                          Navigator.of(context).pop();
-                                          final customDrawing =
-                                              await _showOtherDrawingDialog(context);
-                                          if (customDrawing != null &&
-                                              customDrawing.isNotEmpty) {
-                                            Navigator.of(context).pop(customDrawing);
-                                          }
-                                        },
+                                        // Close the picker first; the name box opens from the screen.
+                                        onTap: () => Navigator.of(context)
+                                            .pop(_otherDrawingChoice),
                                         borderRadius: BorderRadius.circular(14),
                                         child: Container(
                                           padding: EdgeInsets.all(16),

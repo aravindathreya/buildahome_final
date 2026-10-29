@@ -89,6 +89,7 @@ class _UploadPaymentProofScreenState extends State<UploadPaymentProofScreen>
   String? _pendingError;
   List<PendingPaymentRow> _pendingPayments = [];
   double _pendingTotal = 0;
+  double _ntAdvance = 0;
   List<PaymentBillRef> _billRefs = const [];
 
   @override
@@ -137,6 +138,7 @@ class _UploadPaymentProofScreenState extends State<UploadPaymentProofScreen>
       setState(() {
         _pendingPayments = snapshot.pendingPaymentRows;
         _pendingTotal = snapshot.totalOutstanding;
+        _ntAdvance = snapshot.nonTenderSummary.advance;
         _pendingLoading = false;
         _pendingError = null;
       });
@@ -278,10 +280,19 @@ class _UploadPaymentProofScreenState extends State<UploadPaymentProofScreen>
   List<PendingPaymentRow> get _visiblePendingPayments =>
       widget.showPendingPayments ? _allocatedPending.rows : _pendingPayments;
 
-  double get _visiblePendingTotal => _visiblePendingPayments.fold<double>(
-        0,
-        (sum, row) => sum + row.amount,
-      );
+  /// Same as the Payments page: NT due rows net off the NT advance (capped).
+  double get _visiblePendingTotal {
+    var tender = 0.0;
+    var nonTender = 0.0;
+    for (final row in _visiblePendingPayments) {
+      if (row.isTender) {
+        tender += row.amount;
+      } else {
+        nonTender += row.amount;
+      }
+    }
+    return tender + pendingAfterAdvance(nonTender, _ntAdvance);
+  }
 
   List<PaymentProofItem> get _proofsVisibleInGallery =>
       _items.where(_showProofInGallery).toList();

@@ -24,6 +24,7 @@ import '../widgets/chat_v1_composer.dart';
 import '../widgets/chat_v1_message_bubble.dart';
 import 'chat_v1_group_info_screen.dart';
 import 'chat_v1_task_details_sheet.dart';
+import '../../Dpr.dart';
 import '../../user_facing_error.dart';
 
 /// The visible conversation must retain the same confirmed metadata as its cache.
@@ -226,8 +227,20 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
         ..sort((a, b) => a.sentAt.compareTo(b.sentAt));
       if (!mounted) return;
 
+      // Drop cached rows the server no longer returns in the fetched window
+      // (deleted, or an Important copy removed by unmark) so they do not stick.
+      final fetchedIds = {for (final m in mapped) m.id};
+      final oldestFetched = mapped.isEmpty ? null : mapped.first.sentAt;
+      final fullHistory = rows.length < 50;
+      final cachedKept = _messages
+          .where((m) =>
+              fetchedIds.contains(m.id) ||
+              (!fullHistory &&
+                  oldestFetched != null &&
+                  m.sentAt.isBefore(oldestFetched)))
+          .toList();
       var merged = _enrichReplyPreviews(
-        hadCache ? ctrl.mergeConversationMessages(_messages, mapped) : mapped,
+        hadCache ? ctrl.mergeConversationMessages(cachedKept, mapped) : mapped,
       );
       final focusId = (widget.meta.focusMessageId ?? '').trim();
       if (focusId.isNotEmpty && !merged.any((m) => m.id == focusId)) {
@@ -1073,6 +1086,25 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
     _stopMyTyping();
     try {
       final parentId = int.tryParse(replyParentId ?? '');
+      // Upload the file BEFORE creating the message. Creating first left a
+      // permanent text-only "Uploaded: <name>" message when the upload then
+      // failed (expired session, network, timeout) with no file behind it.
+      var url = '';
+      var name = fileName ?? '';
+      if (hasFile) {
+        final upload = await _api.uploadDiscussionAttachment(
+          bytes: fileBytes,
+          fileName: fileName,
+        );
+        url = ChatV1Utils.resolveMediaUrl(
+          discussionUploadUrl(upload) ?? '',
+        );
+        name = (upload?['filename'] ?? upload?['file_name'] ?? fileName)
+            .toString();
+        if (url.isEmpty) {
+          throw ChatV1ApiException('File upload failed. Please try again.');
+        }
+      }
       // Persist once through REST. A socket ACK can be lost after the server
       // has committed; retrying that write over REST would create a duplicate.
       // Socket events still deliver the saved message to all live participants.
@@ -1100,15 +1132,6 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
         );
       }
       if (hasFile) {
-        final upload = await _api.uploadDiscussionAttachment(
-          bytes: fileBytes,
-          fileName: fileName,
-        );
-        final url = ChatV1Utils.resolveMediaUrl(
-          discussionUploadUrl(upload) ?? '',
-        );
-        final name = (upload?['filename'] ?? upload?['file_name'] ?? fileName)
-            .toString();
         if (url.isNotEmpty) {
           final contentType = _guessContentType(name);
           await _api.attachMessageFiles(mapped.id, [
@@ -1286,6 +1309,27 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
     await _send(fileBytes: f.bytes, fileName: f.name);
   }
 
+  /// DLR / DPR shortcut: project Internal channel, staff only.
+  bool get _showDlrDpr {
+    final ctrl = ChatV1Controller.instance;
+    return !widget.meta.isTask &&
+        widget.meta.title.trim() == 'Internal' &&
+        !ctrl.viewerIsClient &&
+        (ctrl.erpProjectId ?? '').isNotEmpty;
+  }
+
+  void _openDlrDpr() {
+    final projectId = ChatV1Controller.instance.erpProjectId;
+    if (projectId == null || projectId.isEmpty) return;
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => DprScreen(
+        title: 'DLR / DPR',
+        readOnly: true,
+        projectId: projectId,
+      ),
+    ));
+  }
+
   @override
   Widget build(BuildContext context) {
     final meta = widget.meta;
@@ -1449,6 +1493,31 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
               ),
             ],
           ),
+          // Floating DLR / DPR button (WhatsApp-style), above composer and
+          // jump-to-bottom button; hidden while the keyboard is open.
+          if (_showDlrDpr && MediaQuery.of(context).viewInsets.bottom == 0)
+            Positioned(
+              right: 14,
+              bottom: (_showJump ? 128 : 76) +
+                  MediaQuery.of(context).padding.bottom,
+              child: Tooltip(
+                message: 'DLR / DPR',
+                child: FloatingActionButton.extended(
+                  heroTag: 'dlr_dpr',
+                  backgroundColor: ChatV1Theme.accent,
+                  foregroundColor: Colors.white,
+                  elevation: 4,
+                  extendedPadding: const EdgeInsets.symmetric(horizontal: 14),
+                  onPressed: _openDlrDpr,
+                  icon: const Icon(Icons.engineering_rounded, size: 20),
+                  label: const Text(
+                    'DLR/DPR',
+                    style: TextStyle(
+                        fontWeight: FontWeight.w700, fontSize: 13),
+                  ),
+                ),
+              ),
+            ),
           if (_showJump)
             Positioned(
               right: 14,

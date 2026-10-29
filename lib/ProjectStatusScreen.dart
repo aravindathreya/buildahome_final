@@ -17,7 +17,14 @@ import 'user_facing_error.dart';
 class ProjectStatusScreen extends StatefulWidget {
   final String? salesSopId;
 
-  const ProjectStatusScreen({super.key, this.salesSopId});
+  /// Upcoming (unconverted) SOP view: do not send the stored ERP project_id.
+  final bool ignoreStoredProjectId;
+
+  const ProjectStatusScreen({
+    super.key,
+    this.salesSopId,
+    this.ignoreStoredProjectId = false,
+  });
 
   /// Sync entry from menus — resolve sales_sop_id without awaiting network.
   static ProjectStatusScreen openQuick({
@@ -188,7 +195,9 @@ class _ProjectStatusScreenState extends State<ProjectStatusScreen>
       throw Exception('Not signed in');
     }
 
-    final projectId = prefs.getString('project_id')?.trim() ?? '';
+    final projectId = widget.ignoreStoredProjectId
+        ? ''
+        : prefs.getString('project_id')?.trim() ?? '';
     final userId = (prefs.getString('userId') ?? prefs.getString('user_id'))
             ?.trim() ??
         '';

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'upcoming_sop_projects.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -17,6 +18,10 @@ class DataProvider {
 
   // For non-Client users: list of projects
   List<dynamic> projects = [];
+
+  /// Unconverted Sales SOPs (Architect roles): {id: null, sales_sop_id, is_upcoming}.
+  /// Kept separate from [projects] so consumers that need an ERP id are unaffected.
+  List<dynamic> upcomingSopProjects = [];
   bool projectsLoading = false;
   DateTime? lastProjectsLoad;
 
@@ -174,6 +179,7 @@ class DataProvider {
         "user_id": currentUserId!,
         "role": currentRole!,
         "api_token": currentApiToken!,
+        "include_upcoming_sops": "1",
       };
       print('[DataProvider] Loading projects with $payload');
       var response = await ApiHttp.post(
@@ -187,7 +193,9 @@ class DataProvider {
         final decoded = jsonDecode(response.body);
         // Ensure we're getting a list
         if (decoded is List) {
-          projects = decoded;
+          final split = splitUpcomingSopRows(decoded);
+          projects = split.projects;
+          upcomingSopProjects = split.upcoming;
         } else {
           projects = [];
           print('[DataProvider] Unexpected response format: $decoded');

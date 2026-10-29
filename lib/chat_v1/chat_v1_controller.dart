@@ -464,6 +464,9 @@ class ChatV1Controller extends ChangeNotifier {
   /// ERP project the loaded channel / group lists belong to.
   String? _listsErpProjectId;
 
+  /// ERP project id of the loaded project chat (null until loaded).
+  String? get erpProjectId => _listsErpProjectId;
+
   void _clearProjectLists() {
     channels = [];
     customGroups = [];

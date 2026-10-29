@@ -3,6 +3,8 @@ import 'dart:typed_data';
 
 import 'package:path_provider/path_provider.dart';
 
+import 'document_file_type.dart';
+
 /// On-device copies of documents so the next open skips the network.
 class DocumentByteStore {
   static const int _maxFiles = 8;
@@ -23,7 +25,9 @@ class DocumentByteStore {
     for (final unit in key.codeUnits) {
       hash = 0x7fffffff & ((hash * 33) ^ unit);
     }
-    return 'doc_$hash.bin';
+    // Keep the real extension (e.g. .dwg) so the cached copy is usable.
+    final ext = knownExtensionOf(key);
+    return 'doc_$hash.${ext.isEmpty ? 'bin' : ext}';
   }
 
   static Future<File> _file(String key) async {

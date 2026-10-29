@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/workflow_document.dart';
 import 'authenticated_document_fetcher.dart';
+import 'document_file_type.dart';
 import 'document_file_share_stub.dart'
     if (dart.library.io) 'document_file_share_io.dart';
 
@@ -98,9 +99,9 @@ String documentDownloadFileName(
   if (name.isEmpty) name = document.displayTitle.trim();
   name = name.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
   if (name.isEmpty) name = 'document';
-  if (!name.contains('.')) {
+  if (knownExtensionOf(name).isEmpty) {
     final ext = _extensionFor(document, contentType);
-    if (ext.isNotEmpty) name = '$name.$ext';
+    if (ext.isNotEmpty) name = ensureFileExtension(name, ext);
   }
   if (name.length > 120) {
     final dot = name.lastIndexOf('.');
@@ -115,15 +116,12 @@ String documentDownloadFileName(
 }
 
 String _extensionFor(WorkflowDocumentUpload document, String contentType) {
-  final urlName = (document.url ?? '').split('?').first;
-  final slash = urlName.lastIndexOf('/');
-  final leaf = slash >= 0 ? urlName.substring(slash + 1) : urlName;
-  final dot = leaf.lastIndexOf('.');
-  if (dot > 0 && leaf.length - dot <= 8) {
-    return leaf.substring(dot + 1).toLowerCase();
-  }
+  final known = detectDocumentExtension(url: document.url);
+  if (known.isNotEmpty) return known;
   final mime = contentType.toLowerCase();
   if (document.isPdf || mime.contains('pdf')) return 'pdf';
+  if (mime.contains('dxf')) return 'dxf';
+  if (mime.contains('acad') || mime.contains('dwg')) return 'dwg';
   if (mime.contains('png')) return 'png';
   if (mime.contains('webp')) return 'webp';
   if (mime.contains('jpeg') || mime.contains('jpg') || document.isImage) {

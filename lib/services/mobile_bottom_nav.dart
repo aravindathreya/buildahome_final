@@ -537,8 +537,10 @@ MobileBottomNavSnapshot? parseMobileBottomNavPayload(
 /// Apply backend visibility/order on top of the hardcoded fallback bar.
 ///
 /// * No snapshot / `configured != true` → [fallbackKeys].
-/// * `configured == true` → `home` first, middle keys in backend order,
-///   `more` last. Unknown / surface-invalid keys skipped. Cap at 7 tabs.
+/// * `configured == true` → exactly the saved tabs. `home` (first) and
+///   `more` (last) appear only when the saved config includes them, so
+///   admins can remove either. Unknown / surface-invalid keys skipped.
+///   Cap at 7 tabs. If nothing usable is left, the bar falls back to Home.
 List<String> resolveMobileBottomNavActionKeys({
   required MobileBottomNavSurface surface,
   required List<String> fallbackKeys,
@@ -553,8 +555,16 @@ List<String> resolveMobileBottomNavActionKeys({
   final allowed = catalogKeys ?? kMobileBottomNavCanonicalKeys;
   final resolved = <String>[];
   final seen = <String>{};
-  // Home + More always consume two slots when present.
-  final middleBudget = kMobileBottomNavHardMaxTabs - 2;
+  final saved = snapshot.actionKeys
+      .map(canonicalizeMobileBottomNavKey)
+      .where((key) => key.isNotEmpty)
+      .toSet();
+  final wantsHome = saved.contains(kMobileBottomNavHomeKey);
+  final wantsMore = saved.contains(kMobileBottomNavMoreKey);
+  // Home / More consume a slot only when the saved config includes them.
+  final middleBudget = kMobileBottomNavHardMaxTabs -
+      (wantsHome ? 1 : 0) -
+      (wantsMore ? 1 : 0);
   var middleCount = 0;
 
   void addIfAllowed(String key, {required bool isMiddle}) {
@@ -568,7 +578,7 @@ List<String> resolveMobileBottomNavActionKeys({
     resolved.add(key);
   }
 
-  addIfAllowed(kMobileBottomNavHomeKey, isMiddle: false);
+  if (wantsHome) addIfAllowed(kMobileBottomNavHomeKey, isMiddle: false);
 
   for (final rawKey in snapshot.actionKeys) {
     final canonical = canonicalizeMobileBottomNavKey(rawKey);
@@ -577,7 +587,9 @@ List<String> resolveMobileBottomNavActionKeys({
     addIfAllowed(canonical, isMiddle: true);
   }
 
-  addIfAllowed(kMobileBottomNavMoreKey, isMiddle: false);
+  if (wantsMore) addIfAllowed(kMobileBottomNavMoreKey, isMiddle: false);
+  // Never paint an empty bar: everything removed falls back to Home.
+  if (resolved.isEmpty) return [kMobileBottomNavHomeKey];
   return resolved;
 }
 

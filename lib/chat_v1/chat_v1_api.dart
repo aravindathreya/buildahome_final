@@ -1016,6 +1016,7 @@ class ChatProjectUnread {
     final counted = <String, Set<String>>{};
     final open = <String, Map<String, dynamic>>{};
     final activity = <String, DateTime>{};
+    final withMessage = <String>{};
     for (final row in rows) {
       final unread = rowUnread(row);
       final when = _activityAt(row);
@@ -1028,10 +1029,18 @@ class ChatProjectUnread {
             totals[key] = (totals[key] ?? 0) + unread;
           }
         }
+        // Prefer a conversation that actually has a message: an empty
+        // channel (or one whose updated_at was bumped by a read) must not
+        // replace the latest real message preview for the project.
+        final hasMessage = _hasLastMessage(row);
         final previous = activity[key];
-        if (previous == null || !when.isBefore(previous)) {
+        final previousHasMessage = withMessage.contains(key);
+        if (previous == null ||
+            (hasMessage && !previousHasMessage) ||
+            (hasMessage == previousHasMessage && !when.isBefore(previous))) {
           activity[key] = when;
           open[key] = row;
+          if (hasMessage) withMessage.add(key);
         }
       }
     }
@@ -1109,6 +1118,13 @@ class ChatProjectUnread {
       }
     }
     return keys;
+  }
+
+  static bool _hasLastMessage(Map<String, dynamic> row) {
+    final last = row['last_message'];
+    if (last is Map) return last.isNotEmpty;
+    final at = row['last_message_at']?.toString().trim() ?? '';
+    return at.isNotEmpty && at.toLowerCase() != 'null';
   }
 
   static DateTime _activityAt(Map<String, dynamic> row) {
