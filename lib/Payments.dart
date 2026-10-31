@@ -328,12 +328,28 @@ class AllocatedPendingPayments {
 AllocatedPendingPayments allocateFinanceApprovedPayments({
   required List<PendingPaymentRow> rows,
   required List<PaymentProofItem> proofs,
+  double paidDesignDevelopmentAmount = 0,
 }) {
+  // When the Design Development & Construction Advance bill is already Paid,
+  // the conversion advance screenshots were spent on it; do not deduct them
+  // from the remaining bills again. Old servers do not flag those proofs, so
+  // then take the paid bill amount out of the pool instead.
+  final ddPaid = paidDesignDevelopmentAmount > 0.5;
   var pool = 0.0;
+  var advanceSkipped = false;
   for (final proof in proofs) {
     if (!proof.isFinanceSettled) continue;
+    if (ddPaid && proof.isConversionAdvance) {
+      advanceSkipped = true;
+      continue;
+    }
     final amount = proof.receiptTotal?.toDouble() ?? 0;
     if (amount > 0) pool += amount;
+  }
+  if (ddPaid && !advanceSkipped) {
+    pool = pool > paidDesignDevelopmentAmount
+        ? pool - paidDesignDevelopmentAmount
+        : 0;
   }
 
   if (pool <= 0.5) {
@@ -366,6 +382,18 @@ AllocatedPendingPayments allocateFinanceApprovedPayments({
   }
 
   return AllocatedPendingPayments(rows: remaining, clearedNameKeys: cleared);
+}
+
+/// Amount of the Design Development & Construction Advance bill when it is
+/// already Paid; 0 when it is unpaid or not present.
+double paidDesignDevelopmentBillAmount(ProjectPaymentsSnapshot snapshot) {
+  var total = 0.0;
+  for (final item in snapshot.tenderItems) {
+    if (!item.isPaid) continue;
+    if (!item.name.toLowerCase().contains('design development')) continue;
+    total += item.resolvedAmount(snapshot.tenderSummary);
+  }
+  return total;
 }
 
 bool paymentStageNameIsCleared(String name, Set<String> clearedNameKeys) {

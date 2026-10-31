@@ -90,6 +90,7 @@ class _UploadPaymentProofScreenState extends State<UploadPaymentProofScreen>
   List<PendingPaymentRow> _pendingPayments = [];
   double _pendingTotal = 0;
   double _ntAdvance = 0;
+  double _paidDesignDevelopment = 0;
   List<PaymentBillRef> _billRefs = const [];
 
   @override
@@ -139,6 +140,7 @@ class _UploadPaymentProofScreenState extends State<UploadPaymentProofScreen>
         _pendingPayments = snapshot.pendingPaymentRows;
         _pendingTotal = snapshot.totalOutstanding;
         _ntAdvance = snapshot.nonTenderSummary.advance;
+        _paidDesignDevelopment = paidDesignDevelopmentBillAmount(snapshot);
         _pendingLoading = false;
         _pendingError = null;
       });
@@ -275,6 +277,7 @@ class _UploadPaymentProofScreenState extends State<UploadPaymentProofScreen>
       allocateFinanceApprovedPayments(
         rows: _pendingPayments,
         proofs: _items,
+        paidDesignDevelopmentAmount: _paidDesignDevelopment,
       );
 
   List<PendingPaymentRow> get _visiblePendingPayments =>

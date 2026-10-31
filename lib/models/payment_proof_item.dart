@@ -33,6 +33,8 @@ class PaymentProofItem {
   /// Workflow / payment-stage task this proof was uploaded for, when known.
   final int? stageTaskId;
   final String stageName;
+  /// Server flag: pre-conversion 10% advance screenshot (Design Development bill).
+  final bool isConversionAdvance;
 
   const PaymentProofItem({
     required this.url,
@@ -57,6 +59,7 @@ class PaymentProofItem {
     this.summaryText = '',
     this.stageTaskId,
     this.stageName = '',
+    this.isConversionAdvance = false,
   });
 
   bool get isNotABill =>
@@ -229,6 +232,8 @@ class PaymentProofItem {
       summaryText: summaryText,
       stageTaskId: stageTaskId,
       stageName: stageName,
+      isConversionAdvance:
+          _asBool(flat['is_conversion_advance_proof']) == true,
     );
   }
 
