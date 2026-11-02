@@ -17,8 +17,10 @@ import '../../user_facing_error.dart';
 /// Difference of Cost list — opened from "Update and Doc" channel.
 class ChatV1DocListScreen extends StatefulWidget {
   final String? salesSopId;
+  /// Opens group info (members) for the Upgrades & Additions channel.
+  final VoidCallback? onOpenInfo;
 
-  const ChatV1DocListScreen({super.key, this.salesSopId});
+  const ChatV1DocListScreen({super.key, this.salesSopId, this.onOpenInfo});
 
   @override
   State<ChatV1DocListScreen> createState() => _ChatV1DocListScreenState();
@@ -201,6 +203,12 @@ class _ChatV1DocListScreenState extends State<ChatV1DocListScreen> {
               onPressed: _openCreate,
               icon: const Icon(Icons.add_rounded, size: 18),
               label: const Text('Create DOC'),
+            ),
+          if (widget.onOpenInfo != null)
+            IconButton(
+              tooltip: 'Group info',
+              icon: const Icon(Icons.group_outlined),
+              onPressed: widget.onOpenInfo,
             ),
         ],
       ),

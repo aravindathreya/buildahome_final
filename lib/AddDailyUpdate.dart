@@ -7,6 +7,7 @@ import 'package:photo_view/photo_view.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:image/image.dart' as img;
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'package:image_picker/image_picker.dart';
 import 'app_theme.dart';
@@ -19,6 +20,7 @@ import 'widgets/full_screen_message.dart';
 import 'widgets/full_screen_progress.dart';
 import 'widgets/full_screen_error_summary.dart';
 import 'widgets/themed_scaffold.dart';
+import 'widgets/in_app_photo_capture.dart';
 import 'AdminDashboard.dart';
 
 /// Bake EXIF orientation into pixels and resize for upload.
@@ -78,16 +80,78 @@ class ImageOnly extends StatelessWidget {
   }
 }
 
+/// Android may kill the app while the system camera is open (low memory).
+/// We save the form before launching the camera; on next start the dashboard
+/// calls [DailyUpdateCameraRecovery.resumeIfPending] to reopen the form and
+/// recover the photo via `ImagePicker.retrieveLostData()`.
+class DailyUpdateCameraRecovery {
+  static const String draftKey = 'add_daily_update_camera_draft';
+
+  static Future<void> saveDraft(Map<String, dynamic> draft) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(draftKey, jsonEncode(draft));
+  }
+
+  static Future<Map<String, dynamic>?> readDraft() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(draftKey);
+    if (raw == null || raw.isEmpty) return null;
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is Map) return Map<String, dynamic>.from(decoded);
+    } catch (_) {}
+    return null;
+  }
+
+  static Future<void> clearDraft() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(draftKey);
+  }
+
+  static bool _resuming = false;
+
+  /// Reopens Add Daily Update if the app was killed during Take Photo.
+  static Future<void> resumeIfPending(BuildContext context) async {
+    if (_resuming) return;
+    final draft = await readDraft();
+    if (draft == null) return;
+    final savedAt = int.tryParse('${draft['saved_at'] ?? ''}') ?? 0;
+    final age = DateTime.now().millisecondsSinceEpoch - savedAt;
+    if (savedAt == 0 || age > const Duration(hours: 2).inMilliseconds) {
+      await clearDraft();
+      return;
+    }
+    if (!context.mounted) return;
+    _resuming = true;
+    try {
+      await Navigator.of(context, rootNavigator: true).push(
+        MaterialPageRoute(
+          builder: (_) => AddDailyUpdate(
+            returnToAdminDashboard: draft['return_to_admin'] == true,
+            initialProjectId: draft['project_id']?.toString(),
+            initialProjectName: draft['project_name']?.toString(),
+            restoreCameraDraft: true,
+          ),
+        ),
+      );
+    } finally {
+      _resuming = false;
+    }
+  }
+}
+
 class AddDailyUpdate extends StatelessWidget {
   final bool returnToAdminDashboard;
   final String? initialProjectId;
   final String? initialProjectName;
+  final bool restoreCameraDraft;
 
   const AddDailyUpdate({
     Key? key,
     this.returnToAdminDashboard = false,
     this.initialProjectId,
     this.initialProjectName,
+    this.restoreCameraDraft = false,
   }) : super(key: key);
 
   @override
@@ -100,6 +164,7 @@ class AddDailyUpdate extends StatelessWidget {
           returnToAdminDashboard: returnToAdminDashboard,
           initialProjectId: initialProjectId,
           initialProjectName: initialProjectName,
+          restoreCameraDraft: restoreCameraDraft,
         ),
       ),
     );
@@ -110,12 +175,14 @@ class AddDailyUpdateForm extends StatefulWidget {
   final bool returnToAdminDashboard;
   final String? initialProjectId;
   final String? initialProjectName;
+  final bool restoreCameraDraft;
 
   const AddDailyUpdateForm({
     Key? key,
     this.returnToAdminDashboard = false,
     this.initialProjectId,
     this.initialProjectName,
+    this.restoreCameraDraft = false,
   }) : super(key: key);
 
   @override
@@ -184,6 +251,89 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
     _pageController = PageController(initialPage: 0);
     setUserId();
     loadProjects();
+    if (widget.restoreCameraDraft) {
+      _restoreCameraDraft();
+    } else {
+      _recoverLostCameraPhoto();
+    }
+  }
+
+  Map<String, dynamic> _draftSnapshot() {
+    return {
+      'saved_at': DateTime.now().millisecondsSinceEpoch,
+      'return_to_admin': widget.returnToAdminDashboard,
+      'project_id': (projectId ?? selectedProject?['id'])?.toString(),
+      'project_name': selectedProject?['name']?.toString(),
+      'text': dailyUpdateTextController.text,
+      'tradesmen': selectedTradesmen,
+      'picture_paths': selectedPictureFilePaths.map((e) => e.toString()).toList(),
+      'picture_names': selectedPictureFilenames.map((e) => e.toString()).toList(),
+    };
+  }
+
+  /// Rebuild the form after Android killed the app during Take Photo.
+  Future<void> _restoreCameraDraft() async {
+    final draft = await DailyUpdateCameraRecovery.readDraft();
+    if (draft == null || !mounted) {
+      await _recoverLostCameraPhoto();
+      return;
+    }
+    final paths = (draft['picture_paths'] is List)
+        ? List<String>.from((draft['picture_paths'] as List).map((e) => '$e'))
+        : <String>[];
+    final names = (draft['picture_names'] is List)
+        ? List<String>.from((draft['picture_names'] as List).map((e) => '$e'))
+        : <String>[];
+    final tradesmen = <String, String>{};
+    if (draft['tradesmen'] is Map) {
+      (draft['tradesmen'] as Map).forEach((k, v) => tradesmen['$k'] = '$v');
+    }
+    setState(() {
+      dailyUpdateTextController.text = draft['text']?.toString() ?? '';
+      selectedTradesmen
+        ..clear()
+        ..addAll(tradesmen);
+      for (var i = 0; i < paths.length; i++) {
+        final f = File(paths[i]);
+        if (!f.existsSync()) continue;
+        selectedPictures.add(FileImage(f));
+        selectedPictureFilePaths.add(paths[i]);
+        selectedPictureFilenames
+            .add(i < names.length ? names[i] : paths[i].split('/').last);
+      }
+      if (selectedPictures.isNotEmpty) {
+        attachPictureButtonText = 'Add more pictures';
+      }
+    });
+    await _recoverLostCameraPhoto();
+    // Show the pictures step so the user sees the recovered photo.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _pageController.hasClients) _pageController.jumpToPage(1);
+    });
+  }
+
+  /// Android: pick result delivered after the activity was recreated.
+  Future<void> _recoverLostCameraPhoto() async {
+    if (!Platform.isAndroid) return;
+    try {
+      final response = await ImagePicker().retrieveLostData();
+      if (response.isEmpty) {
+        if (widget.restoreCameraDraft) await DailyUpdateCameraRecovery.clearDraft();
+        return;
+      }
+      final files = response.files ?? const <XFile>[];
+      var added = false;
+      for (final file in files) {
+        if (await processSelectedPicture(file)) added = true;
+      }
+      await DailyUpdateCameraRecovery.clearDraft();
+      if (!mounted) return;
+      if (added) {
+        setState(() => attachPictureButtonText = 'Add more pictures');
+      }
+    } catch (e) {
+      print('[AddDailyUpdate] retrieveLostData failed: $e');
+    }
   }
 
   @override
@@ -438,13 +588,49 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
       if (!await ensureCameraPermission(context)) return;
       if (!mounted) return;
 
+      // Save the form first: Android may kill the app while the camera is open.
+      await DailyUpdateCameraRecovery.saveDraft(_draftSnapshot());
+
+      // Prefer the in-app camera: the app stays in the foreground, so Android
+      // can't kill it and cold-start on the splash screen.
+      if (Platform.isAndroid) {
+        final result = await Navigator.of(context).push<Object?>(
+          MaterialPageRoute(builder: (_) => const InAppPhotoCapturePage()),
+        );
+        if (result is XFile) {
+          await DailyUpdateCameraRecovery.clearDraft();
+          if (!mounted) return;
+          final ok = await processSelectedPicture(result)
+              .timeout(const Duration(seconds: 30), onTimeout: () => false)
+              .catchError((_) => false);
+          if (mounted && ok) {
+            setState(() => attachPictureButtonText = 'Add more pictures');
+          }
+          return;
+        }
+        if (result != 'fallback') {
+          await DailyUpdateCameraRecovery.clearDraft();
+          return; // user closed the camera
+        }
+        if (!mounted) return;
+      }
+
       final picker = ImagePicker();
-      // Avoid picker-side resize so EXIF orientation is preserved for baking.
-      final pickedFile = await picker.pickImage(
-        source: ImageSource.camera,
-        imageQuality: 95,
-        requestFullMetadata: true,
-      );
+      // Downscale in the picker to cut memory use (main cause of the app
+      // being killed/restarted after Take Photo on Android).
+      XFile? pickedFile;
+      try {
+        pickedFile = await picker.pickImage(
+          source: ImageSource.camera,
+          imageQuality: 90,
+          maxWidth: 2000,
+          maxHeight: 2000,
+          requestFullMetadata: true,
+        );
+      } finally {
+        // Still alive: no recovery needed.
+        await DailyUpdateCameraRecovery.clearDraft();
+      }
 
       if (pickedFile == null) {
         // User cancelled

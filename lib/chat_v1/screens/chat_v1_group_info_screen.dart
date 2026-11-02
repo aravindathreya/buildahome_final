@@ -1,16 +1,65 @@
 import 'package:flutter/material.dart';
 
+import '../chat_v1_api.dart';
 import '../chat_v1_controller.dart';
+import '../chat_v1_mentions.dart';
+import '../chat_v1_utils.dart';
 import '../chat_v1_models.dart';
 import '../chat_v1_theme.dart';
 import '../widgets/chat_v1_common.dart';
 
-class ChatV1GroupInfoScreen extends StatelessWidget {
+class ChatV1GroupInfoScreen extends StatefulWidget {
   final ChatV1ConvMeta meta;
   const ChatV1GroupInfoScreen({super.key, required this.meta});
 
   @override
+  State<ChatV1GroupInfoScreen> createState() => _ChatV1GroupInfoScreenState();
+}
+
+class _ChatV1GroupInfoScreenState extends State<ChatV1GroupInfoScreen> {
+  ChatV1ConvMeta get meta => widget.meta;
+
+  /// This group's own participants (same API as web and @mentions), not the
+  /// project-wide list carried on [ChatV1ConvMeta.members].
+  List<ChatV1Member> _members = const [];
+  bool _loading = true;
+  bool _failed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadParticipants();
+  }
+
+  Future<void> _loadParticipants() async {
+    try {
+      final rows = await ChatV1Api.instance.listMentionParticipants(meta.id);
+      final members = mentionPeopleFromParticipants(rows)
+          .map((p) => ChatV1Member(
+                id: p.userId,
+                name: p.name,
+                role: p.displayRole,
+                initials: ChatV1Utils.initials(p.name),
+                color: ChatV1Utils.colorForId(p.userId),
+              ))
+          .toList();
+      if (!mounted) return;
+      setState(() {
+        _members = members;
+        _loading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _failed = true;
+      });
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final members = _members;
     return Scaffold(
       backgroundColor: ChatV1Theme.bg(context),
       appBar: AppBar(title: const Text('Group info')),
@@ -42,7 +91,7 @@ class ChatV1GroupInfoScreen extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           Text(
-            'Group · ${meta.members.length} members',
+            _loading ? 'Group' : 'Group · ${members.length} members',
             textAlign: TextAlign.center,
             style: TextStyle(color: ChatV1Theme.textMuted(context)),
           ),
@@ -61,32 +110,40 @@ class ChatV1GroupInfoScreen extends StatelessWidget {
           _card(
             context,
             title: 'Members',
-            child: Column(
-              children: meta.members
-                  .map(
-                    (m) => ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      leading: Cv1Avatar(
-                        initials: m.initials,
-                        color: m.color,
-                        online: m.online,
-                        size: 40,
-                      ),
-                      title: Text(m.name,
-                          style: TextStyle(
-                              color: ChatV1Theme.text(context),
-                              fontWeight: FontWeight.w700)),
-                      subtitle: Text(m.role,
-                          style: TextStyle(
-                              color: ChatV1Theme.textMuted(context))),
-                      trailing: m.online
-                          ? const Cv1Badge(
-                              label: 'Online', color: ChatV1Theme.completed)
-                          : null,
-                    ),
+            child: _loading
+                ? const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 12),
+                    child: Center(child: CircularProgressIndicator()),
                   )
-                  .toList(),
-            ),
+                : _failed
+                    ? const Text("Couldn't load group members")
+                    : Column(
+                        children: members
+                            .map(
+                              (m) => ListTile(
+                                contentPadding: EdgeInsets.zero,
+                                leading: Cv1Avatar(
+                                  initials: m.initials,
+                                  color: m.color,
+                                  online: m.online,
+                                  size: 40,
+                                ),
+                                title: Text(m.name,
+                                    style: TextStyle(
+                                        color: ChatV1Theme.text(context),
+                                        fontWeight: FontWeight.w700)),
+                                subtitle: Text(m.role,
+                                    style: TextStyle(
+                                        color: ChatV1Theme.textMuted(context))),
+                                trailing: m.online
+                                    ? const Cv1Badge(
+                                        label: 'Online',
+                                        color: ChatV1Theme.completed)
+                                    : null,
+                              ),
+                            )
+                            .toList(),
+                      ),
           ),
           _card(
             context,

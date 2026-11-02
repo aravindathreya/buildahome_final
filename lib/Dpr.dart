@@ -106,6 +106,7 @@ class DprState extends State<DprScreen> {
       rawByDate.putIfAbsent(date, () => <Map<String, dynamic>>[]).add({
         'id': updateId,
         'title': title,
+        'tradesmen': item['tradesmenMap'],
       });
     }
 
@@ -125,6 +126,7 @@ class DprState extends State<DprScreen> {
             'date': date,
             'ids': <dynamic>[row['id']],
             'images': <String>[],
+            'tradesmen': _formatTradesmen(row['tradesmen']),
           });
         }
       }
@@ -139,6 +141,40 @@ class DprState extends State<DprScreen> {
       }
     }
     return cards;
+  }
+
+  /// tradesmenMap is stored as Dart Map.toString(), e.g. "{Mason: 2, Helper: 1}"
+  /// (sometimes JSON). Returns "Mason: 2 · Helper: 1" or ''.
+  static String _formatTradesmen(dynamic raw) {
+    if (raw == null) return '';
+    if (raw is Map) {
+      return raw.entries
+          .where((e) => '${e.key}'.trim().isNotEmpty)
+          .map((e) => '${e.key}: ${e.value}')
+          .join(' · ');
+    }
+    var text = raw.toString().trim();
+    if (text.isEmpty || text == 'null' || text == '{}') return '';
+    try {
+      final decoded = jsonDecode(text);
+      if (decoded is Map) return _formatTradesmen(decoded);
+    } catch (_) {}
+    if (text.startsWith('{') && text.endsWith('}')) {
+      text = text.substring(1, text.length - 1);
+    }
+    final parts = <String>[];
+    for (final chunk in text.split(',')) {
+      final idx = chunk.indexOf(':');
+      if (idx <= 0) {
+        if (chunk.trim().isNotEmpty) parts.add(chunk.trim());
+        continue;
+      }
+      final key = chunk.substring(0, idx).replaceAll('"', '').trim();
+      final value = chunk.substring(idx + 1).replaceAll('"', '').trim();
+      if (key.isEmpty) continue;
+      parts.add(value.isEmpty ? key : '$key: $value');
+    }
+    return parts.join(' · ');
   }
 
   Future<void> call({bool showLoader = true}) async {
@@ -443,6 +479,7 @@ class DprState extends State<DprScreen> {
             .toList()
         : <String>[];
     final hasImages = images.isNotEmpty;
+    final tradesmen = update['tradesmen']?.toString().trim() ?? '';
 
     return Container(
       margin: const EdgeInsets.only(bottom: 14),
@@ -473,15 +510,45 @@ class DprState extends State<DprScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Expanded(
-                  child: Text(
-                    title,
-                    style: TextStyle(
-                      color: AppTheme.darkTextPrimary,
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
-                      height: 1.4,
-                      letterSpacing: -0.15,
-                    ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: TextStyle(
+                          color: AppTheme.darkTextPrimary,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                          height: 1.4,
+                          letterSpacing: -0.15,
+                        ),
+                      ),
+                      if (tradesmen.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Padding(
+                              padding: EdgeInsets.only(top: 1),
+                              child: Icon(Icons.groups_rounded,
+                                  size: 16, color: _mutedGrey),
+                            ),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                'Trade: $tradesmen',
+                                style: const TextStyle(
+                                  color: _mutedGrey,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                  height: 1.35,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ],
                   ),
                 ),
                 if (_canDeleteUpdate)

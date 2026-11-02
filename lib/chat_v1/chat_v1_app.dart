@@ -213,6 +213,14 @@ class _ChatV1AppState extends State<ChatV1App> {
         ChatV1DocListScreen(
           salesSopId:
               widget.salesSopId ?? ChatV1Controller.instance.salesSopId,
+          onOpenInfo: item.id.isEmpty
+              ? null
+              : () => _open(
+                    context,
+                    ChatV1GroupInfoScreen(
+                      meta: ChatV1Controller.instance.metaFor(item),
+                    ),
+                  ),
         ),
       );
       return;

@@ -102,6 +102,9 @@ class _AdminDashboardState extends State<AdminDashboard>
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) unawaited(DailyUpdateCameraRecovery.resumeIfPending(context));
+    });
     WidgetsBinding.instance.addObserver(this);
     MobileBottomNavService.instance.revision
         .addListener(_onBottomNavConfigChanged);

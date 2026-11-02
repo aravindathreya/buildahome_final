@@ -307,6 +307,9 @@ class UserDashboardLayoutState extends State<UserDashboardLayout> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) unawaited(DailyUpdateCameraRecovery.resumeIfPending(context));
+    });
     ClientGenerationService.instance.generation
         .addListener(_onClientGenerationChanged);
     MobileBottomNavService.instance.revision

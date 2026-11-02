@@ -9,14 +9,21 @@ class DailyUpdatePromptService {
   static const String _promptedPrefix = 'daily_update_prompted_date_';
   static const String _submittedPrefix = 'daily_update_submitted_date_';
 
+  /// Execution team only (never Client or any other role).
   static const Set<String> eligibleRoles = {
     'Site Engineer',
-    'Super Admin',
+    'Senior Site Engineer',
+    'Site Supervisor',
+    'Project Coordinator',
+    'Assistant Project Coordinator',
+    'Project Manager',
+    'Project Head',
   };
 
   static bool isEligibleRole(String? role) {
     final normalized = RBACService().normalizeRole(role);
     if (normalized == null || normalized.isEmpty) return false;
+    if (normalized.toLowerCase().contains('client')) return false;
     if (eligibleRoles.contains(normalized)) return true;
     // Super Admin is not always present in RBAC roleMapping; match case-insensitively.
     final lower =

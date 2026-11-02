@@ -33,6 +33,8 @@ class Cv1ChatTile extends StatelessWidget {
 
     return Dismissible(
       key: ValueKey('swipe_${item.id}_${item.isPinned}_${item.isMuted}'),
+      // Swipe pin/mute disabled on mobile.
+      direction: DismissDirection.none,
       background: _swipeBg(
         context,
         alignment: Alignment.centerLeft,
