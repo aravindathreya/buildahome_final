@@ -19,6 +19,8 @@ class ApprovedPo {
   final String vendorName;
   final bool hasPoDocument;
   final MaskedPoDocument? maskedPoDocument;
+  /// PO annexure (uploaded by Purchase). Same access as the PO.
+  final MaskedPoDocument? annexureDocument;
   final int? createdByUserId;
   final String comments;
   final List<ApprovedPoMaterialLine> materials;
@@ -54,6 +56,7 @@ class ApprovedPo {
     required this.vendorName,
     required this.hasPoDocument,
     this.maskedPoDocument,
+    this.annexureDocument,
     this.createdByUserId,
     this.comments = '',
     this.materials = const [],
@@ -75,6 +78,15 @@ class ApprovedPo {
         Map<String, dynamic>.from(maskedRaw),
       );
       if (candidate.isMasked) masked = candidate;
+    }
+
+    final annexureRaw = json['annexure_document'];
+    MaskedPoDocument? annexure;
+    if (annexureRaw is Map) {
+      final candidate = MaskedPoDocument.fromJson(
+        Map<String, dynamic>.from(annexureRaw),
+      );
+      if (candidate.url.trim().isNotEmpty) annexure = candidate;
     }
 
     final materialsRaw = json['materials'];
@@ -107,6 +119,7 @@ class ApprovedPo {
       vendorName: _asString(json['vendor_name']),
       hasPoDocument: _truthy(json['has_po_document']),
       maskedPoDocument: masked,
+      annexureDocument: annexure,
       createdByUserId: json['created_by_user_id'] == null
           ? null
           : _asInt(json['created_by_user_id']),
@@ -175,6 +188,25 @@ class ApprovedPo {
   bool get isDeliveredReceipt => isComplete && !isPartial;
 
   bool get canViewMaskedDocument => maskedPoDocument != null;
+
+  /// Annexure row for the inline document viewer, or null when none uploaded.
+  WorkflowDocumentUpload? annexureWorkflowDocument() {
+    final doc = annexureDocument;
+    if (doc == null || doc.url.trim().isEmpty) return null;
+    return WorkflowDocumentUpload(
+      id: doc.key.isNotEmpty ? doc.key : 'annexure-$indentId',
+      documentKey: doc.key.isNotEmpty ? doc.key : 'annexure-$indentId',
+      name: doc.filename.trim().isNotEmpty ? doc.filename.trim() : 'Annexure',
+      url: doc.url,
+      contentType:
+          doc.mimeType.trim().isNotEmpty ? doc.mimeType.trim() : 'application/pdf',
+      isLatest: true,
+      sectionLabel: 'PO annexure',
+      categoryLabel: 'Purchase Orders',
+      status: statusLabel.isNotEmpty ? statusLabel : 'Approved',
+      taskName: displayPoNumber(),
+    );
+  }
 
   /// PO file exists on server but masked mobile copy is not linked yet.
   bool get awaitingMaskedDocument =>

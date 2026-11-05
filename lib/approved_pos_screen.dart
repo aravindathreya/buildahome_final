@@ -1085,6 +1085,19 @@ class _ApprovedPoDetailScreenState extends State<ApprovedPoDetailScreen> {
                 ],
               ),
             ),
+          if (item.annexureWorkflowDocument() != null) ...[
+            const SizedBox(height: 20),
+            const ClientPortalSectionHeading(label: 'Annexure'),
+            _ApprovedPoDocumentCard(
+              document: item.annexureWorkflowDocument()!,
+              subtitle: 'Annexure sent to the vendor with this PO.',
+              onOpen: () => openWorkflowDocument(
+                context,
+                item.annexureWorkflowDocument()!,
+                clientMode: false,
+              ),
+            ),
+          ],
           if (_shouldShowSiteProofSection(item)) ...[
             const SizedBox(height: 20),
             const ClientPortalSectionHeading(label: 'Site proof'),
@@ -1509,10 +1522,12 @@ class _ApprovedPoSiteProofCard extends StatelessWidget {
 class _ApprovedPoDocumentCard extends StatelessWidget {
   final WorkflowDocumentUpload document;
   final VoidCallback onOpen;
+  final String subtitle;
 
   const _ApprovedPoDocumentCard({
     required this.document,
     required this.onOpen,
+    this.subtitle = 'Masked PO PDF. Amounts and rates are hidden.',
   });
 
   @override
@@ -1554,7 +1569,7 @@ class _ApprovedPoDocumentCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      'Masked PO PDF. Amounts and rates are hidden.',
+                      subtitle,
                       style: TextStyle(
                         color: AppTheme.getTextSecondary(context),
                         fontSize: 12.5,

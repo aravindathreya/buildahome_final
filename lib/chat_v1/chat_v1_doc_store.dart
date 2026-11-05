@@ -84,6 +84,54 @@ class ChatV1DocStore {
     return ChatV1DocRequest.fromJson(raw);
   }
 
+  /// Saves changes to an existing Difference of Cost.
+  /// A new PDF is uploaded only when [pdfBytes] is set. [clearPdf] removes
+  /// the current file. Otherwise the existing PDF is left as it is.
+  Future<ChatV1DocRequest> update({
+    required String docId,
+    required String description,
+    required num amount,
+    String notes = '',
+    String? pdfName,
+    List<int>? pdfBytes,
+    bool clearPdf = false,
+    bool causesDelay = false,
+    String? delayActivityId,
+    String? delayActivityLabel,
+    int? delayDays,
+  }) async {
+    String? pdfUrl;
+    String? resolvedName;
+    if (pdfBytes != null && pdfName != null && pdfName.isNotEmpty) {
+      final upload = await _api.uploadDiscussionAttachment(
+        bytes: pdfBytes,
+        fileName: pdfName,
+      );
+      pdfUrl = discussionUploadUrl(upload) ?? '';
+      if (pdfUrl.isEmpty) {
+        throw ChatV1ApiException('PDF upload failed');
+      }
+      resolvedName =
+          (upload?['filename'] ?? upload?['file_name'] ?? pdfName).toString();
+    } else if (clearPdf) {
+      resolvedName = '';
+      pdfUrl = '';
+    }
+    final raw = await _api.updateDoc(
+      docId,
+      description: description,
+      amount: amount,
+      notes: notes,
+      pdfName: resolvedName,
+      pdfUrl: pdfUrl,
+      causesDelay: causesDelay,
+      delayActivityId: delayActivityId,
+      delayActivityLabel: delayActivityLabel,
+      delayDays: delayDays,
+    );
+    return ChatV1DocRequest.fromJson(raw);
+  }
+
   Future<ChatV1DocRequest> approve(String docId) async {
     final raw = await _api.approveDoc(docId);
     return ChatV1DocRequest.fromJson(raw);

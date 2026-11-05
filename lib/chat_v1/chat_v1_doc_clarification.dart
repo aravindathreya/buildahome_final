@@ -13,6 +13,17 @@ class DocClarificationPerson {
   });
 }
 
+/// Opening of the message posted by "Ask for clarification".
+const String kDocClarificationPhrase = 'I need clarification regarding';
+
+/// True when a client has used Ask for clarification on this Difference of Cost.
+bool docAskedForClarification(Iterable<String> messageBodies) {
+  for (final body in messageBodies) {
+    if (body.contains(kDocClarificationPhrase)) return true;
+  }
+  return false;
+}
+
 /// Message posted when a client asks the project's PC and APC to explain a DOC.
 class DocClarificationDraft {
   final String body;
@@ -156,7 +167,7 @@ DocClarificationDraft buildDocClarificationDraft({
   final lead = tokens.isEmpty ? '' : '${tokens.join(' ')} ';
   return DocClarificationDraft(
     body:
-        '${lead}I need clarification regarding $subject. Could you please explain the details so I can review it before approving?',
+        '$lead$kDocClarificationPhrase $subject. Could you please explain the details so I can review it before approving?',
     userIds: ids,
   );
 }

@@ -903,6 +903,49 @@ class ChatV1Api {
     throw ChatV1ApiException('Unexpected create DOC response');
   }
 
+  /// Updates a Difference of Cost that the client has asked to clarify.
+  /// Omit [pdfName] and [pdfUrl] to keep the current PDF. Pass empty strings
+  /// to remove it.
+  Future<Map<String, dynamic>> updateDoc(
+    String docId, {
+    required String description,
+    required num amount,
+    String? notes,
+    String? pdfName,
+    String? pdfUrl,
+    bool causesDelay = false,
+    String? delayActivityId,
+    String? delayActivityLabel,
+    int? delayDays,
+  }) async {
+    final data = await patch(
+      '$chatPrefix/docs/$docId',
+      body: {
+        'description': description,
+        'amount': amount,
+        if (notes != null) 'notes': notes,
+        if (pdfName != null) 'pdf_name': pdfName,
+        if (pdfUrl != null) 'pdf_url': pdfUrl,
+        'causes_delay': causesDelay,
+        if (causesDelay &&
+            delayActivityId != null &&
+            delayActivityId.isNotEmpty)
+          'delay_activity_id': delayActivityId,
+        if (causesDelay &&
+            delayActivityLabel != null &&
+            delayActivityLabel.isNotEmpty)
+          'delay_activity_label': delayActivityLabel,
+        if (causesDelay && delayDays != null) 'delay_days': delayDays,
+      },
+    );
+    if (data is Map) {
+      final doc = data['doc'];
+      if (doc is Map) return Map<String, dynamic>.from(doc);
+      return Map<String, dynamic>.from(data);
+    }
+    throw ChatV1ApiException('Unexpected update DOC response');
+  }
+
   Future<Map<String, dynamic>> getDoc(String docId) async {
     final data = await get('$chatPrefix/docs/$docId');
     if (data is Map) {

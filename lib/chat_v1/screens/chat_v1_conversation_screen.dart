@@ -1531,7 +1531,8 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
               if (_pinnedMessageId != null && _pinnedMessageId!.isNotEmpty)
                 _pinnedBanner(context),
               Expanded(child: _body(context)),
-              if (!_readOnly)
+              // Important is a view-only feed for everyone.
+              if (!_readOnly && !_isImportantChannel)
               ChatComposer(
                 controller: _composer,
                 onSend: () => _send(),

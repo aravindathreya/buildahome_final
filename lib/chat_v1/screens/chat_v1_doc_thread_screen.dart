@@ -15,6 +15,7 @@ import '../chat_v1_theme.dart';
 import '../chat_v1_utils.dart';
 import '../widgets/chat_v1_common.dart';
 import '../../user_facing_error.dart';
+import 'chat_v1_create_doc_sheet.dart';
 
 class ChatV1DocThreadScreen extends StatefulWidget {
   final String salesSopId;
@@ -41,6 +42,7 @@ class _ChatV1DocThreadScreenState extends State<ChatV1DocThreadScreen> {
   bool _loading = true;
   bool _sending = false;
   bool _asking = false;
+  bool _roleReady = (DataProvider().currentRole ?? '').trim().isNotEmpty;
   bool _isClient =
       (DataProvider().currentRole ?? '').trim().toLowerCase() == 'client';
   String? _error;
@@ -56,13 +58,29 @@ class _ChatV1DocThreadScreenState extends State<ChatV1DocThreadScreen> {
     final cached = (DataProvider().currentRole ?? '').trim();
     if (cached.isNotEmpty) {
       if (!mounted) return;
-      setState(() => _isClient = cached.toLowerCase() == 'client');
+      setState(() {
+        _isClient = cached.toLowerCase() == 'client';
+        _roleReady = true;
+      });
       return;
     }
     final prefs = await SharedPreferences.getInstance();
     final role = (prefs.getString('role') ?? '').trim().toLowerCase();
     if (!mounted) return;
-    setState(() => _isClient = role == 'client');
+    setState(() {
+      _isClient = role == 'client';
+      _roleReady = true;
+    });
+  }
+
+  /// Same people who can create a Difference of Cost can revise it after the
+  /// client asks for clarification. Approval closes that option.
+  bool _canRevise(ChatV1DocRequest doc) {
+    if (!_roleReady || _isClient) return false;
+    if (ChatV1Controller.instance.docReadOnly) return false;
+    if (doc.status == ChatV1DocStatus.approved) return false;
+    return doc.status == ChatV1DocStatus.rejected ||
+        docAskedForClarification(doc.messages.map((message) => message.body));
   }
 
   @override
@@ -144,6 +162,37 @@ class _ChatV1DocThreadScreenState extends State<ChatV1DocThreadScreen> {
         SnackBar(content: Text(userFacingError(e))),
       );
     }
+  }
+
+  Future<void> _edit() async {
+    final doc = _doc;
+    if (doc == null || !_canRevise(doc)) return;
+    final sop = (doc.salesSopId ?? widget.salesSopId).trim();
+    if (sop.isEmpty) return;
+    final updated = await showModalBottomSheet<ChatV1DocRequest>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: ChatV1Theme.card(context),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
+      ),
+      builder: (_) => ChatV1CreateDocSheet(
+        salesSopId: sop,
+        existing: doc,
+      ),
+    );
+    if (updated == null || !mounted) return;
+    setState(() {
+      _doc = updated.copyWith(
+        messages: updated.messages.isEmpty ? doc.messages : updated.messages,
+        messageCount: updated.messages.isEmpty
+            ? doc.messageCount
+            : updated.messageCount,
+      );
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Difference of Cost updated')),
+    );
   }
 
   Future<void> _askClarification() async {
@@ -499,6 +548,22 @@ class _ChatV1DocThreadScreenState extends State<ChatV1DocThreadScreen> {
             ChatV1Utils.formatAbsolute(doc.createdAt),
           ),
           const SizedBox(height: 8),
+          if (_canRevise(doc)) ...[
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: _edit,
+                icon: const Icon(Icons.edit_outlined),
+                label: const Text('Edit difference of cost'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: const Color(0xFF0EA5E9),
+                  side: const BorderSide(color: Color(0xFF0EA5E9)),
+                  minimumSize: const Size.fromHeight(44),
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
           if (doc.status == ChatV1DocStatus.pending && doc.canApprove)
             SizedBox(
               width: double.infinity,

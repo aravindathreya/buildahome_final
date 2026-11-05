@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../chat_v1_doc_store.dart';
+import '../chat_v1_models.dart';
 import '../chat_v1_theme.dart';
 import '../chat_v1_utils.dart';
 import '../../user_facing_error.dart';
@@ -10,7 +11,14 @@ import '../../user_facing_error.dart';
 class ChatV1CreateDocSheet extends StatefulWidget {
   final String salesSopId;
 
-  const ChatV1CreateDocSheet({super.key, required this.salesSopId});
+  /// When set, the sheet updates this Difference of Cost instead of creating one.
+  final ChatV1DocRequest? existing;
+
+  const ChatV1CreateDocSheet({
+    super.key,
+    required this.salesSopId,
+    this.existing,
+  });
 
   @override
   State<ChatV1CreateDocSheet> createState() => _ChatV1CreateDocSheetState();
@@ -27,7 +35,10 @@ class _ChatV1CreateDocSheetState extends State<ChatV1CreateDocSheet> {
   List<int>? _pdfBytes;
   int _pdfSize = 0;
   bool _saving = false;
+  bool _clearedPdf = false;
   String? _error;
+
+  bool get _editing => widget.existing != null;
 
   /// null = unanswered, true = Yes, false = No
   bool? _causesDelay;
@@ -37,6 +48,31 @@ class _ChatV1CreateDocSheetState extends State<ChatV1CreateDocSheet> {
   String? _selectedActivityLabel;
 
   static const int _maxPdfBytes = 20 * 1024 * 1024;
+
+  @override
+  void initState() {
+    super.initState();
+    final existing = widget.existing;
+    if (existing == null) return;
+    _description.text = existing.description;
+    _amount.text = existing.amount == existing.amount.roundToDouble()
+        ? existing.amount.toInt().toString()
+        : existing.amount.toString();
+    _notes.text = existing.notes;
+    _causesDelay = existing.causesDelay;
+    _selectedActivityId = existing.delayActivityId;
+    _selectedActivityLabel = existing.delayActivityLabel;
+    if (existing.delayDays != null && existing.delayDays! > 0) {
+      _delayDays.text = '${existing.delayDays}';
+    }
+    final pdf = existing.pdfName?.trim() ?? '';
+    if (pdf.isNotEmpty) _pdfName = pdf;
+    if (existing.causesDelay) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _loadActivities();
+      });
+    }
+  }
 
   @override
   void dispose() {
@@ -77,6 +113,7 @@ class _ChatV1CreateDocSheetState extends State<ChatV1CreateDocSheet> {
       _pdfName = name;
       _pdfBytes = bytes;
       _pdfSize = bytes.length;
+      _clearedPdf = false;
       _error = null;
     });
   }
@@ -108,14 +145,27 @@ class _ChatV1CreateDocSheetState extends State<ChatV1CreateDocSheet> {
         incompleteOnly: true,
       );
       if (!mounted) return;
-      setState(() {
-        _activities = rows;
-        _loadingActivities = false;
-        if (_selectedActivityId != null &&
-            !_activities.any((a) => '${a['id']}' == _selectedActivityId)) {
+      var activities = rows;
+      final selectedId = _selectedActivityId;
+      if (selectedId != null &&
+          selectedId.isNotEmpty &&
+          !activities.any((a) => '${a['id']}' == selectedId)) {
+        if (_editing) {
+          activities = [
+            {
+              'id': selectedId,
+              'label': _selectedActivityLabel ?? 'Selected task',
+            },
+            ...activities,
+          ];
+        } else {
           _selectedActivityId = null;
           _selectedActivityLabel = null;
         }
+      }
+      setState(() {
+        _activities = activities;
+        _loadingActivities = false;
       });
     } catch (e) {
       if (!mounted) return;
@@ -169,18 +219,33 @@ class _ChatV1CreateDocSheetState extends State<ChatV1CreateDocSheet> {
       _error = null;
     });
     try {
-      final doc = await _store.create(
-        salesSopId: widget.salesSopId,
-        description: desc,
-        amount: amount,
-        notes: _notes.text.trim(),
-        pdfName: _pdfName,
-        pdfBytes: _pdfBytes,
-        causesDelay: _causesDelay == true,
-        delayActivityId: delayActivityId,
-        delayActivityLabel: delayActivityLabel,
-        delayDays: delayDays,
-      );
+      final existing = widget.existing;
+      final doc = existing == null
+          ? await _store.create(
+              salesSopId: widget.salesSopId,
+              description: desc,
+              amount: amount,
+              notes: _notes.text.trim(),
+              pdfName: _pdfName,
+              pdfBytes: _pdfBytes,
+              causesDelay: _causesDelay == true,
+              delayActivityId: delayActivityId,
+              delayActivityLabel: delayActivityLabel,
+              delayDays: delayDays,
+            )
+          : await _store.update(
+              docId: existing.id,
+              description: desc,
+              amount: amount,
+              notes: _notes.text.trim(),
+              pdfName: _pdfBytes == null ? null : _pdfName,
+              pdfBytes: _pdfBytes,
+              clearPdf: _clearedPdf && _pdfBytes == null,
+              causesDelay: _causesDelay == true,
+              delayActivityId: delayActivityId,
+              delayActivityLabel: delayActivityLabel,
+              delayDays: delayDays,
+            );
       if (!mounted) return;
       Navigator.of(context).pop(doc);
     } catch (e) {
@@ -226,7 +291,7 @@ class _ChatV1CreateDocSheetState extends State<ChatV1CreateDocSheet> {
             ),
             const SizedBox(height: 14),
             Text(
-              'Difference of Cost',
+              _editing ? 'Edit Difference of Cost' : 'Difference of Cost',
               style: TextStyle(
                 color: ChatV1Theme.text(context),
                 fontWeight: FontWeight.w800,
@@ -235,7 +300,9 @@ class _ChatV1CreateDocSheetState extends State<ChatV1CreateDocSheet> {
             ),
             const SizedBox(height: 4),
             Text(
-              'Provide the cost difference details for client approval.',
+              _editing
+                  ? 'Update the cost difference. The client reviews it again before approval.'
+                  : 'Provide the cost difference details for client approval.',
               style: TextStyle(
                 color: ChatV1Theme.textMuted(context),
                 fontSize: 13,
@@ -304,7 +371,9 @@ class _ChatV1CreateDocSheetState extends State<ChatV1CreateDocSheet> {
                             ),
                           ),
                           Text(
-                            ChatV1Utils.formatBytes(_pdfSize),
+                            _pdfBytes == null
+                                ? 'Current file'
+                                : ChatV1Utils.formatBytes(_pdfSize),
                             style: TextStyle(
                               color: ChatV1Theme.textMuted(context),
                               fontSize: 12,
@@ -318,6 +387,7 @@ class _ChatV1CreateDocSheetState extends State<ChatV1CreateDocSheet> {
                         _pdfName = null;
                         _pdfBytes = null;
                         _pdfSize = 0;
+                        _clearedPdf = true;
                       }),
                       child: const Text('Remove'),
                     ),
@@ -461,7 +531,7 @@ class _ChatV1CreateDocSheetState extends State<ChatV1CreateDocSheet> {
                         color: Colors.white,
                       ),
                     )
-                  : const Text('Submit DOC'),
+                  : Text(_editing ? 'Save changes' : 'Submit DOC'),
             ),
           ],
         ),

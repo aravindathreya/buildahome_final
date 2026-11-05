@@ -25,6 +25,17 @@ void main() {
     ),
   ];
 
+  test('clarification request is recognized from the posted message', () {
+    expect(
+      docAskedForClarification(const [
+        'Looks fine to me',
+        'I need clarification regarding this Difference of Cost (“Extra tiling”).',
+      ]),
+      isTrue,
+    );
+    expect(docAskedForClarification(const ['Please approve this']), isFalse);
+  });
+
   test('clarification tags only the project PC and APC', () {
     final draft = buildDocClarificationDraft(
       people: team,
