@@ -89,12 +89,25 @@ class _ChatV1CreateDocSheetState extends State<ChatV1CreateDocSheet> {
     return double.tryParse(cleaned);
   }
 
+  bool _pickingPdf = false;
+
   Future<void> _pickPdf() async {
-    final result = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: const ['pdf'],
-      withData: true,
-    );
+    if (_pickingPdf || _saving) return;
+    _pickingPdf = true;
+    FilePickerResult? result;
+    try {
+      result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: const ['pdf'],
+        withData: true,
+      );
+    } catch (e) {
+      if (mounted) setState(() => _error = 'Could not open PDF picker');
+      return;
+    } finally {
+      _pickingPdf = false;
+    }
+    if (!mounted) return;
     if (result == null || result.files.isEmpty) return;
     final file = result.files.first;
     final bytes = file.bytes;

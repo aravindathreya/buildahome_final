@@ -169,16 +169,22 @@ class _ChatV1DocThreadScreenState extends State<ChatV1DocThreadScreen> {
     if (doc == null || !_canRevise(doc)) return;
     final sop = (doc.salesSopId ?? widget.salesSopId).trim();
     if (sop.isEmpty) return;
-    final updated = await showModalBottomSheet<ChatV1DocRequest>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: ChatV1Theme.card(context),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
-      ),
-      builder: (_) => ChatV1CreateDocSheet(
-        salesSopId: sop,
-        existing: doc,
+    // Full-screen route instead of a bottom sheet: the system file picker
+    // (re-picking a PDF) no longer dismisses the form or drops edit state.
+    final updated = await Navigator.of(context).push<ChatV1DocRequest>(
+      MaterialPageRoute(
+        builder: (routeCtx) => Scaffold(
+          backgroundColor: ChatV1Theme.card(routeCtx),
+          appBar: AppBar(
+            title: const Text('Edit Difference of Cost'),
+          ),
+          body: SafeArea(
+            child: ChatV1CreateDocSheet(
+              salesSopId: sop,
+              existing: doc,
+            ),
+          ),
+        ),
       ),
     );
     if (updated == null || !mounted) return;
