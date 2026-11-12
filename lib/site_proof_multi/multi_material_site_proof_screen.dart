@@ -352,7 +352,7 @@ class _MultiMaterialSiteProofScreenState
         measurement: _measurementController.text.trim(),
         measurementUnit: _storedMeasurementUnit(),
         siteComment: _siteCommentController.text.trim(),
-        vehicleNumber: _normalizeIndianVehicleNumber(
+        vehicleNumber: _normalizeVehicleNumber(
           _vehicleNumberController.text,
         ),
         vehicleType: _vehicleType,
@@ -583,27 +583,17 @@ class _MultiMaterialSiteProofScreenState
     }
   }
 
-  /// Indian RTO plate (KA 01 AB 1234 / KA01AB1234) or BH series (22BH1234AA).
-  static final RegExp _indianVehicleNumberPattern = RegExp(
-    r'^(?:'
-    r'[A-Z]{2}[0-9]{1,2}[A-Z]{1,3}[0-9]{4}'
-    r'|'
-    r'[0-9]{2}BH[0-9]{4}[A-Z]{1,2}'
-    r')$',
-  );
+  /// Generous cap so long temp / trailer / BH plates still fit.
+  static const int _vehicleNumberMaxLength = 30;
 
   static final RegExp _measurementQuantityPattern = RegExp(
     r'^\d+(?:[.,]\d+)?$',
   );
 
-  String _normalizeIndianVehicleNumber(String raw) {
-    return raw.trim().toUpperCase().replaceAll(RegExp(r'[\s\-./]'), '');
-  }
-
-  bool _isValidIndianVehicleNumber(String raw) {
-    final normalized = _normalizeIndianVehicleNumber(raw);
-    if (normalized.isEmpty) return false;
-    return _indianVehicleNumberPattern.hasMatch(normalized);
+  /// Trim and uppercase only. Keep spaces, hyphens and other characters
+  /// so BH series, old plates, temp numbers, trailers, etc. all work.
+  String _normalizeVehicleNumber(String raw) {
+    return raw.trim().toUpperCase();
   }
 
   /// Pulls the numeric part from a stored value such as "450 Sqft" or "12.5 Sq. ft".
@@ -649,16 +639,13 @@ class _MultiMaterialSiteProofScreenState
       return;
     }
 
-    final vehicleRaw = _vehicleNumberController.text.trim();
+    final vehicleRaw = _normalizeVehicleNumber(_vehicleNumberController.text);
     if (vehicleRaw.isEmpty) {
       _snack('Vehicle number is required.', error: true);
       return;
     }
-    if (!_isValidIndianVehicleNumber(vehicleRaw)) {
-      _snack(
-        'Enter a valid Indian vehicle number (e.g. KA 01 AB 1234).',
-        error: true,
-      );
+    if (vehicleRaw.length > _vehicleNumberMaxLength) {
+      _snack('Vehicle number can be at most 30 characters.', error: true);
       return;
     }
     final hasVehiclePhoto = _vehiclePhotos.isNotEmpty ||
@@ -674,7 +661,7 @@ class _MultiMaterialSiteProofScreenState
       return;
     }
 
-    final normalizedVehicle = _normalizeIndianVehicleNumber(vehicleRaw);
+    final normalizedVehicle = vehicleRaw;
 
     setState(() => _busy = true);
     try {
@@ -840,41 +827,102 @@ class _MultiMaterialSiteProofScreenState
   }
 
   Future<_LocalMedia?> _capturePhoto() async {
-    if (!await ensureCameraPermission(context)) return null;
-    if (!mounted) return null;
-    final picked = await ImagePicker().pickImage(
-      source: ImageSource.camera,
-      imageQuality: 88,
-    );
-    if (picked == null) return null;
-    final capturedAt = CaptureTime.nowLocal();
-    final stampedName = CaptureTime.stampFilename(isVideo: false, at: capturedAt);
-    final stampedPath =
-        '${Directory.systemTemp.path}${Platform.pathSeparator}$stampedName';
-    final copied = await File(picked.path).copy(stampedPath);
-    return _LocalMedia(
-      file: copied,
-      isVideo: false,
-      capturedAt: capturedAt,
-    );
-  }
-
-  Future<_LocalMedia?> _recordVideo() async {
-    if (!await ensureCameraPermission(context, includeMicrophone: true)) {
+    if (!await ensureCameraPermission(context)) {
+      _snack(
+        'Camera access is needed to take a photo. Allow Camera for '
+        'buildAhome in Settings > Apps > buildAhome > Permissions.',
+        error: true,
+      );
       return null;
     }
     if (!mounted) return null;
-    final picked = await ImagePicker().pickVideo(
-      source: ImageSource.camera,
-      maxDuration: const Duration(seconds: 60),
-    );
+    final XFile? picked;
+    try {
+      picked = await ImagePicker().pickImage(
+        source: ImageSource.camera,
+        imageQuality: 88,
+      );
+    } catch (e) {
+      _snack(_cameraErrorMessage(e, isVideo: false), error: true);
+      return null;
+    }
     if (picked == null) return null;
-    final capturedAt = CaptureTime.nowLocal();
-    final name = CaptureTime.stampFilename(isVideo: true, at: capturedAt);
-    final path =
-        '${Directory.systemTemp.path}${Platform.pathSeparator}$name';
-    final copied = await File(picked.path).copy(path);
-    return _LocalMedia(file: copied, isVideo: true, capturedAt: capturedAt);
+    try {
+      final capturedAt = CaptureTime.nowLocal();
+      final stampedName =
+          CaptureTime.stampFilename(isVideo: false, at: capturedAt);
+      final stampedPath =
+          '${Directory.systemTemp.path}${Platform.pathSeparator}$stampedName';
+      final copied = await File(picked.path).copy(stampedPath);
+      return _LocalMedia(
+        file: copied,
+        isVideo: false,
+        capturedAt: capturedAt,
+      );
+    } catch (e) {
+      _snack('Could not save the photo: ${userFacingError(e)}', error: true);
+      return null;
+    }
+  }
+
+  /// Records with the phone's own camera app. That app records the sound
+  /// itself, so only Camera access is needed here; asking for Microphone too
+  /// made Add video stop silently on phones (e.g. Redmi / HyperOS) where only
+  /// Camera had been allowed.
+  Future<_LocalMedia?> _recordVideo() async {
+    if (!await ensureCameraPermission(context)) {
+      _snack(
+        'Camera access is needed to record a video. Allow Camera for '
+        'buildAhome in Settings > Apps > buildAhome > Permissions.',
+        error: true,
+      );
+      return null;
+    }
+    if (!mounted) return null;
+    final XFile? picked;
+    try {
+      picked = await ImagePicker().pickVideo(
+        source: ImageSource.camera,
+        maxDuration: const Duration(seconds: 60),
+      );
+    } catch (e) {
+      _snack(_cameraErrorMessage(e, isVideo: true), error: true);
+      return null;
+    }
+    if (picked == null) return null;
+    try {
+      final capturedAt = CaptureTime.nowLocal();
+      final name = CaptureTime.stampFilename(isVideo: true, at: capturedAt);
+      final path =
+          '${Directory.systemTemp.path}${Platform.pathSeparator}$name';
+      final copied = await File(picked.path).copy(path);
+      return _LocalMedia(file: copied, isVideo: true, capturedAt: capturedAt);
+    } catch (e) {
+      _snack('Could not save the video: ${userFacingError(e)}', error: true);
+      return null;
+    }
+  }
+
+  String _cameraErrorMessage(Object error, {required bool isVideo}) {
+    final what = isVideo ? 'record a video' : 'take a photo';
+    if (error is PlatformException) {
+      final blob =
+          '${error.code} ${error.message ?? ''}'.toLowerCase();
+      if (blob.contains('camera_access_denied') ||
+          blob.contains('permission') ||
+          blob.contains('denied')) {
+        return 'Could not $what: camera access is blocked. Allow Camera for '
+            'buildAhome in Settings > Apps > buildAhome > Permissions.';
+      }
+      if (blob.contains('no_available_camera') ||
+          blob.contains('activity') ||
+          blob.contains('no camera')) {
+        return 'Could not $what: no camera app was found on this phone.';
+      }
+      final detail = (error.message ?? error.code).trim();
+      return 'Could not $what${detail.isEmpty ? '' : ' ($detail)'}.';
+    }
+    return 'Could not $what: ${userFacingError(error)}';
   }
 
   void _snack(String message, {bool error = false}) {
@@ -1363,11 +1411,14 @@ class _MultiMaterialSiteProofScreenState
               TextField(
                 controller: _vehicleNumberController,
                 textCapitalization: TextCapitalization.characters,
-                decoration: _inputDecoration('KA 01 AB 1234'),
+                maxLength: _vehicleNumberMaxLength,
+                decoration: _inputDecoration('Vehicle number').copyWith(
+                  counterText: '',
+                ),
               ),
               const SizedBox(height: 4),
               const Text(
-                'Indian standard format (spaces/hyphens optional). Example: KA01AB1234 or 22BH1234AA',
+                'Any format is allowed, including spaces and hyphens.',
                 style: TextStyle(
                   color: AppTheme.mutedGrey,
                   fontSize: 12,

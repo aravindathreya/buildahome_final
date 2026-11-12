@@ -12,6 +12,7 @@ import 'client_portal/client_portal_kyc_checklist.dart';
 import 'client_portal/client_portal_kyc_document_screen.dart';
 import 'client_portal/kyc_document_record.dart';
 import 'documents_v1/documents_v1_home_screen.dart';
+import 'documents_v1/receipts_agreements_screen.dart';
 import 'models/workflow_document.dart';
 import 'SalesSopCardsScreen.dart';
 import 'services/client_portal_service.dart';
@@ -19,6 +20,7 @@ import 'services/data_provider.dart';
 import 'services/document_role_access.dart';
 import 'services/mobile_documents.dart';
 import 'services/mobile_documents_service.dart';
+import 'services/receipts_agreements_service.dart';
 import 'services/workflow_document_service.dart';
 import 'widgets/open_shared_document.dart';
 import 'widgets/skeleton_loader.dart';
@@ -54,6 +56,9 @@ class _ClientPortalScreenState extends State<ClientPortalScreen> {
   /// KYC hub row: Client + Super Admin only (not other staff roles).
   bool _canSeeKyc = false;
   String? _viewerRole;
+  /// ERP Receipts and Agreements (same files as the ERP page). Null until
+  /// loaded or when the request failed; then the library row is used.
+  ReceiptsAgreementsResult? _erpReceipts;
 
   @override
   void initState() {
@@ -85,6 +90,7 @@ class _ClientPortalScreenState extends State<ClientPortalScreen> {
       final prefs = await SharedPreferences.getInstance();
       _viewerRole = prefs.getString('role');
       _canSeeKyc = roleCanSeeClientPortalKyc(_viewerRole);
+      unawaited(_refreshErpReceipts(prefs));
       unawaited(
         MobileDocumentsService.instance.ensureLibrary(
           projectId: (prefs.getString('project_id') ?? '').trim(),
@@ -215,6 +221,29 @@ class _ClientPortalScreenState extends State<ClientPortalScreen> {
         _loading = false;
         _error = msg;
       });
+    }
+  }
+
+  /// Loads the ERP Receipts and Agreements list for the selected project.
+  /// On failure keeps the previous value (or null) so the hub falls back to
+  /// the workflow-documents library row.
+  Future<void> _refreshErpReceipts(SharedPreferences prefs) async {
+    final projectId = (prefs.getString('project_id') ?? '').trim();
+    if (projectId.isEmpty) return;
+    final service = ReceiptsAgreementsService.instance;
+    final cached = service.cached(projectId);
+    if (cached != null && mounted && _erpReceipts == null) {
+      setState(() => _erpReceipts = cached);
+    }
+    try {
+      final result = await service.fetch(projectId, force: true);
+      if (!mounted) return;
+      setState(() => _erpReceipts = result);
+    } catch (e) {
+      debugPrint(
+        '[ClientPortal] receipts_agreements fetch failed '
+        'project=$projectId: $e',
+      );
     }
   }
 
@@ -473,6 +502,20 @@ class _ClientPortalScreenState extends State<ClientPortalScreen> {
   void _openSection(ClientPortalHubItem section) {
     final refreshOnReturn = _shouldRefreshPortalOnReturn(section.kind);
 
+    // ERP-backed Receipts and Agreements: same files as the ERP page.
+    final erpReceipts = section.erpReceipts;
+    if (section.kind == ClientPortalHubKind.receipts && erpReceipts != null) {
+      _pushPortalSection(
+        ReceiptsAgreementsScreen(
+          projectId: erpReceipts.projectId,
+          clientMode: true,
+          initial: erpReceipts,
+        ),
+        refreshOnReturn: false,
+      );
+      return;
+    }
+
     // Super Admin impersonation: avoid client-session-only portal APIs and
     // open staff-safe detail screens for this project instead.
     if (widget.impersonatingClient) {
@@ -568,6 +611,7 @@ class _ClientPortalScreenState extends State<ClientPortalScreen> {
       _docLibrary,
       includeKyc: _canSeeKyc,
       role: _viewerRole,
+      erpReceipts: _erpReceipts,
     );
   }
 }

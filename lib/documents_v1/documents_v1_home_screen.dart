@@ -13,10 +13,13 @@ import '../services/document_file_download.dart';
 import '../services/document_role_access.dart';
 import '../services/mobile_documents.dart';
 import '../services/mobile_documents_service.dart';
+import '../services/receipts_agreements_service.dart';
 import '../services/workflow_document_service.dart';
 import '../widgets/skeleton_loader.dart';
 import '../widgets/workflow_document_viewer.dart';
+import 'document_visibility.dart';
 import 'documents_v1_detail_screen.dart';
+import 'receipts_agreements_screen.dart';
 import '../user_facing_error.dart';
 
 /// Centralized document library (Documents V1).
@@ -42,8 +45,49 @@ class _DocumentsV1HomeScreenState extends State<DocumentsV1HomeScreen>
   int _loadSeq = 0;
   String? _viewerRole;
   final _searchCtrl = TextEditingController();
+  ReceiptsAgreementsResult? _receipts;
+  String? _receiptsProjectId;
 
   MobileDocumentsService get _docs => MobileDocumentsService.instance;
+
+  /// Receipts and Agreements card: only when the backend says this role may
+  /// see the ERP page and the project has at least one file.
+  bool get _receiptsAvailable {
+    final result = _receipts;
+    return result != null && result.canView && result.total > 0;
+  }
+
+  bool get _showReceiptsCard {
+    if (!_receiptsAvailable) return false;
+    final result = _receipts!;
+    final q = _searchCtrl.text.trim().toLowerCase();
+    if (q.isEmpty) return true;
+    if ('receipts and agreements'.contains(q)) return true;
+    return result.groups.any(
+      (group) =>
+          group.label.toLowerCase().contains(q) ||
+          group.documents.any((doc) => doc.matchesSearch(q)),
+    );
+  }
+
+  Future<void> _loadReceipts(String projectId, {bool force = false}) async {
+    final pid = projectId.trim();
+    if (pid.isEmpty) return;
+    if (_receiptsProjectId != pid && mounted) {
+      setState(() {
+        _receipts = ReceiptsAgreementsService.instance.cached(pid);
+        _receiptsProjectId = pid;
+      });
+    }
+    try {
+      final result =
+          await ReceiptsAgreementsService.instance.fetch(pid, force: force);
+      if (!mounted || _receiptsProjectId != pid) return;
+      setState(() => _receipts = result);
+    } catch (_) {
+      // Endpoint not deployed yet or offline: the card simply stays hidden.
+    }
+  }
 
   @override
   void initState() {
@@ -114,6 +158,7 @@ class _DocumentsV1HomeScreenState extends State<DocumentsV1HomeScreen>
     final seq = ++_loadSeq;
     final projectId = await _currentProjectId();
     if (!mounted || seq != _loadSeq) return;
+    unawaited(_loadReceipts(projectId, force: force));
 
     if (_appliedProjectId != null &&
         projectId.isNotEmpty &&
@@ -180,17 +225,60 @@ class _DocumentsV1HomeScreenState extends State<DocumentsV1HomeScreen>
   }
 
   List<WorkflowDocumentCategory> get _visibleCategories {
+    final receiptsCard = _receiptsAvailable;
     final filtered = filterDocumentCategoriesForRole(
       _library?.libraryCategories ?? const [],
       _viewerRole,
       clientMode: widget.clientMode,
+    )
+        // The pinned Receipts and Agreements card lists every ERP file, so
+        // the catalog copy is not shown twice.
+        .where((category) =>
+            !(receiptsCard && isReceiptsAndAgreementsCategory(category)))
+        .toList();
+    // Categories with no uploaded file stay hidden.
+    return filterWorkflowCategoriesBySearch(
+      visibleDocsCategories(filtered),
+      _searchCtrl.text,
     );
-    return filterWorkflowCategoriesBySearch(filtered, _searchCtrl.text);
+  }
+
+  Widget _buildReceiptsCard() {
+    final result = _receipts!;
+    final visual = categoryVisualFor(
+      categoryId: 'receipts_and_agreements',
+      label: 'Receipts and Agreements',
+    );
+    final parts = result.nonEmptyGroups
+        .map((group) => '${group.documents.length} ${group.label}')
+        .join(' \u00b7 ');
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: ClientPortalCategoryCard(
+        icon: visual.icon,
+        title: 'Receipts and Agreements',
+        subtitle: parts.isEmpty ? visual.subtitle : parts,
+        badgeCount: result.total,
+        iconBg: visual.iconBg,
+        iconFg: visual.iconFg,
+        onTap: () => Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => ReceiptsAgreementsScreen(
+              projectId: _receiptsProjectId,
+              clientMode: widget.clientMode,
+              initial: result,
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final categories = _visibleCategories;
+    final showReceipts = _showReceiptsCard;
 
     return Scaffold(
       backgroundColor: AppTheme.getBackgroundPrimary(context),
@@ -222,6 +310,7 @@ class _DocumentsV1HomeScreenState extends State<DocumentsV1HomeScreen>
                     onRetry: () => _load(force: true),
                   )
                 : (_library?.libraryCategories.isEmpty ?? true) &&
+                        !_receiptsAvailable &&
                         _searchCtrl.text.trim().isEmpty
                     ? _EmptyPane(onRetry: () => _load(force: true))
                     : RefreshIndicator(
@@ -240,7 +329,8 @@ class _DocumentsV1HomeScreenState extends State<DocumentsV1HomeScreen>
                               hint: 'Search all documents…',
                             ),
                             const SizedBox(height: 14),
-                            if (categories.isEmpty)
+                            if (showReceipts) _buildReceiptsCard(),
+                            if (categories.isEmpty && !showReceipts)
                               Padding(
                                 padding: const EdgeInsets.symmetric(vertical: 24),
                                 child: Text(
@@ -538,18 +628,22 @@ class _DocumentsV1CategoryScreenState extends State<DocumentsV1CategoryScreen>
       _category,
       hideAreaStatement: _hideArchitecturalAreaStatement,
     );
-    if (checklist != null) return checklist;
-    return substantiveDocumentSections(_category)
-        .map(sectionWithMobileVisibleDocuments)
-        .toList();
+    // Empty folders and the bare "Section" row stay hidden.
+    if (checklist != null) return visibleDocsSections(checklist);
+    return visibleDocsSections(
+      substantiveDocumentSections(_category)
+          .map(sectionWithMobileVisibleDocuments),
+    );
   }
 
   List<WorkflowDocumentSection> get _filteredSections {
     if (_architecturalGrouped) {
-      return clientPortalArchitecturalSections(
-        _category,
-        _searchCtrl.text,
-        hideAreaStatement: _hideArchitecturalAreaStatement,
+      return visibleDocsSections(
+        clientPortalArchitecturalSections(
+          _category,
+          _searchCtrl.text,
+          hideAreaStatement: _hideArchitecturalAreaStatement,
+        ),
       );
     }
     return filterWorkflowSectionsBySearch(
@@ -1205,6 +1299,8 @@ class _ClientJourneyDocumentsScreenState
                 .where((section) => section.documents.isNotEmpty)
                 .toList()
             : sections;
+        // Empty folders and the bare "Section" row stay hidden.
+        _sections = visibleDocsSections(_sections);
       });
     } catch (e) {
       if (!mounted) return;

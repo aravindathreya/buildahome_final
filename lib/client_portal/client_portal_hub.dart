@@ -1,5 +1,6 @@
 import '../models/workflow_document.dart';
 import '../services/document_role_access.dart';
+import '../services/receipts_agreements_service.dart';
 import '../services/workflow_document_service.dart';
 import 'client_portal_document_ui.dart';
 
@@ -32,6 +33,7 @@ class ClientPortalHubItem {
     this.badgeCount = 0,
     this.journeyKey,
     this.category,
+    this.erpReceipts,
   });
 
   final String id;
@@ -42,6 +44,13 @@ class ClientPortalHubItem {
   final int badgeCount;
   final String? journeyKey;
   final WorkflowDocumentCategory? category;
+
+  /// Set when this Receipts and Agreements row is backed by the ERP page
+  /// (GET /api/mobile/project/<id>/receipts_agreements) instead of the
+  /// workflow-documents library.
+  final ReceiptsAgreementsResult? erpReceipts;
+
+  bool get isErpReceipts => erpReceipts != null;
 
   bool get isPinnedSpecial =>
       kind == ClientPortalHubKind.kyc ||
@@ -196,10 +205,16 @@ bool roleCanSeeClientPortalKyc(String? role) => roleCanSeeForMeKyc(role);
 /// Most staff get the same rows as clients, without KYC.
 /// Site Engineers also omit project documents and contracts.
 /// Project Coordinator and APC use their own For me rows.
+///
+/// [erpReceipts] is the ERP Receipts and Agreements result for the project.
+/// When it loaded, it replaces the library's receipts row: shown when
+/// `canView && total > 0`, hidden otherwise. When it is null (not loaded yet
+/// or the request failed) the library-based row is used as before.
 List<ClientPortalHubItem> buildClientPortalHubItems(
   WorkflowDocumentLibrary? library, {
   bool includeKyc = true,
   String? role,
+  ReceiptsAgreementsResult? erpReceipts,
 }) {
   final items = <ClientPortalHubItem>[];
   final visibilityRole = catalogVisibilityRole(role);
@@ -274,7 +289,27 @@ List<ClientPortalHubItem> buildClientPortalHubItems(
     );
   }
 
-  final receiptsCategory = library == null
+  if (erpReceipts != null) {
+    if (erpReceipts.canView && erpReceipts.total > 0) {
+      items.add(
+        ClientPortalHubItem(
+          id: 'receipts_and_agreements',
+          title: 'Receipts and Agreements',
+          subtitle: _erpReceiptsSubtitle(erpReceipts),
+          kind: ClientPortalHubKind.receipts,
+          visual: categoryVisualFor(
+            journeyKey: ClientJourneyKeys.receiptsAndAgreements,
+            label: 'Receipts and Agreements',
+          ),
+          badgeCount: erpReceipts.total,
+          journeyKey: ClientJourneyKeys.receiptsAndAgreements,
+          erpReceipts: erpReceipts,
+        ),
+      );
+    }
+  }
+
+  final receiptsCategory = library == null || erpReceipts != null
       ? null
       : _categoryForJourneyOrLabel(
           library,
@@ -387,4 +422,13 @@ List<ClientPortalHubItem> buildClientPortalHubItems(
   }
 
   return items;
+}
+
+String _erpReceiptsSubtitle(ReceiptsAgreementsResult result) {
+  final labels = result.nonEmptyGroups
+      .map((group) => group.label.trim())
+      .where((label) => label.isNotEmpty)
+      .toList();
+  if (labels.isEmpty) return 'Receipts, agreements and invoices';
+  return labels.join(', ');
 }
