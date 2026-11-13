@@ -316,10 +316,6 @@ class DocumentsState extends State<Documents> {
     final localSubFolders = <String, List<dynamic>>{};
     final localDrawingIds = <String, List<dynamic>>{};
 
-    // Check if user is site engineer
-    final isSiteEngineer = userRole != null && 
-        userRole.toLowerCase().trim() == 'site engineer';
-
     if (data != null && data is List) {
       entries = data;
       for (int i = 0; i < entries.length; i++) {
@@ -331,15 +327,6 @@ class DocumentsState extends State<Documents> {
         if (folder.toLowerCase().trim() == 'agreement' || folder.toLowerCase() == 'agreements') {
           print('changed folder: $folder to Agreements');
           folder = 'Agreements';
-        }
-        
-        // Filter out folders with "agreements" or "receipts" in name for site engineer
-        if (isSiteEngineer) {
-          final folderLower = folder.toLowerCase();
-          if (folderLower.contains('agreement') || folderLower.contains('receipts')) {
-            print('Filtered out folder for site engineer: $folder');
-            continue;
-          }
         }
         
         if (!localFolders.contains(folder)) {

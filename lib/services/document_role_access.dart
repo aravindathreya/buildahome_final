@@ -215,7 +215,6 @@ bool _siteEngineerRestrictedKind(ForMeDocKind kind) {
     case ForMeDocKind.kyc:
     case ForMeDocKind.officeDocuments:
     case ForMeDocKind.contractsAgreement:
-    case ForMeDocKind.contractsReceipts:
     case ForMeDocKind.contractsOther:
       return true;
     default:
@@ -750,7 +749,19 @@ DocumentAccessRights _matrixAccess(ForMeDocRoleBucket bucket, ForMeDocKind kind)
       );
 
     case ForMeDocKind.contractsReceipts:
-      return pick(client: v);
+      // Staff can view receipts, matching backend receipts-and-agreements access.
+      return pick(
+        client: v,
+        architect: v,
+        structural: v,
+        mepDesigner: v,
+        siteEngineer: v,
+        pcApc: v,
+        pm: v,
+        mepEngineer: v,
+        qc: v,
+        finance: v,
+      );
 
     case ForMeDocKind.contractsOther:
       return pick(
