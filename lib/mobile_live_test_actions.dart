@@ -391,7 +391,12 @@ class _MobileLiveTestActionCardState extends State<MobileLiveTestActionCard> {
       if (!allowed || !mounted) return;
     }
     final picker = ImagePicker();
-    final image = await picker.pickImage(source: source, imageQuality: 85);
+    final image = await picker.pickImage(
+      source: source,
+      imageQuality: 85,
+      maxWidth: 2000,
+      maxHeight: 2000,
+    );
     if (image == null) return;
     setState(() {
       if (widget.action.addPercentToTask) {

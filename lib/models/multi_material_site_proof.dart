@@ -15,6 +15,13 @@ class MultiMaterialSiteProofSession {
   final MultiMaterialSiteLocation? siteLocation;
   final int nearSiteRadiusMeters;
   final bool siteLocationAvailable;
+
+  /// Units for the Measurement dropdown, served by the backend
+  /// (`measurement_unit_options`, from the server's indent unit list).
+  final List<String> measurementUnitOptions;
+
+  /// Server default unit for Measurement (e.g. `SFT`).
+  final String measurementUnitDefault;
   final Map<String, dynamic> raw;
 
   const MultiMaterialSiteProofSession({
@@ -32,6 +39,8 @@ class MultiMaterialSiteProofSession {
     this.siteLocation,
     this.nearSiteRadiusMeters = 500,
     this.siteLocationAvailable = false,
+    this.measurementUnitOptions = const [],
+    this.measurementUnitDefault = '',
     this.raw = const {},
   });
 
@@ -65,6 +74,14 @@ class MultiMaterialSiteProofSession {
     } else if (siteRaw is String && siteRaw.trim().isNotEmpty) {
       site = MultiMaterialSiteLocation.tryParse(siteRaw);
     }
+
+    final commonMap = commonRaw is Map ? commonRaw : const {};
+    final unitOptions = _asStringList(
+      json['measurement_unit_options'] ?? commonMap['measurement_unit_options'],
+    );
+    final unitDefault = _asString(
+      json['measurement_unit_default'] ?? commonMap['measurement_unit_default'],
+    );
 
     final availableRaw = json['site_location_available'];
     final available = availableRaw == null
@@ -100,6 +117,8 @@ class MultiMaterialSiteProofSession {
         return radius > 0 ? radius : 500;
       }(),
       siteLocationAvailable: available,
+      measurementUnitOptions: unitOptions,
+      measurementUnitDefault: unitDefault,
       raw: Map<String, dynamic>.from(json),
     );
   }
@@ -125,6 +144,8 @@ class MultiMaterialSiteProofSession {
       siteLocation: siteLocation,
       nearSiteRadiusMeters: nearSiteRadiusMeters,
       siteLocationAvailable: siteLocationAvailable,
+      measurementUnitOptions: measurementUnitOptions,
+      measurementUnitDefault: measurementUnitDefault,
       raw: raw,
     );
   }
@@ -481,6 +502,16 @@ String _asString(dynamic value) {
   final text = value.toString().trim();
   if (text.isEmpty || text.toLowerCase() == 'null') return '';
   return text;
+}
+
+List<String> _asStringList(dynamic value) {
+  if (value is! List) return const [];
+  final out = <String>[];
+  for (final e in value) {
+    final text = _asString(e);
+    if (text.isNotEmpty && !out.contains(text)) out.add(text);
+  }
+  return out;
 }
 
 int _asInt(dynamic value) {

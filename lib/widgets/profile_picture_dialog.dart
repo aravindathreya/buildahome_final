@@ -6,6 +6,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../app_theme.dart';
+import '../services/camera_capture_recovery.dart';
 import '../services/camera_permission.dart';
 import '../services/profile_picture_service.dart';
 import '../user_facing_error.dart';
@@ -159,13 +160,22 @@ class _ProfilePictureDialogState extends State<_ProfilePictureDialog> {
         final allowed = await ensureCameraPermission(context);
         if (!allowed || !mounted) return;
       }
-      final picker = ImagePicker();
-      final picked = await picker.pickImage(
-        source: source,
-        maxWidth: 1280,
-        maxHeight: 1280,
-        imageQuality: 85,
-      );
+      final picked = source == ImageSource.camera
+          ? await CameraCaptureRecovery.capturePhoto(
+              context,
+              imageQuality: 85,
+              maxEdge: 1280,
+              pending: PendingCameraCapture.now(
+                screen: 'profile_picture',
+                extra: CameraCaptureRecovery.notRestorableExtra,
+              ),
+            )
+          : await ImagePicker().pickImage(
+              source: source,
+              maxWidth: 1280,
+              maxHeight: 1280,
+              imageQuality: 85,
+            );
       if (picked == null) return;
 
       if (!mounted) return;

@@ -32,6 +32,7 @@ import 'services/mobile_live_test_auto_runner.dart';
 import 'services/mobile_live_test_autoplay.dart';
 import 'services/mobile_live_test_access.dart';
 import 'services/capture_time.dart';
+import 'services/camera_capture_recovery.dart';
 import 'services/camera_permission.dart';
 import 'services/mobile_live_test_workflow.dart';
 import 'site_proof_multi/multi_material_site_proof_screen.dart';
@@ -7020,7 +7021,10 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
       parsedSiteLocation: siteLocation,
     );
 
-    List<_SelectedUploadFile> selectedFiles = <_SelectedUploadFile>[];
+    // Photo recovered after Android killed the app during Take photo.
+    List<_SelectedUploadFile> selectedFiles = await _takeRecoveredWorkflowFiles(
+      _workflowCameraRecoveryKey(task, uploadAction),
+    );
     bool isSubmitting = false;
     bool refreshAfterClose = false;
     bool taskFinishedAfterClose = false;
@@ -7033,25 +7037,9 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
     double? deviceLongitude;
 
     Future<_SelectedUploadFile?> captureLiveImage() async {
-      if (!await ensureCameraPermission(context)) return null;
-      if (!mounted) return null;
-      final picked = await ImagePicker().pickImage(
-        source: ImageSource.camera,
-        imageQuality: 88,
-      );
-      if (picked == null) return null;
-
-      final capturedAt = CaptureTime.nowLocal();
-      final sourceFile = File(picked.path);
-      final stampedName = CaptureTime.stampFilename(isVideo: false, at: capturedAt);
-      final stampedPath =
-          '${Directory.systemTemp.path}${Platform.pathSeparator}$stampedName';
-      final copiedFile = await sourceFile.copy(stampedPath);
-
-      return _SelectedUploadFile(
-        path: copiedFile.path,
-        name: stampedName,
-        capturedAt: capturedAt,
+      return _pickWorkflowCameraFile(
+        context,
+        recoveryKey: _workflowCameraRecoveryKey(task, uploadAction),
       );
     }
 
@@ -7170,7 +7158,7 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
     final withinNearSite =
         !needsGps || (nearSiteError == null && deviceLatitude != null);
 
-    if (cameraOnly && withinNearSite) {
+    if (cameraOnly && withinNearSite && selectedFiles.isEmpty) {
       final captured = await captureLiveImage();
       if (captured == null) {
         commentController.dispose();
@@ -7693,7 +7681,11 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
             ? uploadAction['label'].toString().trim()
             : 'Upload';
 
-    _SelectedUploadFile? pendingFile;
+    final recoveredFiles = await _takeRecoveredWorkflowFiles(
+      _workflowCameraRecoveryKey(task, uploadAction),
+    );
+    _SelectedUploadFile? pendingFile =
+        recoveredFiles.isEmpty ? null : recoveredFiles.first;
     bool isSaving = false;
     bool isFinalizing = false;
     bool isDeleting = false;
@@ -7712,25 +7704,9 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
     double? deviceLongitude;
 
     Future<_SelectedUploadFile?> captureLiveImage() async {
-      if (!await ensureCameraPermission(context)) return null;
-      if (!mounted) return null;
-      final picked = await ImagePicker().pickImage(
-        source: ImageSource.camera,
-        imageQuality: 88,
-      );
-      if (picked == null) return null;
-
-      final capturedAt = CaptureTime.nowLocal();
-      final sourceFile = File(picked.path);
-      final stampedName = CaptureTime.stampFilename(isVideo: false, at: capturedAt);
-      final stampedPath =
-          '${Directory.systemTemp.path}${Platform.pathSeparator}$stampedName';
-      final copiedFile = await sourceFile.copy(stampedPath);
-
-      return _SelectedUploadFile(
-        path: copiedFile.path,
-        name: stampedName,
-        capturedAt: capturedAt,
+      return _pickWorkflowCameraFile(
+        context,
+        recoveryKey: _workflowCameraRecoveryKey(task, uploadAction),
       );
     }
 
@@ -14974,7 +14950,11 @@ Future<_IndentPoSiteProofSubmitResult> _presentIndentPoSiteProofAction({
   final maxVideoSizeMb = _intValue(action['max_video_size_mb']) ?? 50;
   final icon = _indentPoStepIcon(action);
 
-  final List<_SelectedUploadFile> selectedFiles = [];
+  final List<_SelectedUploadFile> selectedFiles = [
+    ...await _takeRecoveredWorkflowFiles(
+      _workflowCameraRecoveryKey(task, action),
+    ),
+  ];
   var isSubmitting = false;
   var isCheckingLocation = true;
   String? nearSiteError;
@@ -15008,8 +14988,12 @@ Future<_IndentPoSiteProofSubmitResult> _presentIndentPoSiteProofAction({
   if (kind == _IndentPoSiteProofKind.image &&
       !reviewOnly &&
       nearSiteError == null &&
-      deviceLatitude != null) {
-    final captured = await _pickWorkflowCameraFile(context);
+      deviceLatitude != null &&
+      selectedFiles.isEmpty) {
+    final captured = await _pickWorkflowCameraFile(
+      context,
+      recoveryKey: _workflowCameraRecoveryKey(task, action),
+    );
     if (captured != null) selectedFiles.add(captured);
   }
 
@@ -15049,7 +15033,10 @@ Future<_IndentPoSiteProofSubmitResult> _presentIndentPoSiteProofAction({
               );
               return;
             }
-            final captured = await _pickWorkflowCameraFile(context);
+            final captured = await _pickWorkflowCameraFile(
+              context,
+              recoveryKey: _workflowCameraRecoveryKey(task, action),
+            );
             if (captured == null || !sheetContext.mounted) return;
             setSheetState(() => selectedFiles.add(captured));
           }
@@ -15543,14 +15530,81 @@ Future<_NearSiteCheckResult> _applyDebugNearSiteOverrideIfNeeded(
   return result;
 }
 
-Future<_SelectedUploadFile?> _pickWorkflowCameraFile(
-  BuildContext context,
+/// Identity of a workflow upload for camera restart recovery.
+String _workflowCameraRecoveryKey(
+  Map<String, dynamic> task,
+  Map<String, dynamic> action, [
+  String item = '',
+]) {
+  final taskId = task['id']?.toString().trim() ?? '';
+  final actionId =
+      (action['id'] ?? action['key'] ?? action['label'])?.toString().trim() ??
+          '';
+  return item.isEmpty ? '$taskId:$actionId' : '$taskId:$actionId:$item';
+}
+
+/// Photos recovered after Android killed the app during Take photo for the
+/// same task/action. Stamped with the time the photo file was written.
+Future<List<_SelectedUploadFile>> _takeRecoveredWorkflowFiles(
+  String recoveryKey,
 ) async {
+  try {
+    final recovered = await CameraCaptureRecovery.takeRecovered(
+      screen: CameraCaptureScreens.workflowUpload,
+      key: recoveryKey,
+    );
+    if (recovered == null) return <_SelectedUploadFile>[];
+    final out = <_SelectedUploadFile>[];
+    for (final path in recovered.paths) {
+      final source = File(path);
+      DateTime capturedAt;
+      try {
+        capturedAt = source.lastModifiedSync();
+      } catch (_) {
+        capturedAt = CaptureTime.nowLocal();
+      }
+      final stampedName =
+          CaptureTime.stampFilename(isVideo: false, at: capturedAt);
+      final stampedPath =
+          '${Directory.systemTemp.path}${Platform.pathSeparator}$stampedName';
+      final copied = await source.copy(stampedPath);
+      out.add(
+        _SelectedUploadFile(
+          path: copied.path,
+          name: stampedName,
+          capturedAt: capturedAt,
+        ),
+      );
+    }
+    return out;
+  } catch (_) {
+    return <_SelectedUploadFile>[];
+  }
+}
+
+/// Live photo for workflow uploads. Uses the in-app camera on Android so the
+/// app can't be killed while the camera is open; falls back to the phone's
+/// camera app (downscaled) with a pending record for restart recovery.
+Future<_SelectedUploadFile?> _pickWorkflowCameraFile(
+  BuildContext context, {
+  String recoveryKey = '',
+}) async {
   if (!await ensureCameraPermission(context)) return null;
   if (context is! Element || !context.mounted) return null;
-  final picked = await ImagePicker().pickImage(
-    source: ImageSource.camera,
+  final picked = await CameraCaptureRecovery.capturePhoto(
+    context,
     imageQuality: 88,
+    pending: PendingCameraCapture.now(
+      screen: CameraCaptureScreens.workflowUpload,
+      key: recoveryKey,
+      extra: recoveryKey.isEmpty
+          ? CameraCaptureRecovery.notRestorableExtra
+          : const <String, dynamic>{
+              'restore_hint': 'The app restarted while the camera was open. '
+                  'Your photo was saved. Open the same task and tap the '
+                  'upload again to continue.',
+            },
+    ),
   );
   if (picked == null) return null;
 
@@ -17738,11 +17792,20 @@ class _PictureChoiceListSheetState extends State<_PictureChoiceListSheet> {
     }
     if (!mounted) return;
 
-    final picked = await ImagePicker().pickImage(
-      source: source,
-      imageQuality: 88,
-    );
-    if (picked == null) return;
+    final picked = source == ImageSource.camera
+        ? await CameraCaptureRecovery.capturePhoto(
+            context,
+            imageQuality: 88,
+            pending: PendingCameraCapture.now(
+              screen: CameraCaptureScreens.pictureChoice,
+              extra: CameraCaptureRecovery.notRestorableExtra,
+            ),
+          )
+        : await ImagePicker().pickImage(
+            source: source,
+            imageQuality: 88,
+          );
+    if (picked == null || !mounted) return;
 
     setState(() {
       row.localImagePath = picked.path;

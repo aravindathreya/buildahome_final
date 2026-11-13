@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -12,6 +13,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 
 import 'app_theme.dart';
 import 'user_facing_error.dart';
+import 'services/camera_capture_recovery.dart';
 import 'services/camera_permission.dart';
 import 'AddDailyUpdate.dart'; // For FullScreenImage
 import 'services/data_provider.dart';
@@ -74,6 +76,9 @@ class _SiteVisitReportsScreenState extends State<SiteVisitReportsScreen> with Si
     _pageController = PageController(initialPage: 0);
     _initializeRoleAndTabs();
     _primeProjects();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(_restoreRecoveredCapture());
+    });
   }
   
   void _nextStep() {
@@ -268,12 +273,18 @@ class _SiteVisitReportsScreenState extends State<SiteVisitReportsScreen> with Si
     if (!await ensureCameraPermission(context)) return;
     if (!mounted) return;
 
-    final picker = ImagePicker();
-    final pickedFile = await picker.pickImage(
-      source: ImageSource.camera,
+    final pickedFile = await CameraCaptureRecovery.capturePhoto(
+      context,
+      imageQuality: 85,
       maxWidth: maxImageWidth.toDouble(),
       maxHeight: maxImageHeight.toDouble(),
-      imageQuality: 85,
+      pending: PendingCameraCapture.now(
+        screen: CameraCaptureScreens.siteVisitReports,
+        extra: const <String, dynamic>{
+          'restore_hint': 'The app restarted while the camera was open. Your '
+              'photo was saved. Open Site visit reports again to continue.',
+        },
+      ),
     );
     
     if (pickedFile != null) {
@@ -294,6 +305,25 @@ class _SiteVisitReportsScreenState extends State<SiteVisitReportsScreen> with Si
     for (var file in pickedFiles) {
       _processImage(file);
     }
+  }
+
+  /// Photo kept after Android killed the app while the camera was open.
+  Future<void> _restoreRecoveredCapture() async {
+    final recovered = await CameraCaptureRecovery.takeRecovered(
+      screen: CameraCaptureScreens.siteVisitReports,
+    );
+    if (recovered == null || !mounted) return;
+    for (final path in recovered.paths) {
+      _processImage(XFile(path));
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'The app restarted while the camera was open. Your photo was '
+          'recovered.',
+        ),
+      ),
+    );
   }
 
   void _processImage(XFile file) {

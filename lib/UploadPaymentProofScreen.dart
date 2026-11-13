@@ -12,6 +12,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'FullScreenImage.dart';
 import 'Payments.dart';
 import 'models/payment_proof_item.dart';
+import 'services/camera_capture_recovery.dart';
 import 'services/camera_permission.dart';
 import 'services/client_portal_service.dart';
 import 'services/session_manager.dart';
@@ -97,7 +98,7 @@ class _UploadPaymentProofScreenState extends State<UploadPaymentProofScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _load();
+    _load().whenComplete(() => unawaited(_offerRecoveredCapture()));
     if (widget.showPendingPayments) {
       unawaited(_loadPendingPayments());
     }
@@ -384,16 +385,51 @@ class _UploadPaymentProofScreenState extends State<UploadPaymentProofScreen>
     return false;
   }
 
+  /// Android may kill the app while the phone's camera is open. The photo is
+  /// kept and offered for upload the next time this screen opens.
+  Future<void> _offerRecoveredCapture() async {
+    if (!mounted || !_uploadEnabled) return;
+    final recovered = await CameraCaptureRecovery.takeRecovered(
+      screen: CameraCaptureScreens.paymentProof,
+    );
+    if (recovered == null || !mounted) return;
+    final upload = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Upload the photo you took?'),
+        content: const Text(
+          'The app restarted while the camera was open. Your payment proof '
+          'photo was saved. Upload it now?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Discard'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Upload'),
+          ),
+        ],
+      ),
+    );
+    if (upload != true || !mounted) return;
+    await _uploadFiles(
+      recovered.paths.map((p) => File(p)).toList(),
+      stageTaskId: int.tryParse(
+        '${recovered.pending.extra['stage_task_id'] ?? ''}',
+      ),
+    );
+  }
+
   Future<void> _takePhoto({int? stageTaskId}) async {
     if (_uploading || !_uploadEnabled) return;
     if (!await ensureCameraPermission(context)) return;
     if (!mounted) return;
     try {
-      final picked = await _picker.pickImage(
-        source: ImageSource.camera,
-        maxWidth: 1920,
-        maxHeight: 1920,
-        imageQuality: 80,
+      final picked = await capturePaymentProofPhoto(
+        context,
+        stageTaskId: stageTaskId,
       );
       if (picked == null) return;
       await _uploadFiles([File(picked.path)], stageTaskId: stageTaskId);
@@ -1074,6 +1110,27 @@ class _UploadPaymentProofScreenState extends State<UploadPaymentProofScreen>
   }
 }
 
+/// Live payment proof photo: in-app camera on Android, else the phone's
+/// camera app with a pending record so a restart can recover it.
+Future<XFile?> capturePaymentProofPhoto(
+  BuildContext context, {
+  int? stageTaskId,
+}) {
+  return CameraCaptureRecovery.capturePhoto(
+    context,
+    imageQuality: 80,
+    maxEdge: 1920,
+    pending: PendingCameraCapture.now(
+      screen: CameraCaptureScreens.paymentProof,
+      extra: <String, dynamic>{
+        if (stageTaskId != null) 'stage_task_id': stageTaskId,
+        'restore_hint': 'The app restarted while the camera was open. Your '
+            'payment proof photo was saved. Open Upload proof to upload it.',
+      },
+    ),
+  );
+}
+
 class _PendingPaymentTile extends StatelessWidget {
   final PendingPaymentRow row;
   final String amountText;
@@ -1416,7 +1473,6 @@ class _ProofStageDetailScreenState extends State<_ProofStageDetailScreen> {
   Map<String, dynamic>? _lastPayload;
   bool _uploading = false;
   String? _removingUrl;
-  final _picker = ImagePicker();
 
   bool _keepOnThisVisit(PaymentProofItem item) {
     return item.url.isNotEmpty && _visibleUrls.contains(item.url);
@@ -1500,11 +1556,9 @@ class _ProofStageDetailScreenState extends State<_ProofStageDetailScreen> {
     if (!widget.canUpload || _uploading) return;
     if (!await ensureCameraPermission(context)) return;
     if (!mounted) return;
-    final picked = await _picker.pickImage(
-      source: ImageSource.camera,
-      maxWidth: 1920,
-      maxHeight: 1920,
-      imageQuality: 80,
+    final picked = await capturePaymentProofPhoto(
+      context,
+      stageTaskId: widget.stageTaskId,
     );
     if (picked == null) return;
     await _upload([File(picked.path)]);

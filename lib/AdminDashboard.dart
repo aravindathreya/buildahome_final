@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:buildAhome/AddDailyUpdate.dart';
+import 'package:buildAhome/services/camera_capture_resumers.dart';
 import 'package:buildAhome/UserHome.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -104,6 +105,7 @@ class _AdminDashboardState extends State<AdminDashboard>
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) unawaited(DailyUpdateCameraRecovery.resumeIfPending(context));
+      if (mounted) unawaited(resumePendingCameraCapture(context));
     });
     WidgetsBinding.instance.addObserver(this);
     MobileBottomNavService.instance.revision

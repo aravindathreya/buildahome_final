@@ -6,7 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// SharedPreferences; falls back to the hardcoded list when offline.
 class IndentUnits {
   static const List<String> fallback = [
-    'Bags', 'CFT', 'CUM', 'Load', 'Kg', 'MT', 'Nos', 'Box',
+    'Bags', 'CFT', 'CUM', 'Load', 'Kg', 'MT', 'Nos', 'Box', 'Set',
     'SFT', 'RFT', 'LS', 'PCs', 'Ltrs', 'Others',
   ];
   static const String _url = "https://office.buildahome.in/API/get_indent_units";

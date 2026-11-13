@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -11,9 +12,11 @@ import 'package:intl/intl.dart';
 import '../app_theme.dart';
 import '../models/approved_po.dart';
 import '../models/multi_material_site_proof.dart';
+import '../services/camera_capture_recovery.dart';
 import '../services/camera_permission.dart';
 import '../services/location_service.dart';
 import '../services/capture_time.dart';
+import '../services/indent_units.dart';
 import '../services/vehicle_types.dart';
 import '../services/multi_material_site_proof_service.dart';
 import '../widgets/themed_scaffold.dart';
@@ -26,7 +29,13 @@ class _LocalMedia {
   final bool isVideo;
   final DateTime? capturedAt;
 
-  const _LocalMedia({
+  /// True once the immediate autosave upload succeeded (server has it).
+  bool uploaded = false;
+
+  /// In-flight immediate upload, awaited before submit.
+  Future<void>? uploading;
+
+  _LocalMedia({
     required this.file,
     required this.isVideo,
     this.capturedAt,
@@ -56,6 +65,10 @@ class MultiMaterialSiteProofScreen extends StatefulWidget {
   final Future<void> Function() onChanged;
   final Future<void> Function(String taskId)? onTaskFinished;
 
+  /// Reopened after Android killed the app while the camera was open:
+  /// go back to the evidence step and recover the photo/video.
+  final bool restoreCapture;
+
   const MultiMaterialSiteProofScreen({
     super.key,
     required this.indentId,
@@ -64,7 +77,36 @@ class MultiMaterialSiteProofScreen extends StatefulWidget {
     required this.onChanged,
     this.approvedPo,
     this.onTaskFinished,
+    this.restoreCapture = false,
   });
+
+  /// Reopens this screen from the dashboard after a camera restart.
+  static Future<void> resumeAfterCameraRestart(
+    BuildContext context,
+    PendingCameraCapture pending,
+  ) async {
+    final extra = pending.extra;
+    final indentId = extra['indent_id']?.toString().trim() ?? '';
+    if (indentId.isEmpty) {
+      await CameraCaptureRecovery.clearPending();
+      return;
+    }
+    final taskRaw = extra['task'];
+    final task = taskRaw is Map
+        ? Map<String, dynamic>.from(taskRaw)
+        : <String, dynamic>{};
+    await Navigator.of(context, rootNavigator: true).push(
+      MaterialPageRoute(
+        builder: (_) => MultiMaterialSiteProofScreen(
+          indentId: indentId,
+          itemRunId: extra['item_run_id']?.toString() ?? '',
+          task: task,
+          onChanged: () async {},
+          restoreCapture: true,
+        ),
+      ),
+    );
+  }
 
   @override
   State<MultiMaterialSiteProofScreen> createState() =>
@@ -122,14 +164,50 @@ class _MultiMaterialSiteProofScreenState
     return [..._vehicleTypes, v];
   }
 
-  /// Unit under Measurement is always Sqft and is not user-editable.
-  static const _fixedMeasurementUnit = 'Sqft';
+  /// Measurement unit picked from the server list (session
+  /// `measurement_unit_options`, else `/API/get_indent_units`).
+  String _measurementUom = '';
+
+  /// Used only if neither the session nor the server sends a default.
+  static const _fallbackMeasurementUnit = 'SFT';
+
+  List<String> get _serverMeasurementUnits {
+    final fromSession = _session?.measurementUnitOptions ?? const <String>[];
+    if (fromSession.isNotEmpty) return fromSession;
+    return IndentUnits.units;
+  }
+
+  String get _defaultMeasurementUnit {
+    final units = _serverMeasurementUnits;
+    final fromServer = (_session?.measurementUnitDefault ?? '').trim();
+    if (fromServer.isNotEmpty) return fromServer;
+    if (units.contains(_fallbackMeasurementUnit)) {
+      return _fallbackMeasurementUnit;
+    }
+    return units.isNotEmpty ? units.first : _fallbackMeasurementUnit;
+  }
+
+  String get _currentMeasurementUnit {
+    final u = _measurementUom.trim();
+    return u.isNotEmpty ? u : _defaultMeasurementUnit;
+  }
+
+  /// Server list plus the current value if missing (never drop a saved unit).
+  List<String> get _measurementUnitOptions {
+    final list = List<String>.from(_serverMeasurementUnits);
+    final cur = _currentMeasurementUnit;
+    if (cur.isNotEmpty && !list.contains(cur)) list.add(cur);
+    return list;
+  }
 
   @override
   void initState() {
     super.initState();
     VehicleTypes.load().then((list) {
       if (mounted) setState(() => _vehicleTypes = List<String>.from(list));
+    });
+    IndentUnits.load().then((_) {
+      if (mounted) setState(() {});
     });
     _measurementController.addListener(_scheduleCommonAutosave);
     _measurementUnitController.addListener(_scheduleCommonAutosave);
@@ -267,6 +345,7 @@ class _MultiMaterialSiteProofScreenState
       }
       _applySession(session);
       setState(() => _loading = false);
+      if (widget.restoreCapture) await _restoreLostCapture();
       await _refreshLocation();
     } catch (e) {
       if (!mounted) return;
@@ -284,6 +363,8 @@ class _MultiMaterialSiteProofScreenState
     _measurementController.text = session.common.measurement;
     _measurementUnitController.text =
         _measurementQuantityFromStored(session.common.measurementUnit);
+    _measurementUom =
+        _measurementUnitFromStored(session.common.measurementUnit) ?? '';
     _vehicleNumberController.text = session.common.vehicleNumber;
     _driverNameController.text = session.common.driverName;
     _driverPhoneController.text = session.common.driverPhone;
@@ -602,10 +683,31 @@ class _MultiMaterialSiteProofScreenState
     return match?.group(1) ?? '';
   }
 
+  /// Unit part of a stored value such as "450 SFT" or legacy "450 Sqft",
+  /// matched to the server's spelling. Null when missing or unknown.
+  String? _measurementUnitFromStored(String raw) {
+    final match =
+        RegExp(r'^\d+(?:[.,]\d+)?\s*(.*)$').firstMatch(raw.trim());
+    final unit = (match?.group(1) ?? '').trim();
+    if (unit.isEmpty) return null;
+    final units = _serverMeasurementUnits;
+    final lower = unit.toLowerCase();
+    for (final u in units) {
+      if (u.toLowerCase() == lower) return u;
+    }
+    const sqftAliases = {'sqft', 'sq ft', 'sq.ft', 'sq. ft', 'sq.ft.', 'sq. ft.'};
+    if (sqftAliases.contains(lower.replaceAll(RegExp(r'\s+'), ' '))) {
+      for (final u in units) {
+        if (u.toLowerCase() == 'sft') return u;
+      }
+    }
+    return null;
+  }
+
   String _storedMeasurementUnit() {
     final qty = _measurementUnitController.text.trim();
     if (qty.isEmpty) return '';
-    return '$qty $_fixedMeasurementUnit';
+    return '$qty $_currentMeasurementUnit';
   }
 
   bool _isValidMeasurementQuantity(String raw) {
@@ -631,11 +733,15 @@ class _MultiMaterialSiteProofScreenState
     }
     final unitRaw = _measurementUnitController.text.trim();
     if (unitRaw.isEmpty) {
-      _snack('Enter the measurement in Sqft.', error: true);
+      _snack('Enter the measurement quantity.', error: true);
       return;
     }
     if (!_isValidMeasurementQuantity(unitRaw)) {
-      _snack('Enter a number. Unit is Sqft.', error: true);
+      _snack('Measurement quantity must be a number.', error: true);
+      return;
+    }
+    if (_currentMeasurementUnit.trim().isEmpty) {
+      _snack('Choose a measurement unit.', error: true);
       return;
     }
 
@@ -690,11 +796,22 @@ class _MultiMaterialSiteProofScreenState
       );
       await _service.saveCommon(itemRunId: _itemRunId, fields: fields);
 
-      // 3) Delivery proof media
+      // Let in-flight autosave uploads finish so nothing goes up twice.
+      await Future.wait([
+        for (final m in [
+          ..._commonPhotos,
+          ..._commonVideos,
+          ..._vehiclePhotos,
+          ..._vehicleVideos,
+        ])
+          if (m.uploading != null) m.uploading!,
+      ]);
+
+      // 3) Delivery proof media (skip files the autosave already uploaded)
       final deliveryMedia = <_LocalMedia>[
         ..._commonPhotos,
         ..._commonVideos,
-      ];
+      ].where((m) => !m.uploaded).toList();
       if (deliveryMedia.isNotEmpty) {
         await _service.uploadCommonFiles(
           itemRunId: _itemRunId,
@@ -711,7 +828,7 @@ class _MultiMaterialSiteProofScreenState
       final vehicleMedia = <_LocalMedia>[
         ..._vehiclePhotos,
         ..._vehicleVideos,
-      ];
+      ].where((m) => !m.uploaded).toList();
       if (vehicleMedia.isNotEmpty) {
         await _service.uploadVehicleFiles(
           itemRunId: _itemRunId,
@@ -794,6 +911,9 @@ class _MultiMaterialSiteProofScreenState
         files: files,
         capturedAts: capturedAts,
       );
+      for (final m in mediaItems) {
+        m.uploaded = true;
+      }
     } catch (e) {
       if (!mounted) return;
       _snack(
@@ -817,6 +937,9 @@ class _MultiMaterialSiteProofScreenState
         files: files,
         capturedAts: capturedAts,
       );
+      for (final m in mediaItems) {
+        m.uploaded = true;
+      }
     } catch (e) {
       if (!mounted) return;
       _snack(
@@ -826,7 +949,114 @@ class _MultiMaterialSiteProofScreenState
     }
   }
 
-  Future<_LocalMedia?> _capturePhoto() async {
+  static const _slotDelivery = 'delivery';
+  static const _slotVehicle = 'vehicle';
+
+  /// JSON-safe copy of the task so the screen can be reopened after a restart.
+  Map<String, dynamic> _taskForRestore() {
+    try {
+      final decoded = jsonDecode(jsonEncode(widget.task));
+      if (decoded is Map) return Map<String, dynamic>.from(decoded);
+    } catch (_) {}
+    return <String, dynamic>{
+      'id': widget.task['id']?.toString(),
+      if (_vendorId != null) 'vendor_id': _vendorId,
+    };
+  }
+
+  PendingCameraCapture _pendingCapture({
+    required String slot,
+    required bool isVideo,
+  }) {
+    return PendingCameraCapture.now(
+      screen: CameraCaptureScreens.multiMaterialSiteProof,
+      slot: slot,
+      key: _itemRunId,
+      isVideo: isVideo,
+      extra: <String, dynamic>{
+        'indent_id': widget.indentId,
+        'item_run_id': _itemRunId,
+        'task': _taskForRestore(),
+      },
+    );
+  }
+
+  /// After Android killed the app while the camera was open: show the
+  /// evidence step again and add + upload the recovered photo/video.
+  Future<void> _restoreLostCapture() async {
+    final pending = await CameraCaptureRecovery.readPending();
+    final files = await CameraCaptureRecovery.takeLostFilesFor(
+      CameraCaptureScreens.multiMaterialSiteProof,
+    );
+    if (!mounted) return;
+    if (_selectedOrder.isNotEmpty) {
+      setState(() => _phase = _WizardPhase.evidence);
+    }
+    if (pending == null || files.isEmpty) return;
+    final isVehicle = pending.slot == _slotVehicle;
+    var added = 0;
+    for (final picked in files) {
+      final isVideo = pending.isVideo || _looksLikeVideo(picked.path);
+      final media = await _stampCopy(picked, isVideo: isVideo);
+      if (media == null || !mounted) continue;
+      setState(() {
+        if (isVehicle) {
+          (isVideo ? _vehicleVideos : _vehiclePhotos).add(media);
+        } else {
+          (isVideo ? _commonVideos : _commonPhotos).add(media);
+        }
+      });
+      _startUpload(media, vehicle: isVehicle);
+      added++;
+    }
+    if (added > 0) {
+      _snack(
+        'The app restarted while the camera was open. Your '
+        '${pending.isVideo ? 'video' : 'photo'} was recovered.',
+      );
+    }
+  }
+
+  static bool _looksLikeVideo(String path) {
+    final lower = path.toLowerCase();
+    return lower.endsWith('.mp4') ||
+        lower.endsWith('.mov') ||
+        lower.endsWith('.3gp') ||
+        lower.endsWith('.mkv') ||
+        lower.endsWith('.webm');
+  }
+
+  /// Copies the picked file to a capture-time stamped name.
+  Future<_LocalMedia?> _stampCopy(XFile picked, {required bool isVideo}) async {
+    try {
+      final capturedAt = CaptureTime.nowLocal();
+      final name = CaptureTime.stampFilename(isVideo: isVideo, at: capturedAt);
+      final path =
+          '${Directory.systemTemp.path}${Platform.pathSeparator}$name';
+      final copied = await File(picked.path).copy(path);
+      return _LocalMedia(
+        file: copied,
+        isVideo: isVideo,
+        capturedAt: capturedAt,
+      );
+    } catch (e) {
+      _snack(
+        'Could not save the ${isVideo ? 'video' : 'photo'}: '
+        '${userFacingError(e)}',
+        error: true,
+      );
+      return null;
+    }
+  }
+
+  /// Uploads right away; submit later skips files the server already has.
+  void _startUpload(_LocalMedia media, {required bool vehicle}) {
+    media.uploading = vehicle
+        ? _uploadVehicleMediaNow([media])
+        : _uploadDeliveryMediaNow([media]);
+  }
+
+  Future<_LocalMedia?> _capturePhoto({required String slot}) async {
     if (!await ensureCameraPermission(context)) {
       _snack(
         'Camera access is needed to take a photo. Allow Camera for '
@@ -838,8 +1068,11 @@ class _MultiMaterialSiteProofScreenState
     if (!mounted) return null;
     final XFile? picked;
     try {
-      picked = await ImagePicker().pickImage(
-        source: ImageSource.camera,
+      // In-app camera on Android (can't be killed); falls back to the
+      // phone's camera app with a pending record for restart recovery.
+      picked = await CameraCaptureRecovery.capturePhoto(
+        context,
+        pending: _pendingCapture(slot: slot, isVideo: false),
         imageQuality: 88,
       );
     } catch (e) {
@@ -847,29 +1080,14 @@ class _MultiMaterialSiteProofScreenState
       return null;
     }
     if (picked == null) return null;
-    try {
-      final capturedAt = CaptureTime.nowLocal();
-      final stampedName =
-          CaptureTime.stampFilename(isVideo: false, at: capturedAt);
-      final stampedPath =
-          '${Directory.systemTemp.path}${Platform.pathSeparator}$stampedName';
-      final copied = await File(picked.path).copy(stampedPath);
-      return _LocalMedia(
-        file: copied,
-        isVideo: false,
-        capturedAt: capturedAt,
-      );
-    } catch (e) {
-      _snack('Could not save the photo: ${userFacingError(e)}', error: true);
-      return null;
-    }
+    return _stampCopy(picked, isVideo: false);
   }
 
   /// Records with the phone's own camera app. That app records the sound
   /// itself, so only Camera access is needed here; asking for Microphone too
   /// made Add video stop silently on phones (e.g. Redmi / HyperOS) where only
   /// Camera had been allowed.
-  Future<_LocalMedia?> _recordVideo() async {
+  Future<_LocalMedia?> _recordVideo({required String slot}) async {
     if (!await ensureCameraPermission(context)) {
       _snack(
         'Camera access is needed to record a video. Allow Camera for '
@@ -881,8 +1099,8 @@ class _MultiMaterialSiteProofScreenState
     if (!mounted) return null;
     final XFile? picked;
     try {
-      picked = await ImagePicker().pickVideo(
-        source: ImageSource.camera,
+      picked = await CameraCaptureRecovery.recordVideo(
+        pending: _pendingCapture(slot: slot, isVideo: true),
         maxDuration: const Duration(seconds: 60),
       );
     } catch (e) {
@@ -890,17 +1108,7 @@ class _MultiMaterialSiteProofScreenState
       return null;
     }
     if (picked == null) return null;
-    try {
-      final capturedAt = CaptureTime.nowLocal();
-      final name = CaptureTime.stampFilename(isVideo: true, at: capturedAt);
-      final path =
-          '${Directory.systemTemp.path}${Platform.pathSeparator}$name';
-      final copied = await File(picked.path).copy(path);
-      return _LocalMedia(file: copied, isVideo: true, capturedAt: capturedAt);
-    } catch (e) {
-      _snack('Could not save the video: ${userFacingError(e)}', error: true);
-      return null;
-    }
+    return _stampCopy(picked, isVideo: true);
   }
 
   String _cameraErrorMessage(Object error, {required bool isVideo}) {
@@ -1334,10 +1542,10 @@ class _MultiMaterialSiteProofScreenState
                     .toList(),
                 addLabel: 'Add photo',
                 onAdd: () async {
-                  final media = await _capturePhoto();
+                  final media = await _capturePhoto(slot: _slotDelivery);
                   if (media == null || !mounted) return;
                   setState(() => _commonPhotos.add(media));
-                  unawaited(_uploadDeliveryMediaNow([media]));
+                  _startUpload(media, vehicle: false);
                 },
                 onRemove: (i) => setState(() => _commonPhotos.removeAt(i)),
               ),
@@ -1351,10 +1559,10 @@ class _MultiMaterialSiteProofScreenState
                 addLabel: 'Add video',
                 maxItems: 2,
                 onAdd: () async {
-                  final media = await _recordVideo();
+                  final media = await _recordVideo(slot: _slotDelivery);
                   if (media == null || !mounted) return;
                   setState(() => _commonVideos.add(media));
-                  unawaited(_uploadDeliveryMediaNow([media]));
+                  _startUpload(media, vehicle: false);
                 },
                 onRemove: (i) => setState(() => _commonVideos.removeAt(i)),
               ),
@@ -1369,24 +1577,59 @@ class _MultiMaterialSiteProofScreenState
                 decoration: _inputDecoration('e.g. Area levelled'),
               ),
               const SizedBox(height: 10),
-              TextField(
-                controller: _measurementUnitController,
-                keyboardType:
-                    const TextInputType.numberWithOptions(decimal: true),
-                inputFormatters: [
-                  FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
-                ],
-                decoration: _inputDecoration('e.g. 450').copyWith(
-                  suffixText: _fixedMeasurementUnit,
-                  suffixStyle: TextStyle(
-                    color: AppTheme.darkTextPrimary,
-                    fontWeight: FontWeight.w800,
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _measurementUnitController,
+                      keyboardType:
+                          const TextInputType.numberWithOptions(decimal: true),
+                      inputFormatters: [
+                        FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
+                      ],
+                      decoration: _inputDecoration('e.g. 450'),
+                    ),
                   ),
-                ),
+                  const SizedBox(width: 8),
+                  SizedBox(
+                    width: 112,
+                    child: DropdownButtonFormField<String>(
+                      key: const ValueKey('measurement_unit_dropdown'),
+                      value: _currentMeasurementUnit,
+                      isExpanded: true,
+                      items: _measurementUnitOptions
+                          .map(
+                            (u) => DropdownMenuItem(
+                              value: u,
+                              child: Text(
+                                u,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (v) {
+                        if (v == null) return;
+                        setState(() => _measurementUom = v);
+                        _scheduleCommonAutosave();
+                      },
+                      decoration: _inputDecoration(null).copyWith(
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 14,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
               const SizedBox(height: 4),
               const Text(
-                'Enter the number. Unit is Sqft.',
+                'Enter the quantity and pick the unit.',
                 style: TextStyle(
                   color: AppTheme.mutedGrey,
                   fontSize: 12,
@@ -1461,10 +1704,10 @@ class _MultiMaterialSiteProofScreenState
                 addLabel: 'Add photo',
                 maxItems: 3,
                 onAdd: () async {
-                  final media = await _capturePhoto();
+                  final media = await _capturePhoto(slot: _slotVehicle);
                   if (media == null || !mounted) return;
                   setState(() => _vehiclePhotos.add(media));
-                  unawaited(_uploadVehicleMediaNow([media]));
+                  _startUpload(media, vehicle: true);
                 },
                 onRemove: (i) => setState(() => _vehiclePhotos.removeAt(i)),
               ),
@@ -1478,10 +1721,10 @@ class _MultiMaterialSiteProofScreenState
                 addLabel: 'Add video',
                 maxItems: 2,
                 onAdd: () async {
-                  final media = await _recordVideo();
+                  final media = await _recordVideo(slot: _slotVehicle);
                   if (media == null || !mounted) return;
                   setState(() => _vehicleVideos.add(media));
-                  unawaited(_uploadVehicleMediaNow([media]));
+                  _startUpload(media, vehicle: true);
                 },
                 onRemove: (i) => setState(() => _vehicleVideos.removeAt(i)),
               ),
@@ -1753,6 +1996,7 @@ class _MultiMaterialSiteProofScreenState
       _remoteVehicleMedia.clear();
       _measurementController.clear();
       _measurementUnitController.clear();
+      _measurementUom = '';
       _vehicleNumberController.clear();
       _driverNameController.clear();
       _driverPhoneController.clear();

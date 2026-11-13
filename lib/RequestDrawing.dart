@@ -8,6 +8,7 @@ import 'package:image_picker/image_picker.dart';
 import 'dart:convert';
 import 'ShowAlert.dart';
 import 'app_theme.dart';
+import 'services/camera_capture_recovery.dart';
 import 'services/camera_permission.dart';
 import 'projects.dart';
 import 'widgets/skeleton_loader.dart';
@@ -2356,10 +2357,14 @@ class _ViewRequestsPageState extends State<ViewRequestsPage> {
                 if (!mounted) return;
                 if (!await ensureCameraPermission(this.context)) return;
                 if (!mounted) return;
-                final picker = ImagePicker();
-                final pickedFile = await picker.pickImage(
-                  source: ImageSource.camera,
+                // In-app camera on Android so the app isn't killed.
+                final pickedFile = await CameraCaptureRecovery.capturePhoto(
+                  this.context,
                   imageQuality: 85,
+                  pending: PendingCameraCapture.now(
+                    screen: CameraCaptureScreens.requestDrawing,
+                    extra: CameraCaptureRecovery.notRestorableExtra,
+                  ),
                 );
                 if (pickedFile != null) {
                   onFileSelected(pickedFile.path, pickedFile.name);

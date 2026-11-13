@@ -14,6 +14,7 @@ import 'Gallery.dart';
 import 'Scheduler.dart';
 import 'ShowAlert.dart';
 import 'app_theme.dart';
+import 'services/camera_capture_recovery.dart';
 import 'services/camera_permission.dart';
 import 'services/data_provider.dart';
 import 'widgets/themed_scaffold.dart';
@@ -49,6 +50,9 @@ class NotesAndCommentsState extends State<NotesAndComments> {
   void initState() {
     super.initState();
     getNotes();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(_restoreRecoveredCapture());
+    });
   }
 
   Future<void> getNotes({bool showLoader = true}) async {
@@ -210,8 +214,17 @@ class NotesAndCommentsState extends State<NotesAndComments> {
   Future<void> _takePhotoFromCamera() async {
     if (!await ensureCameraPermission(context)) return;
     if (!mounted) return;
-    final picker = ImagePicker();
-    final pickedFile = await picker.pickImage(source: ImageSource.camera, imageQuality: 85);
+    final pickedFile = await CameraCaptureRecovery.capturePhoto(
+      context,
+      imageQuality: 85,
+      pending: PendingCameraCapture.now(
+        screen: CameraCaptureScreens.notesAndComments,
+        extra: const <String, dynamic>{
+          'restore_hint': 'The app restarted while the camera was open. Your '
+              'photo was saved. Open Notes and comments again to continue.',
+        },
+      ),
+    );
     if (pickedFile != null) _processImage(pickedFile);
   }
 
@@ -222,6 +235,25 @@ class NotesAndCommentsState extends State<NotesAndComments> {
     for (var file in pickedFiles) {
       _processImage(file);
     }
+  }
+
+  /// Photo kept after Android killed the app while the camera was open.
+  Future<void> _restoreRecoveredCapture() async {
+    final recovered = await CameraCaptureRecovery.takeRecovered(
+      screen: CameraCaptureScreens.notesAndComments,
+    );
+    if (recovered == null || !mounted) return;
+    for (final path in recovered.paths) {
+      _processImage(XFile(path));
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'The app restarted while the camera was open. Your photo was '
+          'recovered.',
+        ),
+      ),
+    );
   }
 
   void _processImage(XFile file) {

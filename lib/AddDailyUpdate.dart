@@ -13,6 +13,7 @@ import 'package:image_picker/image_picker.dart';
 import 'app_theme.dart';
 import 'user_facing_error.dart';
 import 'services/camera_permission.dart';
+import 'services/camera_capture_recovery.dart';
 import 'services/daily_update_prompt_service.dart';
 import 'services/data_provider.dart';
 import 'widgets/searchable_select.dart';
@@ -315,6 +316,11 @@ class AddDailyUpdateState extends State<AddDailyUpdateForm> {
   /// Android: pick result delivered after the activity was recreated.
   Future<void> _recoverLostCameraPhoto() async {
     if (!Platform.isAndroid) return;
+    // A capture from another screen is waiting for its own recovery; don't
+    // take its photo here.
+    if (!widget.restoreCameraDraft && await CameraCaptureRecovery.hasPending()) {
+      return;
+    }
     try {
       final response = await ImagePicker().retrieveLostData();
       if (response.isEmpty) {

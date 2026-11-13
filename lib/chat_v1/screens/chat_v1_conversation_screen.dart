@@ -8,6 +8,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../services/camera_capture_recovery.dart';
 import '../../services/camera_permission.dart';
 import '../chat_v1_api.dart';
 import '../chat_v1_controller.dart';
@@ -184,6 +185,71 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
     ChatPushInbox.conversationOpened(_conversationId);
     _refreshDlrDprBadge();
     _dlrDprLifecycle = AppLifecycleListener(onResume: _refreshDlrDprBadge);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(_offerRecoveredCapture());
+    });
+  }
+
+  PendingCameraCapture _chatPendingCapture({required bool isVideo}) {
+    return PendingCameraCapture.now(
+      screen: CameraCaptureScreens.chat,
+      key: _conversationId,
+      isVideo: isVideo,
+      extra: <String, dynamic>{
+        'restore_hint': 'The app restarted while the camera was open. Your '
+            '${isVideo ? 'video' : 'photo'} was saved. Open the same chat '
+            'to send it.',
+      },
+    );
+  }
+
+  /// Android may kill the app while the phone's camera is open. The photo or
+  /// video is kept and offered here the next time this chat is opened.
+  Future<void> _offerRecoveredCapture() async {
+    if (_readOnly) return;
+    final recovered = await CameraCaptureRecovery.takeRecovered(
+      screen: CameraCaptureScreens.chat,
+      key: _conversationId,
+    );
+    if (recovered == null || !mounted) return;
+    final isVideo = recovered.pending.isVideo;
+    final what = isVideo ? 'video' : 'photo';
+    final send = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('Send the $what you took?'),
+        content: Text(
+          'The app restarted while the camera was open. Your $what was '
+          'saved. Send it to this chat now?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Discard'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Send'),
+          ),
+        ],
+      ),
+    );
+    if (send != true || !mounted) return;
+    for (final path in recovered.paths) {
+      final file = XFile(path);
+      if (isVideo && await file.length() > _maxVideoBytes) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Video is too large. Maximum is 100 MB.')),
+        );
+        continue;
+      }
+      final bytes = await file.readAsBytes();
+      var name = file.name;
+      if (isVideo && !name.contains('.')) name = '$name.mp4';
+      if (!mounted) return;
+      await _send(fileBytes: bytes, fileName: name);
+    }
   }
 
   void _onScroll() {
@@ -1244,11 +1310,17 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
       final allowed = await ensureCameraPermission(context);
       if (!allowed || !mounted) return;
     }
-    final picker = ImagePicker();
-    final file = await picker.pickImage(
-      source: source,
-      imageQuality: 85,
-    );
+    final XFile? file;
+    if (source == ImageSource.camera) {
+      // In-app camera on Android; phone camera fallback is recoverable.
+      file = await CameraCaptureRecovery.capturePhoto(
+        context,
+        imageQuality: 85,
+        pending: _chatPendingCapture(isVideo: false),
+      );
+    } else {
+      file = await ImagePicker().pickImage(source: source, imageQuality: 85);
+    }
     if (file == null) return;
     final bytes = await file.readAsBytes();
     await _send(fileBytes: bytes, fileName: file.name);
@@ -1287,7 +1359,11 @@ class _ChatV1ConversationScreenState extends State<ChatV1ConversationScreen> {
       final allowed = await ensureCameraPermission(context);
       if (!allowed || !mounted) return;
     }
-    final file = await ImagePicker().pickVideo(source: source);
+    final file = source == ImageSource.camera
+        ? await CameraCaptureRecovery.recordVideo(
+            pending: _chatPendingCapture(isVideo: true),
+          )
+        : await ImagePicker().pickVideo(source: source);
     if (file == null || !mounted) return;
     final size = await file.length();
     if (size > _maxVideoBytes) {

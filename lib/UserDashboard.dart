@@ -56,6 +56,7 @@ import 'ProfileScreen.dart';
 import 'notifcations.dart';
 import 'Dpr.dart';
 import 'AddDailyUpdate.dart';
+import 'services/camera_capture_resumers.dart';
 import 'AttendanceScreen.dart';
 import 'TestReportsScreen.dart';
 import 'project_picker.dart';
@@ -309,6 +310,7 @@ class UserDashboardLayoutState extends State<UserDashboardLayout> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) unawaited(DailyUpdateCameraRecovery.resumeIfPending(context));
+      if (mounted) unawaited(resumePendingCameraCapture(context));
     });
     ClientGenerationService.instance.generation
         .addListener(_onClientGenerationChanged);
