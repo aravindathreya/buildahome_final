@@ -995,7 +995,17 @@ class _TimelineGalleryState extends State<TimelineGallery> {
       final uri = Uri.parse('$_galleryApiBaseUrl/API/get_tasks').replace(
         queryParameters: {'project_id': projectId},
       );
-      final response = await http.get(uri).timeout(_requestTimeout);
+      // Send the login token so staff keep the full project list; the server
+      // hides indent tasks from callers without a staff token.
+      final prefs = await SharedPreferences.getInstance();
+      final token = (prefs.getString('api_token') ?? '').trim();
+      final response = await http.get(
+        uri,
+        headers: {
+          if (token.isNotEmpty && token.toLowerCase() != 'null')
+            'X-Api-Token': token,
+        },
+      ).timeout(_requestTimeout);
       if (response.statusCode != 200) return <dynamic>[];
       return jsonDecode(response.body);
     } catch (e) {

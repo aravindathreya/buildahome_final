@@ -1170,8 +1170,17 @@ class DataProvider {
       final uri = Uri.parse('https://office.buildahome.in/API/get_tasks')
           .replace(queryParameters: {'project_id': trimmed});
       print('[DataProvider] Enriching chat task meta via $uri');
-      final response =
-          await ApiHttp.get(uri).timeout(const Duration(seconds: 20));
+      // Send the login token so staff keep the full project list; the server
+      // hides indent tasks from callers without a staff token.
+      final prefs = await SharedPreferences.getInstance();
+      final token = (prefs.getString('api_token') ?? '').trim();
+      final response = await ApiHttp.get(
+        uri,
+        headers: {
+          if (token.isNotEmpty && token.toLowerCase() != 'null')
+            'X-Api-Token': token,
+        },
+      ).timeout(const Duration(seconds: 20));
       if (response.statusCode != 200) {
         print(
           '[DataProvider] get_tasks for project meta failed: '
