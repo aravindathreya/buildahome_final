@@ -22,6 +22,9 @@ class MultiMaterialSiteProofSession {
 
   /// Server default unit for Measurement (e.g. `SFT`).
   final String measurementUnitDefault;
+
+  /// draft | in_progress | submitted | completed.
+  final String status;
   final Map<String, dynamic> raw;
 
   const MultiMaterialSiteProofSession({
@@ -41,6 +44,7 @@ class MultiMaterialSiteProofSession {
     this.siteLocationAvailable = false,
     this.measurementUnitOptions = const [],
     this.measurementUnitDefault = '',
+    this.status = '',
     this.raw = const {},
   });
 
@@ -119,6 +123,7 @@ class MultiMaterialSiteProofSession {
       siteLocationAvailable: available,
       measurementUnitOptions: unitOptions,
       measurementUnitDefault: unitDefault,
+      status: _asString(json['status'] ?? json['task_status']),
       raw: Map<String, dynamic>.from(json),
     );
   }
@@ -128,6 +133,7 @@ class MultiMaterialSiteProofSession {
     MultiMaterialCommonFields? common,
     List<MultiMaterialRemoteMedia>? deliveryMedia,
     List<MultiMaterialRemoteMedia>? vehicleMedia,
+    String? status,
   }) {
     return MultiMaterialSiteProofSession(
       indentId: indentId,
@@ -146,6 +152,7 @@ class MultiMaterialSiteProofSession {
       siteLocationAvailable: siteLocationAvailable,
       measurementUnitOptions: measurementUnitOptions,
       measurementUnitDefault: measurementUnitDefault,
+      status: status ?? this.status,
       raw: raw,
     );
   }

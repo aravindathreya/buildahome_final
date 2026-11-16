@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:geolocator/geolocator.dart';
@@ -32,17 +33,68 @@ class GeofenceMatch {
   });
 }
 
-/// Shared GPS helpers for attendance geofencing.
+/// Outcome of a site-proximity check. [distanceMeters] is omitted when a
+/// silent last-known fallback was used, so callers can render the normal
+/// on-site UI with no extra hint.
+class SiteProximityResult {
+  final bool ok;
+  final String? error;
+  final bool openSettings;
+  final Position? position;
+  final double? distanceMeters;
+  final bool usedSilentLastKnown;
+
+  const SiteProximityResult({
+    required this.ok,
+    this.error,
+    this.openSettings = false,
+    this.position,
+    this.distanceMeters,
+    this.usedSilentLastKnown = false,
+  });
+
+  double? get latitude => position?.latitude;
+  double? get longitude => position?.longitude;
+}
+
+/// Pure on-site decision so the radius and silent-fallback rules live in one place.
+class SiteProximityDecision {
+  final bool ok;
+  final double? visibleDistanceMeters;
+  final String? error;
+  final bool usedSilentLastKnown;
+
+  const SiteProximityDecision({
+    required this.ok,
+    this.visibleDistanceMeters,
+    this.error,
+    this.usedSilentLastKnown = false,
+  });
+}
+
+/// Shared GPS helpers for attendance geofencing and site-proof checks.
 class LocationService {
   LocationService._();
 
-  static Future<LocationResult> ensurePermission() async {
+  /// When a fresh GPS fix is unavailable, a last-known position within this
+  /// distance of the site pin is accepted as on-site with no special UI.
+  static const double weakSignalLastKnownAllowanceMeters = 3000;
+
+  static const Duration recentLastKnownMaxAge = Duration(minutes: 5);
+  static const Duration mediumAccuracyTimeout = Duration(seconds: 6);
+  static const Duration highAccuracyTimeout = Duration(seconds: 12);
+  static const Duration _lastKnownTimeout = Duration(seconds: 2);
+  static const Duration _highAccuracyDartTimeout = Duration(seconds: 13);
+
+  static Future<LocationResult> ensurePermission({
+    String actionLabel = 'mark attendance',
+  }) async {
     final serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) {
-      return const LocationResult(
+      return LocationResult(
         ok: false,
         error:
-            'Location services are turned off. Turn them on to mark attendance.',
+            'Location services are turned off. Turn them on to $actionLabel.',
         openSettings: true,
       );
     }
@@ -53,9 +105,9 @@ class LocationService {
     }
 
     if (permission == LocationPermission.denied) {
-      return const LocationResult(
+      return LocationResult(
         ok: false,
-        error: 'Location permission is required to mark attendance.',
+        error: 'Location permission is required to $actionLabel.',
         openSettings: true,
       );
     }
@@ -193,5 +245,209 @@ class LocationService {
       if (match.withinRadius) return match;
     }
     return null;
+  }
+
+  static bool isLastKnownRecent(Position position, {DateTime? now}) {
+    final age =
+        (now ?? DateTime.now()).toUtc().difference(position.timestamp.toUtc());
+    return age.isNegative || age <= recentLastKnownMaxAge;
+  }
+
+  /// Apply the normal radius for a fresh fix, or the silent last-known
+  /// allowance when only a stale fix is available.
+  static SiteProximityDecision decideProximity({
+    required bool hasFreshFix,
+    required double distanceMeters,
+    required int radiusMeters,
+  }) {
+    if (hasFreshFix) {
+      final onSite = distanceMeters <= radiusMeters;
+      return SiteProximityDecision(
+        ok: onSite,
+        visibleDistanceMeters: distanceMeters,
+        error: onSite
+            ? null
+            : 'Go to the project site to continue. You are about ${distanceMeters.round()} m away.',
+      );
+    }
+    if (distanceMeters <= weakSignalLastKnownAllowanceMeters) {
+      return const SiteProximityDecision(
+        ok: true,
+        usedSilentLastKnown: true,
+      );
+    }
+    return const SiteProximityDecision(
+      ok: false,
+      error: 'Unable to get your current location.',
+    );
+  }
+
+  /// Fast position for site checks: recent last-known, then medium accuracy,
+  /// then high accuracy, then one retry. Every native call has a Dart timeout
+  /// so the UI can never hang.
+  static Future<LocationResult> getSiteCheckPosition({
+    String actionLabel = 'continue',
+  }) async {
+    final permission = await ensurePermission(actionLabel: actionLabel);
+    if (!permission.ok) return permission;
+
+    final fresh = await _acquireFreshPosition();
+    if (fresh != null) {
+      return LocationResult(ok: true, position: fresh);
+    }
+
+    return const LocationResult(
+      ok: false,
+      error: 'Unable to get your current location.',
+      openSettings: true,
+    );
+  }
+
+  /// Permission + position + on-site decision, including the silent
+  /// last-known allowance when a fresh fix cannot be obtained.
+  static Future<SiteProximityResult> checkProximityToSite({
+    double? siteLatitude,
+    double? siteLongitude,
+    int radiusMeters = 500,
+    bool requireNearSite = true,
+    String actionLabel = 'continue',
+  }) async {
+    final permission = await ensurePermission(actionLabel: actionLabel);
+    if (!permission.ok) {
+      return SiteProximityResult(
+        ok: false,
+        error: permission.error,
+        openSettings: permission.openSettings,
+      );
+    }
+
+    final fresh = await _acquireFreshPosition();
+    if (fresh != null) {
+      return _resultForCapturedPosition(
+        position: fresh,
+        isFresh: true,
+        requireNearSite: requireNearSite,
+        siteLatitude: siteLatitude,
+        siteLongitude: siteLongitude,
+        radiusMeters: radiusMeters,
+      );
+    }
+
+    final lastKnown = await getLastKnownPositionSafe();
+    if (lastKnown != null) {
+      final result = _resultForCapturedPosition(
+        position: lastKnown,
+        isFresh: false,
+        requireNearSite: requireNearSite,
+        siteLatitude: siteLatitude,
+        siteLongitude: siteLongitude,
+        radiusMeters: radiusMeters,
+      );
+      if (result.ok) return result;
+    }
+
+    return SiteProximityResult(
+      ok: false,
+      error: 'Unable to get your current location.',
+      openSettings: true,
+      position: lastKnown,
+    );
+  }
+
+  static SiteProximityResult _resultForCapturedPosition({
+    required Position position,
+    required bool isFresh,
+    required bool requireNearSite,
+    double? siteLatitude,
+    double? siteLongitude,
+    required int radiusMeters,
+  }) {
+    final siteLat = siteLatitude;
+    final siteLng = siteLongitude;
+    if (!requireNearSite || siteLat == null || siteLng == null) {
+      return SiteProximityResult(
+        ok: true,
+        position: position,
+        distanceMeters: isFresh ? 0 : null,
+      );
+    }
+    final distance = Geolocator.distanceBetween(
+      position.latitude,
+      position.longitude,
+      siteLat,
+      siteLng,
+    );
+    final decision = decideProximity(
+      hasFreshFix: isFresh,
+      distanceMeters: distance,
+      radiusMeters: radiusMeters,
+    );
+    if (!decision.ok) {
+      return SiteProximityResult(
+        ok: false,
+        error: decision.error,
+        position: position,
+        distanceMeters: decision.visibleDistanceMeters,
+        openSettings: !isFresh,
+      );
+    }
+    return SiteProximityResult(
+      ok: true,
+      position: position,
+      distanceMeters: decision.visibleDistanceMeters,
+      usedSilentLastKnown: decision.usedSilentLastKnown,
+    );
+  }
+
+  static Future<Position?> getLastKnownPositionSafe() async {
+    try {
+      return await Geolocator.getLastKnownPosition()
+          .timeout(_lastKnownTimeout);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static Future<Position?> _acquireFreshPosition() async {
+    final recent = await getLastKnownPositionSafe();
+    if (recent != null && isLastKnownRecent(recent)) {
+      return recent;
+    }
+
+    final first = await _currentPositionAttempt();
+    if (first != null) return first;
+    return _currentPositionAttempt();
+  }
+
+  static Future<Position?> _currentPositionAttempt() async {
+    final medium = await _getCurrentPositionWithTimeout(
+      accuracy: LocationAccuracy.medium,
+      timeout: mediumAccuracyTimeout,
+    );
+    if (medium != null) return medium;
+    return _getCurrentPositionWithTimeout(
+      accuracy: LocationAccuracy.high,
+      timeout: _highAccuracyDartTimeout,
+      pluginTimeLimit: highAccuracyTimeout,
+    );
+  }
+
+  static Future<Position?> _getCurrentPositionWithTimeout({
+    required LocationAccuracy accuracy,
+    required Duration timeout,
+    Duration? pluginTimeLimit,
+  }) async {
+    try {
+      return await Geolocator.getCurrentPosition(
+        locationSettings: LocationSettings(
+          accuracy: accuracy,
+          timeLimit: pluginTimeLimit ?? timeout,
+        ),
+      ).timeout(timeout);
+    } on TimeoutException {
+      return null;
+    } catch (_) {
+      return null;
+    }
   }
 }

@@ -5,7 +5,6 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 
@@ -19,6 +18,7 @@ import '../services/capture_time.dart';
 import '../services/indent_units.dart';
 import '../services/vehicle_types.dart';
 import '../services/multi_material_site_proof_service.dart';
+import '../widgets/location_required_dialog.dart';
 import '../widgets/themed_scaffold.dart';
 import '../user_facing_error.dart';
 
@@ -34,6 +34,10 @@ class _LocalMedia {
 
   /// In-flight immediate upload, awaited before submit.
   Future<void>? uploading;
+
+  /// Server draft id/url so a later remove can detach the uploaded file.
+  String? remoteId;
+  String? remoteUrl;
 
   _LocalMedia({
     required this.file,
@@ -136,6 +140,7 @@ class _MultiMaterialSiteProofScreenState
   final List<_LocalMedia> _vehicleVideos = [];
   final List<MultiMaterialRemoteMedia> _remoteDeliveryMedia = [];
   final List<MultiMaterialRemoteMedia> _remoteVehicleMedia = [];
+  final Set<String> _removingRemoteKeys = <String>{};
 
   Timer? _commonAutosaveTimer;
   bool _autosaving = false;
@@ -152,6 +157,7 @@ class _MultiMaterialSiteProofScreenState
   bool _openSettingsHint = false;
   double? _distanceMeters;
   int _radiusMeters = 500;
+  Future<void>? _locationCheckFuture;
 
   MultiMaterialSubmitResult? _submitResult;
 
@@ -467,110 +473,105 @@ class _MultiMaterialSiteProofScreenState
     }
   }
 
-  Future<void> _refreshLocation() async {
-    final session = _session;
-    setState(() {
-      _checkingLocation = true;
-      _locationError = null;
-      _openSettingsHint = false;
-    });
-
-    if (session == null) {
-      setState(() {
-        _checkingLocation = false;
-        _onSite = true;
-        _siteConfigured = true;
-      });
+  Future<void> _refreshLocation({bool showFailureDialog = true}) async {
+    final inFlight = _locationCheckFuture;
+    if (inFlight != null) {
+      await inFlight;
       return;
     }
-
-    final site = session.siteLocation;
-    final available = session.siteLocationAvailable && site != null;
-    if (!available) {
-      setState(() {
-        _checkingLocation = false;
-        _siteConfigured = false;
-        _onSite = true;
-        _locationError = null;
-      });
-      return;
-    }
-
-    final permission = await LocationService.ensurePermission();
-    if (!permission.ok) {
-      if (!mounted) return;
-      var resultOk = false;
-      if (kDebugMode && mounted) {
-        resultOk = await _confirmDebugLocationOverride(
-          permission.error ?? 'Location permission required.',
-        );
+    final future = _refreshLocationBody();
+    _locationCheckFuture = future;
+    try {
+      await future;
+    } finally {
+      if (identical(_locationCheckFuture, future)) {
+        _locationCheckFuture = null;
       }
-      if (!mounted) return;
-      setState(() {
-        _checkingLocation = false;
-        _siteConfigured = true;
-        _onSite = resultOk;
-        _locationError = resultOk ? null : permission.error;
-        _openSettingsHint = permission.openSettings;
-      });
-      return;
     }
+    if (showFailureDialog &&
+        mounted &&
+        !_checkingLocation &&
+        !_onSite &&
+        _siteConfigured) {
+      final action = await showLocationRequiredDialog(context);
+      if (action == LocationRequiredDialogResult.recheck && mounted) {
+        await _refreshLocation();
+      }
+    }
+  }
+
+  Future<void> _refreshLocationBody() async {
+    final session = _session;
+    if (mounted) {
+      setState(() {
+        _checkingLocation = true;
+        _locationError = null;
+        _openSettingsHint = false;
+      });
+    }
+
+    var onSite = _onSite;
+    var siteConfigured = _siteConfigured;
+    String? locationError;
+    var openSettingsHint = false;
+    double? distanceMeters = _distanceMeters;
 
     try {
-      final position = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.high,
-          timeLimit: Duration(seconds: 15),
-        ),
-      );
-      final distance = Geolocator.distanceBetween(
-        position.latitude,
-        position.longitude,
-        site.latitude,
-        site.longitude,
-      );
-      final onSite = distance <= _radiusMeters;
-      if (!onSite && kDebugMode && mounted) {
-        final override = await _confirmDebugLocationOverride(
-          'You are about ${distance.round()} m away from site.',
-        );
-        if (!mounted) return;
+      if (session == null) {
+        onSite = true;
+        siteConfigured = true;
+        locationError = null;
+      } else {
+        final site = session.siteLocation;
+        final available = session.siteLocationAvailable && site != null;
+        if (!available) {
+          siteConfigured = false;
+          onSite = true;
+          locationError = null;
+          distanceMeters = null;
+        } else {
+          var result = await LocationService.checkProximityToSite(
+            siteLatitude: site.latitude,
+            siteLongitude: site.longitude,
+            radiusMeters: _radiusMeters,
+            actionLabel: 'continue',
+          );
+          if (!result.ok && kDebugMode && mounted) {
+            final override = await _confirmDebugLocationOverride(
+              result.error ?? 'Location check failed.',
+            );
+            if (override) {
+              result = SiteProximityResult(
+                ok: true,
+                position: result.position,
+                distanceMeters: result.distanceMeters,
+              );
+            }
+          }
+          siteConfigured = true;
+          onSite = result.ok;
+          distanceMeters = result.distanceMeters;
+          locationError = result.ok ? null : result.error;
+          openSettingsHint = result.openSettings;
+        }
+      }
+    } catch (e) {
+      siteConfigured = true;
+      onSite = false;
+      distanceMeters = null;
+      locationError = 'Unable to get your current location.';
+      openSettingsHint = true;
+    } finally {
+      if (mounted) {
         setState(() {
           _checkingLocation = false;
-          _siteConfigured = true;
-          _onSite = override;
-          _distanceMeters = distance;
-          _locationError = override
-              ? null
-              : 'Go to the project site to continue. You are about ${distance.round()} m away.';
+          _siteConfigured = siteConfigured;
+          _onSite = onSite;
+          _distanceMeters = distanceMeters;
+          _locationError = locationError;
+          _openSettingsHint = openSettingsHint;
         });
-        return;
       }
-      if (!mounted) return;
-      setState(() {
-        _checkingLocation = false;
-        _siteConfigured = true;
-        _onSite = onSite;
-        _distanceMeters = distance;
-        _locationError = onSite
-            ? null
-            : 'Go to the project site to continue. You are about ${distance.round()} m away.';
-      });
-    } catch (e) {
-      if (!mounted) return;
-      var ok = false;
-      if (kDebugMode) {
-        ok = await _confirmDebugLocationOverride(
-          userFacingError(e, fallback: 'Unable to read GPS.'),
-        );
-      }
-      if (!mounted) return;
-      setState(() {
-        _checkingLocation = false;
-        _siteConfigured = true;
-        _onSite = ok;
-        _locationError = ok ? null : 'Unable to get your current location.';
-      });
     }
   }
 
@@ -631,8 +632,21 @@ class _MultiMaterialSiteProofScreenState
   }
 
   Future<void> _continueFromSelect() async {
+    if (_checkingLocation || _locationCheckFuture != null) {
+      if (mounted) {
+        setState(() {
+          _selectValidation = 'Still checking your location…';
+        });
+      }
+      await (_locationCheckFuture ?? _refreshLocation(showFailureDialog: false));
+      if (!mounted) return;
+      if (_checkingLocation) return;
+    }
     if (!_onSite && _siteConfigured) {
-      _snack(_locationError ?? 'You must be on site to continue.', error: true);
+      final action = await showLocationRequiredDialog(context);
+      if (action == LocationRequiredDialogResult.recheck && mounted) {
+        await _refreshLocation();
+      }
       return;
     }
     if (_selectedOrder.isEmpty) {
@@ -906,11 +920,12 @@ class _MultiMaterialSiteProofScreenState
         .map(CaptureTime.toOffsetIso)
         .toList();
     try {
-      await _service.uploadCommonFiles(
+      final body = await _service.uploadCommonFiles(
         itemRunId: _itemRunId,
         files: files,
         capturedAts: capturedAts,
       );
+      _applyUploadedIds(mediaItems, body);
       for (final m in mediaItems) {
         m.uploaded = true;
       }
@@ -932,11 +947,12 @@ class _MultiMaterialSiteProofScreenState
         .map(CaptureTime.toOffsetIso)
         .toList();
     try {
-      await _service.uploadVehicleFiles(
+      final body = await _service.uploadVehicleFiles(
         itemRunId: _itemRunId,
         files: files,
         capturedAts: capturedAts,
       );
+      _applyUploadedIds(mediaItems, body);
       for (final m in mediaItems) {
         m.uploaded = true;
       }
@@ -1056,6 +1072,139 @@ class _MultiMaterialSiteProofScreenState
         : _uploadDeliveryMediaNow([media]);
   }
 
+  bool get _proofLocked {
+    if (_phase == _WizardPhase.success || _busy) return true;
+    final status = (_session?.status ?? '').trim().toLowerCase();
+    return status == 'submitted' ||
+        status == 'completed' ||
+        status == 'cancelled' ||
+        status == 'skipped';
+  }
+
+  void _applyUploadedIds(
+    List<_LocalMedia> mediaItems,
+    Map<String, dynamic> body,
+  ) {
+    final uploaded = body['uploaded'];
+    if (uploaded is! List) return;
+    final entries = <Map<String, dynamic>>[];
+    for (final row in uploaded) {
+      if (row is Map) entries.add(Map<String, dynamic>.from(row));
+    }
+    for (var i = 0; i < mediaItems.length && i < entries.length; i++) {
+      final row = entries[i];
+      final id = (row['id'] ??
+              row['document_id'] ??
+              row['file_id'] ??
+              '')
+          .toString()
+          .trim();
+      final url = (row['url'] ??
+              row['file_url'] ??
+              row['path'] ??
+              '')
+          .toString()
+          .trim();
+      if (id.isNotEmpty) mediaItems[i].remoteId = id;
+      if (url.isNotEmpty) mediaItems[i].remoteUrl = url;
+    }
+  }
+
+  String _remoteKey(MultiMaterialRemoteMedia remote) {
+    final id = remote.id.trim();
+    if (id.isNotEmpty) return id;
+    return remote.url.trim();
+  }
+
+  Future<void> _detachOnServer({
+    String? mediaId,
+    String? url,
+    required bool vehicle,
+  }) {
+    return _service.removeMedia(
+      itemRunId: _itemRunId,
+      mediaId: mediaId,
+      url: url,
+      slot: vehicle ? 'vehicle' : 'delivery',
+    );
+  }
+
+  Future<void> _removeLocalMedia(
+    List<_LocalMedia> list,
+    int index, {
+    required bool vehicle,
+  }) async {
+    if (_proofLocked || index < 0 || index >= list.length) return;
+    final media = list[index];
+    setState(() => list.removeAt(index));
+    if (media.uploading != null) {
+      try {
+        await media.uploading;
+      } catch (_) {}
+    }
+    final id = (media.remoteId ?? '').trim();
+    final url = (media.remoteUrl ?? '').trim();
+    final needsServer = media.uploaded || id.isNotEmpty || url.isNotEmpty;
+    if (!needsServer || _itemRunId.isEmpty) return;
+    try {
+      await _detachOnServer(
+        mediaId: id.isEmpty ? null : id,
+        url: url.isEmpty ? null : url,
+        vehicle: vehicle,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        final insertAt = index <= list.length ? index : list.length;
+        list.insert(insertAt, media);
+      });
+      _snack(
+        'Could not remove the ${media.isVideo ? 'video' : 'photo'}: '
+        '${userFacingError(e)}',
+        error: true,
+      );
+    }
+  }
+
+  Future<void> _removeRemoteMedia(
+    MultiMaterialRemoteMedia remote, {
+    required bool vehicle,
+  }) async {
+    if (_proofLocked) return;
+    final key = _remoteKey(remote);
+    if (key.isEmpty || _removingRemoteKeys.contains(key)) return;
+    final list = vehicle ? _remoteVehicleMedia : _remoteDeliveryMedia;
+    final previousIndex = list.indexOf(remote);
+    setState(() {
+      _removingRemoteKeys.add(key);
+      list.remove(remote);
+    });
+    try {
+      await _detachOnServer(
+        mediaId: remote.id.trim().isEmpty ? null : remote.id.trim(),
+        url: remote.url.trim().isEmpty ? null : remote.url.trim(),
+        vehicle: vehicle,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        final insertAt = previousIndex >= 0 && previousIndex <= list.length
+            ? previousIndex
+            : list.length;
+        list.insert(insertAt, remote);
+      });
+      _snack(
+        'Could not remove the ${remote.isVideo ? 'video' : 'photo'}: '
+        '${userFacingError(e)}',
+        error: true,
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _removingRemoteKeys.remove(key));
+      }
+    }
+  }
+
   Future<_LocalMedia?> _capturePhoto({required String slot}) async {
     if (!await ensureCameraPermission(context)) {
       _snack(
@@ -1135,6 +1284,14 @@ class _MultiMaterialSiteProofScreenState
 
   void _snack(String message, {bool error = false}) {
     if (!mounted || message.trim().isEmpty) return;
+    if (isLocationOrSiteDistanceError(message)) {
+      showLocationRequiredDialog(context).then((action) {
+        if (action == LocationRequiredDialogResult.recheck && mounted) {
+          _refreshLocation();
+        }
+      });
+      return;
+    }
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message.trim()),
@@ -1345,7 +1502,11 @@ class _MultiMaterialSiteProofScreenState
             width: double.infinity,
             height: 52,
             child: ElevatedButton(
-              onPressed: selectedCount == 0 ? null : _continueFromSelect,
+              onPressed: (selectedCount == 0 ||
+                      _checkingLocation ||
+                      _busy)
+                  ? null
+                  : _continueFromSelect,
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppTheme.accentBlue,
                 foregroundColor: Colors.white,
@@ -1357,7 +1518,9 @@ class _MultiMaterialSiteProofScreenState
               child: Text(
                 selectedCount == 0
                     ? 'Select materials to continue'
-                    : 'Continue ($selectedCount) →',
+                    : _checkingLocation
+                        ? 'Still checking your location…'
+                        : 'Continue ($selectedCount) →',
                 style: const TextStyle(
                   fontWeight: FontWeight.w800,
                   fontSize: 16,
@@ -1547,7 +1710,13 @@ class _MultiMaterialSiteProofScreenState
                   setState(() => _commonPhotos.add(media));
                   _startUpload(media, vehicle: false);
                 },
-                onRemove: (i) => setState(() => _commonPhotos.removeAt(i)),
+                allowRemove: !_proofLocked,
+                onRemove: (i) => unawaited(
+                  _removeLocalMedia(_commonPhotos, i, vehicle: false),
+                ),
+                onRemoveRemote: (remote) => unawaited(
+                  _removeRemoteMedia(remote, vehicle: false),
+                ),
               ),
               const SizedBox(height: 14),
               _MediaRow(
@@ -1564,7 +1733,13 @@ class _MultiMaterialSiteProofScreenState
                   setState(() => _commonVideos.add(media));
                   _startUpload(media, vehicle: false);
                 },
-                onRemove: (i) => setState(() => _commonVideos.removeAt(i)),
+                allowRemove: !_proofLocked,
+                onRemove: (i) => unawaited(
+                  _removeLocalMedia(_commonVideos, i, vehicle: false),
+                ),
+                onRemoveRemote: (remote) => unawaited(
+                  _removeRemoteMedia(remote, vehicle: false),
+                ),
               ),
               const SizedBox(height: 20),
               const Text(
@@ -1709,7 +1884,13 @@ class _MultiMaterialSiteProofScreenState
                   setState(() => _vehiclePhotos.add(media));
                   _startUpload(media, vehicle: true);
                 },
-                onRemove: (i) => setState(() => _vehiclePhotos.removeAt(i)),
+                allowRemove: !_proofLocked,
+                onRemove: (i) => unawaited(
+                  _removeLocalMedia(_vehiclePhotos, i, vehicle: true),
+                ),
+                onRemoveRemote: (remote) => unawaited(
+                  _removeRemoteMedia(remote, vehicle: true),
+                ),
               ),
               const SizedBox(height: 14),
               _MediaRow(
@@ -1726,7 +1907,13 @@ class _MultiMaterialSiteProofScreenState
                   setState(() => _vehicleVideos.add(media));
                   _startUpload(media, vehicle: true);
                 },
-                onRemove: (i) => setState(() => _vehicleVideos.removeAt(i)),
+                allowRemove: !_proofLocked,
+                onRemove: (i) => unawaited(
+                  _removeLocalMedia(_vehicleVideos, i, vehicle: true),
+                ),
+                onRemoveRemote: (remote) => unawaited(
+                  _removeRemoteMedia(remote, vehicle: true),
+                ),
               ),
               const SizedBox(height: 20),
               Text(
@@ -2348,6 +2535,8 @@ class _MediaRow extends StatelessWidget {
   final String addLabel;
   final Future<void> Function() onAdd;
   final ValueChanged<int> onRemove;
+  final ValueChanged<MultiMaterialRemoteMedia>? onRemoveRemote;
+  final bool allowRemove;
   final int? maxItems;
 
   const _MediaRow({
@@ -2356,6 +2545,8 @@ class _MediaRow extends StatelessWidget {
     required this.addLabel,
     required this.onAdd,
     required this.onRemove,
+    this.onRemoveRemote,
+    this.allowRemove = true,
     this.remoteItems = const [],
     this.maxItems,
   });
@@ -2382,76 +2573,101 @@ class _MediaRow extends StatelessWidget {
             scrollDirection: Axis.horizontal,
             children: [
               ...remoteItems.map((remote) {
-                return Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: remote.isVideo
-                        ? Container(
+                final remoteThumb = remote.isVideo
+                    ? Container(
+                        width: 80,
+                        height: 80,
+                        color: AppTheme.darkBackgroundPrimaryLight,
+                        child: const Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.play_circle_fill,
+                              color: Colors.white,
+                              size: 28,
+                            ),
+                            SizedBox(height: 4),
+                            Text(
+                              'Saved',
+                              style: TextStyle(
+                                color: Colors.white70,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                    : Stack(
+                        children: [
+                          Image.network(
+                            remote.url,
                             width: 80,
                             height: 80,
-                            color: AppTheme.darkBackgroundPrimaryLight,
-                            child: const Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(
-                                  Icons.play_circle_fill,
-                                  color: Colors.white,
-                                  size: 28,
-                                ),
-                                SizedBox(height: 4),
-                                Text(
-                                  'Saved',
-                                  style: TextStyle(
-                                    color: Colors.white70,
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                              ],
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => Container(
+                              width: 80,
+                              height: 80,
+                              color: AppTheme.darkBackgroundPrimaryLight,
+                              child: const Icon(
+                                Icons.image,
+                                color: AppTheme.mutedGrey,
+                              ),
                             ),
-                          )
-                        : Stack(
-                            children: [
-                              Image.network(
-                                remote.url,
-                                width: 80,
-                                height: 80,
-                                fit: BoxFit.cover,
-                                errorBuilder: (_, __, ___) => Container(
-                                  width: 80,
-                                  height: 80,
-                                  color: AppTheme.darkBackgroundPrimaryLight,
-                                  child: const Icon(
-                                    Icons.image,
-                                    color: AppTheme.mutedGrey,
-                                  ),
-                                ),
-                              ),
-                              Positioned(
-                                bottom: 4,
-                                left: 4,
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 4,
-                                    vertical: 2,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: Colors.black54,
-                                    borderRadius: BorderRadius.circular(4),
-                                  ),
-                                  child: const Text(
-                                    'Saved',
-                                    style: TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 9,
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ],
                           ),
+                          Positioned(
+                            bottom: 4,
+                            left: 4,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 4,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.black54,
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: const Text(
+                                'Saved',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      );
+                return Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: Stack(
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: remoteThumb,
+                      ),
+                      if (allowRemove && onRemoveRemote != null)
+                        Positioned(
+                          top: 4,
+                          right: 4,
+                          child: InkWell(
+                            onTap: () => onRemoveRemote!(remote),
+                            child: Container(
+                              decoration: const BoxDecoration(
+                                color: Colors.black54,
+                                shape: BoxShape.circle,
+                              ),
+                              padding: const EdgeInsets.all(2),
+                              child: const Icon(
+                                Icons.close,
+                                size: 14,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
                   ),
                 );
               }),
@@ -2481,25 +2697,26 @@ class _MediaRow extends StatelessWidget {
                                 fit: BoxFit.cover,
                               ),
                       ),
-                      Positioned(
-                        top: 4,
-                        right: 4,
-                        child: InkWell(
-                          onTap: () => onRemove(index),
-                          child: Container(
-                            decoration: const BoxDecoration(
-                              color: Colors.black54,
-                              shape: BoxShape.circle,
-                            ),
-                            padding: const EdgeInsets.all(2),
-                            child: const Icon(
-                              Icons.close,
-                              size: 14,
-                              color: Colors.white,
+                      if (allowRemove)
+                        Positioned(
+                          top: 4,
+                          right: 4,
+                          child: InkWell(
+                            onTap: () => onRemove(index),
+                            child: Container(
+                              decoration: const BoxDecoration(
+                                color: Colors.black54,
+                                shape: BoxShape.circle,
+                              ),
+                              padding: const EdgeInsets.all(2),
+                              child: const Icon(
+                                Icons.close,
+                                size: 14,
+                                color: Colors.white,
+                              ),
                             ),
                           ),
                         ),
-                      ),
                     ],
                   ),
                 );

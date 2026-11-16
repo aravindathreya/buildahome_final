@@ -8,6 +8,7 @@ import 'mobile_live_test_widgets.dart';
 import 'models/mobile_live_test.dart';
 import 'services/mobile_live_test_controller.dart';
 import 'services/mobile_live_test_service.dart';
+import 'widgets/location_required_dialog.dart';
 import 'widgets/modern_task_card.dart';
 import 'user_facing_error.dart';
 
@@ -293,7 +294,7 @@ class _MobileLiveTestTaskBodyState extends State<MobileLiveTestTaskBody> {
             unawaited(widget.listController?.refreshAfterTaskCompletion());
             widget.onCompleted?.call();
           },
-          onError: (message) => setState(() => _error = message),
+          onError: _handleLiveTestError,
         ),
       );
     }
@@ -312,6 +313,14 @@ class _MobileLiveTestTaskBodyState extends State<MobileLiveTestTaskBody> {
     }
 
     return children;
+  }
+
+  void _handleLiveTestError(String message) {
+    if (isLocationOrSiteDistanceError(message)) {
+      if (mounted) showLocationRequiredDialog(context);
+      return;
+    }
+    setState(() => _error = message);
   }
 
   @override
@@ -383,7 +392,7 @@ class _MobileLiveTestTaskBodyState extends State<MobileLiveTestTaskBody> {
           service: widget.service,
           busy: _submitting,
           onRefresh: _refresh,
-          onError: (message) => setState(() => _error = message),
+          onError: _handleLiveTestError,
           embeddedInCardFooter: true,
         ),
       ],

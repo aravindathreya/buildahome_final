@@ -12,6 +12,7 @@ import 'services/staff_location_tracker.dart';
 import 'widgets/background_location_banner.dart';
 import 'widgets/employer_tracking_indicator.dart';
 import 'widgets/dashboard_chrome.dart';
+import 'widgets/location_required_dialog.dart';
 import 'widgets/themed_scaffold.dart';
 import 'user_facing_error.dart';
 
@@ -273,6 +274,9 @@ class _AttendanceScreenState extends State<AttendanceScreen>
     if (position == null) {
       setState(() => _actionError = 'Location required to check in.');
       await _refreshLocation();
+      if (mounted && _position == null) {
+        await showLocationRequiredDialog(context);
+      }
       return;
     }
 
@@ -333,6 +337,9 @@ class _AttendanceScreenState extends State<AttendanceScreen>
     if (position == null) {
       setState(() => _actionError = 'Location required to check out.');
       await _refreshLocation();
+      if (mounted && _position == null) {
+        await showLocationRequiredDialog(context);
+      }
       return;
     }
 

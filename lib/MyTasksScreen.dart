@@ -8,7 +8,6 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
 import 'package:image_picker/image_picker.dart';
@@ -43,6 +42,7 @@ import 'widgets/open_shared_document.dart';
 import 'task_display_title.dart';
 import 'indent_task_material.dart';
 import 'widgets/indent_site_proof_summary_card.dart';
+import 'widgets/location_required_dialog.dart';
 import 'widgets/modern_task_card.dart';
 import 'widgets/themed_scaffold.dart';
 import 'widgets/skeleton_loader.dart';
@@ -3907,6 +3907,10 @@ class _WorkflowManagerApprovalSectionState
     if (!mounted) return;
     final cleaned = userFacingError(message);
     if (cleaned.isEmpty) return;
+    if (isLocationOrSiteDistanceError(cleaned)) {
+      await showLocationRequiredDialog(context);
+      return;
+    }
     if (cleaned == SessionManager.logoutMessage ||
         cleaned.toLowerCase().contains('invalid api token') ||
         cleaned.toLowerCase().contains('signed in on another device') ||
@@ -4884,6 +4888,7 @@ class _IndentSiteProofScreenState extends State<_IndentSiteProofScreen> {
   bool _siteConfigured = true;
   double? _distanceMeters;
   int _radiusMeters = 500;
+  Future<void>? _locationCheckFuture;
 
   @override
   void initState() {
@@ -4923,79 +4928,116 @@ class _IndentSiteProofScreenState extends State<_IndentSiteProofScreen> {
     });
   }
 
-  Future<void> _refreshLocation() async {
-    final action = _locationAction;
-    if (action == null) {
-      if (!mounted) return;
-      setState(() {
-        _checkingLocation = false;
-        _onSite = false;
-        _locationError = 'No site-proof steps were found for this task.';
-      });
+  Future<void> _refreshLocation({bool showFailureDialog = true}) async {
+    final inFlight = _locationCheckFuture;
+    if (inFlight != null) {
+      await inFlight;
       return;
     }
+    final future = _refreshLocationBody();
+    _locationCheckFuture = future;
+    try {
+      await future;
+    } finally {
+      if (identical(_locationCheckFuture, future)) {
+        _locationCheckFuture = null;
+      }
+    }
+    if (showFailureDialog &&
+        mounted &&
+        !_checkingLocation &&
+        _siteConfigured &&
+        !_onSite &&
+        !MobileLiveTestWorkflow.isTask(_task) &&
+        isLocationOrSiteDistanceError(
+          _locationError ?? 'Unable to get your current location.',
+        )) {
+      final dialogResult = await showLocationRequiredDialog(context);
+      if (dialogResult == LocationRequiredDialogResult.recheck && mounted) {
+        await _refreshLocation();
+      }
+    }
+  }
 
-    setState(() {
-      _checkingLocation = true;
-      _locationError = null;
-      _openSettingsHint = false;
-    });
-
-    final availableRaw =
-        _indentPoActionValue(action, 'site_location_available');
-    final siteLocation = _parseSiteLocation(
-      _indentPoActionValue(action, 'site_location') ?? action['site_location'],
-    );
-    final available = availableRaw == null
-        ? siteLocation != null
-        : _truthyValue(availableRaw);
-    final radius = _intValue(
-          _indentPoActionValue(action, 'near_site_radius_meters'),
-        ) ??
-        500;
-
-    if (MobileLiveTestWorkflow.isTask(_task)) {
-      if (!mounted) return;
+  Future<void> _refreshLocationBody() async {
+    final action = _locationAction;
+    if (mounted) {
       setState(() {
-        _checkingLocation = false;
-        _siteConfigured = true;
-        _onSite = true;
+        _checkingLocation = true;
         _locationError = null;
         _openSettingsHint = false;
-        _distanceMeters = 0;
-        _radiusMeters = radius;
       });
-      return;
     }
 
-    if (!available || siteLocation == null) {
-      if (!mounted) return;
-      setState(() {
-        _checkingLocation = false;
-        _siteConfigured = false;
-        _onSite = false;
-        _radiusMeters = radius;
-        _locationError = 'Project site location is not configured.';
-      });
-      return;
-    }
+    var onSite = _onSite;
+    var siteConfigured = _siteConfigured;
+    String? locationError = _locationError;
+    var openSettingsHint = false;
+    double? distanceMeters = _distanceMeters;
+    var radius = _radiusMeters;
 
-    final result = await _checkIndentPoNearSite(
-      context: context,
-      task: _task,
-      action: action,
-      itemRunId: _itemRunId,
-    );
-    if (!mounted) return;
-    setState(() {
-      _checkingLocation = false;
-      _siteConfigured = true;
-      _radiusMeters = radius;
-      _distanceMeters = result.distanceMeters;
-      _openSettingsHint = result.openSettings;
-      _onSite = result.ok;
-      _locationError = result.ok ? null : result.error;
-    });
+    try {
+      if (action == null) {
+        onSite = false;
+        locationError = 'No site-proof steps were found for this task.';
+      } else {
+        final availableRaw =
+            _indentPoActionValue(action, 'site_location_available');
+        final siteLocation = _parseSiteLocation(
+          _indentPoActionValue(action, 'site_location') ??
+              action['site_location'],
+        );
+        final available = availableRaw == null
+            ? siteLocation != null
+            : _truthyValue(availableRaw);
+        radius = _intValue(
+              _indentPoActionValue(action, 'near_site_radius_meters'),
+            ) ??
+            500;
+
+        if (MobileLiveTestWorkflow.isTask(_task)) {
+          siteConfigured = true;
+          onSite = true;
+          locationError = null;
+          openSettingsHint = false;
+          distanceMeters = 0;
+        } else if (!available || siteLocation == null) {
+          siteConfigured = false;
+          onSite = false;
+          locationError = 'Project site location is not configured.';
+        } else {
+          final result = await _checkIndentPoNearSite(
+            context: context,
+            task: _task,
+            action: action,
+            itemRunId: _itemRunId,
+          );
+          siteConfigured = true;
+          distanceMeters = result.distanceMeters;
+          openSettingsHint = result.openSettings;
+          onSite = result.ok;
+          locationError = result.ok ? null : result.error;
+        }
+      }
+    } catch (_) {
+      siteConfigured = true;
+      onSite = false;
+      distanceMeters = null;
+      locationError = 'Unable to get your current location.';
+      openSettingsHint = true;
+    } finally {
+      if (mounted) {
+        setState(() {
+          _checkingLocation = false;
+          _siteConfigured = siteConfigured;
+          _onSite = onSite;
+          _radiusMeters = radius;
+          _distanceMeters = distanceMeters;
+          _openSettingsHint = openSettingsHint;
+          _locationError = locationError;
+        });
+      }
+    }
   }
 
   bool _stepDone(Map<String, dynamic> action) =>
@@ -5004,6 +5046,7 @@ class _IndentSiteProofScreenState extends State<_IndentSiteProofScreen> {
   bool _stepLocked(Map<String, dynamic> action) {
     if (_stepDone(action)) return false;
     if (!MobileLiveTestWorkflow.isTask(_task)) {
+      if (_checkingLocation) return true;
       if (!_siteConfigured) return true;
       if (!_onSite) return true;
     }
@@ -5014,6 +5057,9 @@ class _IndentSiteProofScreenState extends State<_IndentSiteProofScreen> {
   }
 
   String _lockedMessage(Map<String, dynamic> action) {
+    if (_checkingLocation) {
+      return 'Still checking your location…';
+    }
     if (!_siteConfigured) {
       return 'Project site location is not configured.';
     }
@@ -5034,12 +5080,33 @@ class _IndentSiteProofScreenState extends State<_IndentSiteProofScreen> {
 
   Future<void> _openStep(Map<String, dynamic> action) async {
     if (_leaving) return;
+    if (_checkingLocation || _locationCheckFuture != null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Still checking your location…'),
+          ),
+        );
+      }
+      await (_locationCheckFuture ??
+          _refreshLocation(showFailureDialog: false));
+      if (!mounted) return;
+      if (_checkingLocation) return;
+    }
     final done = _stepDone(action);
     if (_stepLocked(action) && !done) {
       if (!mounted) return;
+      final lockedMessage = _lockedMessage(action);
+      if (isLocationOrSiteDistanceError(lockedMessage)) {
+        final dialogResult = await showLocationRequiredDialog(context);
+        if (dialogResult == LocationRequiredDialogResult.recheck && mounted) {
+          await _refreshLocation();
+        }
+        return;
+      }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(_lockedMessage(action)),
+          content: Text(lockedMessage),
           backgroundColor: Colors.red,
         ),
       );
@@ -7064,73 +7131,33 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
           );
         }
 
-        final permission = await _ensureLocationPermission();
-        if (!permission.ok) {
-          return _NearSiteCheckResult(
-            ok: false,
-            error: permission.error ??
-                'Your device location is required to upload near the site.',
-            openSettings: permission.openSettings,
-          );
-        }
+        final proximity = await LocationService.checkProximityToSite(
+          siteLatitude: siteLocation?.latitude,
+          siteLongitude: siteLocation?.longitude,
+          radiusMeters: nearSiteRadiusMeters,
+          requireNearSite: requireNearSite && siteLocation != null,
+          actionLabel: 'upload near the project site',
+        );
 
-        try {
-          final position = await Geolocator.getCurrentPosition(
-            locationSettings: const LocationSettings(
-              accuracy: LocationAccuracy.high,
-            ),
-          ).timeout(const Duration(seconds: 15));
-          final distance = siteLocation == null
-              ? 0.0
-              : Geolocator.distanceBetween(
-                  position.latitude,
-                  position.longitude,
-                  siteLocation.latitude,
-                  siteLocation.longitude,
-                );
-          final roundedDistance = distance.round();
-          if (requireNearSite && siteLocation != null) {
-            _logNearSiteDistanceCheck(
-              itemRunId: _resolvedWorkflowItemRunId,
-              projectId: task['project_id']?.toString() ?? '',
-              siteLatitude: siteLocation.latitude,
-              siteLongitude: siteLocation.longitude,
-              deviceLatitude: position.latitude,
-              deviceLongitude: position.longitude,
-              distanceMeters: distance,
-              nearSiteRadiusMeters: nearSiteRadiusMeters,
-              withinRadius: distance <= nearSiteRadiusMeters,
-            );
-            if (distance > nearSiteRadiusMeters) {
-              return _NearSiteCheckResult(
-                ok: false,
-                error:
-                    'You must be within $nearSiteRadiusMeters m of the project site (you are about $roundedDistance m away). '
-                    'Site reference: ${siteLocation.latitude.toStringAsFixed(7)}, '
-                    '${siteLocation.longitude.toStringAsFixed(7)}',
-                distanceMeters: distance,
-                latitude: position.latitude,
-                longitude: position.longitude,
-              );
-            }
-          }
-          return _NearSiteCheckResult(
-            ok: true,
-            distanceMeters: siteLocation == null ? null : distance,
-            latitude: position.latitude,
-            longitude: position.longitude,
-          );
-        } on TimeoutException {
-          return const _NearSiteCheckResult(
-            ok: false,
-            error: 'Could not get your location in time. Please try again.',
-          );
-        } catch (e) {
-          return _NearSiteCheckResult(
-            ok: false,
-            error: userFacingError(e),
+        if (requireNearSite &&
+            siteLocation != null &&
+            !proximity.usedSilentLastKnown &&
+            proximity.distanceMeters != null &&
+            proximity.latitude != null &&
+            proximity.longitude != null) {
+          _logNearSiteDistanceCheck(
+            itemRunId: _resolvedWorkflowItemRunId,
+            projectId: task['project_id']?.toString() ?? '',
+            siteLatitude: siteLocation.latitude,
+            siteLongitude: siteLocation.longitude,
+            deviceLatitude: proximity.latitude!,
+            deviceLongitude: proximity.longitude!,
+            distanceMeters: proximity.distanceMeters!,
+            nearSiteRadiusMeters: nearSiteRadiusMeters,
+            withinRadius: proximity.ok,
           );
         }
+        return _mapSiteProximityResult(proximity);
       }
 
       final result = await runCheck();
@@ -7198,11 +7225,16 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
               if (!result.ok) {
                 final message =
                     result.error ?? 'Your device location is required to upload near the site.';
-                await _showWorkflowUploadAlert(
-                  context,
-                  message: message,
-                  title: 'Location required',
-                );
+                final dialogResult = await showLocationRequiredDialog(context);
+                if (dialogResult == LocationRequiredDialogResult.recheck &&
+                    sheetContext.mounted) {
+                  final retry = await checkNearSite();
+                  if (!sheetContext.mounted) return;
+                  setSheetState(() {
+                    applyNearSiteResult(retry);
+                  });
+                  if (retry.ok) return;
+                }
                 throw Exception(message);
               }
             }
@@ -7375,20 +7407,25 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
                 double? uploadLng = deviceLongitude;
 
                 if (needsGps) {
-                  final nearSiteResult = await checkNearSite();
+                  var nearSiteResult = await checkNearSite();
                   if (!sheetContext.mounted) return;
                   setSheetState(() {
                     applyNearSiteResult(nearSiteResult);
                   });
                   if (!nearSiteResult.ok) {
-                    final message = nearSiteResult.error ??
-                        'Your device location is required to upload near the site.';
-                    await _showWorkflowUploadAlert(
-                      context,
-                      message: message,
-                      title: 'Location required',
-                    );
-                    return;
+                    final dialogResult = await showLocationRequiredDialog(context);
+                    if (dialogResult == LocationRequiredDialogResult.recheck &&
+                        sheetContext.mounted) {
+                      nearSiteResult = await checkNearSite();
+                      if (!sheetContext.mounted) return;
+                      setSheetState(() {
+                        applyNearSiteResult(nearSiteResult);
+                      });
+                    }
+                    if (!nearSiteResult.ok) {
+                      setSheetState(() => isSubmitting = false);
+                      return;
+                    }
                   }
                   uploadLat = nearSiteResult.latitude;
                   uploadLng = nearSiteResult.longitude;
@@ -7731,60 +7768,33 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
           );
         }
 
-        final permission = await _ensureLocationPermission();
-        if (!permission.ok) {
-          return _NearSiteCheckResult(
-            ok: false,
-            error: permission.error ??
-                'Your device location is required to upload near the site.',
-            openSettings: permission.openSettings,
-          );
-        }
+        final proximity = await LocationService.checkProximityToSite(
+          siteLatitude: siteLocation?.latitude,
+          siteLongitude: siteLocation?.longitude,
+          radiusMeters: nearSiteRadiusMeters,
+          requireNearSite: requireNearSite && siteLocation != null,
+          actionLabel: 'upload near the project site',
+        );
 
-        try {
-          final position = await Geolocator.getCurrentPosition(
-            locationSettings: const LocationSettings(
-              accuracy: LocationAccuracy.high,
-            ),
-          ).timeout(const Duration(seconds: 15));
-          final distance = siteLocation == null
-              ? 0.0
-              : Geolocator.distanceBetween(
-                  position.latitude,
-                  position.longitude,
-                  siteLocation.latitude,
-                  siteLocation.longitude,
-                );
-          if (requireNearSite && siteLocation != null) {
-            if (distance > nearSiteRadiusMeters) {
-              final roundedDistance = distance.round();
-              return _NearSiteCheckResult(
-                ok: false,
-                error:
-                    'You must be within $nearSiteRadiusMeters m of the project site (you are about $roundedDistance m away).',
-                distanceMeters: distance,
-                latitude: position.latitude,
-                longitude: position.longitude,
-              );
-            }
-          }
-          return _NearSiteCheckResult(
-            ok: true,
-            distanceMeters: siteLocation == null ? null : distance,
-            latitude: position.latitude,
-            longitude: position.longitude,
-          );
-        } on TimeoutException {
-          return const _NearSiteCheckResult(
-            ok: false,
-            error: 'Could not get your location in time. Please try again.',
-          );
-        } catch (e) {
-          return _NearSiteCheckResult(
-            ok: false,
-            error: userFacingError(e),
+        if (requireNearSite &&
+            siteLocation != null &&
+            !proximity.usedSilentLastKnown &&
+            proximity.distanceMeters != null &&
+            proximity.latitude != null &&
+            proximity.longitude != null) {
+          _logNearSiteDistanceCheck(
+            itemRunId: _resolvedWorkflowItemRunId,
+            projectId: task['project_id']?.toString() ?? '',
+            siteLatitude: siteLocation.latitude,
+            siteLongitude: siteLocation.longitude,
+            deviceLatitude: proximity.latitude!,
+            deviceLongitude: proximity.longitude!,
+            distanceMeters: proximity.distanceMeters!,
+            nearSiteRadiusMeters: nearSiteRadiusMeters,
+            withinRadius: proximity.ok,
           );
         }
+        return _mapSiteProximityResult(proximity);
       }
 
       final result = await runCheck();
@@ -7849,11 +7859,16 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
       if (!result.ok) {
         final message = result.error ??
             'Your device location is required to upload near the site.';
-        await _showWorkflowUploadAlert(
-          context,
-          message: message,
-          title: 'Location required',
-        );
+        final dialogResult = await showLocationRequiredDialog(context);
+        if (dialogResult == LocationRequiredDialogResult.recheck &&
+            context.mounted) {
+          final retry = await checkNearSite();
+          if (!context.mounted) return;
+          setSheetState(() {
+            applyNearSiteResult(retry);
+          });
+          if (retry.ok) return;
+        }
         throw Exception(message);
       }
     }
@@ -9966,6 +9981,10 @@ class _WorkflowActionButtonState extends State<WorkflowActionButton> {
     if (!mounted) return;
     final cleaned = userFacingError(message);
     if (cleaned.isEmpty) return;
+    if (isLocationOrSiteDistanceError(cleaned)) {
+      showLocationRequiredDialog(context);
+      return;
+    }
     if (cleaned == SessionManager.logoutMessage ||
         cleaned == SessionManager.logoutDialogTitle ||
         cleaned.toLowerCase().contains('invalid api token') ||
@@ -14832,70 +14851,36 @@ Future<_NearSiteCheckResult> _checkIndentPoNearSite({
     );
   }
 
-  final permission = await _ensureLocationPermission();
-  if (!permission.ok) return permission;
+  final proximity = await LocationService.checkProximityToSite(
+    siteLatitude: siteLocation?.latitude,
+    siteLongitude: siteLocation?.longitude,
+    radiusMeters: radius,
+    requireNearSite: requireNearSite && siteLocation != null,
+    actionLabel: 'upload near the project site',
+  );
 
-  Future<_NearSiteCheckResult> runCheck() async {
-    try {
-      final position = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.high,
-        ),
-      ).timeout(const Duration(seconds: 15));
-      final distance = siteLocation == null
-          ? 0.0
-          : Geolocator.distanceBetween(
-              position.latitude,
-              position.longitude,
-              siteLocation.latitude,
-              siteLocation.longitude,
-            );
-      if (requireNearSite && siteLocation != null) {
-        _logNearSiteDistanceCheck(
-          itemRunId: itemRunId,
-          projectId: task['project_id']?.toString() ?? '',
-          siteLatitude: siteLocation.latitude,
-          siteLongitude: siteLocation.longitude,
-          deviceLatitude: position.latitude,
-          deviceLongitude: position.longitude,
-          distanceMeters: distance,
-          nearSiteRadiusMeters: radius,
-          withinRadius: distance <= radius,
-        );
-        if (distance > radius) {
-          return _NearSiteCheckResult(
-            ok: false,
-            error:
-                'You must be within $radius m of the project site (you are about ${distance.round()} m away).',
-            distanceMeters: distance,
-            latitude: position.latitude,
-            longitude: position.longitude,
-          );
-        }
-      }
-      return _NearSiteCheckResult(
-        ok: true,
-        distanceMeters: siteLocation == null ? null : distance,
-        latitude: position.latitude,
-        longitude: position.longitude,
-      );
-    } on TimeoutException {
-      return const _NearSiteCheckResult(
-        ok: false,
-        error: 'Could not get your location in time. Please try again.',
-      );
-    } catch (e) {
-      return _NearSiteCheckResult(
-        ok: false,
-        error: userFacingError(e),
-      );
-    }
+  if (requireNearSite &&
+      siteLocation != null &&
+      !proximity.usedSilentLastKnown &&
+      proximity.distanceMeters != null &&
+      proximity.latitude != null &&
+      proximity.longitude != null) {
+    _logNearSiteDistanceCheck(
+      itemRunId: itemRunId,
+      projectId: task['project_id']?.toString() ?? '',
+      siteLatitude: siteLocation.latitude,
+      siteLongitude: siteLocation.longitude,
+      deviceLatitude: proximity.latitude!,
+      deviceLongitude: proximity.longitude!,
+      distanceMeters: proximity.distanceMeters!,
+      nearSiteRadiusMeters: radius,
+      withinRadius: proximity.ok,
+    );
   }
-
-  final result = await runCheck();
+  final mapped = _mapSiteProximityResult(proximity);
   return _applyDebugNearSiteOverrideIfNeeded(
     context,
-    result,
+    mapped,
     siteLocation: siteLocation,
     task: task,
   );
@@ -15115,26 +15100,37 @@ Future<_IndentPoSiteProofSubmitResult> _presentIndentPoSiteProofAction({
                 if (!sheetContext.mounted) return;
                 setSheetState(() => applyNearSite(nearSiteResult));
                 if (!nearSiteResult.ok) {
-                  await _showWorkflowUploadAlert(
-                    context,
-                    title: 'Location required',
-                    message: nearSiteResult.error ??
-                        'Your device location is required to submit near the site.',
-                  );
-                  return;
+                  final dialogResult = await showLocationRequiredDialog(context);
+                  if (dialogResult == LocationRequiredDialogResult.recheck &&
+                      sheetContext.mounted) {
+                    nearSiteResult = await checkNearSite();
+                    if (!sheetContext.mounted) return;
+                    setSheetState(() => applyNearSite(nearSiteResult));
+                  }
+                  if (!nearSiteResult.ok) {
+                    setSheetState(() => isSubmitting = false);
+                    return;
+                  }
                 }
               }
 
-              final uploadLat = nearSiteResult.latitude;
-              final uploadLng = nearSiteResult.longitude;
+              var uploadLat = nearSiteResult.latitude;
+              var uploadLng = nearSiteResult.longitude;
               if (requireNearSite &&
                   (uploadLat == null || uploadLng == null)) {
-                await _showWorkflowUploadAlert(
-                  context,
-                  title: 'Location required',
-                  message: 'Could not read GPS coordinates. Please try again.',
-                );
-                return;
+                final dialogResult = await showLocationRequiredDialog(context);
+                if (dialogResult == LocationRequiredDialogResult.recheck &&
+                    sheetContext.mounted) {
+                  nearSiteResult = await checkNearSite();
+                  if (!sheetContext.mounted) return;
+                  setSheetState(() => applyNearSite(nearSiteResult));
+                  uploadLat = nearSiteResult.latitude;
+                  uploadLng = nearSiteResult.longitude;
+                }
+                if (uploadLat == null || uploadLng == null) {
+                  setSheetState(() => isSubmitting = false);
+                  return;
+                }
               }
 
               final hasMedia = selectedFiles.isNotEmpty;
@@ -15397,8 +15393,17 @@ Future<void> _showWorkflowUploadAlert(
   BuildContext context, {
   required String message,
   String title = 'Upload',
+  Future<void> Function()? onRecheck,
 }) async {
   if (!context.mounted || message.trim().isEmpty) return;
+  if (isLocationOrSiteDistanceError(message) ||
+      title.trim().toLowerCase() == 'location required') {
+    final dialogResult = await showLocationRequiredDialog(context);
+    if (dialogResult == LocationRequiredDialogResult.recheck) {
+      await onRecheck?.call();
+    }
+    return;
+  }
   await showDialog<void>(
     context: context,
     builder: (dialogContext) => AlertDialog(
@@ -15984,6 +15989,17 @@ class _SiteCoordinates {
   });
 }
 
+_NearSiteCheckResult _mapSiteProximityResult(SiteProximityResult result) {
+  return _NearSiteCheckResult(
+    ok: result.ok,
+    error: result.error,
+    openSettings: result.openSettings,
+    distanceMeters: result.distanceMeters,
+    latitude: result.latitude,
+    longitude: result.longitude,
+  );
+}
+
 class _NearSiteCheckResult {
   final bool ok;
   final String? error;
@@ -16229,43 +16245,6 @@ double? _doubleValue(dynamic value) {
   if (value is int) return value.toDouble();
   if (value is num) return value.toDouble();
   return double.tryParse(value.toString().trim());
-}
-
-Future<_NearSiteCheckResult> _ensureLocationPermission() async {
-  final serviceEnabled = await Geolocator.isLocationServiceEnabled();
-  if (!serviceEnabled) {
-    return const _NearSiteCheckResult(
-      ok: false,
-      error:
-          'Location services are turned off. Turn them on to upload near the project site.',
-      openSettings: true,
-    );
-  }
-
-  var permission = await Geolocator.checkPermission();
-  if (permission == LocationPermission.denied) {
-    permission = await Geolocator.requestPermission();
-  }
-
-  if (permission == LocationPermission.denied) {
-    return const _NearSiteCheckResult(
-      ok: false,
-      error:
-          'Location permission is required to upload near the project site.',
-      openSettings: true,
-    );
-  }
-
-  if (permission == LocationPermission.deniedForever) {
-    return const _NearSiteCheckResult(
-      ok: false,
-      error:
-          'Location permission is permanently denied. Enable it in app settings.',
-      openSettings: true,
-    );
-  }
-
-  return const _NearSiteCheckResult(ok: true);
 }
 
 class _ChecklistFollowupResponse {

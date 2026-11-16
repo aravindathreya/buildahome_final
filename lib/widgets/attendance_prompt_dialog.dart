@@ -8,6 +8,7 @@ import '../services/attendance_service.dart';
 import '../services/location_service.dart';
 import '../services/staff_location_tracker.dart';
 import '../widgets/attendance_note_sheet.dart';
+import '../widgets/location_required_dialog.dart';
 import '../user_facing_error.dart';
 
 /// Once per IST day, prompts staff who still need to check in.
@@ -144,6 +145,9 @@ class _AttendancePromptDialogState extends State<_AttendancePromptDialog> {
     if (position == null) {
       setState(() => _error = 'Waiting for your location…');
       await _refreshLocation();
+      if (mounted && _position == null) {
+        await showLocationRequiredDialog(context);
+      }
       return;
     }
     if (match == null && !overrideLocation) {

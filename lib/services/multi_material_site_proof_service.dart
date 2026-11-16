@@ -137,6 +137,27 @@ class MultiMaterialSiteProofService {
     );
   }
 
+  Future<Map<String, dynamic>> removeMedia({
+    required String itemRunId,
+    String? mediaId,
+    String? url,
+    String? slot,
+    String? materialKey,
+  }) async {
+    return _postJson(
+      pathSuffix:
+          'site_proof/multi_material/${itemRunId.trim()}/media/delete',
+      body: {
+        if (mediaId != null && mediaId.trim().isNotEmpty)
+          'media_id': mediaId.trim(),
+        if (url != null && url.trim().isNotEmpty) 'url': url.trim(),
+        if (slot != null && slot.trim().isNotEmpty) 'slot': slot.trim(),
+        if (materialKey != null && materialKey.trim().isNotEmpty)
+          'material_key': materialKey.trim(),
+      },
+    );
+  }
+
   Future<MultiMaterialSubmitResult> submit({
     required String itemRunId,
   }) async {
